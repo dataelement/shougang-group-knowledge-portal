@@ -480,11 +480,22 @@
 }
 
 .sideColumn > .qaPanel:nth-child(1) {
-  height: 360px;
+  height: 324px;
+}
+
+.leftColumn > .panel:nth-child(1) {
+  height: 324px;
+  overflow: hidden;
 }
 
 .sideColumn > .qaPanel:nth-child(2) {
-  height: 525px;
+  height: 501px;
+  overflow: hidden;
+}
+
+.leftColumn > .panel:nth-child(3),
+.sideColumn > .panel:nth-child(3) {
+  height: 300px;
   overflow: hidden;
 }
 
@@ -598,7 +609,7 @@
 }
 
 .listItem {
-  padding: 12px 0 11px;
+  padding: 10px 0 9px;
   border-top: 1px solid var(--neutral-100);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
@@ -641,7 +652,7 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 7px;
+  margin-top: 5px;
   font-size: 0.74rem;
   color: var(--neutral-400);
 }
@@ -677,15 +688,15 @@
 .qaComposerWrap {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 11px;
 }
 
 .qaPreview {
-  background: linear-gradient(180deg, rgba(239, 246, 255, 0.5), #fff);
-  border: 1px solid var(--primary-100);
+  background: linear-gradient(180deg, #fbfdff 0%, #f8fbff 100%);
+  border: 1px solid #d9e8ff;
   border-radius: 8px;
-  padding: 16px 12px;
-  min-height: 156px;
+  padding: 17px 12px 15px;
+  min-height: 155px;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -697,12 +708,12 @@
 
 .qaPreviewRow {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
 }
 
 .qaPreviewRow + .qaPreviewRow {
-  margin-top: 8px;
+  margin-top: 11px;
 }
 
 .qaPreviewRowUser {
@@ -710,8 +721,8 @@
 }
 
 .qaComposerAvatar {
-  width: 28px;
-  height: 28px;
+  width: 27px;
+  height: 27px;
   border-radius: 50%;
   background: var(--primary-600);
   color: #fff;
@@ -728,21 +739,24 @@
 
 .qaComposerBubble {
   background: #fff;
-  border: 1px solid var(--primary-100);
-  padding: 8px 11px;
-  border-radius: 12px 12px 12px 4px;
+  border: 1px solid #dbe8fb;
+  padding: 8px 12px;
+  border-radius: 10px 10px 10px 4px;
   font-size: 0.78rem;
   color: var(--neutral-800);
-  line-height: 1.55;
+  line-height: 1.5;
+  max-width: 176px;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.04);
 }
 
 .qaUserBubble {
   background: var(--primary-600);
   color: #fff;
   padding: 8px 12px;
-  border-radius: 12px 12px 4px 12px;
+  border-radius: 10px 10px 4px 10px;
   font-size: 0.78rem;
-  line-height: 1.55;
+  line-height: 1.5;
+  max-width: 176px;
 }
 
 .qaComposerButton {
@@ -756,7 +770,7 @@
 }
 
 .qaPromptBox {
-  height: 35px;
+  height: 34px;
   border: 1px solid #dbe8fb;
   border-radius: 7px;
   background: #fff;
@@ -770,8 +784,8 @@
 }
 
 .qaPromptSend {
-  width: 22px;
-  height: 22px;
+  width: 23px;
+  height: 23px;
   border-radius: 50%;
   background: var(--primary-600);
   color: #fff;
@@ -787,8 +801,8 @@
 
 .qaCallout {
   margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--neutral-100);
+  padding-top: 8px;
+  border-top: 1px solid #edf2f8;
   font-size: 0.72rem;
   color: var(--neutral-400);
   display: inline-flex;
@@ -848,7 +862,7 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 4px;
+  padding: 8px 4px;
   border-top: 1px solid var(--neutral-100);
   cursor: pointer;
   transition: background 0.15s ease;
@@ -1125,7 +1139,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 4px;
+  padding: 12px 0;
   border-top: 1px solid var(--neutral-100);
   color: inherit;
   text-align: left;
@@ -1135,11 +1149,11 @@
 
 .courseRow:first-child {
   border-top: none;
-  padding-top: 6px;
+  padding-top: 12px;
 }
 
 .courseRow:hover {
-  background: var(--primary-50);
+  background: transparent;
 }
 
 .courseRow:hover .courseRowTitle {
@@ -1149,11 +1163,13 @@
 .courseRowIcon {
   color: var(--neutral-700);
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
 }
 
 .courseRowTitle {
-  font-size: 0.96rem;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 700;
   color: var(--neutral-900);
   transition: color 0.15s ease;
   min-width: 0;
@@ -1204,7 +1220,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 4px;
+  padding: 12px 0;
   border-top: 1px solid var(--neutral-100);
   color: inherit;
   cursor: pointer;
@@ -1216,7 +1232,7 @@
 }
 
 .wikiRow:hover {
-  background: var(--primary-50);
+  background: transparent;
 }
 
 .wikiRow:hover .wikiRowName {
@@ -1226,11 +1242,13 @@
 .wikiRowIcon {
   color: var(--neutral-700);
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
 }
 
 .wikiRowName {
-  font-size: 0.96rem;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 700;
   color: var(--neutral-900);
   transition: color 0.15s ease;
   min-width: 0;

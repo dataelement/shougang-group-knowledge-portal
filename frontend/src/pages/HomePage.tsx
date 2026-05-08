@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
-  Search, Building, Star, AlertTriangle, FolderOpen, LayoutGrid,
+  Search, Building, Star, AlertTriangle, LayoutGrid,
   ArrowUp, BarChart3, Bot, ChevronLeft, ChevronRight, FileText, Tag,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
-  Award, MessageSquarePlus, Sparkles, FolderLock, Lock,
+  Award, MessageSquarePlus, Sparkles,
   BookOpen, Package, Video, Flame, Briefcase, Users,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
@@ -14,7 +14,6 @@ import TagPill from '../components/TagPill';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import { fetchAggregatedTags, searchFiles, type FileItem } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { useAuth } from '../hooks/useAuth';
 import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
@@ -175,7 +174,6 @@ function formatCount(value: number): string {
 export default function HomePage() {
   const navigate = useNavigate();
   const { config, error } = usePortalConfig();
-  const { user } = useAuth();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [query, setQuery] = useState('');
   const [bannerIdx, setBannerIdx] = useState(0);
@@ -282,7 +280,6 @@ export default function HomePage() {
 
   /* Stats */
   const totalFiles = enabledSpaces.reduce((total, space) => total + space.file_count, 0);
-  const spaceCount = enabledSpaces.length;
   const activeBanner = homeBanners[safeBannerIdx] ?? homeBanners[0];
   const activeBannerBackground = buildBannerBackground(activeBanner.imageUrl);
   const configuredHomeDomains = enabledDomains.slice(0, displayConfig.home.domainCount);
@@ -311,19 +308,21 @@ export default function HomePage() {
   const hasSectionContent = homeSections.some((section) => (sectionData[section.tag] || []).length > 0);
   const isUsingMockSections = homeSections.length === 0 || !hasSectionContent;
   const contentSections = isUsingMockSections ? MOCK_HOME_SECTIONS : homeSections;
-  const homeSpaces = enabledSpaces.slice(0, displayConfig.home.spacesCount);
   const homeApps = enabledApps.slice(0, displayConfig.home.appsCount);
   const assistantGreeting = getWelcomeMessage(config?.qa.welcome_message);
   const qaHotQuestions = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
   const primaryQaQuestion = qaHotQuestions[0] || '振动纹通常如何排查？';
 
-  const expertHotQuestions = qaHotQuestions.length
-    ? qaHotQuestions.slice(0, 3)
-    : [
-        '连铸坯角部裂纹有哪些常见判定标准？',
-        '高炉煤气含氧量超标可能由哪些原因引起？',
-        '轧机液压系统压力波动如何诊断？',
-      ];
+  const expertQuestionFallbacks = [
+    '振动纹通常如何排查？',
+    '热轧精轧机轴承维护周期是多久？',
+    '冷轧板面缺陷有哪些常见类型？',
+    '振动纹通常如何排查？',
+    '热轧精轧机轴承维护周期是多久？',
+    '冷轧板面缺陷有哪些常见类型？',
+    '振动纹通常如何排查？',
+  ];
+  const expertHotQuestions = [...qaHotQuestions, ...expertQuestionFallbacks].slice(0, 7);
 
   const appEntryItems = homeApps.length > 0
     ? homeApps.slice(0, 4).map((app) => ({
@@ -623,30 +622,6 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-
-            {/* 股份百科 · 知识产品 */}
-            <div className={s.panel}>
-              <div className={s.panelHeader}>
-                <div className={s.panelHeaderLeft}>
-                  <div className={`${s.panelIcon} ${s.panelIconWiki}`}>
-                    <BookOpen size={14} />
-                  </div>
-                  <span className={s.panelTitle}>股份百科 · 知识产品</span>
-                </div>
-                <Link to="/wiki" className={s.panelMore}>
-                  更多词条 <ChevronRight size={14} />
-                </Link>
-              </div>
-              <div className={s.wikiList}>
-                {WIKI_LIST_ITEMS.slice(0, 5).map((item) => (
-                  <Link key={item.id} to={`/wiki/${item.id}`} className={s.wikiRow}>
-                    <Package size={22} className={s.wikiRowIcon} />
-                    <span className={s.wikiRowName}>{item.name}</span>
-                    <span className={s.wikiCatTag}>{item.domain}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
           </div>
 
           {/* Right column */}
@@ -724,6 +699,30 @@ export default function HomePage() {
               <div className={s.qaFooter}>本周活跃专家：12人</div>
             </div>
 
+            {/* 股份百科 · 知识产品 */}
+            <div className={s.panel}>
+              <div className={s.panelHeader}>
+                <div className={s.panelHeaderLeft}>
+                  <div className={`${s.panelIcon} ${s.panelIconWiki}`}>
+                    <BookOpen size={14} />
+                  </div>
+                  <span className={s.panelTitle}>股份百科 · 知识产品</span>
+                </div>
+                <Link to="/wiki" className={s.panelMore}>
+                  更多词条 <ChevronRight size={14} />
+                </Link>
+              </div>
+              <div className={s.wikiList}>
+                {WIKI_LIST_ITEMS.slice(0, 5).map((item) => (
+                  <Link key={item.id} to={`/wiki/${item.id}`} className={s.wikiRow}>
+                    <Package size={22} className={s.wikiRowIcon} />
+                    <span className={s.wikiRowName}>{item.name}</span>
+                    <span className={s.wikiCatTag}>{item.domain}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
             {/* 热门标签 */}
             {tagRankList.length > 0 ? (
               <div className={`${s.qaPanel} ${s.rankPanel}`}>
@@ -750,101 +749,6 @@ export default function HomePage() {
               </div>
             ) : null}
 
-            {/* 受控知识空间 — visible only for unauthenticated visitors */}
-            {!user ? (
-              <div className={s.qaPanel}>
-                <div className={s.qaHeader}>
-                  <div className={s.qaHeaderLeft}>
-                    <div className={`${s.panelIcon} ${s.panelIconLock}`}><Lock size={14} /></div>
-                    <span className={s.panelTitle}>受控知识空间</span>
-                  </div>
-                </div>
-                <div className={s.lockBody}>
-                  登录后可访问 <b>{spaceCount}</b> 个内部知识空间，含设备点检规范、内部事故复盘、部门技术分享等受控内容。
-                </div>
-                <div className={s.lockTeaser}>
-                  <div className={s.lockIcon}>
-                    <FolderLock size={18} />
-                  </div>
-                  <div className={s.lockBlock}>
-                    <div className={s.lockTitle}>仅登录可见</div>
-                    <div className={s.lockDesc}>含 12 篇本周新增受控文档</div>
-                  </div>
-                  <Link to="/login?redirect=%2F" className={s.lockBtn}>登录</Link>
-                </div>
-              </div>
-            ) : null}
-
-            {/* 知识广场 */}
-            {homeSpaces.length > 0 ? (
-              <div className={s.qaPanel}>
-                <div className={s.qaHeader}>
-                  <div className={s.qaHeaderLeft}>
-                    <div className={s.panelIcon}><FolderOpen size={14} /></div>
-                    <span className={s.panelTitle}>知识广场</span>
-                  </div>
-                </div>
-                <div className={s.squareGrid}>
-                  {homeSpaces.map((sp) => (
-                    <div
-                      key={sp.id}
-                      className={s.squareCard}
-                      onClick={() => navigate(`/space/${sp.id}`)}
-                    >
-                      <span className={s.squareName}>{sp.name}</span>
-                      <span className={s.squareCount}>
-                        <span className={s.squareNum}>{sp.file_count}</span>
-                        <span className={s.squareUnit}>篇</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {/* 应用入口 */}
-            <div className={s.qaPanel}>
-              <div className={s.qaHeader}>
-                <div className={s.qaHeaderLeft}>
-                  <div className={s.panelIcon}><LayoutGrid size={14} /></div>
-                  <span className={s.panelTitle}>应用入口</span>
-                </div>
-                <Link to="/apps" className={s.panelMore}>
-                  全部 <ChevronRight size={14} />
-                </Link>
-              </div>
-              <div className={s.appEntryGrid}>
-                {appEntryItems.map((entry) => {
-                  const Icon = APP_ICONS[entry.iconKey] || FileText;
-                  const handleClick = () => {
-                    if (entry.url) {
-                      window.open(entry.url, '_blank', 'noopener,noreferrer');
-                    } else {
-                      navigate('/apps');
-                    }
-                  };
-                  return (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      className={s.appEntryCard}
-                      onClick={handleClick}
-                    >
-                      <span
-                        className={s.appEntryIcon}
-                        style={{ background: entry.iconBg, color: entry.iconColor }}
-                      >
-                        <Icon size={16} />
-                      </span>
-                      <span className={s.appEntryBody}>
-                        <span className={s.appEntryName}>{entry.name}</span>
-                        <span className={s.appEntryDesc}>{entry.desc}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
           </div>
         </div>
 
