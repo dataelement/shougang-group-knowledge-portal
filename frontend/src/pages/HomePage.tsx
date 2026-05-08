@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from 'r
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Building, Star, AlertTriangle, FolderOpen, LayoutGrid,
-  BarChart3, Bot, ChevronRight, FileText, Tag,
+  ArrowUp, BarChart3, Bot, ChevronLeft, ChevronRight, FileText, Tag,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Award, MessageSquarePlus, Sparkles, FolderLock, Lock,
@@ -11,6 +11,7 @@ import {
 import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
+import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import { fetchAggregatedTags, searchFiles, type FileItem } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
@@ -32,7 +33,113 @@ const APP_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
 };
 
 const SECTION_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
-  Star, AlertTriangle,
+  Star, AlertTriangle, BarChart3, LayoutGrid,
+};
+
+const DOMAIN_PAGE_SIZE = 4;
+
+const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
+  {
+    name: '钢铁智造',
+    space_ids: [],
+    color: '#2563eb',
+    bg: '#eff6ff',
+    icon: 'Factory',
+    background_image: '/production-domain-bg.jpg',
+    enabled: true,
+  },
+  {
+    name: '设备工程',
+    space_ids: [],
+    color: '#0891b2',
+    bg: '#ecfeff',
+    icon: 'Wrench',
+    background_image: '/device-domain-bg.png',
+    enabled: true,
+  },
+  {
+    name: '安全环保',
+    space_ids: [],
+    color: '#059669',
+    bg: '#ecfdf5',
+    icon: 'Shield',
+    background_image: '/safety-domain-bg.png',
+    enabled: true,
+  },
+  {
+    name: '经营管理',
+    space_ids: [],
+    color: '#7c3aed',
+    bg: '#f5f3ff',
+    icon: 'Briefcase',
+    background_image: '/management-domain-bg.png',
+    enabled: true,
+  },
+  {
+    name: '能源动力',
+    space_ids: [],
+    color: '#d97706',
+    bg: '#fffbeb',
+    icon: 'Zap',
+    background_image: '/energy-domain-bg.jpg',
+    enabled: true,
+  },
+];
+
+const MOCK_DOMAIN_STATS = new Map([
+  ['钢铁智造', { files: 236, tags: 38 }],
+  ['设备工程', { files: 184, tags: 27 }],
+  ['安全环保', { files: 156, tags: 24 }],
+  ['经营管理', { files: 128, tags: 19 }],
+  ['能源动力', { files: 92, tags: 16 }],
+]);
+
+const MOCK_HOME_SECTIONS: SectionConfig[] = [
+  {
+    title: '知识推荐 · 最新精选',
+    tag: '知识推荐',
+    link: '/list?tag=%E7%9F%A5%E8%AF%86%E6%8E%A8%E8%8D%90',
+    icon: 'BarChart3',
+    color: '#2563eb',
+    bg: '#eff6ff',
+    enabled: true,
+  },
+  {
+    title: '行业情报 · 趋势分析',
+    tag: '行业情报',
+    link: '/list?tag=%E8%A1%8C%E4%B8%9A%E6%83%85%E6%8A%A5',
+    icon: 'LayoutGrid',
+    color: '#2563eb',
+    bg: '#eff6ff',
+    enabled: true,
+  },
+];
+
+const MOCK_SECTION_DATA: Record<string, FileItem[]> = {
+  知识推荐: Array.from({ length: 4 }, (_, index) => ({
+    id: 9000 + index,
+    spaceId: 0,
+    title: '固体废物鉴别标准 通则',
+    summary: '',
+    source: 'mock',
+    date: '2026-05-05T14:36:00+08:00',
+    tags: index % 2 === 0 ? ['知识推荐', '热门'] : ['知识推荐'],
+    ext: 'pdf',
+    sizeLabel: '',
+    fileEncoding: '',
+  })),
+  行业情报: Array.from({ length: 4 }, (_, index) => ({
+    id: 9100 + index,
+    spaceId: 0,
+    title: '钢铁工业烧结废气超低排放治理工程技术规范',
+    summary: '【文档类型】：规范制度  【摘要】：本标准《钢铁工业烧结废气超低排放治理工程技术规范》（HJ 1408-2024）由生态环境部发布，旨在规范钢铁工业烧结废气超低排放治理工程的设计、施工、验收和运行维护，以达到环保要求。标准详细规定了烧结废气污染物的来源、分级治理路径与运行维护要点。',
+    source: 'mock',
+    date: '2026-05-05T14:40:00+08:00',
+    tags: ['行业情报'],
+    ext: 'pdf',
+    sizeLabel: '',
+    fileEncoding: '',
+  })),
 };
 
 const BANNER_OVERLAY_GRADIENT =
@@ -72,6 +179,7 @@ export default function HomePage() {
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [query, setQuery] = useState('');
   const [bannerIdx, setBannerIdx] = useState(0);
+  const [domainPage, setDomainPage] = useState(0);
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [hotTags, setHotTags] = useState<string[]>([]);
   const [loadError, setLoadError] = useState('');
@@ -177,10 +285,32 @@ export default function HomePage() {
   const spaceCount = enabledSpaces.length;
   const activeBanner = homeBanners[safeBannerIdx] ?? homeBanners[0];
   const activeBannerBackground = buildBannerBackground(activeBanner.imageUrl);
-  const homeDomains = enabledDomains.slice(0, displayConfig.home.domainCount);
-  const domainColumns = Math.max(homeDomains.length || 1, 1);
+  const configuredHomeDomains = enabledDomains.slice(0, displayConfig.home.domainCount);
+  const isUsingMockDomains = configuredHomeDomains.length === 0;
+  const homeDomains = isUsingMockDomains ? MOCK_DOMAIN_NAV_ITEMS : configuredHomeDomains;
+  const domainPageCount = Math.max(1, Math.ceil(homeDomains.length / DOMAIN_PAGE_SIZE));
+  const safeDomainPage = domainPage % domainPageCount;
+  const visibleDomains = homeDomains.slice(safeDomainPage * DOMAIN_PAGE_SIZE, safeDomainPage * DOMAIN_PAGE_SIZE + DOMAIN_PAGE_SIZE);
+  const spaceById = new Map(enabledSpaces.map((space) => [space.id, space]));
+  const domainStats = isUsingMockDomains ? MOCK_DOMAIN_STATS : new Map(homeDomains.map((domain) => {
+    const spaces = domain.space_ids.flatMap((spaceId) => {
+      const space = spaceById.get(spaceId);
+      return space ? [space] : [];
+    });
+    return [
+      domain.name,
+      {
+        files: spaces.reduce((total, space) => total + space.file_count, 0),
+        tags: spaces.reduce((total, space) => total + space.tag_count, 0),
+      },
+    ];
+  }));
   const rankedHotTags = hotTags.slice(0, displayConfig.home.hotTagsCount);
   const tagRankList = rankedHotTags.slice(0, 6);
+  const homeSections = enabledSections.slice(0, 3);
+  const hasSectionContent = homeSections.some((section) => (sectionData[section.tag] || []).length > 0);
+  const isUsingMockSections = homeSections.length === 0 || !hasSectionContent;
+  const contentSections = isUsingMockSections ? MOCK_HOME_SECTIONS : homeSections;
   const homeSpaces = enabledSpaces.slice(0, displayConfig.home.spacesCount);
   const homeApps = enabledApps.slice(0, displayConfig.home.appsCount);
   const assistantGreeting = getWelcomeMessage(config?.qa.welcome_message);
@@ -335,32 +465,56 @@ export default function HomePage() {
       <div className={s.container}>
         {/* Domain navigation */}
         <div className={`${s.section} ${s.domainSection}`}>
-          <SectionHeader icon={Building} title="业务域导航" moreLink="/domains" moreText="全部业务域" size="large" />
-          <div
-            className={s.domainGrid}
-            style={{ gridTemplateColumns: `repeat(${domainColumns}, minmax(0, 1fr))` }}
-          >
-            {homeDomains.map((d) => {
-              const Icon = DOMAIN_ICONS[d.icon] || Settings;
-              const visualPreset = getDomainVisualPreset(d);
-              const domainBackground = visualPreset.backgroundImage;
-              const usesBannerThumb = Boolean(domainBackground);
-              return (
-                <div
-                  key={d.name}
-                  className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
-                  style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
-                  onClick={() => navigateToTop(`/domain/${encodeURIComponent(d.name)}`)}
-                >
-                  {usesBannerThumb ? null : (
-                    <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>
-                      <Icon size={22} />
+          <SectionHeader icon={Building} title="业务域导航" size="large" />
+          <div className={s.domainCarousel}>
+            {homeDomains.length > DOMAIN_PAGE_SIZE && (
+              <button
+                type="button"
+                className={`${s.domainArrow} ${s.domainArrowLeft}`}
+                aria-label="上一组业务域"
+                onClick={() => setDomainPage((current) => (current + domainPageCount - 1) % domainPageCount)}
+              >
+                <ChevronLeft size={22} />
+              </button>
+            )}
+            <div className={s.domainGrid}>
+              {visibleDomains.map((d) => {
+                const Icon = DOMAIN_ICONS[d.icon] || Settings;
+                const visualPreset = getDomainVisualPreset(d);
+                const domainBackground = visualPreset.backgroundImage;
+                const usesBannerThumb = Boolean(domainBackground);
+                const stats = domainStats.get(d.name) ?? { files: 0, tags: 0 };
+                return (
+                  <div
+                    key={d.name}
+                    className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
+                    style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
+                    onClick={() => navigateToTop(`/domain/${encodeURIComponent(d.name)}`)}
+                  >
+                    {usesBannerThumb ? null : (
+                      <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>
+                        <Icon size={20} />
+                      </div>
+                    )}
+                    <div className={s.domainCardContent}>
+                      <div className={s.domainName}>{d.name}</div>
+                      <div className={s.domainMeta}>{stats.files} 公共知识</div>
+                      <div className={s.domainMeta}>{stats.tags} 专业知识</div>
                     </div>
-                  )}
-                  <div className={s.domainName}>{d.name}</div>
-                </div>
-              );
-            })}
+                  </div>
+                );
+              })}
+            </div>
+            {homeDomains.length > DOMAIN_PAGE_SIZE && (
+              <button
+                type="button"
+                className={`${s.domainArrow} ${s.domainArrowRight}`}
+                aria-label="下一组业务域"
+                onClick={() => setDomainPage((current) => (current + 1) % domainPageCount)}
+              >
+                <ChevronRight size={22} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -368,13 +522,13 @@ export default function HomePage() {
         <div className={s.columns}>
           {/* Left: knowledge list panels */}
           <div className={s.leftColumn}>
-            {enabledSections.map((sec) => {
+            {contentSections.map((sec) => {
               const Icon = SECTION_ICONS[sec.icon] || Star;
               const visual = resolveSectionVisual(sec);
-              const items = sectionData[sec.tag] || [];
-              const showSummary = sec.tag === '最新精选' || sec.tag === '典型案例';
-              const featuredItem = sec.tag === '最新精选' ? items[0] : null;
-              const listItems = sec.tag === '最新精选' ? items.slice(1) : items;
+              const items = isUsingMockSections ? (MOCK_SECTION_DATA[sec.tag] || []) : (sectionData[sec.tag] || []);
+              const showSummary = sec.tag === '行业情报' || sec.tag === '典型案例';
+              const featuredItem = !isUsingMockSections && sec.tag === '最新精选' ? items[0] : null;
+              const listItems = featuredItem ? items.slice(1) : items;
               return (
                 <div key={sec.tag} className={s.panel}>
                   <div className={s.panelHeader}>
@@ -525,13 +679,12 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className={s.qaComposerButton}
-                  onClick={() => navigate('/qa')}
-                >
-                  与 Agent 对话
-                </button>
+                <div className={s.qaPromptBox} onClick={() => navigate('/qa')}>
+                  <span>请输入您的问题</span>
+                  <button type="button" className={s.qaPromptSend} aria-label="发送问题">
+                    <ArrowUp size={14} />
+                  </button>
+                </div>
               </div>
               <div className={s.qaCallout}>
                 <Sparkles size={13} />
