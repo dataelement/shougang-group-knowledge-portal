@@ -170,5 +170,6 @@ DEFAULT_PORTAL_CONFIG = {
     ],
     "integrations": {
         "bisheng_admin_entry_url": "",
+        "bisheng_knowledge_entry_url": "",
     },
 }

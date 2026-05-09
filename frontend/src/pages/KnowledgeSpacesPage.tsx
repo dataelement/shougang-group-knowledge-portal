@@ -8,8 +8,11 @@ import s from './KnowledgeSpacesPage.module.css';
 const DEFAULT_BISHENG_ASSET_BASE_URL = 'http://127.0.0.1:4001';
 const DEFAULT_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
 
-function resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl?: string, adminEntryUrl?: string) {
-  const sourceUrl = runtimeAssetBaseUrl?.trim() || adminEntryUrl?.trim() || '';
+function resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl?: string, knowledgeEntryUrl?: string) {
+  const configuredUrl = knowledgeEntryUrl?.trim() || '';
+  if (configuredUrl) return configuredUrl;
+
+  const sourceUrl = runtimeAssetBaseUrl?.trim() || '';
   if (!sourceUrl) return `${DEFAULT_BISHENG_ASSET_BASE_URL}${DEFAULT_BISHENG_KNOWLEDGE_PATH}`;
 
   try {
@@ -42,8 +45,8 @@ export default function KnowledgeSpacesPage() {
   }, []);
 
   const embedUrl = useMemo(
-    () => resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl, config?.integrations?.bisheng_admin_entry_url),
-    [runtimeAssetBaseUrl, config?.integrations?.bisheng_admin_entry_url],
+    () => resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url),
+    [runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url],
   );
 
   return (

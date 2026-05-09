@@ -122,6 +122,11 @@ interface BishengDraft {
   timeout_seconds: string;
 }
 
+interface IntegrationsDraft {
+  bisheng_admin_entry_url: string;
+  bisheng_knowledge_entry_url: string;
+}
+
 export default function AdminPage() {
   const [active, setActive] = useState<NavKey>('spaces');
   const [config, setConfig] = useState<PortalConfig | null>(null);
@@ -170,7 +175,7 @@ export default function AdminPage() {
   const [bannerFormError, setBannerFormError] = useState('');
   const [bannerDeleteIndex, setBannerDeleteIndex] = useState<number | null>(null);
   const [integrationsDialogOpen, setIntegrationsDialogOpen] = useState(false);
-  const [integrationsDraft, setIntegrationsDraft] = useState('');
+  const [integrationsDraft, setIntegrationsDraft] = useState<IntegrationsDraft>(createIntegrationsDraft());
   const [integrationsDialogError, setIntegrationsDialogError] = useState('');
 
   async function loadConfig() {
@@ -492,7 +497,7 @@ export default function AdminPage() {
               integrations={config.integrations}
               saving={saving}
               onEdit={() => {
-                setIntegrationsDraft(config.integrations.bisheng_admin_entry_url || '');
+                setIntegrationsDraft(createIntegrationsDraft(config.integrations));
                 setIntegrationsDialogError('');
                 setIntegrationsDialogOpen(true);
               }}
@@ -855,28 +860,28 @@ export default function AdminPage() {
         />
       ) : null}
       {config && integrationsDialogOpen ? (
-        <TextEditorDialog
+        <IntegrationsEditorDialog
           open
-          title="编辑大模型应用平台嵌入入口 URL"
-          note={'管理员点击右上角「知识管理后台」时跳转到此 URL；留空则不显示该入口。需在大模型应用平台侧已按 docs/bisheng-portal-admin-integration.md 完成补丁部署。'}
-          label="大模型应用平台嵌入入口 URL"
-          value={integrationsDraft}
+          draft={integrationsDraft}
           saving={saving}
           error={integrationsDialogError}
-          placeholder="例如：http://192.168.106.120:3002/workspace/shougang-portal-admin"
           onClose={() => setIntegrationsDialogOpen(false)}
           onChange={(value) => {
             setIntegrationsDraft(value);
             setIntegrationsDialogError('');
           }}
           onSubmit={() => {
-            const trimmed = integrationsDraft.trim();
-            if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+            const nextIntegrations = {
+              bisheng_admin_entry_url: integrationsDraft.bisheng_admin_entry_url.trim(),
+              bisheng_knowledge_entry_url: integrationsDraft.bisheng_knowledge_entry_url.trim(),
+            };
+            const invalidField = Object.values(nextIntegrations).find((value) => value && !/^https?:\/\//i.test(value));
+            if (invalidField) {
               setIntegrationsDialogError('URL 需以 http:// 或 https:// 开头；如要清空请删除全部内容。');
               return;
             }
             void runSave(async () => {
-              await persistIntegrations({ bisheng_admin_entry_url: trimmed }, setConfig);
+              await persistIntegrations(nextIntegrations, setConfig);
               setIntegrationsDialogOpen(false);
             });
           }}
@@ -1900,14 +1905,15 @@ function IntegrationsConfigTable({
   saving: boolean;
   onEdit: () => void;
 }) {
-  const url = integrations.bisheng_admin_entry_url?.trim() || '';
+  const adminUrl = integrations.bisheng_admin_entry_url?.trim() || '';
+  const knowledgeUrl = integrations.bisheng_knowledge_entry_url?.trim() || '';
   return (
     <>
       <div className={s.titleBar}>
         <h2 className={s.pageTitle}>集成配置</h2>
       </div>
       <p className={s.pageNote}>
-        门户与大模型应用平台工作台的集成入口。配置后，右上角用户菜单出现「知识管理后台」入口，点击在新标签打开大模型应用平台内嵌的门户后台页面；留空则不显示该入口。大模型应用平台侧需按 docs/bisheng-portal-admin-integration.md 部署对应补丁。
+        门户与大模型应用平台工作台的集成入口。后台入口配置后，右上角用户菜单出现「知识管理后台」；知识空间入口用于「我的知识」页面 iframe 嵌入。大模型应用平台侧需按 docs/bisheng-portal-admin-integration.md 部署对应补丁。
       </p>
       <table className={s.table}>
         <thead>
@@ -1919,12 +1925,30 @@ function IntegrationsConfigTable({
         </thead>
         <tbody>
           <tr>
-            <td>大模型应用平台嵌入入口 URL</td>
+            <td>知识管理后台 URL</td>
             <td>
               <div className={s.valueStack}>
-                <span className={s.valueTitle}>{url || '（未配置 — 入口隐藏）'}</span>
+                <span className={s.valueTitle}>{adminUrl || '（未配置 — 入口隐藏）'}</span>
                 <span className={s.valueMeta}>
                   示例：http://workspace.example.com/workspace/shougang-portal-admin
+                </span>
+              </div>
+            </td>
+            <td>
+              <div className={s.actionGroup}>
+                <button className={s.inlineBtn} onClick={onEdit} disabled={saving}>
+                  {saving ? '保存中...' : '编辑'}
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>我的知识嵌入 URL</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{knowledgeUrl || '（未配置 — 使用数据源前端地址推导 /workspace/knowledge）'}</span>
+                <span className={s.valueMeta}>
+                  示例：http://workspace.example.com/workspace/knowledge
                 </span>
               </div>
             </td>
@@ -2124,6 +2148,67 @@ function TextEditorDialog({
                 placeholder={placeholder}
               />
             )}
+          </label>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IntegrationsEditorDialog({
+  open,
+  draft,
+  saving,
+  error,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  draft: IntegrationsDraft;
+  saving: boolean;
+  error?: string;
+  onClose: () => void;
+  onChange: (value: IntegrationsDraft) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>编辑集成配置</h3>
+            <p className={s.modalNote}>
+              后台入口控制右上角「知识管理后台」；知识空间入口控制「我的知识」页面嵌入地址。留空表示隐藏或使用默认推导。
+            </p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.formGrid}>
+          <label className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>知识管理后台 URL</span>
+            <input
+              className={s.formInput}
+              value={draft.bisheng_admin_entry_url}
+              onChange={(event) => onChange({ ...draft, bisheng_admin_entry_url: event.target.value })}
+              placeholder="例如：http://192.168.106.120:3002/workspace/shougang-portal-admin"
+            />
+          </label>
+          <label className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>我的知识嵌入 URL</span>
+            <input
+              className={s.formInput}
+              value={draft.bisheng_knowledge_entry_url}
+              onChange={(event) => onChange({ ...draft, bisheng_knowledge_entry_url: event.target.value })}
+              placeholder="例如：http://192.168.106.120:3002/workspace/knowledge"
+            />
           </label>
         </div>
         <div className={s.confirmActions}>
@@ -2786,6 +2871,13 @@ function createBishengDraft(current?: BishengRuntimeConfig): BishengDraft {
     username: current?.username ?? '',
     password: '',
     timeout_seconds: current ? String(current.timeout_seconds) : '30',
+  };
+}
+
+function createIntegrationsDraft(current?: IntegrationsConfig): IntegrationsDraft {
+  return {
+    bisheng_admin_entry_url: current?.bisheng_admin_entry_url ?? '',
+    bisheng_knowledge_entry_url: current?.bisheng_knowledge_entry_url ?? '',
   };
 }
 

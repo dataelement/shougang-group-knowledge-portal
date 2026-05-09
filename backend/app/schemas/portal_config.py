@@ -132,6 +132,7 @@ class BannerSlide(BaseModel):
 
 class IntegrationsConfig(BaseModel):
     bisheng_admin_entry_url: str = ""
+    bisheng_knowledge_entry_url: str = ""
 
 
 class PortalConfig(BaseModel):

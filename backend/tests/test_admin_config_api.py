@@ -459,7 +459,10 @@ def test_get_admin_integrations_defaults_to_empty(tmp_path: Path):
         response = client.get("/api/v1/admin/config/integrations")
 
     assert response.status_code == 200
-    assert response.json()["data"] == {"bisheng_admin_entry_url": ""}
+    assert response.json()["data"] == {
+        "bisheng_admin_entry_url": "",
+        "bisheng_knowledge_entry_url": "",
+    }
 
 
 def test_post_admin_integrations_persists_url(tmp_path: Path):
@@ -467,19 +470,26 @@ def test_post_admin_integrations_persists_url(tmp_path: Path):
     runtime_service = create_runtime_service(tmp_path)
 
     url = "http://192.168.106.120:3002/workspace/shougang-portal-admin"
+    knowledge_url = "http://192.168.106.120:3002/workspace/knowledge"
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
         post_response = client.post(
             "/api/v1/admin/config/integrations",
-            json={"bisheng_admin_entry_url": url},
+            json={
+                "bisheng_admin_entry_url": url,
+                "bisheng_knowledge_entry_url": knowledge_url,
+            },
         )
         get_response = client.get("/api/v1/admin/config/integrations")
 
     assert post_response.status_code == 200
     assert post_response.json()["data"]["bisheng_admin_entry_url"] == url
+    assert post_response.json()["data"]["bisheng_knowledge_entry_url"] == knowledge_url
     assert get_response.json()["data"]["bisheng_admin_entry_url"] == url
+    assert get_response.json()["data"]["bisheng_knowledge_entry_url"] == knowledge_url
     assert service.get_config().integrations.bisheng_admin_entry_url == url
+    assert service.get_config().integrations.bisheng_knowledge_entry_url == knowledge_url
 
 
 def test_post_admin_integrations_accepts_empty_to_clear(tmp_path: Path):
@@ -499,7 +509,9 @@ def test_post_admin_integrations_accepts_empty_to_clear(tmp_path: Path):
 
     assert response.status_code == 200
     assert response.json()["data"]["bisheng_admin_entry_url"] == ""
+    assert response.json()["data"]["bisheng_knowledge_entry_url"] == ""
     assert service.get_config().integrations.bisheng_admin_entry_url == ""
+    assert service.get_config().integrations.bisheng_knowledge_entry_url == ""
 
 
 def test_get_admin_config_seeds_integrations_when_missing_from_legacy_json(tmp_path: Path):
@@ -523,4 +535,34 @@ def test_get_admin_config_seeds_integrations_when_missing_from_legacy_json(tmp_p
         response = client.get("/api/v1/admin/config/integrations")
 
     assert response.status_code == 200
-    assert response.json()["data"] == {"bisheng_admin_entry_url": ""}
+    assert response.json()["data"] == {
+        "bisheng_admin_entry_url": "",
+        "bisheng_knowledge_entry_url": "",
+    }
+
+
+def test_get_admin_config_backfills_missing_integration_keys(tmp_path: Path):
+    config_path = tmp_path / "portal_config.json"
+    config_path.write_text(
+        '{"spaces": [], "domains": [], "sections": [], '
+        '"qa": {"knowledge_space_ids": [], "welcome_message": "", '
+        '"hot_questions": [], "ai_search_system_prompt": "", "qa_system_prompt": "", "selected_model": ""}, '
+        '"recommendation": {"provider": "tag_feed", "home_strategy": "x", "detail_strategy": "y"}, '
+        '"display": {"home": {}, "list": {}, "search": {}, "detail": {}}, '
+        '"apps": [], "integrations": {"bisheng_admin_entry_url": "http://example.com/admin"}}',
+        encoding="utf-8",
+    )
+    service = PortalConfigService(config_path=config_path)
+    runtime_service = create_runtime_service(tmp_path)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_client = FakeBishengClient()
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.get("/api/v1/admin/config/integrations")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "bisheng_admin_entry_url": "http://example.com/admin",
+        "bisheng_knowledge_entry_url": "",
+    }

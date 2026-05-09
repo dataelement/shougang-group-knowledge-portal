@@ -40,9 +40,24 @@ class PortalConfigService:
                 self._atomic_write(data)
         if "integrations" not in data:
             data["integrations"] = dict(
-                DEFAULT_PORTAL_CONFIG.get("integrations") or {"bisheng_admin_entry_url": ""}
+                DEFAULT_PORTAL_CONFIG.get("integrations") or {
+                    "bisheng_admin_entry_url": "",
+                    "bisheng_knowledge_entry_url": "",
+                }
             )
             self._atomic_write(data)
+        else:
+            default_integrations = DEFAULT_PORTAL_CONFIG.get("integrations") or {}
+            missing_integration_keys = [
+                key for key in default_integrations
+                if key not in data["integrations"]
+            ]
+            if missing_integration_keys:
+                data["integrations"] = {
+                    **default_integrations,
+                    **data["integrations"],
+                }
+                self._atomic_write(data)
         return PortalConfig.model_validate(data)
 
     def with_live_space_data(
