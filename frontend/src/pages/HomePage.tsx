@@ -37,6 +37,17 @@ const SECTION_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
 
 const DOMAIN_PAGE_SIZE = 4;
 
+const MOCK_HOT_TAGS = [
+  '安全生产',
+  '设备点检',
+  '环保排放',
+  '炼铁工艺',
+  '质量事故',
+  '能源管控',
+  '制度规范',
+  '典型案例',
+];
+
 const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
   {
     name: '钢铁智造',
@@ -306,7 +317,7 @@ export default function HomePage() {
       },
     ];
   }));
-  const rankedHotTags = hotTags.slice(0, displayConfig.home.hotTagsCount);
+  const rankedHotTags = (hotTags.length > 0 ? hotTags : MOCK_HOT_TAGS).slice(0, displayConfig.home.hotTagsCount);
   const tagRankList = rankedHotTags.slice(0, 6);
   const homeSections = enabledSections.slice(0, 3);
   const hasSectionContent = homeSections.some((section) => (sectionData[section.tag] || []).length > 0);
