@@ -3,25 +3,8 @@ import { ExternalLink, FolderLock, RefreshCw } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import { fetchBishengRuntimeConfig } from '../api/adminConfig';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { resolveKnowledgeEmbedUrl } from '../utils/bishengEmbed';
 import s from './KnowledgeSpacesPage.module.css';
-
-const DEFAULT_BISHENG_ASSET_BASE_URL = 'http://127.0.0.1:4001';
-const DEFAULT_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
-
-function resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl?: string, knowledgeEntryUrl?: string) {
-  const configuredUrl = knowledgeEntryUrl?.trim() || '';
-  if (configuredUrl) return configuredUrl;
-
-  const sourceUrl = runtimeAssetBaseUrl?.trim() || '';
-  if (!sourceUrl) return `${DEFAULT_BISHENG_ASSET_BASE_URL}${DEFAULT_BISHENG_KNOWLEDGE_PATH}`;
-
-  try {
-    const parsed = new URL(sourceUrl, window.location.origin);
-    return `${parsed.origin}${DEFAULT_BISHENG_KNOWLEDGE_PATH}`;
-  } catch {
-    return `${DEFAULT_BISHENG_ASSET_BASE_URL}${DEFAULT_BISHENG_KNOWLEDGE_PATH}`;
-  }
-}
 
 export default function KnowledgeSpacesPage() {
   const { config, loading, error } = usePortalConfig();
