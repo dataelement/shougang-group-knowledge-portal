@@ -208,7 +208,7 @@ export default function SearchPage() {
             <div className={s.aiOverview}>
               <div className={s.aiBadge}>
                 <Search size={12} />
-                AI Overview
+                搜索助手
               </div>
               {aiThinking ? (
                 <div className={s.aiThinking}>

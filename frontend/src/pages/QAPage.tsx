@@ -18,7 +18,7 @@ interface Session {
 }
 
 function getWelcomeMessage(welcomeMessage?: string) {
-  return welcomeMessage?.trim() || '你好，我是首钢知库智能助手，请问有什么可以帮您？';
+  return welcomeMessage?.trim() || '你好，我是首钢股份知库智能助手，请问有什么可以帮您？';
 }
 
 function CitationList({ items }: { items: Citation[] }) {

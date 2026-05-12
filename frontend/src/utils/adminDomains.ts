@@ -31,10 +31,6 @@ export interface DomainDraft {
   color: string;
   bg: string;
   enabled: boolean;
-  publicLabel: string;
-  publicFolderIds: number[];
-  professionalLabel: string;
-  professionalFolderIds: number[];
 }
 
 export function createDomainDraft(current?: DomainConfig): DomainDraft {
@@ -46,10 +42,6 @@ export function createDomainDraft(current?: DomainConfig): DomainDraft {
     color: current?.color ?? '#2563eb',
     bg: current?.bg ?? '#eff6ff',
     enabled: current?.enabled ?? true,
-    publicLabel: current?.public_label ?? '公共知识',
-    publicFolderIds: current?.public_folder_ids ?? [],
-    professionalLabel: current?.professional_label ?? '专业知识',
-    professionalFolderIds: current?.professional_folder_ids ?? [],
   };
 }
 
@@ -84,12 +76,6 @@ export function validateDomainDraft(draft: DomainDraft, spaces: SpaceConfig[]): 
       color,
       bg,
       enabled: true,
-      public_label: draft.publicLabel.trim() || '公共知识',
-      public_folder_ids: draft.publicFolderIds,
-      public_count: 0,
-      professional_label: draft.professionalLabel.trim() || '专业知识',
-      professional_folder_ids: draft.professionalFolderIds,
-      professional_count: 0,
     },
   };
 }

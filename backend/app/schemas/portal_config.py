@@ -17,12 +17,6 @@ class DomainConfig(BaseModel):
     icon: str
     background_image: str = ""
     enabled: bool = True
-    public_label: str = "公共知识"
-    public_folder_ids: list[int] = Field(default_factory=list)
-    public_count: int = 0
-    professional_label: str = "专业知识"
-    professional_folder_ids: list[int] = Field(default_factory=list)
-    professional_count: int = 0
 
 
 class SectionConfig(BaseModel):
@@ -37,7 +31,7 @@ class SectionConfig(BaseModel):
 
 class QAConfig(BaseModel):
     knowledge_space_ids: list[int] = Field(default_factory=list)
-    welcome_message: str = "你好，我是首钢知库智能助手，请问有什么可以帮您？"
+    welcome_message: str = "你好，我是首钢股份知库智能助手，请问有什么可以帮您？"
     hot_questions: list[str] = Field(default_factory=list)
     ai_search_system_prompt: str = ""
     qa_system_prompt: str = ""
@@ -155,7 +149,7 @@ class IntegrationsConfig(BaseModel):
 class SiteConfig(BaseModel):
     header_brand_name: str = "首钢股份知库"
     header_logo_url: str = "/site-logo.png"
-    login_brand_name: str = "首钢知库"
+    login_brand_name: str = "首钢股份知库"
     login_logo_url: str = "/shougang-stock-logo.png"
     browser_title: str = "首钢股份知库"
     favicon_url: str = "/favicon.svg"

@@ -365,7 +365,7 @@ def test_post_admin_banners_persists_full_payload(tmp_path: Path):
                     {
                         "id": 1,
                         "label": "新春活动",
-                        "title": "首钢知库 — 2026 春季技术月",
+                        "title": "首钢股份知库 — 2026 春季技术月",
                         "desc": "聚焦冷轧、能源、智能制造三大主题",
                         "image_url": "/uploads/banners/abc123.jpg",
                         "link_url": "https://intranet.example.com/spring",
@@ -377,11 +377,11 @@ def test_post_admin_banners_persists_full_payload(tmp_path: Path):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["data"]["banners"][0]["title"] == "首钢知库 — 2026 春季技术月"
+    assert body["data"]["banners"][0]["title"] == "首钢股份知库 — 2026 春季技术月"
     assert body["data"]["banners"][0]["image_url"] == "/uploads/banners/abc123.jpg"
     assert body["data"]["banners"][0]["link_url"] == "https://intranet.example.com/spring"
     persisted = service.get_config().banners
-    assert persisted[0].title == "首钢知库 — 2026 春季技术月"
+    assert persisted[0].title == "首钢股份知库 — 2026 春季技术月"
     assert persisted[0].image_url == "/uploads/banners/abc123.jpg"
 
 
@@ -581,7 +581,7 @@ def test_get_admin_site_defaults_to_brand_values(tmp_path: Path):
     assert response.json()["data"] == {
         "header_brand_name": "首钢股份知库",
         "header_logo_url": "/site-logo.png",
-        "login_brand_name": "首钢知库",
+        "login_brand_name": "首钢股份知库",
         "login_logo_url": "/shougang-stock-logo.png",
         "browser_title": "首钢股份知库",
         "favicon_url": "/favicon.svg",

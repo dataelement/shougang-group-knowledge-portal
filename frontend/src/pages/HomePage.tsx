@@ -55,88 +55,108 @@ const MOCK_HOT_TAGS = [
 
 const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
   {
-    name: '钢铁智造',
+    name: '营销',
+    space_ids: [],
+    color: '#d97706',
+    bg: '#fef3c7',
+    icon: 'CheckCircle',
+    background_image: '/domain-covers/marketing.png',
+    enabled: true,
+  },
+  {
+    name: '财务',
     space_ids: [],
     color: '#2563eb',
     bg: '#eff6ff',
-    icon: 'Factory',
-    background_image: '/production-domain-bg.jpg',
+    icon: 'Settings',
+    background_image: '/domain-covers/finance.png',
     enabled: true,
-    public_label: '公共知识',
-    public_folder_ids: [],
-    public_count: 236,
-    professional_label: '专业知识',
-    professional_folder_ids: [],
-    professional_count: 38,
   },
   {
-    name: '设备工程',
+    name: '设备',
     space_ids: [],
-    color: '#0891b2',
-    bg: '#ecfeff',
-    icon: 'Wrench',
-    background_image: '/device-domain-bg.png',
+    color: '#2563eb',
+    bg: '#eff6ff',
+    icon: 'Settings',
+    background_image: '/domain-covers/equipment.png',
     enabled: true,
-    public_label: '公共知识',
-    public_folder_ids: [],
-    public_count: 184,
-    professional_label: '专业知识',
-    professional_folder_ids: [],
-    professional_count: 27,
   },
   {
-    name: '安全环保',
+    name: '安全',
     space_ids: [],
-    color: '#059669',
-    bg: '#ecfdf5',
+    color: '#dc2626',
+    bg: '#fee2e2',
     icon: 'Shield',
-    background_image: '/safety-domain-bg.png',
+    background_image: '/domain-covers/safety.png',
     enabled: true,
-    public_label: '公共知识',
-    public_folder_ids: [],
-    public_count: 156,
-    professional_label: '专业知识',
-    professional_folder_ids: [],
-    professional_count: 24,
   },
   {
-    name: '经营管理',
+    name: '环保',
+    space_ids: [],
+    color: '#16a34a',
+    bg: '#dcfce7',
+    icon: 'Leaf',
+    background_image: '/domain-covers/environment.png',
+    enabled: true,
+  },
+  {
+    name: '人力',
+    space_ids: [],
+    color: '#be185d',
+    bg: '#fce7f3',
+    icon: 'GraduationCap',
+    background_image: '/domain-covers/hr.png',
+    enabled: true,
+  },
+  {
+    name: '信息',
+    space_ids: [],
+    color: '#6366f1',
+    bg: '#ede9fe',
+    icon: 'Network',
+    background_image: '/domain-covers/it.png',
+    enabled: true,
+  },
+  {
+    name: '能源',
+    space_ids: [],
+    color: '#d97706',
+    bg: '#fef3c7',
+    icon: 'Zap',
+    background_image: '/domain-covers/energy.png',
+    enabled: true,
+  },
+  {
+    name: '质量',
     space_ids: [],
     color: '#7c3aed',
     bg: '#f5f3ff',
-    icon: 'Briefcase',
-    background_image: '/management-domain-bg.png',
+    icon: 'CheckCircle',
+    background_image: '/domain-covers/quality.png',
     enabled: true,
-    public_label: '公共知识',
-    public_folder_ids: [],
-    public_count: 128,
-    professional_label: '专业知识',
-    professional_folder_ids: [],
-    professional_count: 19,
   },
   {
-    name: '能源动力',
+    name: '管理',
     space_ids: [],
-    color: '#d97706',
-    bg: '#fffbeb',
-    icon: 'Zap',
-    background_image: '/energy-domain-bg.jpg',
+    color: '#475569',
+    bg: '#e2e8f0',
+    icon: 'Settings',
+    background_image: '/domain-covers/management.png',
     enabled: true,
-    public_label: '公共知识',
-    public_folder_ids: [],
-    public_count: 92,
-    professional_label: '专业知识',
-    professional_folder_ids: [],
-    professional_count: 16,
   },
 ];
 
 const MOCK_DOMAIN_STATS = new Map([
-  ['钢铁智造', { files: 236, tags: 38 }],
-  ['设备工程', { files: 184, tags: 27 }],
-  ['安全环保', { files: 156, tags: 24 }],
-  ['经营管理', { files: 128, tags: 19 }],
-  ['能源动力', { files: 92, tags: 16 }],
+  ['营销', 124],
+  ['财务', 98],
+  ['设备', 473],
+  ['安全', 289],
+  ['环保', 205],
+  ['人力', 143],
+  ['信息', 178],
+  ['能源', 131],
+  ['质量', 312],
+  ['管理', 217],
 ]);
 
 const BANNER_OVERLAY_GRADIENT =
@@ -158,7 +178,7 @@ function getPrimaryTag(file: FileItem) {
 }
 
 function getWelcomeMessage(welcomeMessage?: string) {
-  return welcomeMessage?.trim() || '你好，我是首钢知库智能助手，请问有什么可以帮您？';
+  return welcomeMessage?.trim() || '你好，我是首钢股份知库智能助手，请问有什么可以帮您？';
 }
 
 function formatCount(value: number): string {
@@ -328,22 +348,12 @@ export default function HomePage() {
   const safeDomainPage = domainPage % domainPageCount;
   const visibleDomains = homeDomains.slice(safeDomainPage * DOMAIN_PAGE_SIZE, safeDomainPage * DOMAIN_PAGE_SIZE + DOMAIN_PAGE_SIZE);
   const spaceById = new Map(enabledSpaces.map((space) => [space.id, space]));
-  const domainStats = isUsingMockDomains ? MOCK_DOMAIN_STATS : new Map(homeDomains.map((domain) => {
+  const domainTotals = isUsingMockDomains ? MOCK_DOMAIN_STATS : new Map(homeDomains.map((domain) => {
     const spaces = domain.space_ids.flatMap((spaceId) => {
       const space = spaceById.get(spaceId);
       return space ? [space] : [];
     });
-    return [
-      domain.name,
-      {
-        files: domain.public_folder_ids?.length
-          ? (domain.public_count ?? 0)
-          : spaces.reduce((total, space) => total + space.file_count, 0),
-        tags: domain.professional_folder_ids?.length
-          ? (domain.professional_count ?? 0)
-          : spaces.reduce((total, space) => total + space.tag_count, 0),
-      },
-    ];
+    return [domain.name, spaces.reduce((total, space) => total + space.file_count, 0)];
   }));
   const rankedHotTags = (hotTags.length > 0 ? hotTags : MOCK_HOT_TAGS).slice(0, displayConfig.home.hotTagsCount);
   const homeSections = enabledSections.slice(0, 3);
@@ -569,7 +579,7 @@ export default function HomePage() {
                 const visualPreset = getDomainVisualPreset(d);
                 const domainBackground = visualPreset.backgroundImage;
                 const usesBannerThumb = Boolean(domainBackground);
-                const stats = domainStats.get(d.name) ?? { files: 0, tags: 0 };
+                const totalFiles = domainTotals.get(d.name) ?? 0;
                 return (
                   <div
                     key={d.name}
@@ -584,8 +594,7 @@ export default function HomePage() {
                     )}
                     <div className={s.domainCardContent}>
                       <div className={s.domainName}>{d.name}</div>
-                      <div className={s.domainMeta}>{stats.files} {d.public_label || '公共知识'}</div>
-                      <div className={s.domainMeta}>{stats.tags} {d.professional_label || '专业知识'}</div>
+                      <div className={s.domainMeta}>知识数量 {formatCount(totalFiles)}</div>
                     </div>
                   </div>
                 );

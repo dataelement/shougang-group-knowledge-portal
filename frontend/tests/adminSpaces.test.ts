@@ -19,7 +19,7 @@ test('getSpaceUsage and canDeleteSpace block deletion for referenced spaces', ()
   ], {
     knowledge_space_ids: [12, 18],
     hot_questions: [],
-    welcome_message: '你好，我是首钢知库智能助手，请问有什么可以帮您？',
+    welcome_message: '你好，我是首钢股份知库智能助手，请问有什么可以帮您？',
     ai_search_system_prompt: '',
     qa_system_prompt: '',
     selected_model: '',

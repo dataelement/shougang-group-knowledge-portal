@@ -3,7 +3,7 @@ export const DISPLAY_CONFIG = {
     sectionPageSize: 6,
     hotTagsCount: 8,
     qaHotCount: 4,
-    domainCount: 6,
+    domainCount: 10,
     spacesCount: 6,
     appsCount: 6,
   },

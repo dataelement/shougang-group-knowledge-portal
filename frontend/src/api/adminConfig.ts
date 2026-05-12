@@ -14,12 +14,6 @@ export interface DomainConfig {
   icon: string;
   background_image: string;
   enabled: boolean;
-  public_label?: string;
-  public_folder_ids?: number[];
-  public_count?: number;
-  professional_label?: string;
-  professional_folder_ids?: number[];
-  professional_count?: number;
 }
 
 export interface SectionConfig {

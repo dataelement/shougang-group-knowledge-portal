@@ -34,7 +34,7 @@ export default function LoginPage() {
   const { config } = usePortalConfig();
   const params = new URLSearchParams(location.search);
   const redirect = resolveRedirect(params.get('redirect'));
-  const loginBrandName = config?.site?.login_brand_name?.trim() || '首钢知库';
+  const loginBrandName = config?.site?.login_brand_name?.trim() || '首钢股份知库';
   const loginLogoUrl = config?.site?.login_logo_url?.trim() || '/shougang-stock-logo.png';
 
   useEffect(() => {
@@ -173,7 +173,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className={s.visualFootnote}>© 2026 首钢集团 · 首钢知库知识门户平台</div>
+          <div className={s.visualFootnote}>© 2026 首钢集团 · 首钢股份知库知识门户平台</div>
         </aside>
 
         <section className={s.formSide}>

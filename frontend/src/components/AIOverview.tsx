@@ -11,7 +11,7 @@ export default function AIOverview({ text, streaming }: Props) {
     <div className={s.wrap}>
       <div className={s.badge}>
         <Search size={11} />
-        AI Overview
+        搜索助手
       </div>
       <div className={s.text}>
         {text}

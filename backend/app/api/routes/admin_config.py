@@ -9,7 +9,6 @@ from app.schemas.common import response_error, response_ok
 from app.schemas.portal_config import (
     AppsConfigUpdate,
     BannersConfigUpdate,
-    DomainConfig,
     DomainsConfigUpdate,
     IntegrationsConfig,
     PortalConfig,
@@ -24,63 +23,6 @@ from app.services.portal_config_service import PortalConfigService
 from app.services.bisheng_runtime_service import BishengRuntimeService
 
 router = APIRouter(prefix="/api/v1/admin/config", tags=["admin-config"])
-
-
-async def count_success_files_in_folders(
-    bisheng_client: BishengClient,
-    space_id: int,
-    folder_ids: list[int],
-) -> int:
-    total = 0
-    for folder_id in folder_ids:
-        page = 1
-        page_size = 100
-        while True:
-            try:
-                response = await bisheng_client.get_json(
-                    f"/api/v1/knowledge/space/{space_id}/search",
-                    params={
-                        "parent_id": folder_id,
-                        "page": page,
-                        "page_size": page_size,
-                        "file_status": 2,
-                    },
-                )
-            except Exception:
-                break
-            data = response.get("data") or {}
-            rows = data.get("data") if isinstance(data, dict) else []
-            if not isinstance(rows, list) or not rows:
-                break
-            total += sum(1 for item in rows if isinstance(item, dict) and int(item.get("file_type") or 0) == 1)
-            if len(rows) < page_size:
-                break
-            page += 1
-    return total
-
-
-async def with_live_domain_counts(config: PortalConfig, bisheng_client: BishengClient) -> PortalConfig:
-    async def enrich_domain(domain: DomainConfig) -> DomainConfig:
-        if not domain.space_ids:
-            return domain
-        space_id = domain.space_ids[0]
-        public_count = domain.public_count
-        professional_count = domain.professional_count
-        if domain.public_folder_ids:
-            public_count = await count_success_files_in_folders(bisheng_client, space_id, domain.public_folder_ids)
-        if domain.professional_folder_ids:
-            professional_count = await count_success_files_in_folders(
-                bisheng_client,
-                space_id,
-                domain.professional_folder_ids,
-            )
-        return domain.model_copy(update={
-            "public_count": public_count,
-            "professional_count": professional_count,
-        })
-
-    domains = await asyncio.gather(*(enrich_domain(domain) for domain in config.domains))
-    return config.model_copy(update={"domains": list(domains)})
 
 
 @router.get("")
@@ -101,7 +43,6 @@ async def get_portal_config(
     results = await asyncio.gather(*(fetch_space_info(space.id) for space in config.spaces))
     live_space_data = {space_id: data for space_id, data in results}
     live_config = service.with_live_space_data(config, live_space_data)
-    live_config = await with_live_domain_counts(live_config, bisheng_client)
     return response_ok(live_config)
 
 

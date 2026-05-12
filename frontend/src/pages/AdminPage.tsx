@@ -12,7 +12,6 @@ import {
   type DisplayConfig,
   type DomainConfig,
   fetchAdminConfig,
-  fetchAdminSpaceFolders,
   fetchBishengRuntimeConfig,
   fetchQaModelOptions,
   fetchSpaceOptions,
@@ -22,7 +21,6 @@ import {
   type RecommendationConfig,
   type SectionConfig,
   type SiteConfig,
-  type SpaceFolderItem,
   type SpaceOption,
   type SpaceConfig,
   type QAConfig,
@@ -1301,50 +1299,7 @@ function DomainEditorDialog({
   onChange: (patch: Partial<DomainDraft>) => void;
   onSubmit: () => void;
 }) {
-  const selectedSpaceId = Number(draft.spaceId);
-  const canLoadFolders = Number.isInteger(selectedSpaceId) && selectedSpaceId > 0;
-  const [folders, setFolders] = useState<SpaceFolderItem[]>([]);
-  const [foldersLoading, setFoldersLoading] = useState(false);
-  const [foldersError, setFoldersError] = useState('');
-
-  useEffect(() => {
-    if (!open || !canLoadFolders) {
-      setFolders([]);
-      setFoldersError('');
-      setFoldersLoading(false);
-      return;
-    }
-    let active = true;
-    setFoldersLoading(true);
-    setFoldersError('');
-    void (async () => {
-      try {
-        const data = await fetchAdminSpaceFolders(selectedSpaceId);
-        if (!active) return;
-        setFolders(data.folders);
-      } catch (err) {
-        if (!active) return;
-        setFolders([]);
-        setFoldersError(err instanceof Error ? err.message : '文件夹加载失败');
-      } finally {
-        if (active) setFoldersLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [open, canLoadFolders, selectedSpaceId]);
-
   if (!open) return null;
-
-  const toggleFolder = (field: 'publicFolderIds' | 'professionalFolderIds', folderId: number) => {
-    const current = draft[field];
-    onChange({
-      [field]: current.includes(folderId)
-        ? current.filter((id) => id !== folderId)
-        : [...current, folderId],
-    });
-  };
 
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
@@ -1372,11 +1327,7 @@ function DomainEditorDialog({
             <select
               className={s.formInput}
               value={draft.spaceId}
-              onChange={(event) => onChange({
-                spaceId: event.target.value,
-                publicFolderIds: [],
-                professionalFolderIds: [],
-              })}
+              onChange={(event) => onChange({ spaceId: event.target.value })}
             >
               <option value="">未绑定（暂不上首页）</option>
               {spaces.map((space) => (
@@ -1388,33 +1339,10 @@ function DomainEditorDialog({
             <span className={s.fieldHint}>未绑定的业务域只在后台可见，绑定知识空间后会按数组顺序出现在首页业务域导航。</span>
           </label>
           <div className={`${s.formField} ${s.formFieldWide}`}>
-            <span className={s.fieldLabel}>首页统计配置</span>
-            <div className={s.domainStatsGrid}>
-              <DomainStatEditor
-                label="第一行统计"
-                value={draft.publicLabel}
-                selectedIds={draft.publicFolderIds}
-                folders={folders}
-                loading={foldersLoading}
-                error={foldersError}
-                disabled={!canLoadFolders}
-                onLabelChange={(publicLabel) => onChange({ publicLabel })}
-                onToggle={(folderId) => toggleFolder('publicFolderIds', folderId)}
-              />
-              <DomainStatEditor
-                label="第二行统计"
-                value={draft.professionalLabel}
-                selectedIds={draft.professionalFolderIds}
-                folders={folders}
-                loading={foldersLoading}
-                error={foldersError}
-                disabled={!canLoadFolders}
-                onLabelChange={(professionalLabel) => onChange({ professionalLabel })}
-                onToggle={(folderId) => toggleFolder('professionalFolderIds', folderId)}
-              />
-            </div>
+            <span className={s.fieldLabel}>首页统计口径</span>
+            <div className={s.emptyState}>首页业务域卡片统一展示“知识数量”，数量来自该业务域绑定知识空间下的全部文档数。</div>
             <span className={s.fieldHint}>
-              选择文件夹后，首页按该文件夹及其子文件夹中的成功文件实时统计；未选择文件夹时沿用绑定空间总文件数兜底。
+              如需调整数量口径，请调整业务域绑定的知识空间；不再单独维护公共知识、专业知识或文件夹级统计。
             </span>
           </div>
           <label className={s.formField}>
@@ -1469,72 +1397,6 @@ function DomainEditorDialog({
           <button className={s.subtleBtn} onClick={onClose}>取消</button>
           <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function DomainStatEditor({
-  label,
-  value,
-  selectedIds,
-  folders,
-  loading,
-  error,
-  disabled,
-  onLabelChange,
-  onToggle,
-}: {
-  label: string;
-  value: string;
-  selectedIds: number[];
-  folders: SpaceFolderItem[];
-  loading: boolean;
-  error: string;
-  disabled: boolean;
-  onLabelChange: (value: string) => void;
-  onToggle: (folderId: number) => void;
-}) {
-  return (
-    <div className={s.domainStatCard}>
-      <label className={s.formField}>
-        <span className={s.fieldLabel}>{label}名称</span>
-        <input
-          className={s.formInput}
-          value={value}
-          onChange={(event) => onLabelChange(event.target.value)}
-          placeholder="例如：公共知识"
-        />
-      </label>
-      <div className={s.domainFolderList}>
-        {disabled ? <div className={s.emptyState}>先选择绑定空间后再配置文件夹统计。</div> : null}
-        {!disabled && loading ? <div className={s.emptyState}>正在加载文件夹...</div> : null}
-        {!disabled && !loading && error ? <div className={s.errorBox}>{error}</div> : null}
-        {!disabled && !loading && !error && folders.length === 0 ? (
-          <div className={s.emptyState}>该知识空间暂无可选文件夹。</div>
-        ) : null}
-        {!disabled && !loading && !error && folders.map((folder) => {
-          const checked = selectedIds.includes(folder.id);
-          return (
-            <button
-              key={folder.id}
-              type="button"
-              className={s.domainFolderOption}
-              onClick={() => onToggle(folder.id)}
-            >
-              <span className={s.checkboxMeta}>
-                <span className={s.optionName}>{folder.name}</span>
-                <span className={s.optionMeta}>
-                  <span className={s.optionMetaItem}>ID {folder.id}</span>
-                  {folder.path ? <span className={s.optionMetaItem}>{folder.path}</span> : null}
-                </span>
-              </span>
-              <span className={`${s.checkboxMark} ${checked ? s.checkboxMarkActive : ''}`}>
-                {checked ? '已选' : '选择'}
-              </span>
-            </button>
-          );
-        })}
       </div>
     </div>
   );
@@ -2006,18 +1868,18 @@ function QAConfigTable({
                     ? '正在从大模型应用平台日常模式加载模型列表...'
                     : modelError
                       ? '模型列表加载失败，当前显示的是已保存配置。'
-                      : '来自大模型应用平台日常模式，用于问答页和 AI Overview 的模型选择。'}
+                      : '来自大模型应用平台日常模式，用于问答页和 搜索助手 的模型选择。'}
                 </span>
               </div>
             </td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditModel} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
           </tr>
           <tr>
-            <td>AI Overview</td>
+            <td>搜索助手</td>
             <td>
               <div className={s.valueStack}>
                 <span className={s.valueTitle}>{qa.ai_search_system_prompt ? truncateText(qa.ai_search_system_prompt, 72) : '未配置'}</span>
-                <span className={s.valueMeta}>用于搜索页的 AI Overview 总结。</span>
+                <span className={s.valueMeta}>用于搜索页的 搜索助手 总结。</span>
               </div>
             </td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditSearchPrompt} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
@@ -2533,7 +2395,7 @@ function SiteEditorDialog({
           </label>
           <label className={s.formField}>
             <span className={s.fieldLabel}>登录页品牌名</span>
-            <input className={s.formInput} value={draft.login_brand_name} onChange={(event) => onChange({ ...draft, login_brand_name: event.target.value })} placeholder="例如：首钢知库" />
+            <input className={s.formInput} value={draft.login_brand_name} onChange={(event) => onChange({ ...draft, login_brand_name: event.target.value })} placeholder="例如：首钢股份知库" />
           </label>
           <label className={s.formField}>
             <span className={s.fieldLabel}>登录页 Logo</span>
@@ -2655,7 +2517,7 @@ function QaModelDialog({
         <div className={s.modalHeader}>
           <div>
             <h3 className={s.modalTitle}>编辑问答模型</h3>
-            <p className={s.modalNote}>候选项直接来自大模型应用平台的日常模式配置。问答页回复和 AI Overview 都会优先走这一项。</p>
+            <p className={s.modalNote}>候选项直接来自大模型应用平台的日常模式配置。问答页回复和 搜索助手 都会优先走这一项。</p>
           </div>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
@@ -2847,7 +2709,7 @@ function getQaDialogTitle(mode: Exclude<QaDialogMode, 'spaces' | null>) {
     case 'hot_questions':
       return '编辑热门问题';
     case 'ai_search_system_prompt':
-      return '编辑 AI Overview';
+      return '编辑 搜索助手';
     case 'qa_system_prompt':
       return '编辑技术问答 Prompt';
   }
@@ -2860,7 +2722,7 @@ function getQaDialogNote(mode: Exclude<QaDialogMode, 'spaces' | null>) {
     case 'hot_questions':
       return '每行一条，首页问答模块会按当前展示配置截取显示。';
     case 'ai_search_system_prompt':
-      return '搜索页里的 AI Overview 总结会使用这一段配置。';
+      return '搜索页里的 搜索助手 总结会使用这一段配置。';
     case 'qa_system_prompt':
       return '问答页里的技术问答聊天回复会使用这一段配置。';
   }
@@ -2873,7 +2735,7 @@ function getQaDialogLabel(mode: Exclude<QaDialogMode, 'spaces' | null>) {
     case 'hot_questions':
       return '热门问题';
     case 'ai_search_system_prompt':
-      return 'AI Overview';
+      return '搜索助手';
     case 'qa_system_prompt':
       return '技术问答 Prompt';
   }
@@ -2882,7 +2744,7 @@ function getQaDialogLabel(mode: Exclude<QaDialogMode, 'spaces' | null>) {
 function getQaDialogPlaceholder(mode: Exclude<QaDialogMode, 'spaces' | null>) {
   switch (mode) {
     case 'welcome_message':
-      return '例如：你好，我是首钢知库智能助手，请问有什么可以帮您？';
+      return '例如：你好，我是首钢股份知库智能助手，请问有什么可以帮您？';
     case 'hot_questions':
       return '每行输入一条热门问题';
     default:
@@ -3227,7 +3089,7 @@ function createSiteDraft(current?: SiteConfig): SiteDraft {
   return {
     header_brand_name: current?.header_brand_name ?? '首钢股份知库',
     header_logo_url: current?.header_logo_url ?? '/site-logo.png',
-    login_brand_name: current?.login_brand_name ?? '首钢知库',
+    login_brand_name: current?.login_brand_name ?? '首钢股份知库',
     login_logo_url: current?.login_logo_url ?? '/shougang-stock-logo.png',
     browser_title: current?.browser_title ?? '首钢股份知库',
     favicon_url: current?.favicon_url ?? '/favicon.svg',
@@ -3538,7 +3400,7 @@ function BannerEditorDialog({
             </label>
             <label className={`${s.formField} ${s.formFieldWide}`}>
               <span className={s.fieldLabel}>主标题</span>
-              <input className={s.formInput} value={draft.title} onChange={(event) => onChange({ title: event.target.value })} placeholder="例如：首钢知库 — 钢铁行业知识共享平台" />
+              <input className={s.formInput} value={draft.title} onChange={(event) => onChange({ title: event.target.value })} placeholder="例如：首钢股份知库 — 钢铁行业知识共享平台" />
             </label>
             <label className={`${s.formField} ${s.formFieldWide}`}>
               <span className={s.fieldLabel}>副标题</span>

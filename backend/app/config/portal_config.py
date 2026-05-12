@@ -1,20 +1,16 @@
 DEFAULT_PORTAL_CONFIG = {
     "spaces": [],
     "domains": [
-        {"name": "生产", "space_ids": [], "color": "#059669", "bg": "#d1fae5", "icon": "Factory", "background_image": "/production-domain-bg.jpg", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "投资", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Network", "background_image": "/investment-domain-bg.png", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "研发", "space_ids": [], "color": "#6366f1", "bg": "#ede9fe", "icon": "Zap", "background_image": "/rd-domain-bg.png", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "采购", "space_ids": [], "color": "#475569", "bg": "#e2e8f0", "icon": "Truck", "background_image": "/procurement-domain-bg.png", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "营销", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "CheckCircle", "background_image": "/marketing-domain-bg.jpg", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "财务", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/finance-domain-bg.jpg", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "设备", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/device-domain-bg.png", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "安全", "space_ids": [], "color": "#dc2626", "bg": "#fee2e2", "icon": "Shield", "background_image": "/safety-domain-bg.png", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "环保", "space_ids": [], "color": "#16a34a", "bg": "#dcfce7", "icon": "Leaf", "background_image": "/eco-domain-bg.png", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "质量", "space_ids": [], "color": "#7c3aed", "bg": "#f5f3ff", "icon": "CheckCircle", "background_image": "/quality-domain-bg.png", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "人力", "space_ids": [], "color": "#be185d", "bg": "#fce7f3", "icon": "GraduationCap", "background_image": "/hr-domain-bg.jpg", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "信息", "space_ids": [], "color": "#6366f1", "bg": "#ede9fe", "icon": "Network", "background_image": "/it-domain-bg.jpg", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "能源", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "Zap", "background_image": "/energy-domain-bg.jpg", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
-        {"name": "管理", "space_ids": [], "color": "#475569", "bg": "#e2e8f0", "icon": "Settings", "background_image": "/management-domain-bg.png", "enabled": True, "public_label": "公共知识", "public_folder_ids": [], "professional_label": "专业知识", "professional_folder_ids": []},
+        {"name": "营销", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "CheckCircle", "background_image": "/domain-covers/marketing.png", "enabled": True},
+        {"name": "财务", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/domain-covers/finance.png", "enabled": True},
+        {"name": "设备", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/domain-covers/equipment.png", "enabled": True},
+        {"name": "安全", "space_ids": [], "color": "#dc2626", "bg": "#fee2e2", "icon": "Shield", "background_image": "/domain-covers/safety.png", "enabled": True},
+        {"name": "环保", "space_ids": [], "color": "#16a34a", "bg": "#dcfce7", "icon": "Leaf", "background_image": "/domain-covers/environment.png", "enabled": True},
+        {"name": "人力", "space_ids": [], "color": "#be185d", "bg": "#fce7f3", "icon": "GraduationCap", "background_image": "/domain-covers/hr.png", "enabled": True},
+        {"name": "信息", "space_ids": [], "color": "#6366f1", "bg": "#ede9fe", "icon": "Network", "background_image": "/domain-covers/it.png", "enabled": True},
+        {"name": "能源", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "Zap", "background_image": "/domain-covers/energy.png", "enabled": True},
+        {"name": "质量", "space_ids": [], "color": "#7c3aed", "bg": "#f5f3ff", "icon": "CheckCircle", "background_image": "/domain-covers/quality.png", "enabled": True},
+        {"name": "管理", "space_ids": [], "color": "#475569", "bg": "#e2e8f0", "icon": "Settings", "background_image": "/domain-covers/management.png", "enabled": True},
     ],
     "sections": [
         {
@@ -38,7 +34,7 @@ DEFAULT_PORTAL_CONFIG = {
     ],
     "qa": {
         "knowledge_space_ids": [],
-        "welcome_message": "你好，我是首钢知库智能助手，请问有什么可以帮您？",
+        "welcome_message": "你好，我是首钢股份知库智能助手，请问有什么可以帮您？",
         "hot_questions": [
             "振动纹通常如何排查？",
             "热轧精轧机轴承维护周期是多久？",
@@ -60,7 +56,7 @@ DEFAULT_PORTAL_CONFIG = {
             "section_page_size": 6,
             "hot_tags_count": 8,
             "qa_hot_count": 4,
-            "domain_count": 14,
+            "domain_count": 10,
             "spaces_count": 6,
             "apps_count": 6,
         },
@@ -143,7 +139,7 @@ DEFAULT_PORTAL_CONFIG = {
         {
             "id": 1,
             "label": "平台概览",
-            "title": "首钢知库 — 钢铁行业知识共享平台",
+            "title": "首钢股份知库 — 钢铁行业知识共享平台",
             "desc": "汇聚设备、轧线、冷轧、能源全域知识，助力技术传承与创新",
             "image_url": "/banner-hero-1.jpg",
             "link_url": "",
@@ -175,7 +171,7 @@ DEFAULT_PORTAL_CONFIG = {
     "site": {
         "header_brand_name": "首钢股份知库",
         "header_logo_url": "/site-logo.png",
-        "login_brand_name": "首钢知库",
+        "login_brand_name": "首钢股份知库",
         "login_logo_url": "/shougang-stock-logo.png",
         "browser_title": "首钢股份知库",
         "favicon_url": "/favicon.svg",

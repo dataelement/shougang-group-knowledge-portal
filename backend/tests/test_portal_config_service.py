@@ -11,13 +11,14 @@ def test_portal_config_service_seeds_default_config(tmp_path: Path):
     config = service.get_config()
 
     assert config_path.exists()
-    assert len(config.domains) == 14
+    assert len(config.domains) == 10
     assert all(domain.space_ids == [] for domain in config.domains)
     domain_names = [domain.name for domain in config.domains]
     assert domain_names == [
-        "生产", "投资", "研发", "采购", "营销", "财务", "设备",
-        "安全", "环保", "质量", "人力", "信息", "能源", "管理",
+        "营销", "财务", "设备", "安全", "环保",
+        "人力", "信息", "能源", "质量", "管理",
     ]
+    assert all(domain.background_image for domain in config.domains)
     assert config.spaces == []
     assert config.qa.knowledge_space_ids == []
 
