@@ -152,7 +152,7 @@ class SiteConfig(BaseModel):
     login_brand_name: str = "首钢股份知库"
     login_logo_url: str = "/shougang-stock-logo.png"
     browser_title: str = "首钢股份知库"
-    favicon_url: str = "/favicon.svg"
+    favicon_url: str = "/site-favicon-horizontal-v2.png"
 
 
 class PortalConfig(BaseModel):

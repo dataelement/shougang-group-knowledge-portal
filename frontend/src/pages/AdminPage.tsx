@@ -2407,7 +2407,7 @@ function SiteEditorDialog({
           </label>
           <label className={s.formField}>
             <span className={s.fieldLabel}>浏览器标签页图标</span>
-            <input className={s.formInput} value={draft.favicon_url} onChange={(event) => onChange({ ...draft, favicon_url: event.target.value })} placeholder="例如：/favicon.svg 或 https://example.com/favicon.ico" />
+            <input className={s.formInput} value={draft.favicon_url} onChange={(event) => onChange({ ...draft, favicon_url: event.target.value })} placeholder="例如：/site-favicon-horizontal-v2.png 或 https://example.com/favicon.ico" />
           </label>
         </div>
         <div className={s.confirmActions}>
@@ -3092,7 +3092,7 @@ function createSiteDraft(current?: SiteConfig): SiteDraft {
     login_brand_name: current?.login_brand_name ?? '首钢股份知库',
     login_logo_url: current?.login_logo_url ?? '/shougang-stock-logo.png',
     browser_title: current?.browser_title ?? '首钢股份知库',
-    favicon_url: current?.favicon_url ?? '/favicon.svg',
+    favicon_url: current?.favicon_url ?? '/site-favicon-horizontal-v2.png',
   };
 }
 

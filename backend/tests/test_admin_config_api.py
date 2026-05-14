@@ -584,7 +584,7 @@ def test_get_admin_site_defaults_to_brand_values(tmp_path: Path):
         "login_brand_name": "首钢股份知库",
         "login_logo_url": "/shougang-stock-logo.png",
         "browser_title": "首钢股份知库",
-        "favicon_url": "/favicon.svg",
+        "favicon_url": "/site-favicon-horizontal-v2.png",
     }
 
 
@@ -634,4 +634,4 @@ def test_get_admin_config_backfills_missing_site_from_legacy_json(tmp_path: Path
 
     assert response.status_code == 200
     assert response.json()["data"]["header_brand_name"] == "首钢股份知库"
-    assert response.json()["data"]["favicon_url"] == "/favicon.svg"
+    assert response.json()["data"]["favicon_url"] == "/site-favicon-horizontal-v2.png"

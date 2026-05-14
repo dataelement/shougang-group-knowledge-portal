@@ -57,7 +57,7 @@ function SiteHeadConfig() {
   }, [config?.site?.browser_title]);
 
   useEffect(() => {
-    const faviconUrl = config?.site?.favicon_url?.trim() || '/favicon.svg';
+    const faviconUrl = config?.site?.favicon_url?.trim() || '/site-favicon-horizontal-v2.png';
     let icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     if (!icon) {
       icon = document.createElement('link');
