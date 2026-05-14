@@ -148,7 +148,7 @@ class IntegrationsConfig(BaseModel):
 
 class SiteConfig(BaseModel):
     header_brand_name: str = "首钢股份知库"
-    header_logo_url: str = "/site-logo.png"
+    header_logo_url: str = "/site-logo-new.png"
     login_brand_name: str = "首钢股份知库"
     login_logo_url: str = "/shougang-stock-logo.png"
     browser_title: str = "首钢股份知库"

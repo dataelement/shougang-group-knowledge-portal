@@ -2378,7 +2378,7 @@ function SiteEditorDialog({
           <div>
             <h3 className={s.modalTitle}>编辑站点配置</h3>
             <p className={s.modalNote}>
-              Logo 和 favicon 支持站内本地路径（如 /site-logo.png 或 site-logo.png）和 http(s) 线上图片地址。
+              Logo 和 favicon 支持站内本地路径（如 /site-logo-new.png 或 site-logo-new.png）和 http(s) 线上图片地址。
             </p>
           </div>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
@@ -2391,7 +2391,7 @@ function SiteEditorDialog({
           </label>
           <label className={s.formField}>
             <span className={s.fieldLabel}>顶部 Header Logo</span>
-            <input className={s.formInput} value={draft.header_logo_url} onChange={(event) => onChange({ ...draft, header_logo_url: event.target.value })} placeholder="例如：/site-logo.png 或 https://example.com/logo.png" />
+            <input className={s.formInput} value={draft.header_logo_url} onChange={(event) => onChange({ ...draft, header_logo_url: event.target.value })} placeholder="例如：/site-logo-new.png 或 https://example.com/logo.png" />
           </label>
           <label className={s.formField}>
             <span className={s.fieldLabel}>登录页品牌名</span>
@@ -3088,7 +3088,7 @@ function createIntegrationsDraft(current?: IntegrationsConfig): IntegrationsDraf
 function createSiteDraft(current?: SiteConfig): SiteDraft {
   return {
     header_brand_name: current?.header_brand_name ?? '首钢股份知库',
-    header_logo_url: current?.header_logo_url ?? '/site-logo.png',
+    header_logo_url: current?.header_logo_url ?? '/site-logo-new.png',
     login_brand_name: current?.login_brand_name ?? '首钢股份知库',
     login_logo_url: current?.login_logo_url ?? '/shougang-stock-logo.png',
     browser_title: current?.browser_title ?? '首钢股份知库',

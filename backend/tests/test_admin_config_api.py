@@ -580,7 +580,7 @@ def test_get_admin_site_defaults_to_brand_values(tmp_path: Path):
     assert response.status_code == 200
     assert response.json()["data"] == {
         "header_brand_name": "首钢股份知库",
-        "header_logo_url": "/site-logo.png",
+        "header_logo_url": "/site-logo-new.png",
         "login_brand_name": "首钢股份知库",
         "login_logo_url": "/shougang-stock-logo.png",
         "browser_title": "首钢股份知库",
