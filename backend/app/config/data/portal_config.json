@@ -17,7 +17,7 @@
     {
       "id": 4,
       "name": "zgq-公开知识空间",
-      "file_count": 14,
+      "file_count": 8,
       "tag_count": 0,
       "enabled": false
     },
@@ -254,7 +254,6 @@
       1,
       20
     ],
-    "panel_title": "技术问答·专家在线",
     "welcome_message": "你好，我是首钢股份知库智能助手，请问有什么可以帮您？",
     "hot_questions": [
       "振动纹通常如何排查？",
@@ -377,7 +376,7 @@
   ],
   "integrations": {
     "bisheng_admin_entry_url": "",
-    "bisheng_knowledge_entry_url": ""
+    "bisheng_knowledge_entry_url": "http://127.0.0.1:4001/workspace/knowledge"
   },
   "site": {
     "header_brand_name": "首钢股份知库",

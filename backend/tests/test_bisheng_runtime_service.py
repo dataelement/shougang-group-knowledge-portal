@@ -86,15 +86,56 @@ def test_runtime_service_logs_in_and_persists_token_without_password(tmp_path: P
         )
     )
 
-    saved = config_path.read_text(encoding="utf-8")
     reloaded = create_runtime_service(config_path).get_public_config()
 
     assert result.username == "portal-admin"
     assert result.has_token is True
-    assert "runtime-token" in saved
-    assert "super-secret" not in saved
+    assert not config_path.exists()
+    assert (tmp_path / "portal.sqlite3").exists()
     assert reloaded.username == "portal-admin"
     assert reloaded.has_token is True
+
+
+def test_runtime_service_imports_legacy_json_once(tmp_path: Path):
+    config_path = tmp_path / "bisheng_runtime.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "base_url": "http://legacy.example.com",
+                "asset_base_url": "http://assets.example.com",
+                "username": "legacy-admin",
+                "timeout_seconds": 15.0,
+                "api_token": "legacy-token",
+                "last_auth_at": "2026-05-01T00:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    service = create_runtime_service(config_path)
+    view = service.get_public_config()
+
+    assert str(view.base_url) == "http://legacy.example.com/"
+    assert view.asset_base_url == "http://assets.example.com"
+    assert view.username == "legacy-admin"
+    assert view.has_token is True
+
+    config_path.write_text(
+        json.dumps(
+            {
+                "base_url": "http://ignored.example.com",
+                "username": "ignored-admin",
+                "timeout_seconds": 30.0,
+                "api_token": "ignored-token",
+                "last_auth_at": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    reloaded = create_runtime_service(config_path).get_public_config()
+    assert str(reloaded.base_url) == "http://legacy.example.com/"
+    assert reloaded.username == "legacy-admin"
 
 
 def test_runtime_service_requires_password_when_endpoint_changes(tmp_path: Path):
@@ -240,8 +281,7 @@ def test_refresh_skips_when_token_is_fresh(tmp_path: Path):
     asyncio.run(service._refresh_token_if_due())
 
     assert state["login_calls"] == 0
-    saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["api_token"] == fresh
+    assert service._read_config().api_token == fresh
 
 
 def test_refresh_relogins_when_token_near_expiry(tmp_path: Path):
@@ -264,9 +304,9 @@ def test_refresh_relogins_when_token_near_expiry(tmp_path: Path):
 
     assert state["login_calls"] == 1
     assert state["last_login_payload"]["user_name"] == "admin"
-    saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["api_token"] == new_token
-    assert saved["last_auth_at"] != ""
+    saved = service._read_config()
+    assert saved.api_token == new_token
+    assert saved.last_auth_at != ""
 
 
 def test_refresh_falls_back_to_default_username(tmp_path: Path):
@@ -324,8 +364,7 @@ def test_refresh_swallows_login_failure(tmp_path: Path):
     )
     asyncio.run(service._refresh_token_if_due())
 
-    saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["api_token"] == expiring
+    assert service._read_config().api_token == expiring
 
 
 def test_initialize_does_not_start_loop_without_password(tmp_path: Path):

@@ -1,7 +1,5 @@
 import json
 from pathlib import Path
-from tempfile import NamedTemporaryFile
-from threading import Lock
 from typing import Any
 
 from app.config.portal_config import DEFAULT_PORTAL_CONFIG
@@ -27,12 +25,16 @@ from app.schemas.portal_config import (
     SiteConfig,
     SpaceConfig,
 )
+from app.services.config_store import SQLiteConfigStore
 
 
 class PortalConfigService:
-    def __init__(self, config_path: Path):
+    _TABLE_NAME = "portal_config"
+    _LEGACY_CONFIG_KEY = "portal_config"
+
+    def __init__(self, config_path: Path, database_path: Path | None = None):
         self._config_path = config_path
-        self._lock = Lock()
+        self._store = SQLiteConfigStore(database_path or config_path.parent / "portal.sqlite3")
         self._ensure_seeded()
 
     def get_config(self) -> PortalConfig:
@@ -40,7 +42,7 @@ class PortalConfigService:
         if not data.get("banners"):
             data["banners"] = list(DEFAULT_PORTAL_CONFIG.get("banners") or [])
             if data["banners"]:
-                self._atomic_write(data)
+                self._write_data(data)
         if "integrations" not in data:
             data["integrations"] = dict(
                 DEFAULT_PORTAL_CONFIG.get("integrations") or {
@@ -48,7 +50,7 @@ class PortalConfigService:
                     "bisheng_knowledge_entry_url": "",
                 }
             )
-            self._atomic_write(data)
+            self._write_data(data)
         else:
             default_integrations = DEFAULT_PORTAL_CONFIG.get("integrations") or {}
             missing_integration_keys = [
@@ -60,10 +62,10 @@ class PortalConfigService:
                     **default_integrations,
                     **data["integrations"],
                 }
-                self._atomic_write(data)
+                self._write_data(data)
         if "site" not in data:
             data["site"] = dict(DEFAULT_PORTAL_CONFIG.get("site") or {})
-            self._atomic_write(data)
+            self._write_data(data)
         else:
             default_site = DEFAULT_PORTAL_CONFIG.get("site") or {}
             missing_site_keys = [
@@ -75,7 +77,7 @@ class PortalConfigService:
                     **default_site,
                     **data["site"],
                 }
-                self._atomic_write(data)
+                self._write_data(data)
         return PortalConfig.model_validate(data)
 
     def with_live_space_data(
@@ -231,25 +233,31 @@ class PortalConfigService:
         return self._write_config(PortalConfig.model_validate(data))
 
     def _ensure_seeded(self) -> None:
-        if self._config_path.exists():
+        if self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY) is not None:
             return
-        self._config_path.parent.mkdir(parents=True, exist_ok=True)
-        self._atomic_write(DEFAULT_PORTAL_CONFIG)
+        if self._config_path.exists():
+            self._store.upsert_document(self._TABLE_NAME, self._read_legacy_json())
+            return
+        self._store.upsert_document(self._TABLE_NAME, DEFAULT_PORTAL_CONFIG)
 
     def _read_data(self) -> dict[str, Any]:
+        data = self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY)
+        if data is not None:
+            return data
+        self._ensure_seeded()
+        data = self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY)
+        if data is None:
+            raise RuntimeError("Portal config is not initialized")
+        return data
+
+    def _read_legacy_json(self) -> dict[str, Any]:
         with self._config_path.open("r", encoding="utf-8") as fh:
             return json.load(fh)
 
     def _write_config(self, payload: PortalConfig) -> PortalConfig:
         data = payload.model_dump(mode="json")
-        self._atomic_write(data)
+        self._write_data(data)
         return PortalConfig.model_validate(data)
 
-    def _atomic_write(self, data: dict[str, Any]) -> None:
-        self._config_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock:
-            with NamedTemporaryFile("w", encoding="utf-8", dir=self._config_path.parent, delete=False) as tmp:
-                json.dump(data, tmp, ensure_ascii=False, indent=2)
-                tmp.write("\n")
-                tmp_path = Path(tmp.name)
-            tmp_path.replace(self._config_path)
+    def _write_data(self, data: dict[str, Any]) -> None:
+        self._store.upsert_document(self._TABLE_NAME, data)

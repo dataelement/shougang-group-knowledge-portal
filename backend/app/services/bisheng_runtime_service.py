@@ -5,7 +5,6 @@ import logging
 import os
 from datetime import UTC, datetime, timezone
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Awaitable, Callable
 
 import httpx
@@ -16,6 +15,7 @@ from app.schemas.bisheng_runtime import (
     BishengRuntimeConfigUpdate,
     BishengRuntimeConfigView,
 )
+from app.services.config_store import SQLiteConfigStore
 
 ClientFactory = Callable[..., BishengClient]
 
@@ -32,6 +32,9 @@ def encrypt_bisheng_password(public_key_pem: str, password: str) -> str:
 
 
 class BishengRuntimeService:
+    _TABLE_NAME = "bisheng_runtime_config"
+    _LEGACY_CONFIG_KEY = "bisheng_runtime"
+
     def __init__(
         self,
         config_path: Path,
@@ -46,8 +49,10 @@ class BishengRuntimeService:
         refresh_interval_seconds: float = DEFAULT_REFRESH_INTERVAL_SECONDS,
         refresh_threshold_seconds: float = DEFAULT_REFRESH_THRESHOLD_SECONDS,
         sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        database_path: Path | None = None,
     ):
         self._config_path = config_path
+        self._store = SQLiteConfigStore(database_path or config_path.parent / "portal.sqlite3")
         self._default_base_url = default_base_url
         self._default_timeout_seconds = default_timeout_seconds
         self._default_api_token = default_api_token or ""
@@ -242,7 +247,13 @@ class BishengRuntimeService:
             await client.aclose()
 
     def _ensure_seeded(self) -> None:
+        if self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY) is not None:
+            return
         if self._config_path.exists():
+            legacy = BishengRuntimeConfig.model_validate_json(
+                self._config_path.read_text(encoding="utf-8")
+            )
+            self._write_config(legacy)
             return
         seeded = BishengRuntimeConfig(
             base_url=self._default_base_url,
@@ -255,17 +266,17 @@ class BishengRuntimeService:
         self._write_config(seeded)
 
     def _read_config(self) -> BishengRuntimeConfig:
-        return BishengRuntimeConfig.model_validate_json(self._config_path.read_text(encoding="utf-8"))
+        data = self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY)
+        if data is not None:
+            return BishengRuntimeConfig.model_validate(data)
+        self._ensure_seeded()
+        data = self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY)
+        if data is None:
+            raise RuntimeError("BiSheng runtime config is not initialized")
+        return BishengRuntimeConfig.model_validate(data)
 
     def _write_config(self, config: BishengRuntimeConfig) -> None:
-        self._config_path.parent.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile("w", encoding="utf-8", dir=self._config_path.parent, delete=False) as tmp:
-            tmp.write(config.model_dump_json(indent=2))
-            tmp.write("\n")
-            tmp_path = Path(tmp.name)
-        os.chmod(tmp_path, 0o600)
-        tmp_path.replace(self._config_path)
-        os.chmod(self._config_path, 0o600)
+        self._store.upsert_document(self._TABLE_NAME, config.model_dump(mode="json"))
 
     async def _replace_client(self, config: BishengRuntimeConfig) -> None:
         next_client = self._client_factory(
