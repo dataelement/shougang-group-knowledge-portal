@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
 import ListPage from './pages/ListPage';
 import DetailPage from './pages/DetailPage';
+import ShareDocumentPage from './pages/ShareDocumentPage';
 import QAPage from './pages/QAPage';
 import AppsPage from './pages/AppsPage';
 import AdminPage from './pages/AdminPage';
@@ -83,6 +84,7 @@ export default function App() {
         <Route path="/space/:spaceId" element={<ListPage />} />
         <Route path="/list" element={<ListPage />} />
         <Route path="/space/:spaceId/file/:fileId" element={<DetailPage />} />
+        <Route path="/share/document/:token" element={<ShareDocumentPage />} />
         <Route path="/knowledge-spaces" element={<KnowledgeSpacesPage />} />
         <Route path="/qa" element={<QAPage />} />
         <Route path="/expert-qa" element={<ExpertQAPage />} />

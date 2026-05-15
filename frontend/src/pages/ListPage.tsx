@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
+import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
+import ShareDocumentModal from '../components/ShareDocumentModal';
 import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
@@ -14,6 +16,8 @@ import {
 import type { PortalConfig } from '../api/adminConfig';
 import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
+import { useShareDocument } from '../hooks/useShareDocument';
 import { useListControls } from '../hooks/useListControls';
 import { getVisibleRange } from '../utils/listControls';
 import { getEnabledSpaces, toRuntimeDisplayConfig } from '../utils/portalConfig';
@@ -67,6 +71,8 @@ export default function ListPage() {
   const [pageSize, setPageSize] = useState<number>(displayConfig.list.pageSize);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { openFavorite, favoriteModalProps } = useFavoriteDocument();
+  const { openShare, shareModalProps } = useShareDocument();
 
   useEffect(() => {
     if (!config) return;
@@ -168,6 +174,8 @@ export default function ListPage() {
             key={f.id}
             file={f}
             visibleTagCount={displayConfig.list.visibleTagCount}
+            onFavorite={openFavorite}
+            onShare={openShare}
             onClick={() =>
               navigate(`/space/${f.spaceId}/file/${f.id}`, {
                 state: { returnTo: `${location.pathname}${location.search}` },
@@ -181,6 +189,8 @@ export default function ListPage() {
           pageSize={pageSize}
           onChange={(nextPage) => setFilter('page', String(nextPage), false)}
         />
+        <FavoriteDocumentModal {...favoriteModalProps} />
+        <ShareDocumentModal {...shareModalProps} />
       </div>
     </PageShell>
   );

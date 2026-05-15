@@ -1,4 +1,5 @@
 import asyncio
+import secrets
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +11,8 @@ import httpx
 from app.clients.bisheng import BishengClient
 from app.schemas.knowledge import (
     FileChunkItem,
+    FavoriteDocumentData,
+    FavoriteDocumentRequest,
     FilePreviewData,
     FilePreviewManifest,
     FilePreviewMode,
@@ -18,10 +21,17 @@ from app.schemas.knowledge import (
     KnowledgeFileDetail,
     KnowledgeFileItem,
     KnowledgeFileSpace,
+    PersonalKnowledgeSpaceItem,
+    PersonalKnowledgeSpaceListData,
     KnowledgeSpaceItem,
     KnowledgeSpaceListData,
     PagedKnowledgeFileData,
     RelatedKnowledgeFileData,
+    ShareDocumentAccessData,
+    ShareDocumentAccessRequest,
+    ShareDocumentData,
+    ShareDocumentMeta,
+    ShareDocumentRequest,
 )
 from app.services.portal_config_service import PortalConfigService
 
@@ -37,6 +47,8 @@ PREVIEW_TASK_CACHE_TTL_SECONDS = 900.0
 PREVIEW_TASK_POLL_ATTEMPTS = 6
 PREVIEW_TASK_POLL_DELAY_SECONDS = 0.4
 PREVIEW_TASK_FAILURE_STATUSES = {"cancelled", "canceled", "error", "failed", "failure", "timeout"}
+SHARE_ACCESS_COOKIE_NAME = "portal_share_access"
+SHARE_ACCESS_TTL_SECONDS = 3600
 SPACE_LIST_ENDPOINTS = (
     ("mine", "/api/v1/knowledge/space/mine"),
     ("joined", "/api/v1/knowledge/space/joined"),
@@ -86,7 +98,25 @@ class ResolvedPreviewSource:
     url: str
 
 
+@dataclass
+class ShareAccessSession:
+    session_id: str
+    share_token: str
+    space_id: int
+    file_id: int
+    allow_download: bool
+    expires_at: float
+
+
 PREVIEW_TASK_CACHE: dict[tuple[int, int], CachedPreviewTaskResult] = {}
+SHARE_ACCESS_SESSIONS: dict[str, ShareAccessSession] = {}
+
+
+class BishengBusinessError(Exception):
+    def __init__(self, status_code: int, status_message: str):
+        self.status_code = status_code
+        self.status_message = status_message
+        super().__init__(status_message)
 
 
 class KnowledgeService:
@@ -201,6 +231,111 @@ class KnowledgeService:
 
         data = self._sort_spaces(list(merged.values()))
         return KnowledgeSpaceListData(data=data, total=len(data))
+
+    async def list_personal_spaces(self) -> PersonalKnowledgeSpaceListData:
+        response = await self._bisheng.get_json("/api/v1/knowledge/shougang-portal/personal-spaces")
+        data = self._extract_success_data(response)
+        raw_items = data.get("data") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        items = [
+            PersonalKnowledgeSpaceItem(
+                id=int(item.get("id") or 0),
+                name=str(item.get("name") or ""),
+                description=str(item.get("description") or ""),
+                file_count=int(item.get("file_count") or item.get("file_num") or 0),
+                updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
+            )
+            for item in raw_items
+            if isinstance(item, dict)
+        ]
+        return PersonalKnowledgeSpaceListData(data=items, total=int(data.get("total") or len(items)))
+
+    async def create_favorite(self, req: FavoriteDocumentRequest) -> FavoriteDocumentData:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/favorites",
+            json=req.model_dump(),
+        )
+        data = self._extract_success_data(response)
+        return FavoriteDocumentData(
+            file_id=int(data.get("file_id") or 0),
+            space_id=int(data.get("space_id") or req.target_space_id),
+            title=str(data.get("title") or ""),
+        )
+
+    async def create_share_link(self, req: ShareDocumentRequest) -> ShareDocumentData:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/share-links",
+            json=req.model_dump(),
+        )
+        data = self._extract_success_data(response)
+        return ShareDocumentData(
+            share_token=str(data.get("share_token") or ""),
+            link=str(data.get("link") or ""),
+            invite_code=str(data.get("invite_code") or ""),
+            expire_seconds=int(data.get("expire_seconds") or 0),
+        )
+
+    async def get_share_link_meta(self, share_token: str) -> ShareDocumentMeta:
+        response = await self._bisheng.get_json(f"/api/v1/knowledge/shougang-portal/share-links/{share_token}")
+        data = self._extract_success_data(response)
+        return ShareDocumentMeta.model_validate(data)
+
+    async def verify_share_link_access(
+        self,
+        share_token: str,
+        req: ShareDocumentAccessRequest,
+    ) -> ShareDocumentAccessData:
+        response = await self._bisheng.post_json(
+            f"/api/v1/knowledge/shougang-portal/share-links/{share_token}/verify",
+            json=req.model_dump(),
+        )
+        data = self._extract_success_data(response)
+        return ShareDocumentAccessData.model_validate(data)
+
+    @staticmethod
+    def create_share_access_session(access: ShareDocumentAccessData) -> ShareAccessSession:
+        KnowledgeService.cleanup_expired_share_access_sessions()
+        session = ShareAccessSession(
+            session_id=secrets.token_urlsafe(32),
+            share_token=access.share_token,
+            space_id=access.space_id,
+            file_id=access.file_id,
+            allow_download=access.allow_download,
+            expires_at=time.time() + SHARE_ACCESS_TTL_SECONDS,
+        )
+        SHARE_ACCESS_SESSIONS[session.session_id] = session
+        return session
+
+    @staticmethod
+    def cleanup_expired_share_access_sessions() -> None:
+        now = time.time()
+        expired = [
+            session_id
+            for session_id, session in SHARE_ACCESS_SESSIONS.items()
+            if session.expires_at <= now
+        ]
+        for session_id in expired:
+            SHARE_ACCESS_SESSIONS.pop(session_id, None)
+
+    @staticmethod
+    def get_share_access_session(
+        session_id: str,
+        share_token: str,
+        space_id: int,
+        file_id: int,
+    ) -> ShareAccessSession | None:
+        KnowledgeService.cleanup_expired_share_access_sessions()
+        session = SHARE_ACCESS_SESSIONS.get(session_id)
+        if session is None:
+            return None
+        if (
+            session.share_token != share_token
+            or session.space_id != space_id
+            or session.file_id != file_id
+        ):
+            return None
+        return session
 
     async def get_space_tags(self, space_id: int) -> list[str]:
         if space_id not in self.get_enabled_space_ids():
@@ -950,6 +1085,16 @@ class KnowledgeService:
         if isinstance(value, str):
             return value
         return ""
+
+    @staticmethod
+    def _extract_success_data(response: dict[str, Any]) -> Any:
+        status_code = response.get("status_code")
+        if status_code not in (None, 200):
+            raise BishengBusinessError(
+                int(status_code),
+                str(response.get("status_message") or "Bisheng request failed"),
+            )
+        return response.get("data") or {}
 
     async def _fetch_space_endpoint(self, source: str, path: str) -> tuple[str, list[dict[str, Any]]]:
         try:

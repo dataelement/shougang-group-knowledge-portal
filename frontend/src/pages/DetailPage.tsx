@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Download, Sparkles, Star } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
@@ -18,6 +18,7 @@ export default function DetailPage() {
   const { spaceId: spaceIdStr = '', fileId: fileIdStr = '' } = useParams<{ spaceId: string; fileId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { config } = usePortalConfig();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [detail, setDetail] = useState<FileDetail | null>(null);
@@ -30,6 +31,7 @@ export default function DetailPage() {
 
   const fileId = Number(fileIdStr);
   const spaceId = Number(spaceIdStr);
+  const shareToken = searchParams.get('share_token') || '';
   const backTarget = resolveDetailBackTarget(location.state?.returnTo, spaceIdStr);
 
   useEffect(() => {
@@ -40,13 +42,15 @@ export default function DetailPage() {
     void (async () => {
       try {
         const [detailResult, previewResult, relatedResult] = await Promise.all([
-          fetchFileDetail(spaceId, fileId),
-          fetchFilePreview(spaceId, fileId),
-          fetchRelatedFiles(spaceId, fileId, displayConfig.detail.relatedFilesCount),
+          fetchFileDetail(spaceId, fileId, shareToken || undefined),
+          fetchFilePreview(spaceId, fileId, shareToken || undefined),
+          shareToken
+            ? Promise.resolve([])
+            : fetchRelatedFiles(spaceId, fileId, displayConfig.detail.relatedFilesCount),
         ]);
         if (!active) return;
         const chunkResult = (previewResult?.mode === 'chunks' && detailResult)
-          ? await fetchFileChunks(spaceId, fileId)
+          ? await fetchFileChunks(spaceId, fileId, shareToken || undefined)
           : [];
         if (!active) return;
         setDetail(detailResult);
@@ -63,7 +67,7 @@ export default function DetailPage() {
     return () => {
       active = false;
     };
-  }, [displayConfig.detail.relatedFilesCount, fileId, spaceId]);
+  }, [displayConfig.detail.relatedFilesCount, fileId, shareToken, spaceId]);
 
   if (loading) {
     return (
@@ -107,7 +111,7 @@ export default function DetailPage() {
     if (!clientFallbackActive) setClientFallbackActive(true);
     if (chunks.length > 0) return;
     try {
-      const fallbackChunks = await fetchFileChunks(spaceId, fileId);
+      const fallbackChunks = await fetchFileChunks(spaceId, fileId, shareToken || undefined);
       setChunks(fallbackChunks);
     } catch {
       setError((current) => current || '文档预览失败，且无法加载正文分段内容');
@@ -177,6 +181,9 @@ export default function DetailPage() {
               target={effectivePreview.downloadUrl ? '_blank' : undefined}
               rel={effectivePreview.downloadUrl ? 'noreferrer' : undefined}
               aria-disabled={!effectivePreview.downloadUrl}
+              onClick={(event) => {
+                if (!effectivePreview.downloadUrl) event.preventDefault();
+              }}
             >
               <Download size={16} />
               下载原文件

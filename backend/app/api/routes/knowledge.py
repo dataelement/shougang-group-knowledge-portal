@@ -1,17 +1,31 @@
 from typing import Annotated, Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from app.api.dependencies import get_bisheng_client, get_portal_auth_service, get_portal_config_service
 from app.clients.bisheng import BishengClient
 from app.schemas.common import response_ok
-from app.schemas.knowledge import FilePreviewSourceKind
-from app.services.knowledge_service import KnowledgeService
+from app.schemas.knowledge import (
+    FavoriteDocumentRequest,
+    FilePreviewSourceKind,
+    ShareDocumentAccessRequest,
+    ShareDocumentRequest,
+)
+from app.services.knowledge_service import (
+    SHARE_ACCESS_COOKIE_NAME,
+    SHARE_ACCESS_TTL_SECONDS,
+    BishengBusinessError,
+    KnowledgeService,
+    ShareAccessSession,
+)
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService
 from app.services.portal_config_service import PortalConfigService
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
+
+_BISHENG_DUPLICATE_FAVORITE_CODE = 18021
+_BISHENG_PERMISSION_DENIED_CODE = 18040
 
 
 def get_knowledge_service(
@@ -22,6 +36,29 @@ def get_knowledge_service(
         bisheng_client=bisheng_client,
         portal_config_service=portal_config_service,
     )
+
+
+def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
+    status_code = 403 if err.status_code in {_BISHENG_PERMISSION_DENIED_CODE, 404} else 502
+    raise HTTPException(status_code=status_code, detail=err.status_message)
+
+
+def _require_share_access(
+    request: Request,
+    share_token: str,
+    space_id: int,
+    file_id: int,
+) -> ShareAccessSession:
+    session_id = request.cookies.get(SHARE_ACCESS_COOKIE_NAME, "")
+    session = KnowledgeService.get_share_access_session(
+        session_id=session_id,
+        share_token=share_token,
+        space_id=space_id,
+        file_id=file_id,
+    )
+    if session is None:
+        raise HTTPException(status_code=403, detail="分享访问未验证或已过期")
+    return session
 
 
 @router.get("/files")
@@ -88,6 +125,139 @@ async def list_visible_spaces(
         await bisheng_client.aclose()
 
 
+@router.get("/personal-spaces")
+async def list_personal_spaces(
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        session = auth_service.require_session(request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        return response_ok(await service.list_personal_spaces())
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.post("/favorites")
+async def create_favorite(
+    req: FavoriteDocumentRequest,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        session = auth_service.require_session(request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        return response_ok(await service.create_favorite(req))
+    except BishengBusinessError as err:
+        if err.status_code == _BISHENG_DUPLICATE_FAVORITE_CODE:
+            raise HTTPException(status_code=409, detail="该文档已收藏到所选个人知识库") from err
+        raise HTTPException(status_code=502, detail=err.status_message) from err
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.post("/share-links")
+async def create_share_link(
+    req: ShareDocumentRequest,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        session = auth_service.require_session(request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        return response_ok(await service.create_share_link(req))
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.get("/share-links/{share_token}")
+async def get_share_link_meta(
+    share_token: str,
+    service: KnowledgeService = Depends(get_knowledge_service),
+):
+    try:
+        return response_ok(await service.get_share_link_meta(share_token))
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
+
+
+@router.post("/share-links/{share_token}/access")
+async def access_share_link(
+    share_token: str,
+    req: ShareDocumentAccessRequest,
+    response: Response,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = auth_service.get_session(request)
+    metadata_service = KnowledgeService(
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+    )
+    try:
+        meta = await metadata_service.get_share_link_meta(share_token)
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
+
+    if meta.visibility == "department" and session is None:
+        raise HTTPException(status_code=401, detail="仅本部门分享需要登录后访问")
+
+    scoped_client = auth_service.create_bisheng_client(session) if session is not None else bisheng_client
+    should_close_scoped_client = session is not None
+    try:
+        service = KnowledgeService(
+            bisheng_client=scoped_client,
+            portal_config_service=portal_config_service,
+        )
+        access = await service.verify_share_link_access(share_token, req)
+        share_session = KnowledgeService.create_share_access_session(access)
+        response.set_cookie(
+            key=SHARE_ACCESS_COOKIE_NAME,
+            value=share_session.session_id,
+            httponly=True,
+            samesite="lax",
+            max_age=SHARE_ACCESS_TTL_SECONDS,
+            path="/",
+        )
+        return response_ok(access)
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
+    finally:
+        if should_close_scoped_client:
+            await scoped_client.aclose()
+
+
 @router.get("/space/{space_id}/files")
 async def list_space_files(
     space_id: int,
@@ -120,8 +290,12 @@ async def get_space_tags(
 async def get_file_detail(
     space_id: int,
     file_id: int,
+    request: Request,
+    share_token: Optional[str] = None,
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
+    if share_token:
+        _require_share_access(request, share_token, space_id, file_id)
     detail = await service.get_file_detail(space_id=space_id, file_id=file_id)
     return response_ok(detail)
 
@@ -130,13 +304,21 @@ async def get_file_detail(
 async def get_file_preview(
     space_id: int,
     file_id: int,
+    request: Request,
+    share_token: Optional[str] = None,
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
+    share_session = _require_share_access(request, share_token, space_id, file_id) if share_token else None
     preview = await service.get_file_preview(space_id=space_id, file_id=file_id)
+    if preview and share_session and not share_session.allow_download:
+        preview.download_url = ""
     if preview and preview.source_kind != "none" and preview.mode not in {"unsupported", "chunks"}:
+        query = f"source_kind={preview.source_kind}"
+        if share_token:
+            query = f"{query}&share_token={quote(share_token)}"
         preview.viewer_url = (
             f"/api/v1/knowledge/space/{space_id}/files/{file_id}/preview/content"
-            f"?source_kind={preview.source_kind}"
+            f"?{query}"
         )
     return response_ok(preview)
 
@@ -145,10 +327,14 @@ async def get_file_preview(
 async def get_file_preview_content(
     space_id: int,
     file_id: int,
+    request: Request,
     source_kind: Optional[FilePreviewSourceKind] = Query(default=None),
+    share_token: Optional[str] = None,
     service: KnowledgeService = Depends(get_knowledge_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
+    if share_token:
+        _require_share_access(request, share_token, space_id, file_id)
     source = await service.resolve_preview_content_source(
         space_id=space_id,
         file_id=file_id,
@@ -174,8 +360,12 @@ async def get_file_preview_content(
 async def get_file_chunks(
     space_id: int,
     file_id: int,
+    request: Request,
+    share_token: Optional[str] = None,
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
+    if share_token:
+        _require_share_access(request, share_token, space_id, file_id)
     chunks = await service.get_file_chunks(space_id=space_id, file_id=file_id)
     return response_ok(chunks)
 

@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Loader2 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
+import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
+import ShareDocumentModal from '../components/ShareDocumentModal';
 import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
@@ -14,6 +16,8 @@ import {
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
 import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
+import { useShareDocument } from '../hooks/useShareDocument';
 import { useListControls } from '../hooks/useListControls';
 import { getVisibleRange } from '../utils/listControls';
 import { getEnabledDomains, toRuntimeDisplayConfig } from '../utils/portalConfig';
@@ -62,6 +66,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const requestSeq = useRef(0);
+  const { openFavorite, favoriteModalProps } = useFavoriteDocument();
+  const { openShare, shareModalProps } = useShareDocument();
 
   const domains = useMemo<DomainOption[]>(
     () => (config
@@ -299,6 +305,8 @@ export default function SearchPage() {
             key={f.id}
             file={f}
             visibleTagCount={displayConfig.search.visibleTagCount}
+            onFavorite={openFavorite}
+            onShare={openShare}
             onClick={() =>
               navigate(`/space/${f.spaceId}/file/${f.id}`, {
                 state: { returnTo: `${location.pathname}${location.search}` },
@@ -314,6 +322,8 @@ export default function SearchPage() {
             onChange={(nextPage) => setFilter('page', String(nextPage), false)}
           />
         )}
+        <FavoriteDocumentModal {...favoriteModalProps} />
+        <ShareDocumentModal {...shareModalProps} />
       </div>
     </PageShell>
   );

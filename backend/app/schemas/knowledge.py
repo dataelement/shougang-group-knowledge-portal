@@ -62,6 +62,81 @@ class KnowledgeSpaceListData(BaseModel):
     total: int = 0
 
 
+class PersonalKnowledgeSpaceItem(BaseModel):
+    id: int
+    name: str
+    description: str = ""
+    file_count: int = 0
+    updated_at: str = ""
+
+
+class PersonalKnowledgeSpaceListData(BaseModel):
+    data: list[PersonalKnowledgeSpaceItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class FavoriteDocumentRequest(BaseModel):
+    source_space_id: int = Field(..., gt=0)
+    source_file_id: int = Field(..., gt=0)
+    target_space_id: int = Field(..., gt=0)
+
+
+class FavoriteDocumentData(BaseModel):
+    file_id: int
+    space_id: int
+    title: str = ""
+
+
+ShareDocumentType = Literal["link", "invite_code"]
+ShareDocumentVisibility = Literal["department", "public"]
+
+
+class ShareDocumentPermissions(BaseModel):
+    view: bool = True
+    download: bool = False
+    upload: bool = False
+
+
+class ShareDocumentRequest(BaseModel):
+    space_id: int = Field(..., gt=0)
+    file_id: int = Field(..., gt=0)
+    share_type: ShareDocumentType = "link"
+    visibility: ShareDocumentVisibility = "department"
+    allow_download: bool = False
+    password: str = Field(default="", max_length=128)
+    expire_seconds: int = Field(default=0, ge=0, le=31_536_000)
+
+
+class ShareDocumentData(BaseModel):
+    share_token: str
+    link: str
+    invite_code: str = ""
+    expire_seconds: int = 0
+
+
+class ShareDocumentMeta(BaseModel):
+    share_token: str
+    file_name: str = ""
+    share_type: ShareDocumentType = "link"
+    visibility: ShareDocumentVisibility = "department"
+    permissions: ShareDocumentPermissions = Field(default_factory=ShareDocumentPermissions)
+    requires_password: bool = False
+    requires_invite_code: bool = False
+    expired: bool = False
+
+
+class ShareDocumentAccessRequest(BaseModel):
+    password: str = Field(default="", max_length=128)
+    invite_code: str = Field(default="", max_length=32)
+
+
+class ShareDocumentAccessData(BaseModel):
+    share_token: str
+    space_id: int
+    file_id: int
+    allow_download: bool = False
+
+
 class FilePreviewData(BaseModel):
     original_url: str
     preview_url: str

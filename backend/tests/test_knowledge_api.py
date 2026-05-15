@@ -251,6 +251,36 @@ class FakeBishengClient:
                     }
                 ],
             }
+        if path == "/api/v1/knowledge/shougang-portal/personal-spaces":
+            return {
+                "status_code": 200,
+                "data": {
+                    "data": [
+                        {
+                            "id": 7201,
+                            "name": "个人沉淀库",
+                            "description": "个人知识空间",
+                            "file_count": 3,
+                            "updated_at": "2026-05-15T09:30:00",
+                        }
+                    ],
+                    "total": 1,
+                },
+            }
+        if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580":
+            return {
+                "status_code": 200,
+                "data": {
+                    "share_token": "share-token-1580",
+                    "file_name": "热轧1580产线精轧机振动纹治理实践",
+                    "share_type": "invite_code",
+                    "visibility": "public",
+                    "permissions": {"view": True, "download": False, "upload": False},
+                    "requires_password": True,
+                    "requires_invite_code": True,
+                    "expired": False,
+                },
+            }
         raise AssertionError(f"Unexpected path: {path}")
 
     async def post_json(self, path: str, json=None):
@@ -287,6 +317,50 @@ class FakeBishengClient:
                     "page_size": 20,
                 }
             }
+        if path == "/api/v1/knowledge/shougang-portal/favorites":
+            assert json == {
+                "source_space_id": 12,
+                "source_file_id": 1580,
+                "target_space_id": 7201,
+            }
+            return {
+                "status_code": 200,
+                "data": {
+                    "file_id": 9301,
+                    "space_id": 7201,
+                    "title": "热轧1580产线精轧机振动纹治理实践",
+                },
+            }
+        if path == "/api/v1/knowledge/shougang-portal/share-links":
+            assert json == {
+                "space_id": 12,
+                "file_id": 1580,
+                "share_type": "invite_code",
+                "visibility": "public",
+                "allow_download": False,
+                "password": "secret",
+                "expire_seconds": 3600,
+            }
+            return {
+                "status_code": 200,
+                "data": {
+                    "share_token": "share-token-1580",
+                    "link": "/share/document/share-token-1580",
+                    "invite_code": "ABC123",
+                    "expire_seconds": 3600,
+                },
+            }
+        if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580/verify":
+            assert json == {"password": "secret", "invite_code": "ABC123"}
+            return {
+                "status_code": 200,
+                "data": {
+                    "share_token": "share-token-1580",
+                    "space_id": 12,
+                    "file_id": 1580,
+                    "allow_download": False,
+                },
+            }
         raise AssertionError(f"Unexpected post path: {path}")
 
     async def stream_post(self, path: str, json=None):
@@ -312,11 +386,19 @@ class FakePortalAuthService:
     def __init__(self, client):
         self._client = client
 
+    def get_session(self, _request):
+        return object()
+
     def require_session(self, _request):
         return object()
 
     def create_bisheng_client(self, _session):
         return self._client
+
+
+class NoSessionPortalAuthService(FakePortalAuthService):
+    def get_session(self, _request):
+        return None
 
 
 def test_list_visible_spaces_aggregates_user_scoped_bisheng_lists(tmp_path: Path):
@@ -341,6 +423,208 @@ def test_list_visible_spaces_aggregates_user_scoped_bisheng_lists(tmp_path: Path
     assert joined["sources"] == ["joined", "managed"]
     public_space = next(item for item in body["data"] if item["id"] == 7105)
     assert public_space["auth_type"] == "public"
+
+
+def test_list_personal_spaces_uses_current_user_bisheng_session(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = FakeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.get("/api/v1/knowledge/personal-spaces")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["total"] == 1
+    assert body["data"][0]["id"] == 7201
+
+
+def test_create_favorite_uses_current_user_bisheng_session(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = FakeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/knowledge/favorites",
+                json={
+                    "source_space_id": 12,
+                    "source_file_id": 1580,
+                    "target_space_id": 7201,
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert response.json()["data"]["file_id"] == 9301
+    assert fake_bisheng.post_calls[-1] == (
+        "/api/v1/knowledge/shougang-portal/favorites",
+        {
+            "source_space_id": 12,
+            "source_file_id": 1580,
+            "target_space_id": 7201,
+        },
+    )
+
+
+def test_create_favorite_maps_duplicate_to_conflict(tmp_path: Path):
+    class DuplicateFavoriteBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None):
+            if path == "/api/v1/knowledge/shougang-portal/favorites":
+                return {
+                    "status_code": 18021,
+                    "status_message": "A file with the same name or content already exists in this space",
+                    "data": {},
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = DuplicateFavoriteBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/knowledge/favorites",
+                json={
+                    "source_space_id": 12,
+                    "source_file_id": 1580,
+                    "target_space_id": 7201,
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "该文档已收藏到所选个人知识库"
+
+
+def test_create_share_link_uses_current_user_bisheng_session(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = FakeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/knowledge/share-links",
+                json={
+                    "space_id": 12,
+                    "file_id": 1580,
+                    "share_type": "invite_code",
+                    "visibility": "public",
+                    "allow_download": False,
+                    "password": "secret",
+                    "expire_seconds": 3600,
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert response.json()["data"]["share_token"] == "share-token-1580"
+    assert response.json()["data"]["invite_code"] == "ABC123"
+    assert fake_bisheng.post_calls[-1] == (
+        "/api/v1/knowledge/shougang-portal/share-links",
+        {
+            "space_id": 12,
+            "file_id": 1580,
+            "share_type": "invite_code",
+            "visibility": "public",
+            "allow_download": False,
+            "password": "secret",
+            "expire_seconds": 3600,
+        },
+    )
+
+
+def test_share_access_session_controls_detail_and_preview_download(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = FakeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            meta_response = client.get("/api/v1/knowledge/share-links/share-token-1580")
+            access_response = client.post(
+                "/api/v1/knowledge/share-links/share-token-1580/access",
+                json={"password": "secret", "invite_code": "ABC123"},
+            )
+            detail_response = client.get("/api/v1/knowledge/space/12/files/1580?share_token=share-token-1580")
+            preview_response = client.get("/api/v1/knowledge/space/12/files/1580/preview?share_token=share-token-1580")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert meta_response.status_code == 200
+    assert meta_response.json()["data"]["requires_invite_code"] is True
+    assert access_response.status_code == 200
+    assert access_response.json()["data"]["space_id"] == 12
+    assert detail_response.status_code == 200
+    preview = preview_response.json()["data"]
+    assert preview_response.status_code == 200
+    assert preview["download_url"] == ""
+    assert "share_token=share-token-1580" in preview["viewer_url"]
+
+
+def test_department_share_access_requires_portal_login_session(tmp_path: Path):
+    class DepartmentShareBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580":
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "share_token": "share-token-1580",
+                        "file_name": "热轧1580产线精轧机振动纹治理实践",
+                        "share_type": "link",
+                        "visibility": "department",
+                        "permissions": {"view": True, "download": False, "upload": False},
+                        "requires_password": False,
+                        "requires_invite_code": False,
+                        "expired": False,
+                    },
+                }
+            return await super().get_json(path, params=params)
+
+        async def post_json(self, path: str, json=None):
+            if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580/verify":
+                raise AssertionError("department share must not be verified with the portal backend token")
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = DepartmentShareBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/knowledge/share-links/share-token-1580/access",
+                json={"password": "", "invite_code": ""},
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "仅本部门分享需要登录后访问"
 
 
 def test_list_space_files_maps_bisheng_results(tmp_path: Path):

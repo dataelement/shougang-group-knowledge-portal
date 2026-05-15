@@ -32,6 +32,54 @@ export interface KnowledgeSpace {
   sources: string[];
 }
 
+export interface PersonalKnowledgeSpace {
+  id: number;
+  name: string;
+  description: string;
+  fileCount: number;
+  updatedAt: string;
+}
+
+export interface FavoriteDocumentResult {
+  fileId: number;
+  spaceId: number;
+  title: string;
+}
+
+export type ShareDocumentType = 'link' | 'invite_code';
+export type ShareDocumentVisibility = 'department' | 'public';
+
+export interface ShareDocumentPermissions {
+  view: boolean;
+  download: boolean;
+  upload: boolean;
+}
+
+export interface ShareDocumentResult {
+  shareToken: string;
+  link: string;
+  inviteCode: string;
+  expireSeconds: number;
+}
+
+export interface ShareDocumentMeta {
+  shareToken: string;
+  fileName: string;
+  shareType: ShareDocumentType;
+  visibility: ShareDocumentVisibility;
+  permissions: ShareDocumentPermissions;
+  requiresPassword: boolean;
+  requiresInviteCode: boolean;
+  expired: boolean;
+}
+
+export interface ShareDocumentAccessResult {
+  shareToken: string;
+  spaceId: number;
+  fileId: number;
+  allowDownload: boolean;
+}
+
 export type FilePreviewMode = 'pdf' | 'docx' | 'spreadsheet' | 'markdown' | 'html' | 'text' | 'image' | 'unsupported' | 'chunks';
 export type FilePreviewSourceKind = 'preview_url' | 'original_url' | 'preview_task' | 'none';
 
@@ -113,6 +161,52 @@ interface KnowledgeSpaceListDataDto {
   total: number;
 }
 
+interface PersonalKnowledgeSpaceDto {
+  id: number;
+  name: string;
+  description?: string;
+  file_count?: number;
+  file_num?: number;
+  updated_at?: string;
+  update_time?: string;
+}
+
+interface PersonalKnowledgeSpaceListDataDto {
+  data: PersonalKnowledgeSpaceDto[];
+  total: number;
+}
+
+interface FavoriteDocumentDataDto {
+  file_id: number;
+  space_id: number;
+  title?: string;
+}
+
+interface ShareDocumentDataDto {
+  share_token: string;
+  link: string;
+  invite_code?: string;
+  expire_seconds?: number;
+}
+
+interface ShareDocumentMetaDto {
+  share_token: string;
+  file_name?: string;
+  share_type?: ShareDocumentType;
+  visibility?: ShareDocumentVisibility;
+  permissions?: Partial<ShareDocumentPermissions>;
+  requires_password?: boolean;
+  requires_invite_code?: boolean;
+  expired?: boolean;
+}
+
+interface ShareDocumentAccessDataDto {
+  share_token: string;
+  space_id: number;
+  file_id: number;
+  allow_download?: boolean;
+}
+
 interface RelatedKnowledgeFileDataDto {
   data: KnowledgeFileItemDto[];
   total: number;
@@ -176,6 +270,16 @@ function mapKnowledgeSpace(dto: KnowledgeSpaceDto): KnowledgeSpace {
   };
 }
 
+function mapPersonalKnowledgeSpace(dto: PersonalKnowledgeSpaceDto): PersonalKnowledgeSpace {
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: dto.description ?? '',
+    fileCount: dto.file_count ?? dto.file_num ?? 0,
+    updatedAt: dto.updated_at ?? dto.update_time ?? '',
+  };
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as ApiEnvelope<T>;
   if (!response.ok) {
@@ -187,6 +291,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: 'include', ...init });
   return parseResponse<T>(response);
+}
+
+function appendShareToken(path: string, shareToken?: string): string {
+  if (!shareToken) return path;
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}share_token=${encodeURIComponent(shareToken)}`;
 }
 
 let portalContentConfigPromise: Promise<PortalConfig> | null = null;
@@ -288,13 +398,117 @@ export async function fetchKnowledgeSpaces(): Promise<{ data: KnowledgeSpace[]; 
   };
 }
 
-export async function fetchFileDetail(spaceId: number, fileId: number): Promise<FileDetail | null> {
-  const data = await request<KnowledgeFileDetailDto | null>(`/api/v1/knowledge/space/${spaceId}/files/${fileId}`);
+export async function fetchPersonalKnowledgeSpaces(): Promise<{ data: PersonalKnowledgeSpace[]; total: number }> {
+  const data = await request<PersonalKnowledgeSpaceListDataDto>('/api/v1/knowledge/personal-spaces');
+  return {
+    data: data.data.map(mapPersonalKnowledgeSpace),
+    total: data.total,
+  };
+}
+
+export async function favoriteDocument(params: {
+  sourceSpaceId: number;
+  sourceFileId: number;
+  targetSpaceId: number;
+}): Promise<FavoriteDocumentResult> {
+  const data = await request<FavoriteDocumentDataDto>('/api/v1/knowledge/favorites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source_space_id: params.sourceSpaceId,
+      source_file_id: params.sourceFileId,
+      target_space_id: params.targetSpaceId,
+    }),
+  });
+  return {
+    fileId: data.file_id,
+    spaceId: data.space_id,
+    title: data.title ?? '',
+  };
+}
+
+export async function createShareDocument(params: {
+  spaceId: number;
+  fileId: number;
+  shareType: ShareDocumentType;
+  visibility: ShareDocumentVisibility;
+  allowDownload: boolean;
+  password: string;
+  expireSeconds: number;
+}): Promise<ShareDocumentResult> {
+  const data = await request<ShareDocumentDataDto>('/api/v1/knowledge/share-links', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      space_id: params.spaceId,
+      file_id: params.fileId,
+      share_type: params.shareType,
+      visibility: params.visibility,
+      allow_download: params.allowDownload,
+      password: params.password,
+      expire_seconds: params.expireSeconds,
+    }),
+  });
+  return {
+    shareToken: data.share_token,
+    link: data.link,
+    inviteCode: data.invite_code ?? '',
+    expireSeconds: data.expire_seconds ?? 0,
+  };
+}
+
+export async function fetchShareDocumentMeta(shareToken: string): Promise<ShareDocumentMeta> {
+  const data = await request<ShareDocumentMetaDto>(`/api/v1/knowledge/share-links/${encodeURIComponent(shareToken)}`);
+  return {
+    shareToken: data.share_token,
+    fileName: data.file_name ?? '',
+    shareType: data.share_type ?? 'link',
+    visibility: data.visibility ?? 'department',
+    permissions: {
+      view: data.permissions?.view ?? true,
+      download: data.permissions?.download ?? false,
+      upload: data.permissions?.upload ?? false,
+    },
+    requiresPassword: Boolean(data.requires_password),
+    requiresInviteCode: Boolean(data.requires_invite_code),
+    expired: Boolean(data.expired),
+  };
+}
+
+export async function accessShareDocument(
+  shareToken: string,
+  params: { password: string; inviteCode: string },
+): Promise<ShareDocumentAccessResult> {
+  const data = await request<ShareDocumentAccessDataDto>(
+    `/api/v1/knowledge/share-links/${encodeURIComponent(shareToken)}/access`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        password: params.password,
+        invite_code: params.inviteCode,
+      }),
+    },
+  );
+  return {
+    shareToken: data.share_token,
+    spaceId: data.space_id,
+    fileId: data.file_id,
+    allowDownload: Boolean(data.allow_download),
+  };
+}
+
+export async function fetchFileDetail(spaceId: number, fileId: number, shareToken?: string): Promise<FileDetail | null> {
+  const data = await request<KnowledgeFileDetailDto | null>(
+    appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}`, shareToken),
+  );
   return data ? mapKnowledgeFileDetail(data) : null;
 }
 
-export async function fetchFilePreview(spaceId: number, fileId: number): Promise<FilePreviewManifest | null> {
-  const data = await request<FilePreviewManifestDto | null>(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/preview`);
+export async function fetchFilePreview(spaceId: number, fileId: number, shareToken?: string): Promise<FilePreviewManifest | null> {
+  const data = await request<FilePreviewManifestDto | null>(
+    appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/preview`, shareToken),
+  );
   if (!data) return null;
   return {
     downloadUrl: data.download_url,
@@ -306,8 +520,10 @@ export async function fetchFilePreview(spaceId: number, fileId: number): Promise
   };
 }
 
-export async function fetchFileChunks(spaceId: number, fileId: number): Promise<FileChunkItem[]> {
-  const data = await request<FileChunkItemDto[]>(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/chunks`);
+export async function fetchFileChunks(spaceId: number, fileId: number, shareToken?: string): Promise<FileChunkItem[]> {
+  const data = await request<FileChunkItemDto[]>(
+    appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/chunks`, shareToken),
+  );
   return data.map((item) => ({
     chunkIndex: item.chunk_index,
     text: item.text,

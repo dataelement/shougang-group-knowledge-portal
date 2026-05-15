@@ -1,32 +1,127 @@
 import type { FileItem } from '../api/content';
 import TagPill from './TagPill';
-import { formatDisplayDateTime } from '../utils/dateTime';
+import { BookOpen, CalendarClock, FileText, FolderTree, HardDrive, Hash, Share2, Star, Tag } from 'lucide-react';
+import { buildFileListItemView } from '../utils/fileListItemView';
 import s from './FileListItem.module.css';
 
 interface Props {
   file: FileItem;
   onClick?: () => void;
+  onFavorite?: (file: FileItem) => void;
+  onShare?: (file: FileItem) => void;
   visibleTagCount?: number;
 }
 
-const META_TAGS = ['最新精选', '典型案例'];
-
-export default function FileListItem({ file, onClick, visibleTagCount = 2 }: Props) {
-  const displayTags = file.tags.filter((tag) => !META_TAGS.includes(tag));
+export default function FileListItem({ file, onClick, onFavorite, onShare, visibleTagCount = 2 }: Props) {
+  const view = buildFileListItemView(file, {
+    visibleTagCount,
+    canOpenDetail: Boolean(onClick),
+    canFavorite: Boolean(onFavorite),
+    canShare: Boolean(onShare),
+  });
 
   return (
-    <div className={s.item} onClick={onClick}>
+    <article className={s.item} onClick={onClick}>
       <div className={s.body}>
-        <div className={s.title}>{file.title}</div>
-        {file.summary ? <div className={s.summary}>{file.summary}</div> : null}
-        <div className={s.meta}>
-          <span className={s.source}>{file.source}</span>
-          {displayTags.slice(0, visibleTagCount).map((tag) => (
-            <TagPill key={tag} name={tag} neutral />
-          ))}
-          <span className={s.date}>{formatDisplayDateTime(file.date)}</span>
+        <div className={s.header}>
+          <div className={s.heading}>
+            <div className={s.title}>{file.title}</div>
+            <div className={s.meta}>
+              <span className={s.metaItem}>
+                <FileText size={15} />
+                {view.documentTypeLabel}
+              </span>
+              {view.dateLabel ? (
+                <span className={s.metaItem}>
+                  <CalendarClock size={15} />
+                  {view.dateLabel}
+                </span>
+              ) : null}
+              <span className={s.metaItem}>
+                <FolderTree size={15} />
+                {view.sourcePath}
+              </span>
+              {file.sizeLabel ? (
+                <span className={s.metaItem}>
+                  <HardDrive size={15} />
+                  {file.sizeLabel}
+                </span>
+              ) : null}
+              {file.fileEncoding ? (
+                <span className={s.metaItem}>
+                  <Hash size={15} />
+                  {file.fileEncoding}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          {view.actions.length > 0 ? (
+            <div className={s.actions}>
+              {view.actions.includes('favorite') ? (
+                <button
+                  type="button"
+                  className={`${s.actionButton} ${s.favoriteButton}`}
+                  title="收藏文档"
+                  aria-label="收藏文档"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onFavorite?.(file);
+                  }}
+                >
+                  <Star size={19} />
+                </button>
+              ) : null}
+              {view.actions.includes('share') ? (
+                <button
+                  type="button"
+                  className={`${s.actionButton} ${s.shareButton}`}
+                  title="分享文档"
+                  aria-label="分享文档"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onShare?.(file);
+                  }}
+                >
+                  <Share2 size={19} />
+                </button>
+              ) : null}
+              {view.actions.includes('detail') ? (
+                <button
+                  type="button"
+                  className={s.actionButton}
+                  title="查看详情"
+                  aria-label="查看详情"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onClick?.();
+                  }}
+                >
+                  <BookOpen size={19} />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
+
+        {view.summaryText ? (
+          <section className={s.textBlock}>
+            <div className={s.blockTitle}>文档摘要</div>
+            <div className={s.summary}>{view.summaryText}</div>
+          </section>
+        ) : null}
+
+        {view.visibleTags.length > 0 ? (
+          <div className={s.tags}>
+            <Tag size={17} className={s.tagsIcon} />
+            <div className={s.tagList}>
+              {view.visibleTags.map((tag) => (
+                <TagPill key={tag} name={tag} neutral />
+              ))}
+              {view.hiddenTagCount > 0 ? <span className={s.moreTag}>+{view.hiddenTagCount}</span> : null}
+            </div>
+          </div>
+        ) : null}
       </div>
-    </div>
+    </article>
   );
 }

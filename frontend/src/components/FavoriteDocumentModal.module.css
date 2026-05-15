@@ -1,0 +1,252 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.modal {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  padding: 34px 36px 30px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.closeButton {
+  position: absolute;
+  top: 26px;
+  right: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  color: var(--neutral-600);
+}
+
+.closeButton:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-900);
+}
+
+.header {
+  padding-right: 44px;
+}
+
+.title {
+  font-size: 1.55rem;
+  line-height: 1.2;
+  color: var(--neutral-900);
+}
+
+.subtitle {
+  margin-top: 6px;
+  font-size: 1.04rem;
+  color: #64748b;
+}
+
+.fieldGroup {
+  margin-top: 28px;
+}
+
+.label,
+.requiredLabel {
+  margin-bottom: 11px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--neutral-900);
+}
+
+.requiredLabel::after {
+  content: " *";
+  color: var(--red-500);
+}
+
+.documentName {
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--neutral-100);
+  color: #64748b;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.loadingState,
+.emptyState {
+  min-height: 154px;
+  border: 1px dashed var(--neutral-300);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #64748b;
+  text-align: center;
+}
+
+.loadingState {
+  font-weight: 600;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.emptyState svg {
+  color: #aeb7c5;
+}
+
+.emptyTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.emptyDesc {
+  font-size: 0.94rem;
+}
+
+.spaceList {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.spaceOption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.spaceOption:hover,
+.spaceOptionSelected {
+  border-color: var(--primary-300);
+  background: var(--primary-50);
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--neutral-300);
+  color: #fff;
+}
+
+.spaceOptionSelected .radio {
+  border-color: var(--primary-600);
+  background: var(--primary-600);
+}
+
+.spaceInfo {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.spaceName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--neutral-900);
+}
+
+.spaceMeta {
+  font-size: 0.86rem;
+  color: var(--neutral-500);
+}
+
+.errorText,
+.successText {
+  margin-top: 16px;
+  font-size: 0.92rem;
+}
+
+.errorText {
+  color: var(--red-500);
+}
+
+.successText {
+  color: var(--green-500);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.cancelButton,
+.confirmButton {
+  min-width: 110px;
+  min-height: 46px;
+  padding: 0 22px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.cancelButton {
+  border: 1px solid var(--neutral-200);
+  background: var(--surface);
+  color: var(--neutral-900);
+}
+
+.confirmButton {
+  background: var(--primary-500);
+  color: #fff;
+}
+
+.confirmButton:disabled {
+  cursor: not-allowed;
+  background: var(--primary-300);
+}
+
+@media (max-width: 720px) {
+  .overlay {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .modal {
+    padding: 28px 20px 22px;
+  }
+
+  .footer {
+    flex-direction: column-reverse;
+  }
+
+  .cancelButton,
+  .confirmButton {
+    width: 100%;
+  }
+}

@@ -1,0 +1,126 @@
+.container {
+  width: min(720px, calc(100% - 32px));
+  margin: 84px auto;
+}
+
+.panel {
+  padding: 42px;
+  border: 1px solid var(--neutral-100);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-full);
+  background: var(--primary-50);
+  color: var(--primary-600);
+}
+
+.title {
+  margin-top: 18px;
+  font-size: 1.7rem;
+  color: var(--neutral-900);
+}
+
+.fileName {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: var(--neutral-50);
+  color: #475569;
+  font-weight: 700;
+}
+
+.stateLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  color: var(--neutral-800);
+  font-weight: 800;
+}
+
+.field input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 6px;
+  color: var(--neutral-900);
+  font-size: 1rem;
+}
+
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 22px;
+  border-radius: 8px;
+  background: var(--primary-500);
+  color: #fff;
+  font-weight: 800;
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  background: var(--primary-300);
+}
+
+.errorText {
+  margin-top: 18px;
+  color: var(--red-500);
+  font-weight: 700;
+}
+
+.loginButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 0 20px;
+  border-radius: 8px;
+  background: var(--neutral-900);
+  color: #fff;
+  font-weight: 800;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .container {
+    margin: 28px auto;
+  }
+
+  .panel {
+    padding: 30px 20px;
+  }
+}

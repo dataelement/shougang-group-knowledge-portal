@@ -1,0 +1,260 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 125;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.modal {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+  padding: 34px 36px 30px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.closeButton {
+  position: absolute;
+  top: 26px;
+  right: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  color: var(--neutral-600);
+}
+
+.closeButton:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-900);
+}
+
+.header {
+  padding-right: 44px;
+}
+
+.title {
+  font-size: 1.55rem;
+  line-height: 1.2;
+  color: var(--neutral-900);
+}
+
+.subtitle {
+  margin-top: 6px;
+  font-size: 1.04rem;
+  color: #64748b;
+}
+
+.section {
+  margin-top: 26px;
+}
+
+.sectionTitle {
+  margin-bottom: 12px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--neutral-900);
+}
+
+.radioRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 0;
+  text-align: left;
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  border: 1px solid var(--primary-500);
+  border-radius: var(--radius-full);
+  color: #fff;
+}
+
+.radioChecked {
+  background: var(--primary-500);
+}
+
+.radioText {
+  display: grid;
+  gap: 5px;
+}
+
+.radioTitle {
+  font-weight: 800;
+  color: var(--neutral-900);
+}
+
+.radioDesc {
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.scopeBox {
+  padding: 12px 18px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  color: var(--neutral-900);
+  font-weight: 650;
+}
+
+.checkRow input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary-500);
+}
+
+.disabledRow {
+  color: #94a3b8;
+}
+
+.input,
+.select,
+.copyInput {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--neutral-900);
+  font-size: 0.96rem;
+}
+
+.input,
+.select {
+  margin-top: 10px;
+  padding: 0 12px;
+}
+
+.resultBox {
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--neutral-50);
+}
+
+.resultLabel {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--neutral-700);
+}
+
+.copyLine {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.copyInput {
+  padding: 0 12px;
+  color: #475569;
+}
+
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 42px;
+  width: 42px;
+  border-radius: 6px;
+  background: var(--primary-500);
+  color: #fff;
+}
+
+.errorText {
+  margin-top: 16px;
+  font-size: 0.92rem;
+  color: var(--red-500);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.cancelButton,
+.confirmButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 110px;
+  min-height: 46px;
+  padding: 0 22px;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.cancelButton {
+  border: 1px solid var(--neutral-200);
+  background: var(--surface);
+  color: var(--neutral-900);
+}
+
+.confirmButton {
+  background: var(--primary-500);
+  color: #fff;
+}
+
+.confirmButton:disabled {
+  cursor: not-allowed;
+  background: var(--primary-300);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .overlay {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .modal {
+    padding: 28px 20px 22px;
+  }
+
+  .copyLine,
+  .footer {
+    flex-direction: column;
+  }
+
+  .copyButton,
+  .cancelButton,
+  .confirmButton {
+    width: 100%;
+  }
+}
