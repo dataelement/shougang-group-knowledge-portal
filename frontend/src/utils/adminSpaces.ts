@@ -47,6 +47,7 @@ export function upsertSpace(spaces: SpaceConfig[], option: SpaceOption): SpaceCo
         name: option.name,
         tag_count: 0,
         file_count: option.file_count,
+        space_level: option.space_level ?? 'personal',
         enabled: true,
       },
     ];
@@ -56,6 +57,7 @@ export function upsertSpace(spaces: SpaceConfig[], option: SpaceOption): SpaceCo
     ...space,
     name: option.name,
     file_count: option.file_count,
+    space_level: option.space_level ?? space.space_level ?? 'personal',
     enabled: true,
   } : space));
 }

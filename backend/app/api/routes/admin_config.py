@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_bisheng_client, get_bisheng_runtime_service, get_portal_config_service
@@ -25,23 +23,42 @@ from app.services.bisheng_runtime_service import BishengRuntimeService
 router = APIRouter(prefix="/api/v1/admin/config", tags=["admin-config"])
 
 
+async def _fetch_shougang_portal_space_info(
+    bisheng_client: BishengClient,
+    space_ids: list[int],
+) -> dict[int, dict]:
+    if not space_ids:
+        return {}
+    try:
+        response = await bisheng_client.post_json(
+            "/api/v1/knowledge/shougang-portal/spaces/info",
+            json={"space_ids": space_ids},
+        )
+    except Exception:
+        return {}
+    data = response.get("data") or {}
+    raw_spaces = data.get("spaces") if isinstance(data, dict) else []
+    if not isinstance(raw_spaces, list):
+        return {}
+    live_space_data: dict[int, dict] = {}
+    for item in raw_spaces:
+        if not isinstance(item, dict) or item.get("id") is None:
+            continue
+        item_data = item.get("data") or {}
+        live_space_data[int(item["id"])] = item_data if isinstance(item_data, dict) else {}
+    return live_space_data
+
+
 @router.get("")
 async def get_portal_config(
     service: PortalConfigService = Depends(get_portal_config_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
     config = service.get_config()
-
-    async def fetch_space_info(space_id: int):
-        try:
-            response = await bisheng_client.get_json(f"/api/v1/knowledge/space/{space_id}/info")
-        except Exception:
-            return space_id, {}
-        data = response.get("data") or {}
-        return space_id, data if isinstance(data, dict) else {}
-
-    results = await asyncio.gather(*(fetch_space_info(space.id) for space in config.spaces))
-    live_space_data = {space_id: data for space_id, data in results}
+    live_space_data = await _fetch_shougang_portal_space_info(
+        bisheng_client,
+        [space.id for space in config.spaces],
+    )
     live_config = service.with_live_space_data(config, live_space_data)
     return response_ok(live_config)
 
@@ -86,25 +103,25 @@ async def get_space_options(
     if not isinstance(raw_spaces, list):
         raw_spaces = []
 
-    async def enrich_space(item: dict):
+    live_space_data = await _fetch_shougang_portal_space_info(
+        bisheng_client,
+        [int(item["id"]) for item in raw_spaces if item.get("id") is not None],
+    )
+    enriched_spaces = []
+    for item in raw_spaces:
         space_id = item.get("id")
-        if space_id is None:
-            return item
-        try:
-            info_response = await bisheng_client.get_json(f"/api/v1/knowledge/space/{space_id}/info")
-        except Exception:
-            return item
-        info = info_response.get("data") or {}
-        if not isinstance(info, dict):
-            return item
-        return {
+        info = live_space_data.get(int(space_id)) if space_id is not None else None
+        if not isinstance(info, dict) or not info:
+            enriched_spaces.append(item)
+            continue
+        enriched_item = {
             **item,
             "name": info.get("name") or item.get("name"),
             "description": info.get("description") or item.get("description"),
             "file_num": info.get("file_num") or item.get("file_num") or 0,
+            "space_level": info.get("space_level") or item.get("space_level") or "personal",
         }
-
-    enriched_spaces = await asyncio.gather(*(enrich_space(item) for item in raw_spaces))
+        enriched_spaces.append(enriched_item)
     return response_ok(service.build_space_options(enriched_spaces))
 
 

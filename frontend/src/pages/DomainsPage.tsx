@@ -8,6 +8,7 @@ import SectionHeader from '../components/SectionHeader';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { getEnabledDomains, getEnabledSpaces, getPrimarySpaceId } from '../utils/portalConfig';
+import { buildDomainSearchPath } from '../utils/searchParams';
 import s from './DomainsPage.module.css';
 
 const DOMAIN_ICONS: Record<string, LucideIcon> = {
@@ -46,7 +47,7 @@ export default function DomainsPage() {
         <Link to="/" className={s.backLink}>返回首页</Link>
         <SectionHeader icon={Building} title="全部业务域" size="large" />
         <p className={s.lead}>
-          汇总首页业务域入口，点击后进入对应业务域的知识列表页。
+          汇总首页业务域入口，点击后进入对应业务域的知识检索页。
         </p>
         <div className={s.grid}>
           {domains.map((domain) => {
@@ -62,7 +63,7 @@ export default function DomainsPage() {
                 type="button"
                 className={`${s.card} ${usesBannerThumb ? s.cardImage : ''}`}
                 style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
-                onClick={() => navigateToTop(`/domain/${encodeURIComponent(domain.name)}`)}
+                onClick={() => navigateToTop(buildDomainSearchPath(domain.name))}
               >
                 {usesBannerThumb ? null : (
                   <div className={s.iconWrap} style={{ background: domain.bg, color: domain.color }}>

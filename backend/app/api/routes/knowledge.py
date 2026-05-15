@@ -29,6 +29,7 @@ async def search_files(
     q: Optional[str] = None,
     tag: Optional[str] = None,
     space_ids: Annotated[Optional[list[int]], Query()] = None,
+    space_level: Optional[str] = None,
     file_ext: Optional[str] = None,
     sort: str = "updated_at",
     page: int = 1,
@@ -40,6 +41,7 @@ async def search_files(
             q=q,
             tag=tag,
             requested_space_ids=space_ids,
+            space_level=space_level,
             file_ext=file_ext,
             sort=sort,
             page=page,
@@ -51,9 +53,17 @@ async def search_files(
 @router.get("/tags")
 async def get_aggregated_tags(
     space_ids: Annotated[Optional[list[int]], Query()] = None,
+    space_level: Optional[str] = None,
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
-    return response_ok(await service.get_aggregated_tags(requested_space_ids=space_ids))
+    return response_ok(await service.get_aggregated_tags(requested_space_ids=space_ids, space_level=space_level))
+
+
+@router.get("/home")
+async def get_home_content(
+    service: KnowledgeService = Depends(get_knowledge_service),
+):
+    return response_ok(await service.get_home_content())
 
 
 @router.get("/spaces")

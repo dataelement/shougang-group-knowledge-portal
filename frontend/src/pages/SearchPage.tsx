@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Loader2 } from 'lucide-react';
 import PageShell from '../components/PageShell';
@@ -17,6 +17,12 @@ import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useListControls } from '../hooks/useListControls';
 import { getVisibleRange } from '../utils/listControls';
 import { getEnabledDomains, toRuntimeDisplayConfig } from '../utils/portalConfig';
+import {
+  createDomainFilterSearchParams,
+  createSubmittedSearchParams,
+  getSearchDisplayKeyword,
+  hasSearchContext,
+} from '../utils/searchParams';
 import s from './SearchPage.module.css';
 
 type DomainOption = {
@@ -24,25 +30,32 @@ type DomainOption = {
   spaceIds: number[];
 };
 
+const SPACE_LEVEL_OPTIONS = [
+  { value: 'public', label: '公共空间' },
+  { value: 'department', label: '部门空间' },
+  { value: 'team', label: '团队空间' },
+  { value: 'personal', label: '个人空间' },
+];
+
 export default function SearchPage() {
   const { params, page, resultsTopRef, setFilter, setParams } = useListControls();
   const navigate = useNavigate();
   const location = useLocation();
   const q = params.get('q') || '';
-  const [draft, setDraft] = useState(q);
   const domain = params.get('domain') || '';
+  const displayKeyword = getSearchDisplayKeyword(params);
+  const [draft, setDraft] = useState(displayKeyword);
+  const spaceLevel = params.get('space_level') || '';
   const fileExt = params.get('file_ext') || '';
   const tag = params.get('tag') || '';
   const sort = params.get('sort') || 'relevance';
-  const hasSearch = Boolean(q.trim());
+  const hasSearch = hasSearchContext(params);
   const { config } = usePortalConfig();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState<number>(displayConfig.search.pageSize);
   const [tags, setTags] = useState<string[]>([]);
-  const [domains, setDomains] = useState<DomainOption[]>([]);
-  const [qaSpaceIds, setQaSpaceIds] = useState<number[]>([]);
   const [aiText, setAiText] = useState('');
   const [aiCitations, setAiCitations] = useState<Citation[]>([]);
   const [aiThinking, setAiThinking] = useState(false);
@@ -50,20 +63,24 @@ export default function SearchPage() {
   const [error, setError] = useState('');
   const requestSeq = useRef(0);
 
+  const domains = useMemo<DomainOption[]>(
+    () => (config
+      ? getEnabledDomains(config.domains, config.spaces).map((item) => ({
+        name: item.name,
+        spaceIds: item.space_ids,
+      }))
+      : []),
+    [config],
+  );
+  const qaSpaceIds = useMemo(() => config?.qa.knowledge_space_ids ?? [], [config]);
   const selectedDomain = domains.find((item) => item.name === domain);
   const sids = selectedDomain?.spaceIds;
   const visibleRange = getVisibleRange(total, page, pageSize, files.length);
+  const resultHeading = q ? `搜索 “${q}”` : domain ? `业务域 “${domain}”` : `筛选 “${displayKeyword}”`;
 
   useEffect(() => {
-    if (!config) return;
-    setDomains(
-      getEnabledDomains(config.domains, config.spaces).map((item) => ({
-        name: item.name,
-        spaceIds: item.space_ids,
-      })),
-    );
-    setQaSpaceIds(config.qa.knowledge_space_ids);
-  }, [config]);
+    setDraft(displayKeyword);
+  }, [displayKeyword]);
 
   useEffect(() => {
     let active = true;
@@ -73,6 +90,10 @@ export default function SearchPage() {
       setAiText('');
       setAiCitations([]);
       setTags([]);
+      return;
+    }
+    if (domain && !config) {
+      setLoading(true);
       return;
     }
 
@@ -85,12 +106,13 @@ export default function SearchPage() {
             q: q || undefined,
             tag: tag || undefined,
             spaceIds: sids,
+            spaceLevel: spaceLevel || undefined,
             fileExt: fileExt || undefined,
             sort,
             page,
             pageSize: displayConfig.search.pageSize,
           }),
-          fetchAggregatedTags(sids),
+          fetchAggregatedTags(sids, spaceLevel || undefined),
         ]);
         if (!active) return;
         setFiles(result.data);
@@ -107,17 +129,18 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [displayConfig.search.pageSize, fileExt, hasSearch, page, q, sids, sort, tag]);
+  }, [config, displayConfig.search.pageSize, domain, fileExt, hasSearch, page, q, sids, spaceLevel, sort, tag]);
 
   useEffect(() => {
-    if (!q) return;
+    const aiKeyword = displayKeyword.trim();
+    if (!aiKeyword) return;
     const currentRequest = ++requestSeq.current;
     setAiText('');
     setAiCitations([]);
     setAiThinking(true);
     void streamChatCompletion({
       scene: 'search',
-      text: q,
+      text: aiKeyword,
       knowledgeSpaceIds: qaSpaceIds,
       onUpdate(text) {
         if (requestSeq.current !== currentRequest) return;
@@ -133,15 +156,10 @@ export default function SearchPage() {
         setAiThinking(false);
       }
     });
-  }, [q, qaSpaceIds]);
+  }, [displayKeyword, qaSpaceIds]);
 
   const submitSearch = () => {
-    const keyword = draft.trim();
-    const next = new URLSearchParams(params);
-    if (keyword) next.set('q', keyword);
-    else next.delete('q');
-    next.delete('page');
-    setParams(next);
+    setParams(createSubmittedSearchParams(params, draft));
   };
 
   return (
@@ -172,7 +190,7 @@ export default function SearchPage() {
             </div>
           ) : (
             <div className={s.resultCount}>
-              搜索 &ldquo;<strong>{q}</strong>&rdquo; 共 {total} 条结果
+              {resultHeading} 共 {total} 条结果
               {total > 0 ? `，当前显示 ${visibleRange.start}-${visibleRange.end} 条` : ''}
             </div>
           )}
@@ -180,7 +198,15 @@ export default function SearchPage() {
 
         {hasSearch && (
           <div className={s.filterBar}>
-            <select className={s.filterSelect} value={domain} onChange={(e) => setFilter('domain', e.target.value)}>
+            <select className={s.filterSelect} value={spaceLevel} onChange={(e) => setFilter('space_level', e.target.value)}>
+              <option value="">全部知识库</option>
+              {SPACE_LEVEL_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+            <select
+              className={s.filterSelect}
+              value={domain}
+              onChange={(e) => setParams(createDomainFilterSearchParams(params, e.target.value))}
+            >
               <option value="">业务域</option>
               {domains.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
             </select>

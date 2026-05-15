@@ -91,6 +91,7 @@ class PortalConfigService:
                     **space.model_dump(),
                     "name": str(space_data.get(space.id, {}).get("name") or space.name),
                     "file_count": int(space_data.get(space.id, {}).get("file_num") or space.file_count),
+                    "space_level": str(space_data.get(space.id, {}).get("space_level") or space.space_level),
                 }
             )
             for space in config.spaces
@@ -146,6 +147,7 @@ class PortalConfigService:
                 name=str(item.get("name") or ""),
                 description=str(item.get("description") or ""),
                 file_count=int(item.get("file_num") or 0),
+                space_level=str(item.get("space_level") or "personal"),
             )
             for item in raw_spaces
             if item.get("id") is not None and item.get("name")

@@ -6,6 +6,7 @@ class SpaceConfig(BaseModel):
     name: str
     file_count: int = 0
     tag_count: int = 0
+    space_level: str = "personal"
     enabled: bool = True
 
 
@@ -56,6 +57,7 @@ class SpaceOption(BaseModel):
     name: str
     description: str = ""
     file_count: int = 0
+    space_level: str = "personal"
 
 
 class SpaceOptionsResponse(BaseModel):

@@ -37,6 +37,11 @@ class RelatedKnowledgeFileData(BaseModel):
     total: int = 0
 
 
+class HomeKnowledgeData(BaseModel):
+    sections: dict[str, list[KnowledgeFileItem]] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+
+
 class KnowledgeSpaceItem(BaseModel):
     id: int
     name: str

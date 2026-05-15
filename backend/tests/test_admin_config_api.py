@@ -9,6 +9,9 @@ from app.services.portal_config_service import PortalConfigService
 
 
 class FakeBishengClient:
+    def __init__(self):
+        self.post_calls: list[tuple[str, dict | None]] = []
+
     async def get_json(self, path: str, params=None):
         if path == "/api/v1/workstation/config/daily":
             return {
@@ -62,6 +65,29 @@ class FakeBishengClient:
                 }
             }
         raise AssertionError(f"Unexpected path: {path}")
+
+    async def post_json(self, path: str, json=None):
+        self.post_calls.append((path, json))
+        if path == "/api/v1/knowledge/shougang-portal/spaces/info":
+            space_ids = (json or {}).get("space_ids", [])
+            return {
+                "data": {
+                    "spaces": [
+                        {
+                            "id": space_id,
+                            "data": {
+                            "id": space_id,
+                            "name": f"空间{space_id}",
+                            "file_num": space_id + 1,
+                            "space_level": "department" if space_id == 19 else "personal",
+                        },
+                            "error": None,
+                        }
+                        for space_id in space_ids
+                    ]
+                }
+            }
+        raise AssertionError(f"Unexpected post path: {path}")
 
     async def aclose(self):
         return None
@@ -130,10 +156,11 @@ def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
         )
     )
     runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
 
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
-        client.app.state.bisheng_client = FakeBishengClient()
+        client.app.state.bisheng_client = bisheng_client
         client.app.state.bisheng_runtime_service = runtime_service
         response = client.get("/api/v1/admin/config")
 
@@ -148,6 +175,9 @@ def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
     assert "selected_model" in body["data"]["qa"]
     assert body["data"]["spaces"][0]["name"] == "空间12"
     assert body["data"]["spaces"][0]["file_count"] == 13
+    assert bisheng_client.post_calls == [
+        ("/api/v1/knowledge/shougang-portal/spaces/info", {"space_ids": [12]})
+    ]
 
 
 def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
@@ -277,10 +307,11 @@ def test_get_admin_qa_model_options_uses_bisheng_daily_config(tmp_path: Path):
 def test_get_admin_space_options_uses_bisheng_knowledge_list(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
 
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
-        client.app.state.bisheng_client = FakeBishengClient()
+        client.app.state.bisheng_client = bisheng_client
         client.app.state.bisheng_runtime_service = runtime_service
         response = client.get("/api/v1/admin/config/space-options")
 
@@ -292,9 +323,13 @@ def test_get_admin_space_options_uses_bisheng_knowledge_list(tmp_path: Path):
                 "name": "空间19",
                 "description": "测试空间",
                 "file_count": 20,
+                "space_level": "department",
             }
         ]
     }
+    assert bisheng_client.post_calls == [
+        ("/api/v1/knowledge/shougang-portal/spaces/info", {"space_ids": [19]})
+    ]
 
 
 def test_get_admin_space_files_uses_bisheng_file_list(tmp_path: Path):

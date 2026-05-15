@@ -118,6 +118,11 @@ interface RelatedKnowledgeFileDataDto {
   total: number;
 }
 
+interface HomeKnowledgeDataDto {
+  sections: Record<string, KnowledgeFileItemDto[]>;
+  tags: string[];
+}
+
 interface FilePreviewManifestDto {
   download_url: string;
   mode: FilePreviewMode;
@@ -184,15 +189,38 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return parseResponse<T>(response);
 }
 
-export async function fetchPortalContentConfig(): Promise<PortalConfig> {
-  return fetchAdminConfig();
+let portalContentConfigPromise: Promise<PortalConfig> | null = null;
+
+export function invalidatePortalContentConfigCache() {
+  portalContentConfigPromise = null;
 }
 
-export async function fetchAggregatedTags(spaceIds?: number[]): Promise<string[]> {
+export async function fetchPortalContentConfig(): Promise<PortalConfig> {
+  if (!portalContentConfigPromise) {
+    portalContentConfigPromise = fetchAdminConfig().catch((error) => {
+      portalContentConfigPromise = null;
+      throw error;
+    });
+  }
+  return portalContentConfigPromise;
+}
+
+export async function fetchAggregatedTags(spaceIds?: number[], spaceLevel?: string): Promise<string[]> {
   const params = new URLSearchParams();
   spaceIds?.forEach((id) => params.append('space_ids', String(id)));
+  if (spaceLevel) params.set('space_level', spaceLevel);
   const query = params.toString();
   return request<string[]>(`/api/v1/knowledge/tags${query ? `?${query}` : ''}`);
+}
+
+export async function fetchHomeContent(): Promise<{ sections: Record<string, FileItem[]>; tags: string[] }> {
+  const data = await request<HomeKnowledgeDataDto>('/api/v1/knowledge/home');
+  return {
+    sections: Object.fromEntries(
+      Object.entries(data.sections ?? {}).map(([tag, items]) => [tag, items.map(mapKnowledgeFileItem)]),
+    ),
+    tags: data.tags ?? [],
+  };
 }
 
 export async function fetchSpaceTags(spaceId: number): Promise<string[]> {
@@ -203,6 +231,7 @@ export async function searchFiles(params: {
   q?: string;
   tag?: string;
   spaceIds?: number[];
+  spaceLevel?: string;
   fileExt?: string;
   sort?: string;
   page?: number;
@@ -211,6 +240,7 @@ export async function searchFiles(params: {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
   if (params.tag) query.set('tag', params.tag);
+  if (params.spaceLevel) query.set('space_level', params.spaceLevel);
   if (params.fileExt) query.set('file_ext', params.fileExt);
   if (params.sort) query.set('sort', params.sort);
   if (params.page) query.set('page', String(params.page));

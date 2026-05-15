@@ -12,12 +12,13 @@ import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
-import { fetchAggregatedTags, searchFiles, streamChatCompletion, type FileItem } from '../api/content';
+import { fetchHomeContent, streamChatCompletion, type FileItem } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledApps, getEnabledDomains, getEnabledSections, getEnabledSpaces, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
+import { buildDomainSearchPath } from '../utils/searchParams';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
 import s from './HomePage.module.css';
@@ -447,7 +448,6 @@ export default function HomePage() {
   const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains, config.spaces) : []), [config]);
   const enabledSections = useMemo(() => (config ? getEnabledSections(config.sections) : []), [config]);
   const enabledApps = useMemo(() => (config ? getEnabledApps(config.apps) : []), [config]);
-  const enabledSpaceIds = useMemo(() => enabledSpaces.map((space) => space.id), [enabledSpaces]);
 
   useEffect(() => {
     let active = true;
@@ -458,24 +458,10 @@ export default function HomePage() {
     setSectionDataFailed(false);
     void (async () => {
       try {
-        const [sectionResults, tagResults] = await Promise.all([
-          Promise.all(
-            enabledSections.map(async (section) => [
-              section.tag,
-              await searchFiles({
-                tag: section.tag,
-                spaceIds: enabledSpaceIds,
-                pageSize: displayConfig.home.sectionPageSize,
-              }),
-            ] as const),
-          ),
-          fetchAggregatedTags(enabledSpaceIds),
-        ]);
+        const homeContent = await fetchHomeContent();
         if (!active) return;
-        setSectionData(
-          Object.fromEntries(sectionResults.map(([tag, result]) => [tag, result.data])),
-        );
-        setHotTags(tagResults);
+        setSectionData(homeContent.sections);
+        setHotTags(homeContent.tags);
         setSectionDataFailed(false);
         setLoadError('');
       } catch (err) {
@@ -488,7 +474,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, [config, displayConfig.home.sectionPageSize, enabledSections, enabledSpaceIds]);
+  }, [config]);
 
   /* Stats */
   const totalFiles = enabledSpaces.reduce((total, space) => total + space.file_count, 0);
@@ -740,7 +726,7 @@ export default function HomePage() {
                     key={d.name}
                     className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
                     style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
-                    onClick={() => navigateToTop(`/domain/${encodeURIComponent(d.name)}`)}
+                    onClick={() => navigateToTop(buildDomainSearchPath(d.name))}
                   >
                     {usesBannerThumb ? null : (
                       <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>

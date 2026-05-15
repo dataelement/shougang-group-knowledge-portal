@@ -14,6 +14,7 @@ from app.schemas.knowledge import (
     FilePreviewManifest,
     FilePreviewMode,
     FilePreviewSourceKind,
+    HomeKnowledgeData,
     KnowledgeFileDetail,
     KnowledgeFileItem,
     KnowledgeFileSpace,
@@ -103,9 +104,80 @@ class KnowledgeService:
         config = self._config_service.get_config()
         return [space.id for space in config.spaces if space.enabled]
 
+    def get_enabled_space_ids_by_level(self, space_level: Optional[str]) -> list[int]:
+        config = self._config_service.get_config()
+        normalized_level = (space_level or "").strip()
+        return [
+            space.id
+            for space in config.spaces
+            if space.enabled and (not normalized_level or space.space_level == normalized_level)
+        ]
+
     def get_space_name_map(self) -> dict[int, str]:
         config = self._config_service.get_config()
         return {space.id: space.name for space in config.spaces}
+
+    async def get_home_content(self) -> HomeKnowledgeData:
+        config = self._config_service.get_config()
+        space_ids = self.resolve_requested_space_ids()
+        sections = [section for section in config.sections if section.enabled and section.tag]
+        if not space_ids or not sections:
+            return HomeKnowledgeData(
+                sections={section.tag: [] for section in sections},
+                tags=[],
+            )
+        try:
+            response = await self._bisheng.post_json(
+                "/api/v1/knowledge/shougang-portal/home",
+                json={
+                    "space_ids": space_ids,
+                    "space_level": None,
+                    "sections": [
+                        {
+                            "tag": section.tag,
+                            "page_size": config.display.home.section_page_size,
+                        }
+                        for section in sections
+                    ],
+                    "hot_tags_limit": config.display.home.hot_tags_count,
+                },
+            )
+            data = response.get("data") or {}
+            raw_sections = data.get("sections") if isinstance(data, dict) else {}
+            raw_tags = data.get("tags") if isinstance(data, dict) else []
+            mapped_sections: dict[str, list[KnowledgeFileItem]] = {}
+            for section in sections:
+                raw_items = raw_sections.get(section.tag, []) if isinstance(raw_sections, dict) else []
+                mapped_sections[section.tag] = self._map_shougang_portal_response_items(raw_items)
+            tags = list(dict.fromkeys(str(tag) for tag in raw_tags if str(tag))) if isinstance(raw_tags, list) else []
+            return HomeKnowledgeData(sections=mapped_sections, tags=tags)
+        except Exception:
+            section_results = await asyncio.gather(
+                *[
+                    self.search_files(
+                        q=None,
+                        tag=section.tag,
+                        requested_space_ids=space_ids,
+                        space_level=None,
+                        file_ext=None,
+                        sort="updated_at",
+                        page=1,
+                        page_size=config.display.home.section_page_size,
+                    )
+                    for section in sections
+                ],
+                return_exceptions=True,
+            )
+            tags = await self.get_aggregated_tags(space_ids)
+            return HomeKnowledgeData(
+                sections={
+                    section.tag: (
+                        [] if isinstance(result, Exception) else result.data
+                    )
+                    for section, result in zip(sections, section_results)
+                },
+                tags=tags[:config.display.home.hot_tags_count],
+            )
 
     async def list_visible_spaces(self) -> KnowledgeSpaceListData:
         results = await asyncio.gather(
@@ -136,16 +208,32 @@ class KnowledgeService:
         tag_lookup = await self._get_space_tag_lookup(space_id)
         return sorted(tag_lookup.keys())
 
-    async def get_aggregated_tags(self, requested_space_ids: Optional[list[int]] = None) -> list[str]:
-        space_ids = self.resolve_requested_space_ids(requested_space_ids)
+    async def get_aggregated_tags(
+        self,
+        requested_space_ids: Optional[list[int]] = None,
+        space_level: Optional[str] = None,
+    ) -> list[str]:
+        space_ids = self.resolve_requested_space_ids(
+            requested_space_ids,
+            space_level,
+        )
         if not space_ids:
             return []
+        if len(space_ids) > 1 or space_level:
+            try:
+                return await self._fetch_shougang_portal_tags(space_ids=space_ids, space_level=space_level)
+            except Exception:
+                pass
         lookups = await asyncio.gather(*[self._get_space_tag_lookup(space_id) for space_id in space_ids])
         tags = {tag_name for lookup in lookups for tag_name in lookup.keys()}
         return sorted(tags)
 
-    def resolve_requested_space_ids(self, requested_space_ids: Optional[list[int]] = None) -> list[int]:
-        enabled_space_ids = set(self.get_enabled_space_ids())
+    def resolve_requested_space_ids(
+        self,
+        requested_space_ids: Optional[list[int]] = None,
+        space_level: Optional[str] = None,
+    ) -> list[int]:
+        enabled_space_ids = set(self.get_enabled_space_ids_by_level(space_level))
         if requested_space_ids:
             return sorted(enabled_space_ids.intersection(requested_space_ids))
         return sorted(enabled_space_ids)
@@ -176,17 +264,34 @@ class KnowledgeService:
         q: Optional[str],
         tag: Optional[str],
         requested_space_ids: Optional[list[int]],
+        space_level: Optional[str],
         file_ext: Optional[str],
         sort: str,
         page: int,
         page_size: int,
     ) -> PagedKnowledgeFileData:
-        if not q and not tag:
+        has_filter = bool(tag or requested_space_ids or space_level or file_ext)
+        if not q and not has_filter:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
-        space_ids = self.resolve_requested_space_ids(requested_space_ids)
+        space_ids = self.resolve_requested_space_ids(requested_space_ids, space_level)
         if not space_ids:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
+
+        if len(space_ids) > 1 or space_level:
+            try:
+                return await self._search_shougang_portal_files(
+                    q=q,
+                    tag=tag,
+                    space_ids=space_ids,
+                    space_level=space_level,
+                    file_ext=file_ext,
+                    sort=sort,
+                    page=page,
+                    page_size=page_size,
+                )
+            except Exception:
+                pass
 
         results = await asyncio.gather(
             *[
@@ -203,6 +308,78 @@ class KnowledgeService:
         sorted_items = self._sort_items(filtered, sort=sort, keyword=q)
         mapped = self._map_items(sorted_items)
         return self._paginate(mapped, page=page, page_size=page_size)
+
+    async def _fetch_shougang_portal_tags(
+        self,
+        space_ids: list[int],
+        space_level: Optional[str],
+    ) -> list[str]:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/tags/search",
+            json={
+                "space_ids": space_ids,
+                "space_level": space_level,
+            },
+        )
+        data = response.get("data") or {}
+        tags = data.get("tags") if isinstance(data, dict) else []
+        if not isinstance(tags, list):
+            return []
+        return sorted({str(tag) for tag in tags if str(tag)})
+
+    async def _search_shougang_portal_files(
+        self,
+        q: Optional[str],
+        tag: Optional[str],
+        space_ids: list[int],
+        space_level: Optional[str],
+        file_ext: Optional[str],
+        sort: str,
+        page: int,
+        page_size: int,
+    ) -> PagedKnowledgeFileData:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/files/search",
+            json={
+                "q": q,
+                "tag": tag,
+                "space_ids": space_ids,
+                "space_level": space_level,
+                "file_ext": file_ext,
+                "sort": sort,
+                "page": page,
+                "page_size": page_size,
+            },
+        )
+        data = response.get("data") or {}
+        raw_items = data.get("data") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        return PagedKnowledgeFileData(
+            data=self._map_shougang_portal_response_items(raw_items),
+            total=int(data.get("total") or 0),
+            page=int(data.get("page") or page),
+            page_size=int(data.get("page_size") or page_size),
+        )
+
+    @staticmethod
+    def _map_shougang_portal_response_items(raw_items: list) -> list[KnowledgeFileItem]:
+        return [
+            KnowledgeFileItem(
+                id=int(item.get("id") or 0),
+                space_id=int(item.get("space_id") or item.get("knowledge_id") or 0),
+                title=str(item.get("title") or item.get("file_name") or ""),
+                summary=str(item.get("summary") or item.get("abstract") or ""),
+                source=str(item.get("source") or ""),
+                updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
+                tags=[str(tag) for tag in (item.get("tags") or [])],
+                file_ext=str(item.get("file_ext") or ""),
+                file_size=str(item.get("file_size") or ""),
+                file_encoding=str(item.get("file_encoding") or ""),
+            )
+            for item in raw_items
+            if isinstance(item, dict)
+        ]
 
     async def get_file_detail(self, space_id: int, file_id: int) -> Optional[KnowledgeFileDetail]:
         if space_id not in self.get_enabled_space_ids():
@@ -547,6 +724,7 @@ class KnowledgeService:
                 q=None,
                 tag=tag_name,
                 requested_space_ids=None,
+                space_level=None,
                 file_ext=None,
                 sort="updated_at",
                 page=1,

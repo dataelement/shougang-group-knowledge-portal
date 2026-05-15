@@ -3,6 +3,7 @@ export interface SpaceConfig {
   name: string;
   file_count: number;
   tag_count: number;
+  space_level?: string;
   enabled: boolean;
 }
 
@@ -62,6 +63,7 @@ export interface SpaceOption {
   name: string;
   description: string;
   file_count: number;
+  space_level?: string;
 }
 
 export interface SpaceFileItem {
