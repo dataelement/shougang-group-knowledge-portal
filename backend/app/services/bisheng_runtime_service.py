@@ -11,6 +11,7 @@ import httpx
 
 from app.clients.bisheng import BishengClient
 from app.schemas.bisheng_runtime import (
+    BishengRuntimeAuthUser,
     BishengRuntimeConfig,
     BishengRuntimeConfigUpdate,
     BishengRuntimeConfigView,
@@ -67,6 +68,9 @@ class BishengRuntimeService:
         self._lock = asyncio.Lock()
         self._client: BishengClient | None = None
         self._refresh_task: asyncio.Task | None = None
+        self._connected = False
+        self._auth_message = "未验证"
+        self._auth_user: BishengRuntimeAuthUser | None = None
         self._ensure_seeded()
 
     async def initialize(self) -> None:
@@ -75,6 +79,7 @@ class BishengRuntimeService:
         if self._can_auto_refresh():
             await self._refresh_token_if_due()
             self._refresh_task = asyncio.create_task(self._refresh_loop())
+        await self._refresh_runtime_account_info()
 
     async def aclose(self) -> None:
         task = self._refresh_task
@@ -143,7 +148,8 @@ class BishengRuntimeService:
             )
             self._write_config(updated)
             await self._replace_client(updated)
-            return self._to_public_view(updated)
+        await self._refresh_runtime_account_info()
+        return self.get_public_config()
 
     async def _refresh_loop(self) -> None:
         while True:
@@ -159,6 +165,7 @@ class BishengRuntimeService:
                 logger.exception("BiSheng token 自动刷新循环异常，将在下次轮询重试")
 
     async def _refresh_token_if_due(self) -> None:
+        refreshed = False
         async with self._lock:
             current = self._read_config()
             if not self._is_token_due_for_refresh(current.api_token):
@@ -191,6 +198,9 @@ class BishengRuntimeService:
             self._write_config(updated)
             await self._replace_client(updated)
             logger.info("BiSheng token 已自动续期")
+            refreshed = True
+        if refreshed:
+            await self._refresh_runtime_account_info()
 
     def _is_token_due_for_refresh(self, token: str) -> bool:
         if not token:
@@ -246,6 +256,42 @@ class BishengRuntimeService:
         finally:
             await client.aclose()
 
+    async def _refresh_runtime_account_info(self) -> None:
+        async with self._lock:
+            current = self._read_config()
+            if not current.api_token:
+                self._connected = False
+                self._auth_user = None
+                self._auth_message = "未配置 BiSheng 数据源 token"
+                return
+            if self._client is None:
+                self._connected = False
+                self._auth_user = None
+                self._auth_message = "BiSheng client is not initialized"
+                return
+            try:
+                response = await self._client.get_json("/api/v1/user/info")
+                data = _unwrap_bisheng_payload(response)
+            except Exception as err:
+                self._connected = False
+                self._auth_user = None
+                self._auth_message = (
+                    f"BiSheng 数据源登录信息获取失败："
+                    f"{self._sanitize_error_message(err, current.api_token)}"
+                )
+                return
+
+            account = self._first_str(data, "user_name", "username", "account", "email") or current.username
+            name = self._first_str(data, "nick_name", "nickname", "name", "real_name", "user_name") or account
+            self._auth_user = BishengRuntimeAuthUser(
+                account=account,
+                name=name,
+                role=self._first_str(data, "role_name", "role", "position", "department_name", "department"),
+                external_id=self._first_str(data, "external_id", "employee_id", "staff_id"),
+            )
+            self._connected = True
+            self._auth_message = "已连接"
+
     def _ensure_seeded(self) -> None:
         if self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY) is not None:
             return
@@ -290,8 +336,7 @@ class BishengRuntimeService:
         if previous is not None:
             await previous.aclose()
 
-    @staticmethod
-    def _to_public_view(config: BishengRuntimeConfig) -> BishengRuntimeConfigView:
+    def _to_public_view(self, config: BishengRuntimeConfig) -> BishengRuntimeConfigView:
         return BishengRuntimeConfigView(
             base_url=config.base_url,
             asset_base_url=config.asset_base_url,
@@ -299,7 +344,25 @@ class BishengRuntimeService:
             timeout_seconds=config.timeout_seconds,
             has_token=bool(config.api_token),
             last_auth_at=config.last_auth_at,
+            connected=self._connected,
+            auth_message=self._auth_message,
+            auth_user=self._auth_user,
         )
+
+    @staticmethod
+    def _first_str(data: dict, *keys: str) -> str:
+        for key in keys:
+            value = data.get(key)
+            if value not in (None, ""):
+                return str(value)
+        return ""
+
+    @staticmethod
+    def _sanitize_error_message(err: Exception, token: str) -> str:
+        message = str(err) or err.__class__.__name__
+        if token:
+            message = message.replace(token, "***")
+        return message
 
 
 def _unwrap_bisheng_payload(response: dict) -> dict:

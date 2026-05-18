@@ -1,27 +1,29 @@
 import type { FileItem } from '../api/content';
 import TagPill from './TagPill';
-import { BookOpen, CalendarClock, FileText, FolderTree, HardDrive, Hash, Share2, Star, Tag } from 'lucide-react';
+import { CalendarClock, Download, FileText, FolderTree, HardDrive, Hash, MessageCircle, Share2, Star, Tag } from 'lucide-react';
 import { buildFileListItemView } from '../utils/fileListItemView';
 import s from './FileListItem.module.css';
 
 interface Props {
   file: FileItem;
-  onClick?: () => void;
   onFavorite?: (file: FileItem) => void;
+  onDownload?: (file: FileItem) => void | Promise<void>;
   onShare?: (file: FileItem) => void;
+  onAsk?: (file: FileItem) => void;
   visibleTagCount?: number;
 }
 
-export default function FileListItem({ file, onClick, onFavorite, onShare, visibleTagCount = 2 }: Props) {
+export default function FileListItem({ file, onFavorite, onDownload, onShare, onAsk, visibleTagCount = 2 }: Props) {
   const view = buildFileListItemView(file, {
     visibleTagCount,
-    canOpenDetail: Boolean(onClick),
     canFavorite: Boolean(onFavorite),
+    canDownload: Boolean(onDownload),
     canShare: Boolean(onShare),
+    canAsk: Boolean(onAsk),
   });
 
   return (
-    <article className={s.item} onClick={onClick}>
+    <article className={s.item}>
       <div className={s.body}>
         <div className={s.header}>
           <div className={s.heading}>
@@ -71,6 +73,20 @@ export default function FileListItem({ file, onClick, onFavorite, onShare, visib
                   <Star size={19} />
                 </button>
               ) : null}
+              {view.actions.includes('download') ? (
+                <button
+                  type="button"
+                  className={`${s.actionButton} ${s.downloadButton}`}
+                  title="下载文档"
+                  aria-label="下载文档"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void onDownload?.(file);
+                  }}
+                >
+                  <Download size={19} />
+                </button>
+              ) : null}
               {view.actions.includes('share') ? (
                 <button
                   type="button"
@@ -85,18 +101,18 @@ export default function FileListItem({ file, onClick, onFavorite, onShare, visib
                   <Share2 size={19} />
                 </button>
               ) : null}
-              {view.actions.includes('detail') ? (
+              {view.actions.includes('qa') ? (
                 <button
                   type="button"
-                  className={s.actionButton}
-                  title="查看详情"
-                  aria-label="查看详情"
+                  className={`${s.actionButton} ${s.qaButton}`}
+                  title="文档问答"
+                  aria-label="文档问答"
                   onClick={(event) => {
                     event.stopPropagation();
-                    onClick?.();
+                    onAsk?.(file);
                   }}
                 >
-                  <BookOpen size={19} />
+                  <MessageCircle size={19} />
                 </button>
               ) : null}
             </div>

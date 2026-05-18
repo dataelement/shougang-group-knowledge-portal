@@ -557,10 +557,92 @@ export interface Citation {
 interface BishengStreamPayload {
   category?: string;
   type?: string;
-  message?: { msg?: string; text?: string };
+  message?: string | { content?: string; msg?: string; text?: string };
   citations?: Citation[];
   final?: boolean;
   responseMessage?: { text?: string; citations?: Citation[] };
+}
+
+function getStreamMessageText(payload: BishengStreamPayload): string {
+  if (typeof payload.message === 'string') return payload.message;
+  return payload.message?.content ?? payload.message?.msg ?? payload.message?.text ?? '';
+}
+
+async function consumeChatStream(
+  response: Response,
+  onUpdate: (text: string) => void,
+  onCitations?: (citations: Citation[]) => void,
+): Promise<void> {
+  if (!response.ok || !response.body) {
+    throw new Error('问答请求失败');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let accumulated = '';
+  let finalText = '';
+  let lastCitations: Citation[] = [];
+
+  const emit = (text: string) => {
+    if (text && text !== accumulated) {
+      accumulated = text;
+      onUpdate(text);
+    }
+  };
+
+  const emitCitations = (citations: Citation[] | undefined) => {
+    if (citations && citations.length) {
+      lastCitations = citations;
+      onCitations?.(citations);
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+    for (const event of events) {
+      const dataLines = event.split('\n').filter((line) => line.startsWith('data: '));
+      if (dataLines.length === 0) continue;
+      const raw = dataLines.map((line) => line.slice(6)).join('\n');
+      let payload: BishengStreamPayload;
+      try {
+        payload = JSON.parse(raw) as BishengStreamPayload;
+      } catch {
+        continue;
+      }
+      if (payload.category === 'agent_answer') {
+        const msg = getStreamMessageText(payload);
+        if (payload.type === 'end') {
+          if (msg) {
+            finalText = msg;
+            emit(msg);
+          }
+          emitCitations(payload.citations);
+        } else if (msg) {
+          emit(accumulated + msg);
+        }
+      } else if (payload.category === 'stream') {
+        const content = getStreamMessageText(payload);
+        if (payload.type === 'end') {
+          if (content) {
+            finalText = content;
+            emit(content);
+          }
+          emitCitations(payload.citations);
+        } else if (content) {
+          emit(accumulated + content);
+        }
+      } else if (payload.final) {
+        const text = payload.responseMessage?.text || finalText || accumulated;
+        if (text) emit(text);
+        emitCitations(payload.responseMessage?.citations ?? lastCitations);
+      }
+    }
+  }
 }
 
 export async function streamChatCompletion(params: {
@@ -587,63 +669,25 @@ export async function streamChatCompletion(params: {
       files: [],
     }),
   });
-  if (!response.ok || !response.body) {
-    throw new Error('问答请求失败');
-  }
+  await consumeChatStream(response, params.onUpdate, params.onCitations);
+}
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-  let accumulated = '';
-  let finalText = '';
-  let lastCitations: Citation[] = [];
-
-  const emit = (text: string) => {
-    if (text && text !== accumulated) {
-      accumulated = text;
-      params.onUpdate(text);
-    }
-  };
-
-  const emitCitations = (citations: Citation[] | undefined) => {
-    if (citations && citations.length) {
-      lastCitations = citations;
-      params.onCitations?.(citations);
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split('\n\n');
-    buffer = events.pop() || '';
-    for (const event of events) {
-      const dataLines = event.split('\n').filter((line) => line.startsWith('data: '));
-      if (dataLines.length === 0) continue;
-      const raw = dataLines.map((line) => line.slice(6)).join('\n');
-      let payload: BishengStreamPayload;
-      try {
-        payload = JSON.parse(raw) as BishengStreamPayload;
-      } catch {
-        continue;
-      }
-      if (payload.category === 'agent_answer') {
-        const msg = payload.message?.msg ?? '';
-        if (payload.type === 'end') {
-          if (msg) {
-            finalText = msg;
-            emit(msg);
-          }
-          emitCitations(payload.citations);
-        } else if (msg) {
-          emit(accumulated + msg);
-        }
-      } else if (payload.final) {
-        const text = payload.responseMessage?.text || finalText || accumulated;
-        if (text) emit(text);
-        emitCitations(payload.responseMessage?.citations ?? lastCitations);
-      }
-    }
-  }
+export async function streamDocumentFileChat(params: {
+  spaceId: number;
+  fileId: number;
+  text: string;
+  model?: string;
+  onUpdate: (text: string) => void;
+  onCitations?: (citations: Citation[]) => void;
+}): Promise<void> {
+  const response = await fetch(`/api/v1/knowledge/space/${params.spaceId}/files/${params.fileId}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      query: params.text,
+      model: params.model ?? '',
+    }),
+  });
+  await consumeChatStream(response, params.onUpdate, params.onCitations);
 }

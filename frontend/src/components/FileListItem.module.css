@@ -5,7 +5,7 @@
   border-radius: 8px;
   background: var(--surface);
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
-  cursor: pointer;
+  cursor: default;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
@@ -107,6 +107,15 @@
   background: #d97706;
 }
 
+.downloadButton {
+  background: #16a34a;
+  box-shadow: 0 8px 16px rgba(22, 163, 74, 0.24);
+}
+
+.downloadButton:hover {
+  background: #15803d;
+}
+
 .shareButton {
   background: #8b5cf6;
   box-shadow: 0 8px 16px rgba(139, 92, 246, 0.24);
@@ -114,6 +123,14 @@
 
 .shareButton:hover {
   background: #7c3aed;
+}
+
+.qaButton {
+  background: var(--primary-600);
+}
+
+.qaButton:hover {
+  background: var(--primary-700);
 }
 
 .textBlock {

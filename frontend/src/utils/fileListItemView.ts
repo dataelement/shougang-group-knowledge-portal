@@ -1,6 +1,6 @@
 import type { FileItem } from '../api/content';
 
-export type FileListItemAction = 'detail' | 'favorite' | 'share';
+export type FileListItemAction = 'download' | 'favorite' | 'qa' | 'share';
 
 const META_TAGS = new Set(['最新精选', '典型案例']);
 
@@ -22,8 +22,9 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 
 export interface FileListItemViewOptions {
   visibleTagCount?: number;
-  canOpenDetail?: boolean;
+  canAsk?: boolean;
   canFavorite?: boolean;
+  canDownload?: boolean;
   canShare?: boolean;
 }
 
@@ -75,8 +76,9 @@ export function buildFileListItemView(
     confidenceLabel: '',
     actions: [
       ...(options.canFavorite ? ['favorite' as const] : []),
+      ...(options.canDownload ? ['download' as const] : []),
       ...(options.canShare ? ['share' as const] : []),
-      ...(options.canOpenDetail === false ? [] : ['detail' as const]),
+      ...(options.canAsk ? ['qa' as const] : []),
     ],
   };
 }

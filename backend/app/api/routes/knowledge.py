@@ -2,11 +2,13 @@ from typing import Annotated, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import get_bisheng_client, get_portal_auth_service, get_portal_config_service
 from app.clients.bisheng import BishengClient
 from app.schemas.common import response_ok
 from app.schemas.knowledge import (
+    DocumentFileChatRequest,
     FavoriteDocumentRequest,
     FilePreviewSourceKind,
     ShareDocumentAccessRequest,
@@ -21,6 +23,7 @@ from app.services.knowledge_service import (
 )
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService
 from app.services.portal_config_service import PortalConfigService
+from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 
@@ -35,6 +38,7 @@ def get_knowledge_service(
     return KnowledgeService(
         bisheng_client=bisheng_client,
         portal_config_service=portal_config_service,
+        default_model=get_settings().bisheng_default_model,
     )
 
 
@@ -368,6 +372,20 @@ async def get_file_chunks(
         _require_share_access(request, share_token, space_id, file_id)
     chunks = await service.get_file_chunks(space_id=space_id, file_id=file_id)
     return response_ok(chunks)
+
+
+@router.post("/space/{space_id}/files/{file_id}/chat")
+async def chat_document_file(
+    space_id: int,
+    file_id: int,
+    req: DocumentFileChatRequest,
+    service: KnowledgeService = Depends(get_knowledge_service),
+):
+    try:
+        stream = service.stream_document_file_chat(space_id=space_id, file_id=file_id, req=req)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    return StreamingResponse(stream, media_type="text/event-stream")
 
 
 @router.get("/space/{space_id}/files/{file_id}/related")

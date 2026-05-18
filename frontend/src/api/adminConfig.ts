@@ -56,6 +56,14 @@ export interface BishengRuntimeConfig {
   timeout_seconds: number;
   has_token: boolean;
   last_auth_at: string;
+  connected: boolean;
+  auth_message: string;
+  auth_user: {
+    account: string;
+    name: string;
+    role: string;
+    external_id: string;
+  } | null;
 }
 
 export interface SpaceOption {

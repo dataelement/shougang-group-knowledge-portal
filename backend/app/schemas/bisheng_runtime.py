@@ -33,6 +33,13 @@ class BishengRuntimeConfig(BaseModel):
         return _validate_asset_base_url(value)
 
 
+class BishengRuntimeAuthUser(BaseModel):
+    account: str = ""
+    name: str = ""
+    role: str = ""
+    external_id: str = ""
+
+
 class BishengRuntimeConfigView(BaseModel):
     base_url: AnyHttpUrl
     asset_base_url: str = ""
@@ -40,6 +47,9 @@ class BishengRuntimeConfigView(BaseModel):
     timeout_seconds: float = 30.0
     has_token: bool = False
     last_auth_at: str = ""
+    connected: bool = False
+    auth_message: str = "未验证"
+    auth_user: BishengRuntimeAuthUser | None = None
 
 
 class BishengRuntimeConfigUpdate(BaseModel):

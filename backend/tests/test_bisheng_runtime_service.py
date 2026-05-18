@@ -42,6 +42,16 @@ class FakeRuntimeBishengClient:
                 "status_message": "SUCCESS",
                 "data": {"public_key": "fake-public-key"},
             }
+        if path == "/api/v1/user/info":
+            return {
+                "status_code": 200,
+                "status_message": "SUCCESS",
+                "data": {
+                    "user_name": "portal-admin",
+                    "nick_name": "门户服务账号",
+                    "role_name": "管理员",
+                },
+            }
         raise AssertionError(f"Unexpected path: {path}")
 
     async def post_json(self, path: str, json=None):
@@ -193,6 +203,22 @@ class _ScriptedBishengClient:
             return {"status_code": 200, "data": {"captcha_key": "k", "user_capthca": False}}
         if path == "/api/v1/user/public_key":
             return {"status_code": 200, "data": {"public_key": "fake-public-key"}}
+        if path == "/api/v1/user/info":
+            self._state["user_info_calls"] += 1
+            self._state["user_info_tokens"].append(self.api_token)
+            if self._state["user_info_errors"]:
+                err = self._state["user_info_errors"].pop(0)
+                if err is not None:
+                    raise err
+            return {
+                "status_code": 200,
+                "data": {
+                    "user_name": "portal-admin",
+                    "nick_name": "门户服务账号",
+                    "role_name": "管理员",
+                    "external_id": "E1001",
+                },
+            }
         raise AssertionError(f"Unexpected get: {path}")
 
     async def post_json(self, path, json=None):
@@ -211,12 +237,15 @@ class _ScriptedBishengClient:
         return None
 
 
-def _make_scripted_factory(*, login_tokens=None, login_errors=None):
+def _make_scripted_factory(*, login_tokens=None, login_errors=None, user_info_errors=None):
     state = {
         "login_calls": 0,
         "last_login_payload": None,
         "tokens": list(login_tokens or []),
         "errors": list(login_errors or []),
+        "user_info_calls": 0,
+        "user_info_tokens": [],
+        "user_info_errors": list(user_info_errors or []),
     }
 
     def factory(base_url, timeout_seconds, api_token=None, *, asset_base_url=None):
@@ -261,6 +290,68 @@ def test_decode_jwt_exp_handles_invalid_inputs():
     header = base64.urlsafe_b64encode(b"{}").rstrip(b"=").decode()
     payload_no_exp = base64.urlsafe_b64encode(b'{"sub":"x"}').rstrip(b"=").decode()
     assert _decode_jwt_exp(f"{header}.{payload_no_exp}.sig") is None
+
+
+def test_initialize_fetches_runtime_account_info_with_configured_token(tmp_path: Path):
+    config_path = tmp_path / "rt.json"
+    token = _make_fake_jwt(2 * 3600)
+    _seed_runtime_config(config_path, api_token=token, username="portal-admin")
+    factory, state = _make_scripted_factory()
+
+    service = BishengRuntimeService(
+        config_path=config_path,
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+    )
+
+    async def _run():
+        await service.initialize()
+        view = service.get_public_config()
+        await service.aclose()
+        return view
+
+    view = asyncio.run(_run())
+
+    assert state["user_info_calls"] == 1
+    assert state["user_info_tokens"] == [token]
+    assert view.connected is True
+    assert view.auth_message == "已连接"
+    assert view.auth_user is not None
+    assert view.auth_user.account == "portal-admin"
+    assert view.auth_user.name == "门户服务账号"
+    assert view.auth_user.role == "管理员"
+    assert view.auth_user.external_id == "E1001"
+
+
+def test_initialize_reports_disconnected_when_runtime_account_info_fails(tmp_path: Path):
+    config_path = tmp_path / "rt.json"
+    token = _make_fake_jwt(2 * 3600)
+    _seed_runtime_config(config_path, api_token=token, username="portal-admin")
+    factory, state = _make_scripted_factory(user_info_errors=[ValueError("bad token")])
+
+    service = BishengRuntimeService(
+        config_path=config_path,
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+    )
+
+    async def _run():
+        await service.initialize()
+        view = service.get_public_config()
+        await service.aclose()
+        return view
+
+    view = asyncio.run(_run())
+
+    assert state["user_info_calls"] == 1
+    assert view.connected is False
+    assert view.auth_user is None
+    assert view.auth_message == "BiSheng 数据源登录信息获取失败：bad token"
+    assert token not in view.auth_message
 
 
 def test_refresh_skips_when_token_is_fresh(tmp_path: Path):

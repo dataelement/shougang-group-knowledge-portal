@@ -120,6 +120,16 @@ class FakeRuntimeBishengClient:
                 "status_message": "SUCCESS",
                 "data": {"public_key": "fake-public-key"},
             }
+        if path == "/api/v1/user/info":
+            return {
+                "status_code": 200,
+                "status_message": "SUCCESS",
+                "data": {
+                    "user_name": "portal-admin",
+                    "nick_name": "门户服务账号",
+                    "role_name": "管理员",
+                },
+            }
         raise AssertionError(f"Unexpected runtime path: {path}")
 
     async def post_json(self, path: str, json=None):
@@ -481,6 +491,14 @@ def test_post_admin_bisheng_config_updates_runtime_without_echoing_secret(tmp_pa
     assert body["base_url"] == "http://example.com/"
     assert body["username"] == "portal-admin"
     assert body["has_token"] is True
+    assert body["connected"] is True
+    assert body["auth_message"] == "已连接"
+    assert body["auth_user"] == {
+        "account": "portal-admin",
+        "name": "门户服务账号",
+        "role": "管理员",
+        "external_id": "",
+    }
     assert "password" not in body
 
 

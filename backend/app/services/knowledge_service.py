@@ -1,6 +1,7 @@
 import asyncio
 import secrets
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,7 @@ from app.schemas.knowledge import (
     KnowledgeSpaceListData,
     PagedKnowledgeFileData,
     RelatedKnowledgeFileData,
+    DocumentFileChatRequest,
     ShareDocumentAccessData,
     ShareDocumentAccessRequest,
     ShareDocumentData,
@@ -125,10 +127,12 @@ class KnowledgeService:
         bisheng_client: BishengClient,
         portal_config_service: PortalConfigService,
         page_size_limit: int = 100,
+        default_model: str | None = None,
     ):
         self._bisheng = bisheng_client
         self._config_service = portal_config_service
         self._page_size_limit = page_size_limit
+        self._default_model = default_model or ""
 
     def get_enabled_space_ids(self) -> list[int]:
         config = self._config_service.get_config()
@@ -293,6 +297,21 @@ class KnowledgeService:
         data = self._extract_success_data(response)
         return ShareDocumentAccessData.model_validate(data)
 
+    def stream_document_file_chat(
+        self,
+        space_id: int,
+        file_id: int,
+        req: DocumentFileChatRequest,
+    ) -> AsyncIterator[bytes]:
+        model_id = self._resolve_document_chat_model_id(req.model)
+        return self._bisheng.stream_post(
+            f"/api/v1/knowledge/space/{space_id}/chat/file/{file_id}",
+            json={
+                "query": req.query,
+                "modelId": model_id,
+            },
+        )
+
     @staticmethod
     def create_share_access_session(access: ShareDocumentAccessData) -> ShareAccessSession:
         KnowledgeService.cleanup_expired_share_access_sessions()
@@ -372,6 +391,17 @@ class KnowledgeService:
         if requested_space_ids:
             return sorted(enabled_space_ids.intersection(requested_space_ids))
         return sorted(enabled_space_ids)
+
+    def _resolve_document_chat_model_id(self, requested_model: str = "") -> int:
+        config = self._config_service.get_config()
+        raw_model = (requested_model or config.qa.selected_model or self._default_model).strip()
+        try:
+            model_id = int(raw_model)
+        except (TypeError, ValueError) as err:
+            raise ValueError("文档问答模型未配置或不是有效模型 ID") from err
+        if model_id <= 0:
+            raise ValueError("文档问答模型未配置或不是有效模型 ID")
+        return model_id
 
     async def list_space_files(
         self,

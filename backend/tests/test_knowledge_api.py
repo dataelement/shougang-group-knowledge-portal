@@ -880,6 +880,27 @@ def test_chat_proxy_falls_back_to_selected_qa_model(tmp_path: Path):
     assert fake_bisheng.chat_payload["json"]["model"] == "1"
 
 
+def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        qa_config = config_service.get_config().qa.model_copy(update={"selected_model": "1"})
+        config_service.update_qa(qa_config)
+
+        response = client.post(
+            "/api/v1/knowledge/space/12/files/1580/chat",
+            json={"query": "这个文档的核心内容是什么？"},
+        )
+
+    assert response.status_code == 200
+    assert b'"ok":true' in response.content
+    assert fake_bisheng.chat_payload == {
+        "path": "/api/v1/knowledge/space/12/chat/file/1580",
+        "json": {
+            "query": "这个文档的核心内容是什么？",
+            "modelId": 1,
+        },
+    }
+
+
 def test_get_tags_aggregates_enabled_spaces(tmp_path: Path):
     for client, _, _ in make_client(tmp_path):
         response = client.get("/api/v1/knowledge/tags?space_ids=12&space_ids=18&space_ids=999")

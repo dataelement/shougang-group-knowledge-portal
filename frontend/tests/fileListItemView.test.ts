@@ -26,7 +26,7 @@ test('builds rich list card fields from existing file data', () => {
   assert.equal(Object.hasOwn(view, 'snippetText'), false);
   assert.deepEqual(view.visibleTags, ['数据库', 'PostgreSQL', '迁移']);
   assert.equal(view.hiddenTagCount, 1);
-  assert.deepEqual(view.actions, ['detail']);
+  assert.deepEqual(view.actions, []);
 });
 
 test('does not fabricate unsupported confidence or actions', () => {
@@ -37,17 +37,34 @@ test('does not fabricate unsupported confidence or actions', () => {
   assert.equal(Object.hasOwn(view, 'snippetText'), false);
   assert.equal(view.confidenceLabel, '');
   assert.deepEqual(view.visibleTags, []);
-  assert.deepEqual(view.actions, ['detail']);
+  assert.deepEqual(view.actions, []);
 });
 
 test('adds favorite action only when enabled by the caller', () => {
   const view = buildFileListItemView(baseFile, { canFavorite: true });
 
-  assert.deepEqual(view.actions, ['favorite', 'detail']);
+  assert.deepEqual(view.actions, ['favorite']);
 });
 
 test('adds share action when enabled by the caller', () => {
   const view = buildFileListItemView(baseFile, { canFavorite: true, canShare: true });
 
-  assert.deepEqual(view.actions, ['favorite', 'share', 'detail']);
+  assert.deepEqual(view.actions, ['favorite', 'share']);
+});
+
+test('orders list card actions as favorite download share qa', () => {
+  const view = buildFileListItemView(baseFile, {
+    canFavorite: true,
+    canDownload: true,
+    canShare: true,
+    canAsk: true,
+  });
+
+  assert.deepEqual(view.actions, ['favorite', 'download', 'share', 'qa']);
+});
+
+test('adds qa action only when enabled by the caller', () => {
+  const view = buildFileListItemView(baseFile, { canAsk: true });
+
+  assert.deepEqual(view.actions, ['qa']);
 });

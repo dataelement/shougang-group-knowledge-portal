@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
 import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
 import ShareDocumentModal from '../components/ShareDocumentModal';
+import DocumentQaModal from '../components/DocumentQaModal';
 import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
@@ -18,8 +19,15 @@ import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useShareDocument } from '../hooks/useShareDocument';
+import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import { getVisibleRange } from '../utils/listControls';
+import {
+  closeFileDownloadWindow,
+  openFileDownloadUrl,
+  openFileDownloadWindow,
+  resolveFileDownloadUrl,
+} from '../utils/fileDownload';
 import { getEnabledSpaces, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import s from './ListPage.module.css';
 
@@ -56,8 +64,6 @@ function resolveListContext(
 export default function ListPage() {
   const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
   const { params, page, resultsTopRef, setFilter } = useListControls();
-  const navigate = useNavigate();
-  const location = useLocation();
   const { config, error: configError } = usePortalConfig();
   const tagParam = params.get('tag') || '';
   const titleParam = params.get('title') || '';
@@ -73,6 +79,24 @@ export default function ListPage() {
   const [error, setError] = useState('');
   const { openFavorite, favoriteModalProps } = useFavoriteDocument();
   const { openShare, shareModalProps } = useShareDocument();
+  const { openDocumentQa, documentQaModalProps } = useDocumentQa();
+
+  const handleDownload = useCallback(async (file: FileItem) => {
+    const downloadWindow = openFileDownloadWindow();
+    setError('');
+    try {
+      const downloadUrl = await resolveFileDownloadUrl(file);
+      if (!downloadUrl) {
+        closeFileDownloadWindow(downloadWindow);
+        setError('该文档暂不可下载');
+        return;
+      }
+      openFileDownloadUrl(downloadUrl, downloadWindow);
+    } catch (err) {
+      closeFileDownloadWindow(downloadWindow);
+      setError(err instanceof Error ? err.message : '下载链接获取失败');
+    }
+  }, []);
 
   useEffect(() => {
     if (!config) return;
@@ -175,11 +199,9 @@ export default function ListPage() {
             file={f}
             visibleTagCount={displayConfig.list.visibleTagCount}
             onFavorite={openFavorite}
+            onDownload={handleDownload}
             onShare={openShare}
-            onClick={() =>
-              navigate(`/space/${f.spaceId}/file/${f.id}`, {
-                state: { returnTo: `${location.pathname}${location.search}` },
-              })}
+            onAsk={openDocumentQa}
           />
         ))}
 
@@ -191,6 +213,7 @@ export default function ListPage() {
         />
         <FavoriteDocumentModal {...favoriteModalProps} />
         <ShareDocumentModal {...shareModalProps} />
+        <DocumentQaModal {...documentQaModalProps} />
       </div>
     </PageShell>
   );

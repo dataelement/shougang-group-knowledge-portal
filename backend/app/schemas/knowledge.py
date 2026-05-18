@@ -137,6 +137,11 @@ class ShareDocumentAccessData(BaseModel):
     allow_download: bool = False
 
 
+class DocumentFileChatRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    model: str = ""
+
+
 class FilePreviewData(BaseModel):
     original_url: str
     preview_url: str

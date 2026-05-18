@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
 import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
 import ShareDocumentModal from '../components/ShareDocumentModal';
+import DocumentQaModal from '../components/DocumentQaModal';
 import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
@@ -18,8 +18,15 @@ import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useShareDocument } from '../hooks/useShareDocument';
+import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import { getVisibleRange } from '../utils/listControls';
+import {
+  closeFileDownloadWindow,
+  openFileDownloadUrl,
+  openFileDownloadWindow,
+  resolveFileDownloadUrl,
+} from '../utils/fileDownload';
 import { getEnabledDomains, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import {
   createDomainFilterSearchParams,
@@ -43,8 +50,6 @@ const SPACE_LEVEL_OPTIONS = [
 
 export default function SearchPage() {
   const { params, page, resultsTopRef, setFilter, setParams } = useListControls();
-  const navigate = useNavigate();
-  const location = useLocation();
   const q = params.get('q') || '';
   const domain = params.get('domain') || '';
   const displayKeyword = getSearchDisplayKeyword(params);
@@ -68,6 +73,24 @@ export default function SearchPage() {
   const requestSeq = useRef(0);
   const { openFavorite, favoriteModalProps } = useFavoriteDocument();
   const { openShare, shareModalProps } = useShareDocument();
+  const { openDocumentQa, documentQaModalProps } = useDocumentQa();
+
+  const handleDownload = useCallback(async (file: FileItem) => {
+    const downloadWindow = openFileDownloadWindow();
+    setError('');
+    try {
+      const downloadUrl = await resolveFileDownloadUrl(file);
+      if (!downloadUrl) {
+        closeFileDownloadWindow(downloadWindow);
+        setError('该文档暂不可下载');
+        return;
+      }
+      openFileDownloadUrl(downloadUrl, downloadWindow);
+    } catch (err) {
+      closeFileDownloadWindow(downloadWindow);
+      setError(err instanceof Error ? err.message : '下载链接获取失败');
+    }
+  }, []);
 
   const domains = useMemo<DomainOption[]>(
     () => (config
@@ -306,11 +329,9 @@ export default function SearchPage() {
             file={f}
             visibleTagCount={displayConfig.search.visibleTagCount}
             onFavorite={openFavorite}
+            onDownload={handleDownload}
             onShare={openShare}
-            onClick={() =>
-              navigate(`/space/${f.spaceId}/file/${f.id}`, {
-                state: { returnTo: `${location.pathname}${location.search}` },
-              })}
+            onAsk={openDocumentQa}
           />
         ))}
 
@@ -324,6 +345,7 @@ export default function SearchPage() {
         )}
         <FavoriteDocumentModal {...favoriteModalProps} />
         <ShareDocumentModal {...shareModalProps} />
+        <DocumentQaModal {...documentQaModalProps} />
       </div>
     </PageShell>
   );

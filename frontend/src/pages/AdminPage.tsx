@@ -1696,6 +1696,30 @@ function BishengConfigTable({
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
           </tr>
           <tr>
+            <td>连接状态</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{config?.connected ? '已连接' : '未连接'}</span>
+                <span className={s.valueMeta}>{config?.auth_message || '未验证'}</span>
+              </div>
+            </td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+          <tr>
+            <td>当前登录用户</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{config?.auth_user?.name || config?.auth_user?.account || '未获取'}</span>
+                {config?.auth_user?.account ? (
+                  <span className={s.valueMeta}>
+                    {config.auth_user.account}{config.auth_user.role ? ` · ${config.auth_user.role}` : ''}
+                  </span>
+                ) : null}
+              </div>
+            </td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+          <tr>
             <td>请求超时</td>
             <td><div className={s.valueStack}><span className={s.valueTitle}>{config ? `${config.timeout_seconds} 秒` : '未配置'}</span></div></td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
