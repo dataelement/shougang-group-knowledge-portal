@@ -1,6 +1,6 @@
 import type { FileItem } from '../api/content';
 import TagPill from './TagPill';
-import { CalendarClock, Download, FileText, FolderTree, HardDrive, Hash, MessageCircle, Share2, Star, Tag } from 'lucide-react';
+import { CalendarClock, Download, FileText, FolderTree, MessageCircle, Share2, Star, Tag } from 'lucide-react';
 import { buildFileListItemView } from '../utils/fileListItemView';
 import s from './FileListItem.module.css';
 
@@ -43,18 +43,6 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
                 <FolderTree size={15} />
                 {view.sourcePath}
               </span>
-              {file.sizeLabel ? (
-                <span className={s.metaItem}>
-                  <HardDrive size={15} />
-                  {file.sizeLabel}
-                </span>
-              ) : null}
-              {file.fileEncoding ? (
-                <span className={s.metaItem}>
-                  <Hash size={15} />
-                  {file.fileEncoding}
-                </span>
-              ) : null}
             </div>
           </div>
           {view.actions.length > 0 ? (
