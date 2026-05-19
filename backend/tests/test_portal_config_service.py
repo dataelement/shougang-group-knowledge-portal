@@ -22,6 +22,11 @@ def test_portal_config_service_seeds_default_config(tmp_path: Path):
     assert all(domain.background_image for domain in config.domains)
     assert config.spaces == []
     assert config.qa.knowledge_space_ids == []
+    assert config.qa.general_model == ""
+    assert config.qa.reasoning_model == ""
+    assert config.qa.quick_mode_system_prompt
+    assert config.qa.normal_mode_system_prompt
+    assert config.qa.expert_mode_system_prompt
 
 
 def test_portal_config_service_imports_legacy_json_once(tmp_path: Path):
@@ -31,7 +36,7 @@ def test_portal_config_service_imports_legacy_json_once(tmp_path: Path):
         '"color": "#111111", "bg": "#eeeeee", "icon": "Factory", '
         '"background_image": "", "enabled": true}], "sections": [], '
         '"qa": {"knowledge_space_ids": [], "welcome_message": "旧欢迎语", '
-        '"hot_questions": [], "ai_search_system_prompt": "", "qa_system_prompt": "", "selected_model": ""}, '
+        '"hot_questions": [], "ai_search_system_prompt": "", "qa_system_prompt": "", "selected_model": "legacy-model"}, '
         '"recommendation": {"provider": "tag_feed", "home_strategy": "x", "detail_strategy": "y"}, '
         '"display": {"home": {}, "list": {}, "search": {}, "detail": {}}, '
         '"apps": []}',
@@ -40,6 +45,11 @@ def test_portal_config_service_imports_legacy_json_once(tmp_path: Path):
 
     service = PortalConfigService(config_path=config_path)
     assert service.get_config().domains[0].name == "旧业务域"
+    assert service.get_config().qa.general_model == "legacy-model"
+    assert service.get_config().qa.selected_model == "legacy-model"
+    assert service.get_config().qa.quick_mode_system_prompt
+    assert service.get_config().qa.normal_mode_system_prompt
+    assert service.get_config().qa.expert_mode_system_prompt
 
     config_path.write_text(
         config_path.read_text(encoding="utf-8").replace("旧业务域", "被忽略业务域"),

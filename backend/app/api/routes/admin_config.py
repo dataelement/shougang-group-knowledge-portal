@@ -229,14 +229,13 @@ async def get_qa_model_options(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
     try:
-        response = await bisheng_client.get_json("/api/v1/workstation/config/daily")
+        response = await bisheng_client.get_json("/api/v1/llm")
     except Exception:
         return response_ok(service.build_qa_model_options([]))
-    data = response.get("data") or {}
-    raw_models = data.get("models") if isinstance(data, dict) else []
-    if not isinstance(raw_models, list):
-        raw_models = []
-    return response_ok(service.build_qa_model_options(raw_models))
+    raw_servers = response.get("data") if isinstance(response, dict) else []
+    if not isinstance(raw_servers, list):
+        raw_servers = []
+    return response_ok(service.build_qa_model_options(raw_servers))
 
 
 @router.get("/recommendation")

@@ -13,6 +13,49 @@ class FakeBishengClient:
         self.post_calls: list[tuple[str, dict | None]] = []
 
     async def get_json(self, path: str, params=None):
+        if path == "/api/v1/llm":
+            return {
+                "data": [
+                    {
+                        "id": 8,
+                        "name": "DeepSeek 服务商",
+                        "models": [
+                            {
+                                "id": 1,
+                                "name": "DeepSeek Chat",
+                                "model_name": "deepseek-chat",
+                                "model_type": "llm",
+                                "online": True,
+                                "status": 0,
+                            },
+                            {
+                                "id": 2,
+                                "name": "DeepSeek Reasoner",
+                                "model_name": "deepseek-reasoner",
+                                "model_type": "llm",
+                                "online": True,
+                                "status": 0,
+                            },
+                            {
+                                "id": 3,
+                                "name": "离线模型",
+                                "model_name": "offline-chat",
+                                "model_type": "llm",
+                                "online": False,
+                                "status": 1,
+                            },
+                            {
+                                "id": 4,
+                                "name": "Embedding",
+                                "model_name": "embedding",
+                                "model_type": "embedding",
+                                "online": True,
+                                "status": 0,
+                            },
+                        ],
+                    }
+                ]
+            }
         if path == "/api/v1/workstation/config/daily":
             return {
                 "data": {
@@ -182,6 +225,9 @@ def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
     assert "welcome_message" in body["data"]["qa"]
     assert "ai_search_system_prompt" in body["data"]["qa"]
     assert "qa_system_prompt" in body["data"]["qa"]
+    assert "quick_mode_system_prompt" in body["data"]["qa"]
+    assert "normal_mode_system_prompt" in body["data"]["qa"]
+    assert "expert_mode_system_prompt" in body["data"]["qa"]
     assert "selected_model" in body["data"]["qa"]
     assert body["data"]["spaces"][0]["name"] == "空间12"
     assert body["data"]["spaces"][0]["file_count"] == 13
@@ -236,7 +282,12 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
                 "hot_questions": ["振动纹通常如何排查？"],
                 "ai_search_system_prompt": "搜索提示词",
                 "qa_system_prompt": "问答提示词",
+                "quick_mode_system_prompt": "快速提示词",
+                "normal_mode_system_prompt": "普通提示词",
+                "expert_mode_system_prompt": "专家提示词",
                 "selected_model": "1",
+                "general_model": "1",
+                "reasoning_model": "2",
             },
         )
 
@@ -245,11 +296,21 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert body["data"]["welcome_message"] == "你好，我是首钢设备诊断助手，请问有什么可以帮您？"
     assert body["data"]["ai_search_system_prompt"] == "搜索提示词"
     assert body["data"]["qa_system_prompt"] == "问答提示词"
+    assert body["data"]["quick_mode_system_prompt"] == "快速提示词"
+    assert body["data"]["normal_mode_system_prompt"] == "普通提示词"
+    assert body["data"]["expert_mode_system_prompt"] == "专家提示词"
     assert body["data"]["selected_model"] == "1"
+    assert body["data"]["general_model"] == "1"
+    assert body["data"]["reasoning_model"] == "2"
     assert service.get_config().qa.welcome_message == "你好，我是首钢设备诊断助手，请问有什么可以帮您？"
     assert service.get_config().qa.ai_search_system_prompt == "搜索提示词"
     assert service.get_config().qa.qa_system_prompt == "问答提示词"
+    assert service.get_config().qa.quick_mode_system_prompt == "快速提示词"
+    assert service.get_config().qa.normal_mode_system_prompt == "普通提示词"
+    assert service.get_config().qa.expert_mode_system_prompt == "专家提示词"
     assert service.get_config().qa.selected_model == "1"
+    assert service.get_config().qa.general_model == "1"
+    assert service.get_config().qa.reasoning_model == "2"
 
 
 def test_post_admin_sections_persists_icon_and_color_fields(tmp_path: Path):
@@ -285,12 +346,12 @@ def test_post_admin_sections_persists_icon_and_color_fields(tmp_path: Path):
     assert service.get_config().sections[0].bg == "#eff6ff"
 
 
-def test_get_admin_qa_model_options_uses_bisheng_daily_config(tmp_path: Path):
+def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
     service.update_qa(
         service.get_config().qa.model_copy(
-            update={"selected_model": "1"}
+            update={"selected_model": "1", "general_model": "1", "reasoning_model": "2"}
         )
     )
 
@@ -303,14 +364,27 @@ def test_get_admin_qa_model_options_uses_bisheng_daily_config(tmp_path: Path):
     assert response.status_code == 200
     body = response.json()["data"]
     assert body["selected_model"] == "1"
+    assert body["general_model"] == "1"
+    assert body["reasoning_model"] == "2"
     assert body["models"] == [
         {
-            "key": "daily-1",
+            "key": "1",
             "id": "1",
-            "name": "",
-            "display_name": "日常模型 1",
+            "name": "deepseek-chat",
+            "display_name": "DeepSeek Chat",
             "visual": False,
-        }
+            "provider_name": "DeepSeek 服务商",
+            "status": 0,
+        },
+        {
+            "key": "2",
+            "id": "2",
+            "name": "deepseek-reasoner",
+            "display_name": "DeepSeek Reasoner",
+            "visual": False,
+            "provider_name": "DeepSeek 服务商",
+            "status": 0,
+        },
     ]
 
 
@@ -367,7 +441,7 @@ def test_admin_config_endpoints_fail_soft_when_bisheng_is_unauthorized(tmp_path:
         async def get_json(self, path: str, params=None):
             if path in {
                 "/api/v1/knowledge",
-                "/api/v1/workstation/config/daily",
+                "/api/v1/llm",
                 "/api/v1/knowledge/file_list/19",
             }:
                 raise RuntimeError("401 Unauthorized")
@@ -391,6 +465,8 @@ def test_admin_config_endpoints_fail_soft_when_bisheng_is_unauthorized(tmp_path:
     model_options = model_options_response.json()["data"]
     assert model_options["models"] == []
     assert model_options["selected_model"] == service.get_config().qa.selected_model
+    assert model_options["general_model"] == service.get_config().qa.general_model
+    assert model_options["reasoning_model"] == service.get_config().qa.reasoning_model
 
     assert space_files_response.status_code == 200
     assert space_files_response.json()["data"]["files"] == []

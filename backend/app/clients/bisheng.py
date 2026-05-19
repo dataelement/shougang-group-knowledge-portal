@@ -61,6 +61,11 @@ class BishengClient:
         response.raise_for_status()
         return response
 
+    async def post_multipart(self, path: str, *, data: Optional[dict] = None, files: Optional[dict] = None) -> dict:
+        response = await self._client.post(path, data=data, files=files)
+        response.raise_for_status()
+        return response.json()
+
     async def get_json(self, path: str, params: Optional[dict] = None) -> dict:
         response = await self.get(path, params=params)
         return response.json()

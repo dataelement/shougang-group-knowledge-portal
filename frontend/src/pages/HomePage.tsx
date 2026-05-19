@@ -17,7 +17,7 @@ import { usePortalConfig } from '../hooks/usePortalConfig';
 import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
-import { getEnabledApps, getEnabledDomains, getEnabledSections, getEnabledSpaces, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
+import { getEnabledDomains, getEnabledSections, getEnabledSpaces, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
@@ -315,11 +315,11 @@ function buildBannerBackground(imageUrl: string): string {
   return `${BANNER_OVERLAY_GRADIENT}, url("${imageUrl}")`;
 }
 
-const APP_ENTRY_DEFAULTS = [
-  { id: 'app-write', name: '智能写作', desc: '辅助生成报告', iconBg: '#eff6ff', iconColor: '#2563eb', icon: 'PenLine' as const },
-  { id: 'app-search', name: '全域检索', desc: '跨空间定位', iconBg: '#ecfeff', iconColor: '#0891b2', icon: 'Search' as const },
-  { id: 'app-qa', name: '智能问答', desc: 'AI 即时解答', iconBg: '#f5f3ff', iconColor: '#7c3aed', icon: 'MessageSquare' as const },
-  { id: 'app-bi', name: '数据看板', desc: '关键指标可视化', iconBg: '#ecfdf5', iconColor: '#059669', icon: 'BarChart3' as const },
+const HOME_QA_SHORTCUTS = [
+  { id: 'app-writing', name: '写作助手', templateId: 'office-writing', iconKey: 'PenLine' as const },
+  { id: 'app-semantic-search', name: '语义搜索', templateId: 'hero-semantic-search', iconKey: 'Search' as const },
+  { id: 'app-qa', name: '智能问答', templateId: 'hero-open-qa', iconKey: 'MessageSquare' as const },
+  { id: 'app-doc-translate', name: '文档翻译', templateId: 'hero-doc-translate', iconKey: 'Globe' as const },
 ];
 
 function getPrimaryTag(file: FileItem) {
@@ -447,7 +447,6 @@ export default function HomePage() {
   const enabledSpaces = useMemo(() => (config ? getEnabledSpaces(config.spaces) : []), [config]);
   const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains, config.spaces) : []), [config]);
   const enabledSections = useMemo(() => (config ? getEnabledSections(config.sections) : []), [config]);
-  const enabledApps = useMemo(() => (config ? getEnabledApps(config.apps) : []), [config]);
 
   useEffect(() => {
     let active = true;
@@ -498,7 +497,6 @@ export default function HomePage() {
   const rankedHotTags = (useMockHomeContent ? MOCK_HOT_TAGS : hotTags).slice(0, displayConfig.home.hotTagsCount);
   const homeSections = (useMockHomeContent ? MOCK_HOME_SECTIONS : enabledSections).slice(0, 3);
   const contentSections = homeSections;
-  const homeApps = enabledApps.slice(0, displayConfig.home.appsCount);
   const assistantGreeting = getWelcomeMessage(config?.qa.welcome_message);
   const qaHotQuestions = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
   const primaryQaQuestion = qaHotQuestions[0] || '振动纹通常如何排查？';
@@ -521,25 +519,7 @@ export default function HomePage() {
   ];
   const expertHotQuestions = [...qaHotQuestions, ...expertQuestionFallbacks].slice(0, 7);
 
-  const appEntryItems = homeApps.length > 0
-    ? homeApps.slice(0, 4).map((app) => ({
-      id: String(app.id),
-      name: app.name,
-      desc: app.desc,
-      iconKey: app.icon,
-      iconBg: app.color,
-      iconColor: '#fff',
-      url: app.url,
-    }))
-    : APP_ENTRY_DEFAULTS.map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      desc: entry.desc,
-      iconKey: entry.icon,
-      iconBg: entry.iconBg,
-      iconColor: entry.iconColor,
-      url: undefined as string | undefined,
-    }));
+  const appEntryItems = HOME_QA_SHORTCUTS;
   const heroStats = [
     { value: formatCount(totalFiles), label: '篇文档' },
     { value: '1.17亿', label: '次阅读' },
@@ -657,11 +637,7 @@ export default function HomePage() {
                     className={s.appShortcut}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (app.url) {
-                        window.open(app.url, '_blank', 'noopener,noreferrer');
-                      } else {
-                        navigate('/apps');
-                      }
+                      navigate(`/portal/qa?templateId=${encodeURIComponent(app.templateId)}`);
                     }}
                   >
                     <span className={s.appShortcutIcon}>

@@ -57,6 +57,12 @@ SPACE_LIST_ENDPOINTS = (
     ("department", "/api/v1/knowledge/space/department"),
     ("managed", "/api/v1/knowledge/space/managed"),
 )
+GROUPED_SPACE_KEYS = (
+    ("personal", "personal_spaces"),
+    ("team", "team_spaces"),
+    ("department", "department_spaces"),
+    ("public", "public_spaces"),
+)
 ROLE_PRIORITY = {"creator": 3, "admin": 2, "member": 1}
 FILE_SIZE_KEYS = (
     "file_size",
@@ -214,6 +220,11 @@ class KnowledgeService:
             )
 
     async def list_visible_spaces(self) -> KnowledgeSpaceListData:
+        grouped_spaces = await self._fetch_grouped_spaces()
+        if grouped_spaces is not None:
+            data = self._sort_spaces(grouped_spaces)
+            return KnowledgeSpaceListData(data=data, total=len(data))
+
         results = await asyncio.gather(
             *[self._fetch_space_endpoint(source, path) for source, path in SPACE_LIST_ENDPOINTS],
             return_exceptions=True,
@@ -1135,6 +1146,31 @@ class KnowledgeService:
             return source, []
         return source, self._extract_space_rows(response.get("data", response))
 
+    async def _fetch_grouped_spaces(self) -> list[KnowledgeSpaceItem] | None:
+        try:
+            response = await self._bisheng.get_json("/api/v1/knowledge/space/grouped")
+        except (httpx.HTTPError, ValueError):
+            return None
+        if response.get("status_code") not in (None, 200):
+            return None
+        payload = response.get("data", response)
+        if not isinstance(payload, dict):
+            return None
+        mapped: list[KnowledgeSpaceItem] = []
+        for source, key in GROUPED_SPACE_KEYS:
+            rows = payload.get(key)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                normalized_row = dict(row)
+                normalized_row.setdefault("space_level", source)
+                item = self._map_space(normalized_row, source)
+                if item is not None:
+                    mapped.append(item)
+        return mapped
+
     def _extract_space_rows(self, payload: Any) -> list[dict[str, Any]]:
         if isinstance(payload, list):
             return [item for item in payload if isinstance(item, dict)]
@@ -1159,8 +1195,9 @@ class KnowledgeService:
             name = str(space_id)
         role = self._normalize_role(self._str_value(row, "user_role", "role", "permission", "operate_role"), source)
         auth_type = self._resolve_auth_type(row)
+        space_level = self._resolve_space_level(row, source)
         space_kind = self._str_value(row, "space_kind", "kind", "space_type") or "normal"
-        if source == "department":
+        if space_level == "department" or source == "department":
             space_kind = "department"
         return KnowledgeSpaceItem(
             id=space_id,
@@ -1169,6 +1206,7 @@ class KnowledgeService:
             auth_type=auth_type,
             user_role=role,
             space_kind=space_kind,
+            space_level=space_level,
             department_name=self._str_value(row, "department_name", "department", "dept_name", "deptName"),
             file_count=self._int_value(
                 row,
@@ -1204,6 +1242,8 @@ class KnowledgeService:
             current.updated_at = incoming.updated_at
         if current.space_kind == "normal" and incoming.space_kind != "normal":
             current.space_kind = incoming.space_kind
+        if not current.space_level and incoming.space_level:
+            current.space_level = incoming.space_level
 
     @staticmethod
     def _sort_spaces(spaces: list[KnowledgeSpaceItem]) -> list[KnowledgeSpaceItem]:
@@ -1219,6 +1259,20 @@ class KnowledgeService:
         if isinstance(row.get("is_private"), bool) and row["is_private"]:
             return "private"
         return KnowledgeService._str_value(row, "auth_type", "authType", "authority", "visibility", "access_type")
+
+    @staticmethod
+    def _resolve_space_level(row: dict[str, Any], source: str) -> str:
+        raw_level = KnowledgeService._str_value(row, "space_level", "spaceLevel", "level")
+        level = raw_level.strip().lower()
+        if level in {"personal", "department", "team", "public"}:
+            return level
+        if source in {"personal", "department", "team", "public"}:
+            return source
+        if source == "mine":
+            return "personal"
+        if source in {"joined", "managed"}:
+            return "team"
+        return ""
 
     @staticmethod
     def _normalize_role(raw_role: str, source: str) -> str:

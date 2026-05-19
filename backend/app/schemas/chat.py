@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ class PortalChatCompletionRequest(BaseModel):
     clientTimestamp: str
     model: str = ""
     scene: str = "qa"
+    answer_mode: Literal["quick", "normal", "expert"] = "normal"
     conversationId: Optional[str] = None
     error: bool = False
     generation: str = ""

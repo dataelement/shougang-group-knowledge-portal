@@ -24,6 +24,7 @@ export interface KnowledgeSpace {
   authType: string;
   userRole: string;
   spaceKind: string;
+  spaceLevel: string;
   departmentName: string;
   fileCount: number;
   memberCount: number;
@@ -78,6 +79,33 @@ export interface ShareDocumentAccessResult {
   spaceId: number;
   fileId: number;
   allowDownload: boolean;
+}
+
+export interface WorkstationConversation {
+  conversationId: string;
+  title: string;
+  createAt: string;
+  updateAt: string;
+  latestMessage: string;
+}
+
+export interface ChatAttachment {
+  file_id: string;
+  temp_file_id: string;
+  filepath: string;
+  filename: string;
+  type: string;
+  context?: string;
+  message?: string;
+}
+
+export interface WorkstationChatMessage {
+  messageId: string;
+  conversationId: string;
+  role: 'user' | 'bot';
+  text: string;
+  files: ChatAttachment[];
+  citations: Citation[];
 }
 
 export type FilePreviewMode = 'pdf' | 'docx' | 'spreadsheet' | 'markdown' | 'html' | 'text' | 'image' | 'unsupported' | 'chunks';
@@ -145,6 +173,7 @@ interface KnowledgeSpaceDto {
   auth_type?: string;
   user_role?: string;
   space_kind?: string;
+  space_level?: string;
   department_name?: string;
   file_count?: number;
   file_num?: number;
@@ -231,6 +260,39 @@ interface FileChunkItemDto {
   text: string;
 }
 
+interface WorkstationConversationDto {
+  chat_id?: string;
+  conversationId?: string;
+  name?: string;
+  title?: string;
+  create_time?: string;
+  createdAt?: string;
+  update_time?: string;
+  updateAt?: string;
+  latest_message?: string | { message?: string; text?: string };
+}
+
+interface WorkstationMessageDto {
+  messageId?: string | number;
+  message_id?: string | number;
+  conversationId?: string;
+  chat_id?: string;
+  isCreatedByUser?: boolean;
+  is_bot?: boolean;
+  text?: string;
+  message?: string | {
+    query?: string;
+    msg?: string;
+    content?: string;
+    text?: string;
+    files?: unknown[];
+    events?: Array<{ type?: string; content?: string }>;
+  };
+  files?: unknown[];
+  category?: string;
+  citations?: Citation[];
+}
+
 export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
   return {
     id: dto.id,
@@ -261,6 +323,7 @@ function mapKnowledgeSpace(dto: KnowledgeSpaceDto): KnowledgeSpace {
     authType: dto.auth_type ?? '',
     userRole: dto.user_role ?? '',
     spaceKind: dto.space_kind ?? 'normal',
+    spaceLevel: dto.space_level ?? '',
     departmentName: dto.department_name ?? '',
     fileCount: dto.file_count ?? dto.file_num ?? 0,
     memberCount: dto.member_count ?? dto.follower_num ?? 0,
@@ -537,6 +600,107 @@ export async function fetchRelatedFiles(spaceId: number, fileId: number, limit: 
   return data.data.map(mapKnowledgeFileItem);
 }
 
+function mapWorkstationConversation(dto: WorkstationConversationDto): WorkstationConversation {
+  const latest = dto.latest_message;
+  const latestMessage = typeof latest === 'string'
+    ? latest
+    : latest?.message ?? latest?.text ?? '';
+  const conversationId = String(dto.chat_id ?? dto.conversationId ?? '');
+  return {
+    conversationId,
+    title: dto.name ?? dto.title ?? '新会话',
+    createAt: dto.create_time ?? dto.createdAt ?? '',
+    updateAt: dto.update_time ?? dto.updateAt ?? dto.create_time ?? dto.createdAt ?? '',
+    latestMessage,
+  };
+}
+
+function parseMaybeJsonMessage(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function readWorkstationMessageText(dto: WorkstationMessageDto): string {
+  const rawMessage = typeof dto.message === 'string' ? parseMaybeJsonMessage(dto.message) : dto.message;
+  if (typeof rawMessage === 'string') return rawMessage;
+  if (rawMessage && typeof rawMessage === 'object') {
+    if ('query' in rawMessage && typeof rawMessage.query === 'string') return rawMessage.query;
+    if ('msg' in rawMessage && typeof rawMessage.msg === 'string') return rawMessage.msg;
+    if ('content' in rawMessage && typeof rawMessage.content === 'string') return rawMessage.content;
+    if ('text' in rawMessage && typeof rawMessage.text === 'string') return rawMessage.text;
+    if ('events' in rawMessage && Array.isArray(rawMessage.events)) {
+      return rawMessage.events
+        .filter((event) => event?.type === 'text' && event.content)
+        .map((event) => event.content)
+        .join('');
+    }
+  }
+  return dto.text ?? '';
+}
+
+function normalizeChatAttachment(raw: unknown): ChatAttachment | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const item = raw as Record<string, unknown>;
+  const filepath = String(item.filepath ?? item.file_path ?? '');
+  const filename = String(item.filename ?? item.file_name ?? item.name ?? '');
+  if (!filepath && !filename) return null;
+  const fileId = String(item.file_id ?? item.fileId ?? item.temp_file_id ?? item.tempFileId ?? '');
+  const tempFileId = String(item.temp_file_id ?? item.tempFileId ?? fileId);
+  return {
+    file_id: fileId,
+    temp_file_id: tempFileId,
+    filepath,
+    filename,
+    type: String(item.type ?? ''),
+    context: String(item.context ?? 'message_attachment'),
+    message: String(item.message ?? ''),
+  };
+}
+
+function readWorkstationMessageFiles(dto: WorkstationMessageDto): ChatAttachment[] {
+  const rawMessage = typeof dto.message === 'string' ? parseMaybeJsonMessage(dto.message) : dto.message;
+  const rawFiles = rawMessage && typeof rawMessage === 'object' && 'files' in rawMessage
+    ? rawMessage.files
+    : dto.files;
+  if (!Array.isArray(rawFiles)) return [];
+  return rawFiles
+    .map(normalizeChatAttachment)
+    .filter((item): item is ChatAttachment => Boolean(item));
+}
+
+function mapWorkstationMessage(dto: WorkstationMessageDto): WorkstationChatMessage {
+  const isUser = dto.isCreatedByUser === true || dto.is_bot === false || dto.category === 'question';
+  return {
+    messageId: String(dto.messageId ?? dto.message_id ?? ''),
+    conversationId: String(dto.conversationId ?? dto.chat_id ?? ''),
+    role: isUser ? 'user' : 'bot',
+    text: readWorkstationMessageText(dto),
+    files: readWorkstationMessageFiles(dto),
+    citations: dto.citations ?? [],
+  };
+}
+
+export async function fetchWorkstationConversations(params: {
+  page?: number;
+  limit?: number;
+} = {}): Promise<WorkstationConversation[]> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page ?? 1));
+  query.set('limit', String(params.limit ?? 50));
+  const data = await request<WorkstationConversationDto[]>(`/api/v1/workstation/chat/list?${query.toString()}`);
+  return data.map(mapWorkstationConversation).filter((item) => item.conversationId);
+}
+
+export async function fetchWorkstationMessages(conversationId: string): Promise<WorkstationChatMessage[]> {
+  const data = await request<WorkstationMessageDto[]>(
+    `/api/v1/workstation/messages/${encodeURIComponent(conversationId)}`,
+  );
+  return data.map(mapWorkstationMessage).filter((item) => item.text.trim() || item.files.length);
+}
+
 export interface CitationSourcePayload {
   knowledgeId?: number;
   knowledgeName?: string;
@@ -557,10 +721,12 @@ export interface Citation {
 interface BishengStreamPayload {
   category?: string;
   type?: string;
-  message?: string | { content?: string; msg?: string; text?: string };
+  chat_id?: string;
+  message?: string | { content?: string; msg?: string; text?: string; conversationId?: string };
   citations?: Citation[];
+  conversation?: { conversationId?: string };
   final?: boolean;
-  responseMessage?: { text?: string; citations?: Citation[] };
+  responseMessage?: { text?: string; citations?: Citation[]; conversationId?: string };
 }
 
 function getStreamMessageText(payload: BishengStreamPayload): string {
@@ -572,8 +738,13 @@ async function consumeChatStream(
   response: Response,
   onUpdate: (text: string) => void,
   onCitations?: (citations: Citation[]) => void,
+  onConversationId?: (conversationId: string) => void,
 ): Promise<void> {
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
+    const payload = await response.clone().json().catch(() => null) as { detail?: string; status_message?: string } | null;
+    throw new ApiRequestError(payload?.status_message || payload?.detail || '问答请求失败', response.status);
+  }
+  if (!response.body) {
     throw new Error('问答请求失败');
   }
 
@@ -598,6 +769,16 @@ async function consumeChatStream(
     }
   };
 
+  const emitConversationId = (payload: BishengStreamPayload) => {
+    const conversationId = payload.chat_id
+      ?? payload.conversation?.conversationId
+      ?? payload.responseMessage?.conversationId
+      ?? (typeof payload.message === 'object' ? payload.message.conversationId : undefined);
+    if (conversationId) {
+      onConversationId?.(conversationId);
+    }
+  };
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -614,6 +795,7 @@ async function consumeChatStream(
       } catch {
         continue;
       }
+      emitConversationId(payload);
       if (payload.category === 'agent_answer') {
         const msg = getStreamMessageText(payload);
         if (payload.type === 'end') {
@@ -649,16 +831,22 @@ export async function streamChatCompletion(params: {
   scene: 'search' | 'qa';
   text: string;
   knowledgeSpaceIds: number[];
+  files?: ChatAttachment[];
+  conversationId?: string;
   model?: string;
+  answerMode?: 'quick' | 'normal' | 'expert';
   onUpdate: (text: string) => void;
   onCitations?: (citations: Citation[]) => void;
+  onConversationId?: (conversationId: string) => void;
 }): Promise<void> {
   const response = await fetch('/api/v1/workstation/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       clientTimestamp: new Date().toISOString(),
+      conversationId: params.conversationId,
       model: params.model ?? '',
+      answer_mode: params.answerMode ?? 'normal',
       scene: params.scene,
       text: params.text,
       use_knowledge_base: {
@@ -666,10 +854,34 @@ export async function streamChatCompletion(params: {
         organization_knowledge_ids: [],
         knowledge_space_ids: params.knowledgeSpaceIds,
       },
-      files: [],
+      files: params.files ?? [],
     }),
   });
-  await consumeChatStream(response, params.onUpdate, params.onCitations);
+  await consumeChatStream(response, params.onUpdate, params.onCitations, params.onConversationId);
+}
+
+function createTempFileId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export async function uploadChatAttachment(file: File): Promise<ChatAttachment> {
+  const fileId = createTempFileId();
+  const form = new FormData();
+  form.append('file', file);
+  form.append('file_id', fileId);
+  const data = await request<Record<string, unknown>>('/api/v1/workstation/files', {
+    method: 'POST',
+    body: form,
+  });
+  return normalizeChatAttachment(data) ?? {
+    file_id: fileId,
+    temp_file_id: fileId,
+    filepath: '',
+    filename: file.name,
+    type: file.type,
+    context: 'message_attachment',
+    message: '',
+  };
 }
 
 export async function streamDocumentFileChat(params: {

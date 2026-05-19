@@ -87,6 +87,7 @@ export default function App() {
         <Route path="/share/document/:token" element={<ShareDocumentPage />} />
         <Route path="/knowledge-spaces" element={<KnowledgeSpacesPage />} />
         <Route path="/qa" element={<QAPage />} />
+        <Route path="/portal/qa" element={<QAPage />} />
         <Route path="/expert-qa" element={<ExpertQAPage />} />
         <Route path="/expert-qa/ask" element={<ExpertQAAskPage />} />
         <Route path="/expert-qa/:questionId" element={<ExpertQADetailPage />} />

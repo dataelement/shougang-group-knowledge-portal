@@ -49,6 +49,7 @@ class KnowledgeSpaceItem(BaseModel):
     auth_type: str = ""
     user_role: str = ""
     space_kind: str = "normal"
+    space_level: str = ""
     department_name: str = ""
     file_count: int = 0
     member_count: int = 0

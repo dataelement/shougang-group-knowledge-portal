@@ -366,6 +366,42 @@
   background: #fcfdff;
 }
 
+.qaModelSelectorCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--neutral-100);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.qaModelSelectorCard + .qaModelSelectorCard {
+  margin-top: 16px;
+}
+
+.qaModelSelectorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.qaModelSelectGrid {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.qaModelSelectedMeta {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--neutral-500);
+}
+
 .optionRow {
   display: flex;
   align-items: center;
@@ -379,6 +415,10 @@
 
 .optionRow:last-child {
   border-bottom: none;
+}
+
+.optionRowActive {
+  color: var(--primary-700);
 }
 
 .optionMain {
@@ -866,6 +906,14 @@
   .optionRow {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .qaModelSelectGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .qaModelSelectorHeader {
+    flex-direction: column;
   }
 
   .formGrid {

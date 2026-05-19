@@ -47,6 +47,7 @@ class FakeBishengClient:
         self.chat_payload = None
         self.preview_asset_requests = []
         self.post_calls = []
+        self.multipart_payload = None
 
     def resolve_url(self, path_or_url: str) -> str:
         return path_or_url
@@ -185,6 +186,55 @@ class FakeBishengClient:
                     ],
                     "total": 2,
                 }
+            }
+        if path == "/api/v1/knowledge/space/grouped":
+            return {
+                "status_code": 200,
+                "data": {
+                    "personal_spaces": [
+                        {
+                            "id": 7101,
+                            "name": "冷轧设备故障复盘库",
+                            "description": "沉淀冷轧产线设备异常。",
+                            "auth_type": "private",
+                            "space_level": "personal",
+                            "file_num": 38,
+                            "follower_num": 6,
+                            "is_pinned": True,
+                            "update_time": "2026-04-26T09:20:00",
+                        }
+                    ],
+                    "team_spaces": [
+                        {
+                            "id": 7102,
+                            "name": "质量异议处置工作组",
+                            "user_role": "admin",
+                            "space_level": "team",
+                            "file_num": 25,
+                            "update_time": "2026-04-24T17:00:00",
+                        }
+                    ],
+                    "department_spaces": [
+                        {
+                            "id": 7103,
+                            "name": "设备管理部内部知识空间",
+                            "space_level": "department",
+                            "department_name": "设备管理部",
+                            "file_num": 57,
+                            "update_time": "2026-04-22T11:10:00",
+                        }
+                    ],
+                    "public_spaces": [
+                        {
+                            "id": 7105,
+                            "name": "公开制度库",
+                            "auth_type": "public",
+                            "space_level": "public",
+                            "file_num": 12,
+                            "update_time": "2026-04-20T09:20:00",
+                        }
+                    ],
+                },
             }
         if path == "/api/v1/knowledge/space/mine":
             return {
@@ -368,6 +418,21 @@ class FakeBishengClient:
         yield b"event: message\n"
         yield b"data: {\"ok\":true}\n\n"
 
+    async def post_multipart(self, path: str, *, data=None, files=None):
+        self.multipart_payload = {"path": path, "data": data, "files": files}
+        return {
+            "status_code": 200,
+            "data": {
+                "filepath": "/tmp/bisheng/attachment.pdf",
+                "filename": "attachment.pdf",
+                "type": "application/pdf",
+                "temp_file_id": data.get("file_id") if data else "temp-001",
+                "file_id": "server-file-001",
+                "context": "message_attachment",
+                "message": "File uploaded successfully",
+            },
+        }
+
     async def aclose(self):
         return None
 
@@ -401,9 +466,69 @@ class NoSessionPortalAuthService(FakePortalAuthService):
         return None
 
 
-def test_list_visible_spaces_aggregates_user_scoped_bisheng_lists(tmp_path: Path):
+def test_list_visible_spaces_uses_grouped_bisheng_endpoint(tmp_path: Path):
+    class GroupedOnlyBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path in {
+                "/api/v1/knowledge/space/mine",
+                "/api/v1/knowledge/space/joined",
+                "/api/v1/knowledge/space/department",
+                "/api/v1/knowledge/space/managed",
+            }:
+                raise AssertionError("visible spaces should use grouped endpoint")
+            if path == "/api/v1/knowledge/space/grouped":
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "personal_spaces": [
+                            {
+                                "id": 7101,
+                                "name": "冷轧设备故障复盘库",
+                                "description": "沉淀冷轧产线设备异常。",
+                                "auth_type": "private",
+                                "space_level": "personal",
+                                "file_num": 38,
+                                "follower_num": 6,
+                                "is_pinned": True,
+                                "update_time": "2026-04-26T09:20:00",
+                            }
+                        ],
+                        "team_spaces": [
+                            {
+                                "id": 7102,
+                                "name": "质量异议处置工作组",
+                                "user_role": "admin",
+                                "space_level": "team",
+                                "file_num": 25,
+                                "update_time": "2026-04-24T17:00:00",
+                            }
+                        ],
+                        "department_spaces": [
+                            {
+                                "id": 7103,
+                                "name": "设备管理部内部知识空间",
+                                "space_level": "department",
+                                "department_name": "设备管理部",
+                                "file_num": 57,
+                                "update_time": "2026-04-22T11:10:00",
+                            }
+                        ],
+                        "public_spaces": [
+                            {
+                                "id": 7105,
+                                "name": "公开制度库",
+                                "auth_type": "public",
+                                "space_level": "public",
+                                "file_num": 12,
+                                "update_time": "2026-04-20T09:20:00",
+                            }
+                        ],
+                    },
+                }
+            return await super().get_json(path, params=params)
+
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
-    fake_bisheng = FakeBishengClient()
+    fake_bisheng = GroupedOnlyBishengClient()
     with TestClient(app) as client:
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_config_service = config_service
@@ -418,11 +543,15 @@ def test_list_visible_spaces_aggregates_user_scoped_bisheng_lists(tmp_path: Path
     body = response.json()["data"]
     assert body["total"] == 4
     assert body["data"][0]["id"] == 7101
-    joined = next(item for item in body["data"] if item["id"] == 7102)
-    assert joined["file_count"] == 25
-    assert joined["sources"] == ["joined", "managed"]
+    team_space = next(item for item in body["data"] if item["id"] == 7102)
+    assert team_space["file_count"] == 25
+    assert team_space["space_level"] == "team"
+    assert team_space["sources"] == ["team"]
+    department_space = next(item for item in body["data"] if item["id"] == 7103)
+    assert department_space["space_level"] == "department"
     public_space = next(item for item in body["data"] if item["id"] == 7105)
     assert public_space["auth_type"] == "public"
+    assert public_space["space_level"] == "public"
 
 
 def test_list_personal_spaces_uses_current_user_bisheng_session(tmp_path: Path):
@@ -831,25 +960,31 @@ def test_get_file_chunks_returns_sorted_chunk_text(tmp_path: Path):
 
 def test_chat_proxy_uses_portal_prompt_and_whitelisted_spaces(tmp_path: Path):
     for client, config_service, fake_bisheng in make_client(tmp_path):
-        qa_config = config_service.get_config().qa.model_copy(
-            update={
-                "knowledge_space_ids": [12, 18, 999],
-                "ai_search_system_prompt": "搜索提示词",
-                "qa_system_prompt": "问答提示词",
-            }
-        )
-        config_service.update_qa(qa_config)
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(
+                update={
+                    "knowledge_space_ids": [12, 18, 999],
+                    "ai_search_system_prompt": "搜索提示词",
+                    "qa_system_prompt": "问答提示词",
+                }
+            )
+            config_service.update_qa(qa_config)
 
-        response = client.post(
-            "/api/v1/workstation/chat/completions",
-            json={
-                "clientTimestamp": "2026-04-15T10:00:00",
-                "model": "demo-model",
-                "scene": "search",
-                "text": "振动纹如何排查？",
-                "search_enabled": False,
-            },
-        )
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-04-15T10:00:00",
+                    "model": "demo-model",
+                    "scene": "search",
+                    "text": "振动纹如何排查？",
+                    "search_enabled": False,
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
     assert fake_bisheng.chat_payload is not None
@@ -858,26 +993,377 @@ def test_chat_proxy_uses_portal_prompt_and_whitelisted_spaces(tmp_path: Path):
     assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [12, 18]
 
 
-def test_chat_proxy_falls_back_to_selected_qa_model(tmp_path: Path):
+def test_chat_proxy_falls_back_to_general_qa_model(tmp_path: Path):
     for client, config_service, fake_bisheng in make_client(tmp_path):
-        qa_config = config_service.get_config().qa.model_copy(
-            update={"selected_model": "1"}
-        )
-        config_service.update_qa(qa_config)
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(
+                update={
+                    "selected_model": "1",
+                    "general_model": "10",
+                    "normal_mode_system_prompt": "普通提示词",
+                }
+            )
+            config_service.update_qa(qa_config)
 
-        response = client.post(
-            "/api/v1/workstation/chat/completions",
-            json={
-                "clientTimestamp": "2026-04-15T10:00:00",
-                "model": "",
-                "scene": "qa",
-                "text": "振动纹如何排查？",
-            },
-        )
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-04-15T10:00:00",
+                    "model": "",
+                    "scene": "qa",
+                    "text": "振动纹如何排查？",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [7101, 7102],
+                    },
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
     assert fake_bisheng.chat_payload is not None
-    assert fake_bisheng.chat_payload["json"]["model"] == "1"
+    assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
+    assert fake_bisheng.chat_payload["json"]["model"] == "10"
+    assert fake_bisheng.chat_payload["json"]["text"] == "振动纹如何排查？"
+    assert fake_bisheng.chat_payload["json"]["system_prompt"] == "普通提示词"
+    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [7101, 7102]
+
+
+def test_chat_proxy_expert_mode_uses_reasoning_model_and_prompt(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(
+                update={
+                    "general_model": "10",
+                    "reasoning_model": "20",
+                    "expert_mode_system_prompt": "专家提示词",
+                }
+            )
+            config_service.update_qa(qa_config)
+
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-05-19T10:00:00",
+                    "model": "10",
+                    "scene": "qa",
+                    "answer_mode": "expert",
+                    "text": "复杂问题怎么分析？",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [7103],
+                    },
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert fake_bisheng.chat_payload is not None
+    assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
+    assert fake_bisheng.chat_payload["json"]["model"] == "20"
+    assert fake_bisheng.chat_payload["json"]["text"] == "复杂问题怎么分析？"
+    assert fake_bisheng.chat_payload["json"]["system_prompt"] == "专家提示词"
+    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [7103]
+
+
+def test_chat_proxy_rejects_qa_without_selected_spaces(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(update={"general_model": "10"})
+            config_service.update_qa(qa_config)
+
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-05-19T10:00:00",
+                    "model": "10",
+                    "scene": "qa",
+                    "answer_mode": "normal",
+                    "text": "没有选知识库时不要发送",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [],
+                    },
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 400
+    assert "知识库" in response.json()["detail"]
+    assert fake_bisheng.chat_payload is None
+
+
+def test_chat_proxy_allows_uploaded_files_without_selected_spaces(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(
+                update={"general_model": "10", "normal_mode_system_prompt": "普通提示词"}
+            )
+            config_service.update_qa(qa_config)
+
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-05-19T10:00:00",
+                    "model": "10",
+                    "scene": "qa",
+                    "answer_mode": "normal",
+                    "text": "请总结附件",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [],
+                    },
+                    "files": [
+                        {
+                            "file_id": "server-file-001",
+                            "temp_file_id": "temp-001",
+                            "filepath": "/tmp/bisheng/attachment.pdf",
+                            "filename": "attachment.pdf",
+                            "type": "application/pdf",
+                        }
+                    ],
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert fake_bisheng.chat_payload is not None
+    assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
+    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == []
+    assert fake_bisheng.chat_payload["json"]["files"] == [
+        {
+            "file_id": "server-file-001",
+            "temp_file_id": "temp-001",
+            "filepath": "/tmp/bisheng/attachment.pdf",
+            "filename": "attachment.pdf",
+            "type": "application/pdf",
+        }
+    ]
+
+
+def test_chat_proxy_rejects_invisible_qa_spaces(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(update={"general_model": "10"})
+            config_service.update_qa(qa_config)
+
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-05-19T10:00:00",
+                    "model": "10",
+                    "scene": "qa",
+                    "answer_mode": "normal",
+                    "text": "不能访问的空间不能转发",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [7101, 9999],
+                    },
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 403
+    assert "无权限" in response.json()["detail"]
+    assert fake_bisheng.chat_payload is None
+
+
+def test_upload_chat_attachment_forwards_to_current_user_bisheng_session(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    data_source_bisheng = FakeBishengClient()
+    user_bisheng = FakeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        previous_bisheng = getattr(client.app.state, "bisheng_client", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = data_source_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/workstation/files",
+                data={"file_id": "temp-001"},
+                files={"file": ("attachment.pdf", b"%PDF attachment", "application/pdf")},
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+            if previous_bisheng is not None:
+                client.app.state.bisheng_client = previous_bisheng
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["filepath"] == "/tmp/bisheng/attachment.pdf"
+    assert body["filename"] == "attachment.pdf"
+    assert body["temp_file_id"] == "temp-001"
+    assert user_bisheng.multipart_payload is not None
+    assert user_bisheng.multipart_payload["path"] == "/api/v1/workstation/files"
+    assert user_bisheng.multipart_payload["data"]["file_id"] == "temp-001"
+    assert data_source_bisheng.multipart_payload is None
+
+
+def test_chat_proxy_rejects_expert_mode_without_reasoning_model(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(
+                update={"general_model": "10", "reasoning_model": ""}
+            )
+            config_service.update_qa(qa_config)
+
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-05-19T10:00:00",
+                    "model": "10",
+                    "scene": "qa",
+                    "answer_mode": "expert",
+                    "text": "复杂问题怎么分析？",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [7101],
+                    },
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 400
+    assert "推理模型" in response.json()["detail"]
+    assert fake_bisheng.chat_payload is None
+
+
+def test_chat_proxy_uses_current_user_bisheng_session(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    data_source_bisheng = FakeBishengClient()
+    user_bisheng = FakeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        previous_bisheng = getattr(client.app.state, "bisheng_client", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = data_source_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-05-19T10:00:00",
+                    "model": "",
+                    "scene": "qa",
+                    "conversationId": "chat-001",
+                    "text": "继续这轮对话",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [7101],
+                    },
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+            if previous_bisheng is not None:
+                client.app.state.bisheng_client = previous_bisheng
+
+    assert response.status_code == 200
+    assert user_bisheng.chat_payload is not None
+    assert data_source_bisheng.chat_payload is None
+    assert user_bisheng.chat_payload["json"]["conversationId"] == "chat-001"
+
+
+def test_chat_proxy_lists_current_user_daily_conversations(tmp_path: Path):
+    class ChatListBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/chat/list":
+                assert params == {"page": 1, "limit": 20}
+                return {
+                    "status_code": 200,
+                    "data": [
+                        {
+                            "chat_id": "chat-001",
+                            "name": "轧线问题分析",
+                            "flow_type": 15,
+                            "create_time": "2026-05-19T09:00:00",
+                            "update_time": "2026-05-19T09:30:00",
+                            "latest_message": {"message": "建议先排查设备振动。"},
+                        }
+                    ],
+                }
+            return await super().get_json(path, params=params)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = ChatListBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/chat/list?page=1&limit=20")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body[0]["chat_id"] == "chat-001"
+    assert body[0]["name"] == "轧线问题分析"
+
+
+def test_chat_proxy_loads_current_user_conversation_messages(tmp_path: Path):
+    class ChatHistoryBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/workstation/messages/chat-001/agent":
+                return {
+                    "status_code": 200,
+                    "data": [
+                        {
+                            "message_id": "101",
+                            "chat_id": "chat-001",
+                            "is_bot": False,
+                            "category": "question",
+                            "message": {"query": "怎么排查振动纹？", "files": []},
+                        },
+                        {
+                            "message_id": "102",
+                            "chat_id": "chat-001",
+                            "is_bot": True,
+                            "category": "agent_answer",
+                            "message": {"msg": "建议从工艺参数和设备状态开始排查。", "events": []},
+                        },
+                    ],
+                }
+            return await super().get_json(path, params=params)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = ChatHistoryBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/messages/chat-001")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body[0]["is_bot"] is False
+    assert body[1]["message"]["msg"] == "建议从工艺参数和设备状态开始排查。"
 
 
 def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path):

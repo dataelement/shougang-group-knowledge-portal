@@ -1,12 +1,23 @@
-from fastapi import APIRouter, Depends
+from uuid import uuid4
+
+import httpx
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import get_bisheng_client, get_bisheng_runtime_service, get_portal_config_service
+from app.api.dependencies import (
+    get_bisheng_client,
+    get_bisheng_runtime_service,
+    get_portal_auth_service,
+    get_portal_config_service,
+)
 from app.clients.bisheng import BishengClient
 from app.schemas.chat import PortalChatCompletionRequest
+from app.schemas.common import response_ok
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.chat_proxy_service import ChatProxyService
+from app.services.portal_auth_service import PortalAuthError, PortalAuthService
 from app.services.portal_config_service import PortalConfigService
+from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/workstation", tags=["chat-proxy"])
 
@@ -23,14 +34,124 @@ def get_chat_proxy_service(
     )
 
 
+def _require_portal_session(request: Request, auth_service: PortalAuthService):
+    try:
+        return auth_service.require_session(request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+
+def _normalize_upload_payload(payload: dict, fallback_file_id: str, fallback_filename: str) -> dict:
+    if payload.get("status_code") not in (None, 200):
+        raise HTTPException(status_code=502, detail=payload.get("status_message") or "附件上传失败")
+    data = payload.get("data", payload)
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="附件上传失败")
+    return {
+        "file_id": str(data.get("file_id") or fallback_file_id),
+        "temp_file_id": str(data.get("temp_file_id") or fallback_file_id),
+        "filepath": str(data.get("filepath") or data.get("file_path") or ""),
+        "filename": str(data.get("filename") or data.get("file_name") or fallback_filename),
+        "type": str(data.get("type") or ""),
+        "context": str(data.get("context") or "message_attachment"),
+        "message": str(data.get("message") or "File uploaded successfully"),
+    }
+
+
+@router.get("/chat/list")
+async def list_conversations(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = ChatProxyService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        return response_ok(await service.list_conversations(page=page, limit=limit))
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.get("/messages/{conversation_id}")
+async def get_conversation_messages(
+    conversation_id: str,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = ChatProxyService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        return response_ok(await service.get_conversation_messages(conversation_id))
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.post("/files")
+async def upload_chat_attachment(
+    request: Request,
+    file: UploadFile = File(...),
+    file_id: str = Form(default=""),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+):
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    temp_file_id = file_id.strip() or uuid4().hex
+    filename = file.filename or "attachment"
+    try:
+        payload = await bisheng_client.post_multipart(
+            "/api/v1/workstation/files",
+            data={"file_id": temp_file_id, "file_name": filename},
+            files={"file": (filename, file.file, file.content_type or "application/octet-stream")},
+        )
+        return response_ok(_normalize_upload_payload(payload, temp_file_id, filename))
+    except httpx.HTTPError as err:
+        raise HTTPException(status_code=502, detail="附件上传失败") from err
+    finally:
+        await file.close()
+        await bisheng_client.aclose()
+
+
 @router.post("/chat/completions")
 async def chat_completions(
     payload: PortalChatCompletionRequest,
-    service: ChatProxyService = Depends(get_chat_proxy_service),
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    service = ChatProxyService(
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+        default_model=get_settings().bisheng_default_model,
+    )
+    try:
+        path, request_body = await service.build_chat_request(payload)
+    except ValueError as err:
+        await bisheng_client.aclose()
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    except PermissionError as err:
+        await bisheng_client.aclose()
+        raise HTTPException(status_code=403, detail=str(err)) from err
+
     async def stream():
-        async for chunk in service.stream_chat_completion(payload):
-            yield chunk
+        try:
+            async for chunk in service.stream_prepared_chat_completion(path, request_body):
+                yield chunk
+        finally:
+            await bisheng_client.aclose()
 
     return StreamingResponse(stream(), media_type="text/event-stream")
-from app.settings import get_settings

@@ -1,4 +1,18 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+DEFAULT_QUICK_MODE_SYSTEM_PROMPT = (
+    "你是首钢知识门户的快速问答助手。请优先给出简洁结论，结合知识库依据回答，"
+    "控制篇幅，避免展开无关背景；如果依据不足，请明确说明。"
+)
+DEFAULT_NORMAL_MODE_SYSTEM_PROMPT = (
+    "你是首钢知识门户的专业问答助手。请结合知识库内容，用准确、克制、可执行的中文回答问题。"
+    "优先给出结论、依据、操作建议和风险提示；若知识库中没有足够依据，请明确说明并建议进一步核实。"
+)
+DEFAULT_EXPERT_MODE_SYSTEM_PROMPT = (
+    "你是首钢知识门户的专家问答助手。请基于知识库和推理能力分析复杂问题，"
+    "按背景、判断依据、关键步骤、风险边界和建议方案组织回答；不要编造知识库中没有依据的事实。"
+)
 
 
 class SpaceConfig(BaseModel):
@@ -36,7 +50,20 @@ class QAConfig(BaseModel):
     hot_questions: list[str] = Field(default_factory=list)
     ai_search_system_prompt: str = ""
     qa_system_prompt: str = ""
+    quick_mode_system_prompt: str = DEFAULT_QUICK_MODE_SYSTEM_PROMPT
+    normal_mode_system_prompt: str = DEFAULT_NORMAL_MODE_SYSTEM_PROMPT
+    expert_mode_system_prompt: str = DEFAULT_EXPERT_MODE_SYSTEM_PROMPT
     selected_model: str = ""
+    general_model: str = ""
+    reasoning_model: str = ""
+
+    @model_validator(mode="after")
+    def normalize_model_fields(self):
+        if not self.general_model and self.selected_model:
+            self.general_model = self.selected_model
+        if not self.selected_model and self.general_model:
+            self.selected_model = self.general_model
+        return self
 
 
 class QAModelOption(BaseModel):
@@ -45,10 +72,14 @@ class QAModelOption(BaseModel):
     name: str = ""
     display_name: str = ""
     visual: bool = False
+    provider_name: str = ""
+    status: int = 0
 
 
 class QAModelOptionsResponse(BaseModel):
     selected_model: str = ""
+    general_model: str = ""
+    reasoning_model: str = ""
     models: list[QAModelOption] = Field(default_factory=list)
 
 

@@ -33,7 +33,12 @@ export interface QAConfig {
   hot_questions: string[];
   ai_search_system_prompt: string;
   qa_system_prompt: string;
+  quick_mode_system_prompt: string;
+  normal_mode_system_prompt: string;
+  expert_mode_system_prompt: string;
   selected_model: string;
+  general_model: string;
+  reasoning_model: string;
 }
 
 export interface QAModelOption {
@@ -42,10 +47,14 @@ export interface QAModelOption {
   name: string;
   display_name: string;
   visual: boolean;
+  provider_name: string;
+  status: number;
 }
 
 export interface QAModelOptionsResponse {
   selected_model: string;
+  general_model: string;
+  reasoning_model: string;
   models: QAModelOption[];
 }
 

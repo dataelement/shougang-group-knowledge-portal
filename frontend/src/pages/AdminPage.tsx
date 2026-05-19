@@ -102,9 +102,17 @@ type QaDialogMode =
   | 'hot_questions'
   | 'ai_search_system_prompt'
   | 'qa_system_prompt'
+  | 'quick_mode_system_prompt'
+  | 'normal_mode_system_prompt'
+  | 'expert_mode_system_prompt'
   | null;
 
 type RecommendationDialogKey = 'home_strategy' | 'detail_strategy' | null;
+
+interface QaModelDraft {
+  general_model: string;
+  reasoning_model: string;
+}
 
 interface AppDraft {
   id: string;
@@ -171,7 +179,7 @@ export default function AdminPage() {
   const [qaDialogError, setQaDialogError] = useState('');
   const [qaModelDialogOpen, setQaModelDialogOpen] = useState(false);
   const [qaModelOptions, setQaModelOptions] = useState<QAModelOption[]>([]);
-  const [qaModelDraft, setQaModelDraft] = useState('');
+  const [qaModelDraft, setQaModelDraft] = useState<QaModelDraft>({ general_model: '', reasoning_model: '' });
   const [qaModelLoading, setQaModelLoading] = useState(false);
   const [qaModelError, setQaModelError] = useState('');
   const [recommendDialogKey, setRecommendDialogKey] = useState<RecommendationDialogKey>(null);
@@ -298,13 +306,19 @@ export default function AdminPage() {
 
   async function openQaModelDialog(qa: QAConfig) {
     setQaModelDialogOpen(true);
-    setQaModelDraft(qa.selected_model);
+    setQaModelDraft({
+      general_model: qa.general_model || qa.selected_model || '',
+      reasoning_model: qa.reasoning_model || '',
+    });
     setQaModelLoading(true);
     setQaModelError('');
     try {
       const data = await fetchQaModelOptions();
       setQaModelOptions(data.models);
-      setQaModelDraft(qa.selected_model || data.selected_model || '');
+      setQaModelDraft({
+        general_model: qa.general_model || data.general_model || data.selected_model || '',
+        reasoning_model: qa.reasoning_model || data.reasoning_model || '',
+      });
     } catch (err) {
       setQaModelError(err instanceof Error ? err.message : '模型列表加载失败');
     } finally {
@@ -463,6 +477,9 @@ export default function AdminPage() {
               onEditModel={() => void openQaModelDialog(config.qa)}
               onEditSearchPrompt={() => openQaTextDialog('ai_search_system_prompt', config.qa.ai_search_system_prompt)}
               onEditQaPrompt={() => openQaTextDialog('qa_system_prompt', config.qa.qa_system_prompt)}
+              onEditQuickPrompt={() => openQaTextDialog('quick_mode_system_prompt', config.qa.quick_mode_system_prompt)}
+              onEditNormalPrompt={() => openQaTextDialog('normal_mode_system_prompt', config.qa.normal_mode_system_prompt)}
+              onEditExpertPrompt={() => openQaTextDialog('expert_mode_system_prompt', config.qa.expert_mode_system_prompt)}
             />
           )}
           {active === 'bisheng' && (
@@ -754,19 +771,24 @@ export default function AdminPage() {
         <QaModelDialog
           open
           models={qaModelOptions}
-          selectedModel={qaModelDraft}
+          selectedModels={qaModelDraft}
           loading={qaModelLoading}
           saving={saving}
           error={qaModelError}
           onClose={() => setQaModelDialogOpen(false)}
-          onSelect={setQaModelDraft}
+          onSelect={(field, modelId) => setQaModelDraft((current) => ({ ...current, [field]: modelId }))}
           onSubmit={() => {
-            if (!qaModelDraft) {
-              setQaModelError('请选择一个模型');
+            if (!qaModelDraft.general_model) {
+              setQaModelError('请选择通用模型');
               return;
             }
             void runSave(async () => {
-              await persistQa({ ...config.qa, selected_model: qaModelDraft }, setConfig);
+              await persistQa({
+                ...config.qa,
+                selected_model: qaModelDraft.general_model,
+                general_model: qaModelDraft.general_model,
+                reasoning_model: qaModelDraft.reasoning_model,
+              }, setConfig);
               setQaModelDialogOpen(false);
             });
           }}
@@ -1815,6 +1837,9 @@ function QAConfigTable({
   onEditModel,
   onEditSearchPrompt,
   onEditQaPrompt,
+  onEditQuickPrompt,
+  onEditNormalPrompt,
+  onEditExpertPrompt,
 }: {
   qa: QAConfig;
   spaces: SpaceConfig[];
@@ -1828,11 +1853,14 @@ function QAConfigTable({
   onEditModel: () => void;
   onEditSearchPrompt: () => void;
   onEditQaPrompt: () => void;
+  onEditQuickPrompt: () => void;
+  onEditNormalPrompt: () => void;
+  onEditExpertPrompt: () => void;
 }) {
-  const selectedModel = modelOptions.find((model) => model.id === qa.selected_model);
-  const selectedModelLabel = selectedModel
-    ? (selectedModel.display_name || selectedModel.name || selectedModel.id)
-    : qa.selected_model || '未配置';
+  const generalModelId = qa.general_model || qa.selected_model || '';
+  const reasoningModelId = qa.reasoning_model || '';
+  const generalModelLabel = formatQaModelLabel(modelOptions, generalModelId) || '未配置';
+  const reasoningModelLabel = formatQaModelLabel(modelOptions, reasoningModelId) || '未配置';
 
   return (
     <>
@@ -1886,13 +1914,14 @@ function QAConfigTable({
             <td>问答模型</td>
             <td>
               <div className={s.valueStack}>
-                <span className={s.valueTitle}>{selectedModelLabel}</span>
+                <span className={s.valueTitle}>通用模型：{generalModelLabel}</span>
+                <span className={s.valueTitle}>推理模型：{reasoningModelLabel}</span>
                 <span className={s.valueMeta}>
                   {modelLoading
-                    ? '正在从大模型应用平台日常模式加载模型列表...'
+                    ? '正在从大模型应用平台模型管理加载模型列表...'
                     : modelError
                       ? '模型列表加载失败，当前显示的是已保存配置。'
-                      : '来自大模型应用平台日常模式，用于问答页和 搜索助手 的模型选择。'}
+                      : '来自大模型应用平台模型管理列表，仅用于问答页模型选择。'}
                 </span>
               </div>
             </td>
@@ -1909,11 +1938,41 @@ function QAConfigTable({
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditSearchPrompt} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
           </tr>
           <tr>
-            <td>技术问答 System Prompt</td>
+            <td>快速模式 Prompt</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{qa.quick_mode_system_prompt ? truncateText(qa.quick_mode_system_prompt, 72) : '未配置'}</span>
+                <span className={s.valueMeta}>用于问答页“快速模式”，偏向简短、直接的回答。</span>
+              </div>
+            </td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditQuickPrompt} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
+          </tr>
+          <tr>
+            <td>普通模式 Prompt</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{qa.normal_mode_system_prompt ? truncateText(qa.normal_mode_system_prompt, 72) : '未配置'}</span>
+                <span className={s.valueMeta}>用于问答页“普通模式”，偏向结构化、可执行的回答。</span>
+              </div>
+            </td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditNormalPrompt} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
+          </tr>
+          <tr>
+            <td>专家模式 Prompt</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{qa.expert_mode_system_prompt ? truncateText(qa.expert_mode_system_prompt, 72) : '未配置'}</span>
+                <span className={s.valueMeta}>用于问答页“专家模式”，发送时会使用推理模型。</span>
+              </div>
+            </td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditExpertPrompt} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
+          </tr>
+          <tr>
+            <td>旧技术问答 Prompt</td>
             <td>
               <div className={s.valueStack}>
                 <span className={s.valueTitle}>{qa.qa_system_prompt ? truncateText(qa.qa_system_prompt, 72) : '未配置'}</span>
-                <span className={s.valueMeta}>用于问答页的对话回复。</span>
+                <span className={s.valueMeta}>兼容历史配置保留，新版问答页不再读取这一项。</span>
               </div>
             </td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditQaPrompt} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
@@ -2515,7 +2574,7 @@ function QaSpacesDialog({
 function QaModelDialog({
   open,
   models,
-  selectedModel,
+  selectedModels,
   loading,
   saving,
   error,
@@ -2525,12 +2584,12 @@ function QaModelDialog({
 }: {
   open: boolean;
   models: QAModelOption[];
-  selectedModel: string;
+  selectedModels: QaModelDraft;
   loading: boolean;
   saving: boolean;
   error?: string;
   onClose: () => void;
-  onSelect: (modelId: string) => void;
+  onSelect: (field: keyof QaModelDraft, modelId: string) => void;
   onSubmit: () => void;
 }) {
   if (!open) return null;
@@ -2541,7 +2600,7 @@ function QaModelDialog({
         <div className={s.modalHeader}>
           <div>
             <h3 className={s.modalTitle}>编辑问答模型</h3>
-            <p className={s.modalNote}>候选项直接来自大模型应用平台的日常模式配置。问答页回复和 搜索助手 都会优先走这一项。</p>
+            <p className={s.modalNote}>候选项直接来自大模型应用平台的模型管理列表。通用模型必选，推理模型可选，问答页会在这里配置的模型中切换。</p>
           </div>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
@@ -2550,36 +2609,190 @@ function QaModelDialog({
         <div className={s.optionList}>
           {loading ? <div className={s.emptyState}>正在加载模型列表...</div> : null}
           {!loading && !models.length ? <div className={s.emptyState}>暂未获取到模型候选项</div> : null}
-          {!loading && models.map((model) => {
-            const checked = selectedModel === model.id;
-            const label = model.display_name || model.name || model.id;
-            return (
-              <button
-                key={model.id}
-                type="button"
-                className={`${s.optionRow} ${checked ? s.optionRowActive : ''}`}
-                onClick={() => onSelect(model.id)}
-              >
-                <span className={s.optionMain}>
-                  <span className={s.optionName}>{label}</span>
-                  <span className={s.optionMeta}>
-                    <span className={s.optionMetaItem}>ID {model.id}</span>
-                    {model.key ? <span className={s.optionMetaItem}>Key {model.key}</span> : null}
-                    <span className={s.optionMetaItem}>{model.visual ? '支持视觉' : '文本模型'}</span>
-                  </span>
-                </span>
-                <span className={s.optionSide}>
-                  <span className={`${s.checkboxMark} ${checked ? s.checkboxMarkActive : ''}`}>{checked ? '已选' : '选择'}</span>
-                </span>
-              </button>
-            );
-          })}
+          {!loading && models.length ? (
+            <>
+              <QaModelCascaderSelect
+                title="通用模型"
+                required
+                models={models}
+                selectedModel={selectedModels.general_model}
+                onSelect={(modelId) => onSelect('general_model', modelId)}
+              />
+              <QaModelCascaderSelect
+                title="推理模型"
+                allowEmpty
+                models={models}
+                selectedModel={selectedModels.reasoning_model}
+                onSelect={(modelId) => onSelect('reasoning_model', modelId)}
+              />
+            </>
+          ) : null}
         </div>
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>取消</button>
           <button className={s.addBtn} onClick={onSubmit} disabled={saving || loading}>保存</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface QaModelProviderGroup {
+  provider_name: string;
+  models: QAModelOption[];
+}
+
+function buildQaModelProviderGroups(models: QAModelOption[]): QaModelProviderGroup[] {
+  const groups = new Map<string, QaModelProviderGroup>();
+
+  models.forEach((model) => {
+    const providerName = getQaModelProviderName(model);
+    if (!groups.has(providerName)) {
+      groups.set(providerName, { provider_name: providerName, models: [] });
+    }
+    groups.get(providerName)?.models.push(model);
+  });
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    models: [...group.models].sort((a, b) => getQaModelDisplayName(a).localeCompare(getQaModelDisplayName(b), 'zh-Hans-CN')),
+  }));
+}
+
+function getQaModelProviderName(model: QAModelOption): string {
+  return model.provider_name?.trim() || '未命名服务商';
+}
+
+function getQaModelDisplayName(model: QAModelOption): string {
+  return model.display_name || model.name || model.id;
+}
+
+function getQaModelOptionLabel(model: QAModelOption): string {
+  const labelParts = [getQaModelDisplayName(model)];
+  if (model.name && model.name !== model.display_name) {
+    labelParts.push(model.name);
+  }
+  labelParts.push(`ID ${model.id}`);
+  if (model.key && model.key !== model.id) {
+    labelParts.push(`Key ${model.key}`);
+  } else if (model.key) {
+    labelParts.push(`Key ${model.key}`);
+  }
+  return labelParts.join(' / ');
+}
+
+function QaModelCascaderSelect({
+  title,
+  required = false,
+  allowEmpty = false,
+  models,
+  selectedModel,
+  onSelect,
+}: {
+  title: string;
+  required?: boolean;
+  allowEmpty?: boolean;
+  models: QAModelOption[];
+  selectedModel: string;
+  onSelect: (modelId: string) => void;
+}) {
+  const groups = buildQaModelProviderGroups(models);
+  const selected = models.find((model) => model.id === selectedModel);
+  const selectedProvider = selected ? getQaModelProviderName(selected) : '';
+  const fallbackProvider = selectedProvider || groups[0]?.provider_name || '';
+  const [activeProvider, setActiveProvider] = useState(fallbackProvider);
+  const providerKey = groups.map((group) => group.provider_name).join('|');
+
+  useEffect(() => {
+    if (selectedProvider && selectedProvider !== activeProvider) {
+      setActiveProvider(selectedProvider);
+      return;
+    }
+    if (!activeProvider || !groups.some((group) => group.provider_name === activeProvider)) {
+      setActiveProvider(fallbackProvider);
+    }
+  }, [activeProvider, fallbackProvider, providerKey, selectedProvider]);
+
+  const activeGroup = groups.find((group) => group.provider_name === activeProvider) || groups[0];
+  const activeModels = activeGroup?.models ?? [];
+  const selectedInActiveGroup = activeModels.some((model) => model.id === selectedModel) ? selectedModel : '';
+
+  return (
+    <div className={s.qaModelSelectorCard}>
+      <div className={s.qaModelSelectorHeader}>
+        <div className={s.valueStack}>
+          <span className={s.valueTitle}>{title}{required ? ' *' : ''}</span>
+          <span className={s.valueMeta}>
+            {selected
+              ? `${getQaModelProviderName(selected)} / ${getQaModelOptionLabel(selected)}`
+              : allowEmpty
+                ? '可不配置，问答页只展示通用模型'
+                : '请选择服务商和模型'}
+          </span>
+        </div>
+        <span className={`${s.checkboxMark} ${selected ? s.checkboxMarkActive : ''}`}>
+          {selected ? '已选' : required ? '必选' : '可选'}
+        </span>
+      </div>
+
+      {allowEmpty ? (
+        <button
+          type="button"
+          className={`${s.optionRow} ${!selectedModel ? s.optionRowActive : ''}`}
+          onClick={() => onSelect('')}
+        >
+          <span className={s.optionMain}>
+            <span className={s.optionName}>不配置推理模型</span>
+            <span className={s.optionMeta}>问答页只展示通用模型</span>
+          </span>
+          <span className={s.optionSide}>
+            <span className={`${s.checkboxMark} ${!selectedModel ? s.checkboxMarkActive : ''}`}>{!selectedModel ? '已选' : '选择'}</span>
+          </span>
+        </button>
+      ) : null}
+
+      <div className={s.qaModelSelectGrid}>
+        <label className={s.formField}>
+          <span className={s.fieldLabel}>服务商</span>
+          <select
+            className={s.formInput}
+            value={activeGroup?.provider_name || ''}
+            disabled={!groups.length}
+            onChange={(event) => setActiveProvider(event.target.value)}
+          >
+            {!groups.length ? <option value="">暂无服务商</option> : null}
+            {groups.map((group) => (
+              <option key={group.provider_name} value={group.provider_name}>
+                {group.provider_name}（{group.models.length}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={s.formField}>
+          <span className={s.fieldLabel}>模型</span>
+          <select
+            className={s.formInput}
+            value={selectedInActiveGroup}
+            disabled={!activeModels.length}
+            onChange={(event) => onSelect(event.target.value)}
+          >
+            <option value="">请选择模型</option>
+            {activeModels.map((model) => (
+              <option key={`${title}-${model.id}`} value={model.id}>
+                {getQaModelOptionLabel(model)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {selected ? (
+        <div className={s.qaModelSelectedMeta}>
+          <span>ID {selected.id}</span>
+          {selected.key ? <span>Key {selected.key}</span> : null}
+          <span>{selected.visual ? '支持视觉' : '文本模型'}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2735,7 +2948,13 @@ function getQaDialogTitle(mode: Exclude<QaDialogMode, 'spaces' | null>) {
     case 'ai_search_system_prompt':
       return '编辑 搜索助手';
     case 'qa_system_prompt':
-      return '编辑技术问答 Prompt';
+      return '编辑旧技术问答 Prompt';
+    case 'quick_mode_system_prompt':
+      return '编辑快速模式 Prompt';
+    case 'normal_mode_system_prompt':
+      return '编辑普通模式 Prompt';
+    case 'expert_mode_system_prompt':
+      return '编辑专家模式 Prompt';
   }
 }
 
@@ -2748,7 +2967,13 @@ function getQaDialogNote(mode: Exclude<QaDialogMode, 'spaces' | null>) {
     case 'ai_search_system_prompt':
       return '搜索页里的 搜索助手 总结会使用这一段配置。';
     case 'qa_system_prompt':
-      return '问答页里的技术问答聊天回复会使用这一段配置。';
+      return '兼容历史配置保留，新版问答页不再读取这一项。';
+    case 'quick_mode_system_prompt':
+      return '问答页选择快速模式时使用这一段系统提示词。';
+    case 'normal_mode_system_prompt':
+      return '问答页选择普通模式时使用这一段系统提示词。';
+    case 'expert_mode_system_prompt':
+      return '问答页选择专家模式时使用这一段系统提示词，并使用推理模型。';
   }
 }
 
@@ -2761,7 +2986,13 @@ function getQaDialogLabel(mode: Exclude<QaDialogMode, 'spaces' | null>) {
     case 'ai_search_system_prompt':
       return '搜索助手';
     case 'qa_system_prompt':
-      return '技术问答 Prompt';
+      return '旧技术问答 Prompt';
+    case 'quick_mode_system_prompt':
+      return '快速模式 Prompt';
+    case 'normal_mode_system_prompt':
+      return '普通模式 Prompt';
+    case 'expert_mode_system_prompt':
+      return '专家模式 Prompt';
   }
 }
 
@@ -3049,6 +3280,12 @@ async function handleMoveSection(
 function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
+}
+
+function formatQaModelLabel(models: QAModelOption[], modelId: string): string {
+  if (!modelId) return '';
+  const model = models.find((item) => item.id === modelId);
+  return model ? (model.display_name || model.name || model.id) : modelId;
 }
 
 

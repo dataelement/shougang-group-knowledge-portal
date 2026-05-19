@@ -22,7 +22,12 @@ test('getSpaceUsage and canDeleteSpace block deletion for referenced spaces', ()
     welcome_message: '你好，我是首钢股份知库智能助手，请问有什么可以帮您？',
     ai_search_system_prompt: '',
     qa_system_prompt: '',
+    quick_mode_system_prompt: '',
+    normal_mode_system_prompt: '',
+    expert_mode_system_prompt: '',
     selected_model: '',
+    general_model: '',
+    reasoning_model: '',
   });
 
   assert.deepEqual(usage, { domainNames: ['轧线'], usedInQa: true });

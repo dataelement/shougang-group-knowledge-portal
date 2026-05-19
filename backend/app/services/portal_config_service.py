@@ -9,6 +9,9 @@ from app.schemas.portal_config import (
     DomainsConfigUpdate,
     IntegrationsConfig,
     PortalConfig,
+    DEFAULT_EXPERT_MODE_SYSTEM_PROMPT,
+    DEFAULT_NORMAL_MODE_SYSTEM_PROMPT,
+    DEFAULT_QUICK_MODE_SYSTEM_PROMPT,
     QAModelOption,
     QAModelOptionsResponse,
     QAConfig,
@@ -39,6 +42,8 @@ class PortalConfigService:
 
     def get_config(self) -> PortalConfig:
         data = self._read_data()
+        if self._ensure_qa_model_compat(data):
+            self._write_data(data)
         if not data.get("banners"):
             data["banners"] = list(DEFAULT_PORTAL_CONFIG.get("banners") or [])
             if data["banners"]:
@@ -118,26 +123,88 @@ class PortalConfigService:
 
     def update_qa(self, payload: QAConfig) -> PortalConfig:
         data = self.get_config().model_dump()
-        data["qa"] = payload.model_dump()
+        qa_data = payload.model_dump()
+        if qa_data.get("general_model"):
+            qa_data["selected_model"] = qa_data["general_model"]
+        data["qa"] = qa_data
         return self._write_config(PortalConfig.model_validate(data))
 
     def build_qa_model_options(self, raw_models: list[dict[str, Any]]) -> QAModelOptionsResponse:
         qa_config = self.get_config().qa
-        models = [
-            QAModelOption(
-                key=str(item.get("key") or ""),
-                id=str(item.get("id") or ""),
-                name=str(item.get("name") or ""),
-                display_name=str(item.get("displayName") or ""),
-                visual=bool(item.get("visual") or False),
-            )
-            for item in raw_models
-            if item.get("id") is not None
-        ]
+        models: list[QAModelOption] = []
+        seen_ids: set[str] = set()
+        for server in raw_models:
+            if not isinstance(server, dict):
+                continue
+            provider_name = str(server.get("name") or "")
+            server_models = server.get("models")
+            if not isinstance(server_models, list):
+                continue
+            for item in server_models:
+                if not isinstance(item, dict) or item.get("id") is None:
+                    continue
+                if str(item.get("model_type") or "").lower() != "llm":
+                    continue
+                if item.get("online") is False:
+                    continue
+                model_id = str(item["id"])
+                if model_id in seen_ids:
+                    continue
+                seen_ids.add(model_id)
+                display_name = str(
+                    item.get("displayName")
+                    or item.get("display_name")
+                    or item.get("name")
+                    or item.get("model_name")
+                    or model_id
+                )
+                models.append(
+                    QAModelOption(
+                        key=str(item.get("key") or model_id),
+                        id=model_id,
+                        name=str(item.get("model_name") or item.get("name") or ""),
+                        display_name=display_name,
+                        visual=bool(item.get("visual") or False),
+                        provider_name=provider_name,
+                        status=int(item.get("status") or 0),
+                    )
+                )
         return QAModelOptionsResponse(
             selected_model=qa_config.selected_model,
+            general_model=qa_config.general_model,
+            reasoning_model=qa_config.reasoning_model,
             models=models,
         )
+
+    @staticmethod
+    def _ensure_qa_model_compat(data: dict[str, Any]) -> bool:
+        qa_data = data.get("qa")
+        if not isinstance(qa_data, dict):
+            return False
+        changed = False
+        selected_model = str(qa_data.get("selected_model") or "")
+        if "general_model" not in qa_data:
+            qa_data["general_model"] = selected_model
+            changed = True
+        if "reasoning_model" not in qa_data:
+            qa_data["reasoning_model"] = ""
+            changed = True
+        if "selected_model" not in qa_data:
+            qa_data["selected_model"] = str(qa_data.get("general_model") or "")
+            changed = True
+        if not qa_data.get("general_model") and selected_model:
+            qa_data["general_model"] = selected_model
+            changed = True
+        prompt_defaults = {
+            "quick_mode_system_prompt": DEFAULT_QUICK_MODE_SYSTEM_PROMPT,
+            "normal_mode_system_prompt": DEFAULT_NORMAL_MODE_SYSTEM_PROMPT,
+            "expert_mode_system_prompt": DEFAULT_EXPERT_MODE_SYSTEM_PROMPT,
+        }
+        for key, default_value in prompt_defaults.items():
+            if key not in qa_data:
+                qa_data[key] = default_value
+                changed = True
+        return changed
 
     @staticmethod
     def build_space_options(raw_spaces: list[dict[str, Any]]) -> SpaceOptionsResponse:
