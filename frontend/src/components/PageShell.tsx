@@ -5,14 +5,15 @@ import s from './PageShell.module.css';
 
 interface Props {
   children: ReactNode;
+  hideFooter?: boolean;
 }
 
-export default function PageShell({ children }: Props) {
+export default function PageShell({ children, hideFooter = false }: Props) {
   return (
-    <div className={s.shell}>
+    <div className={`${s.shell} ${hideFooter ? s.shellFullscreen : ''}`}>
       <Header />
-      <main className={s.main}>{children}</main>
-      <Footer />
+      <main className={`${s.main} ${hideFooter ? s.mainFullscreen : ''}`}>{children}</main>
+      {hideFooter ? null : <Footer />}
     </div>
   );
 }

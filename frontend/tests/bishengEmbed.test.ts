@@ -8,13 +8,22 @@ const portalLocation = {
   origin: 'http://110.16.193.170:3001',
 };
 
-test('configured knowledge URL keeps port and path but uses current portal hostname', () => {
+test('configured legacy knowledge URL uses the portal knowledge route on current hostname', () => {
   const url = resolveKnowledgeEmbedUrl(
     '',
     'http://192.168.106.114:4001/workspace/knowledge',
     portalLocation,
   );
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge');
+  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1');
+});
+
+test('configured custom knowledge URL keeps path and merges embed params on current hostname', () => {
+  const url = resolveKnowledgeEmbedUrl(
+    '',
+    'http://192.168.106.114:4001/workspace/custom-knowledge?foo=bar',
+    portalLocation,
+  );
+  assert.equal(url, 'http://110.16.193.170:4001/workspace/custom-knowledge?foo=bar&portal_embed=1');
 });
 
 test('runtime asset URL is converted to the knowledge page on the current portal hostname', () => {
@@ -23,10 +32,10 @@ test('runtime asset URL is converted to the knowledge page on the current portal
     '',
     portalLocation,
   );
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge');
+  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1');
 });
 
 test('fallback default avoids localhost so iframe can receive portal cookies', () => {
   const url = resolveKnowledgeEmbedUrl('', '', portalLocation);
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge');
+  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1');
 });

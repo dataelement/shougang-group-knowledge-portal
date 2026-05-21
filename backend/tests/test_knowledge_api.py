@@ -1072,7 +1072,7 @@ def test_chat_proxy_expert_mode_uses_reasoning_model_and_prompt(tmp_path: Path):
     assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [7103]
 
 
-def test_chat_proxy_rejects_qa_without_selected_spaces(tmp_path: Path):
+def test_chat_proxy_allows_qa_without_selected_spaces(tmp_path: Path):
     for client, config_service, fake_bisheng in make_client(tmp_path):
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
@@ -1087,7 +1087,7 @@ def test_chat_proxy_rejects_qa_without_selected_spaces(tmp_path: Path):
                     "model": "10",
                     "scene": "qa",
                     "answer_mode": "normal",
-                    "text": "没有选知识库时不要发送",
+                    "text": "没有选知识库时也可以对话",
                     "use_knowledge_base": {
                         "knowledge_space_ids": [],
                     },
@@ -1097,9 +1097,11 @@ def test_chat_proxy_rejects_qa_without_selected_spaces(tmp_path: Path):
             if previous_auth is not None:
                 client.app.state.portal_auth_service = previous_auth
 
-    assert response.status_code == 400
-    assert "知识库" in response.json()["detail"]
-    assert fake_bisheng.chat_payload is None
+    assert response.status_code == 200
+    assert fake_bisheng.chat_payload is not None
+    assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
+    assert fake_bisheng.chat_payload["json"]["text"] == "没有选知识库时也可以对话"
+    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == []
 
 
 def test_chat_proxy_allows_uploaded_files_without_selected_spaces(tmp_path: Path):

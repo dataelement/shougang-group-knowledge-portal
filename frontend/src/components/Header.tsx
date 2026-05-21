@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   LogIn,
   LogOut,
-  Search,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
@@ -33,7 +32,6 @@ export default function Header() {
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuOpen = menuKey === location.pathname;
-  const isHome = location.pathname === '/';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -95,17 +93,6 @@ export default function Header() {
         </nav>
 
         <div className={s.spacer} />
-
-        {!isHome ? (
-          <button
-            type="button"
-            className={s.searchFab}
-            onClick={() => navigate('/search')}
-            aria-label="搜索"
-          >
-            <Search size={16} />
-          </button>
-        ) : null}
 
         {user ? (
           <div className={s.userMenuWrap} ref={menuRef}>

@@ -1,5 +1,7 @@
 const DEFAULT_BISHENG_ASSET_PORT = '4001';
-const DEFAULT_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
+const DEFAULT_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge-portal';
+const LEGACY_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
+const EMBED_PARAM = 'portal_embed';
 
 export type EmbedLocation = Pick<Location, 'protocol' | 'hostname' | 'origin'>;
 
@@ -21,13 +23,24 @@ function toSameHostUrl(rawUrl: string, locationOverride?: EmbedLocation): string
   return parsed.toString();
 }
 
+function withPortalKnowledgeRoute(rawUrl: string, locationOverride?: EmbedLocation): string {
+  const current = getCurrentLocation(locationOverride);
+  const parsed = new URL(rawUrl, current.origin);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return rawUrl;
+  if (parsed.pathname === LEGACY_BISHENG_KNOWLEDGE_PATH || parsed.pathname === '/knowledge') {
+    parsed.pathname = DEFAULT_BISHENG_KNOWLEDGE_PATH;
+  }
+  parsed.searchParams.set(EMBED_PARAM, '1');
+  return toSameHostUrl(parsed.toString(), locationOverride);
+}
+
 export function resolveKnowledgeEmbedUrl(
   runtimeAssetBaseUrl?: string,
   knowledgeEntryUrl?: string,
   locationOverride?: EmbedLocation,
 ) {
   const configuredUrl = knowledgeEntryUrl?.trim() || '';
-  if (configuredUrl) return toSameHostUrl(configuredUrl, locationOverride);
+  if (configuredUrl) return withPortalKnowledgeRoute(configuredUrl, locationOverride);
 
   const sourceUrl = runtimeAssetBaseUrl?.trim() || '';
   if (sourceUrl) {
@@ -36,6 +49,7 @@ export function resolveKnowledgeEmbedUrl(
       parsed.pathname = DEFAULT_BISHENG_KNOWLEDGE_PATH;
       parsed.search = '';
       parsed.hash = '';
+      parsed.searchParams.set(EMBED_PARAM, '1');
       return toSameHostUrl(parsed.toString(), locationOverride);
     } catch {
       // Fall through to the deployment default.
@@ -43,5 +57,5 @@ export function resolveKnowledgeEmbedUrl(
   }
 
   const current = getCurrentLocation(locationOverride);
-  return `${current.protocol}//${current.hostname}:${DEFAULT_BISHENG_ASSET_PORT}${DEFAULT_BISHENG_KNOWLEDGE_PATH}`;
+  return `${current.protocol}//${current.hostname}:${DEFAULT_BISHENG_ASSET_PORT}${DEFAULT_BISHENG_KNOWLEDGE_PATH}?${EMBED_PARAM}=1`;
 }

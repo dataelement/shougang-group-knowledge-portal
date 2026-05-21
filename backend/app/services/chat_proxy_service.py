@@ -59,9 +59,6 @@ class ChatProxyService:
             return "/api/v1/workstation/chat/completions", request_body
 
         requested_space_ids = self._normalize_space_ids(use_knowledge_base.knowledge_space_ids)
-        has_chat_files = self._has_chat_files(payload.files)
-        if not requested_space_ids and not has_chat_files:
-            raise ValueError("请至少选择一个知识库")
         if requested_space_ids:
             visible_space_ids = await self._get_current_user_visible_space_ids()
             invisible_space_ids = [space_id for space_id in requested_space_ids if space_id not in visible_space_ids]
@@ -113,14 +110,6 @@ class ChatProxyService:
             normalized.append(space_id)
             seen.add(space_id)
         return normalized
-
-    @staticmethod
-    def _has_chat_files(files: list[dict]) -> bool:
-        return any(
-            isinstance(item, dict)
-            and (item.get("filepath") or item.get("file_id") or item.get("temp_file_id"))
-            for item in files
-        )
 
     async def list_conversations(self, page: int = 1, limit: int = 20):
         payload = await self._bisheng.get_json(

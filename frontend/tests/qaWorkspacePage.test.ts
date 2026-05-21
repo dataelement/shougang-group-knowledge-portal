@@ -75,7 +75,7 @@ test('qa workspace selects visible knowledge spaces for chat scope', () => {
   assert.match(qaPageSource, /setSelectedKnowledgeSpaceIds\(\[\]\)/);
   assert.match(qaPageSource, /setSelectedKnowledgeSpaceIds\(availableSpaces\.map\(\(space\) => space\.id\)\)/);
   assert.match(qaPageSource, /knowledgeSpaceIds:\s*selectedKnowledgeSpaceIds/);
-  assert.match(qaPageSource, /请至少选择一个知识库/);
+  assert.doesNotMatch(qaPageSource, /请至少选择一个知识库/);
   assert.match(qaPageSource, /space\.spaceLevel === 'personal'/);
   assert.match(qaPageSource, /space\.spaceLevel === 'team'/);
   assert.match(qaPageSource, /space\.spaceLevel === 'department'/);

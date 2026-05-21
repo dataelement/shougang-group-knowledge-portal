@@ -677,10 +677,6 @@ export default function QAPage() {
       setComposerTip('请先在后台配置问答模型。');
       return;
     }
-    if (!selectedKnowledgeSpaceIds.length && !messageFiles.length) {
-      setComposerTip('请至少选择一个知识库。');
-      return;
-    }
     const finalText = text || '请分析附件内容。';
     const targetSessionId = activeId;
     setInput('');
