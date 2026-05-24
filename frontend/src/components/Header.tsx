@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Bell,
   ChevronDown,
+  ClipboardList,
   LayoutDashboard,
   LogIn,
   LogOut,
+  Send,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import {
+  PORTAL_APPROVAL_EVENT,
+  type PortalApprovalAction,
+  storePendingPortalApprovalAction,
+} from '../utils/portalApprovalBridge';
 import s from './Header.module.css';
 
 type HeaderNavItem =
@@ -52,6 +60,20 @@ export default function Header() {
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
     navigate(`/login?redirect=${encodeURIComponent(redirect)}`);
+  };
+
+  const openPortalApprovalAction = (action: PortalApprovalAction) => {
+    closeMenu();
+    if (location.pathname === '/knowledge-spaces') {
+      window.dispatchEvent(new CustomEvent(PORTAL_APPROVAL_EVENT, { detail: { action } }));
+      return;
+    }
+    try {
+      storePendingPortalApprovalAction(window.sessionStorage, action);
+    } catch {
+      // sessionStorage 不可用时只跳转页面，用户可在知识页重新点击入口。
+    }
+    navigate('/knowledge-spaces');
   };
 
   return (
@@ -134,6 +156,31 @@ export default function Header() {
                     <div className={s.userMenuDivider} />
                   </>
                 ) : null}
+                <button
+                  type="button"
+                  className={s.userMenuItem}
+                  onClick={() => openPortalApprovalAction('tasks')}
+                >
+                  <ClipboardList size={15} />
+                  待办
+                </button>
+                <button
+                  type="button"
+                  className={s.userMenuItem}
+                  onClick={() => openPortalApprovalAction('requests')}
+                >
+                  <Send size={15} />
+                  申请
+                </button>
+                <button
+                  type="button"
+                  className={s.userMenuItem}
+                  onClick={() => openPortalApprovalAction('notifications')}
+                >
+                  <Bell size={15} />
+                  消息
+                </button>
+                <div className={s.userMenuDivider} />
                 <button
                   type="button"
                   className={`${s.userMenuItem} ${s.userMenuItemDanger}`}
