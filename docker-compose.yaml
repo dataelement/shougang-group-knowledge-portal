@@ -1,0 +1,35 @@
+services:
+  portal-backend:
+    image: 192.168.106.8:6082/dataelement/shougang-portal-backend:master
+    container_name: shougang-portal-backend
+    restart: unless-stopped
+    environment:
+      PORTAL_APP_ENV: production
+      PORTAL_BISHENG_BASE_URL: ${PORTAL_BISHENG_BASE_URL:-http://192.168.106.171:7860}
+      PORTAL_BISHENG_TIMEOUT_SECONDS: ${PORTAL_BISHENG_TIMEOUT_SECONDS:-30}
+      PORTAL_BISHENG_API_TOKEN: ${PORTAL_BISHENG_API_TOKEN:-}
+      PORTAL_BISHENG_DEFAULT_MODEL: ${PORTAL_BISHENG_DEFAULT_MODEL:-}
+      PORTAL_BISHENG_PAGE_SIZE_LIMIT: ${PORTAL_BISHENG_PAGE_SIZE_LIMIT:-100}
+    ports:
+      - "${PORTAL_BACKEND_PORT:-8010}:8010"
+    volumes:
+      - /opt/portal-data:/app/app/config/data
+    networks:
+      portal:
+        aliases:
+          - backend
+
+  portal-frontend:
+    image: 192.168.106.8:6082/dataelement/shougang-portal-frontend:master
+    container_name: shougang-portal-frontend
+    restart: unless-stopped
+    depends_on:
+      - portal-backend
+    ports:
+      - "${PORTAL_FRONTEND_PORT:-3002}:80"
+    networks:
+      - portal
+
+networks:
+  portal:
+    name: shougang-portal
