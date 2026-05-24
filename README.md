@@ -100,3 +100,6 @@ docker run -d --name frontend --network portal-net -p 3001:80 \
 - 前端 nginx 配置：`-v /path/to/my-nginx.conf:/etc/nginx/conf.d/default.conf:ro` —— upstream 后端地址变化时改 conf 不重 build
 - 后端运行时数据：`-v /opt/portal-data:/app/app/config/data` —— 持久化 `portal_config.json` + `bisheng_runtime.json` + `uploads/`，容器重建不丢 admin 配置
 - 后端环境变量：通过 `-e PORTAL_*=...` 注入 BiSheng 接入参数（完整变量见 `backend/app/settings.py`）
+
+
+

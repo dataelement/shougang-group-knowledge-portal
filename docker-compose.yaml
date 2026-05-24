@@ -33,3 +33,4 @@ services:
 networks:
   portal:
     name: shougang-portal
+    
