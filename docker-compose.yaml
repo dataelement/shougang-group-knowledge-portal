@@ -10,6 +10,8 @@ services:
       PORTAL_BISHENG_API_TOKEN: ${PORTAL_BISHENG_API_TOKEN:-}
       PORTAL_BISHENG_DEFAULT_MODEL: ${PORTAL_BISHENG_DEFAULT_MODEL:-}
       PORTAL_BISHENG_PAGE_SIZE_LIMIT: ${PORTAL_BISHENG_PAGE_SIZE_LIMIT:-100}
+      NO_PROXY: localhost,127.0.0.1,192.168.106.171,172.17.0.1,172.21.0.0/16,172.22.0.0/16,etcd,minio,milvus,bisheng-milvus-etcd,bisheng-milvus-minio,bisheng-milvus-standalone
+      no_proxy: localhost,127.0.0.1,192.168.106.171,172.17.0.1,172.21.0.0/16,172.22.0.0/16,etcd,minio,milvus,bisheng-milvus-etcd,bisheng-milvus-minio,bisheng-milvus-standalone
     ports:
       - "${PORTAL_BACKEND_PORT:-8010}:8010"
     volumes:
@@ -33,4 +35,3 @@ services:
 networks:
   portal:
     name: shougang-portal
-    
