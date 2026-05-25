@@ -28,6 +28,8 @@ test('getSpaceUsage and canDeleteSpace block deletion for referenced spaces', ()
     selected_model: '',
     general_model: '',
     reasoning_model: '',
+    template_categories: [],
+    templates: [],
   });
 
   assert.deepEqual(usage, { domainNames: ['轧线'], usedInQa: true });

@@ -229,6 +229,8 @@ def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
     assert "normal_mode_system_prompt" in body["data"]["qa"]
     assert "expert_mode_system_prompt" in body["data"]["qa"]
     assert "selected_model" in body["data"]["qa"]
+    assert "template_categories" in body["data"]["qa"]
+    assert "templates" in body["data"]["qa"]
     assert body["data"]["spaces"][0]["name"] == "空间12"
     assert body["data"]["spaces"][0]["file_count"] == 13
     assert bisheng_client.post_calls == [
@@ -288,6 +290,24 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
                 "selected_model": "1",
                 "general_model": "1",
                 "reasoning_model": "2",
+                "template_categories": [
+                    {"id": "report", "name": "工作汇报", "enabled": True},
+                    {"id": "plan", "name": "方案策划", "enabled": True},
+                ],
+                "templates": [
+                    {
+                        "id": "work-plan",
+                        "name": "工作计划",
+                        "desc": "明确目标方向",
+                        "category_id": "plan",
+                        "prompt": "请帮我制定一份工作计划。",
+                        "icon": "BriefcaseBusiness",
+                        "color": "#f97316",
+                        "bg": "#fff7ed",
+                        "enabled": True,
+                        "show_on_home": True,
+                    }
+                ],
             },
         )
 
@@ -302,6 +322,8 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert body["data"]["selected_model"] == "1"
     assert body["data"]["general_model"] == "1"
     assert body["data"]["reasoning_model"] == "2"
+    assert body["data"]["template_categories"][1]["name"] == "方案策划"
+    assert body["data"]["templates"][0]["show_on_home"] is True
     assert service.get_config().qa.welcome_message == "你好，我是首钢设备诊断助手，请问有什么可以帮您？"
     assert service.get_config().qa.ai_search_system_prompt == "搜索提示词"
     assert service.get_config().qa.qa_system_prompt == "问答提示词"
@@ -311,6 +333,38 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert service.get_config().qa.selected_model == "1"
     assert service.get_config().qa.general_model == "1"
     assert service.get_config().qa.reasoning_model == "2"
+    assert service.get_config().qa.templates[0].id == "work-plan"
+
+
+def test_post_admin_qa_rejects_invalid_template_config(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+
+    payload = service.get_config().qa.model_dump()
+    payload["template_categories"] = [
+        {"id": "report", "name": "工作汇报", "enabled": True},
+    ]
+    payload["templates"] = [
+        {
+            "id": "orphan-template",
+            "name": "孤儿模板",
+            "desc": "缺少有效分类",
+            "category_id": "missing",
+            "prompt": "请帮我生成内容。",
+            "icon": "FileText",
+            "color": "#2563eb",
+            "bg": "#eff6ff",
+            "enabled": True,
+            "show_on_home": False,
+        }
+    ]
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.post("/api/v1/admin/config/qa", json=payload)
+
+    assert response.status_code == 422
 
 
 def test_post_admin_sections_persists_icon_and_color_fields(tmp_path: Path):

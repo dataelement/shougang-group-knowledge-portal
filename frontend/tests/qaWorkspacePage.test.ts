@@ -20,10 +20,10 @@ test('qa workspace exposes both canonical and portal-compatible routes', () => {
 
 test('qa workspace renders writing templates and keeps chat on the existing qa scene', () => {
   assert.match(qaPageSource, /AI 帮我写/);
-  assert.match(qaPageSource, /工作汇报/);
-  assert.match(qaPageSource, /方案策划/);
-  assert.match(qaPageSource, /研究报告/);
-  assert.match(qaPageSource, /政务公文/);
+  assert.match(qaPageSource, /config\.qa\.template_categories/);
+  assert.match(qaPageSource, /config\.qa\.templates/);
+  assert.doesNotMatch(qaPageSource, /const TEMPLATE_CATEGORIES/);
+  assert.doesNotMatch(qaPageSource, /const WRITING_TEMPLATES/);
   assert.match(qaPageSource, /scene:\s*'qa'/);
   assert.doesNotMatch(qaPageSource, /scene:\s*'search'/);
 });
@@ -118,21 +118,14 @@ test('qa workspace allows switching quick normal expert answer modes', () => {
 });
 
 test('home quick app shortcuts open qa workspace templates without auto sending', () => {
-  assert.match(homePageSource, /HOME_QA_SHORTCUTS/);
-  assert.match(homePageSource, /templateId:\s*'office-writing'/);
-  assert.match(homePageSource, /templateId:\s*'hero-semantic-search'/);
-  assert.match(homePageSource, /templateId:\s*'hero-open-qa'/);
-  assert.match(homePageSource, /templateId:\s*'hero-doc-translate'/);
-  assert.doesNotMatch(homePageSource, /templateId:\s*'summary-report'/);
+  assert.match(homePageSource, /config\?\.qa\.templates/);
+  assert.match(homePageSource, /show_on_home/);
+  assert.match(homePageSource, /template\.id/);
+  assert.doesNotMatch(homePageSource, /HOME_QA_SHORTCUTS/);
   assert.doesNotMatch(homePageSource, /总结汇报/);
-  assert.match(homePageSource, /navigate\(`\/portal\/qa\?templateId=\$\{encodeURIComponent\(app\.templateId\)\}`\)/);
+  assert.match(homePageSource, /navigate\(`\/portal\/qa\?templateId=\$\{encodeURIComponent\(template\.id\)\}`\)/);
   assert.doesNotMatch(homePageSource, /app\.url/);
 
-  assert.match(qaPageSource, /id:\s*'office-writing'/);
-  assert.match(qaPageSource, /id:\s*'hero-semantic-search'/);
-  assert.match(qaPageSource, /id:\s*'hero-open-qa'/);
-  assert.match(qaPageSource, /id:\s*'hero-doc-translate'/);
-  assert.doesNotMatch(qaPageSource, /id:\s*'summary-report'/);
   assert.match(qaPageSource, /new URLSearchParams\(window\.location\.search\)/);
   assert.match(qaPageSource, /templateId/);
   assert.match(qaPageSource, /findWritingTemplateById/);

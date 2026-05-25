@@ -39,6 +39,27 @@ export interface QAConfig {
   selected_model: string;
   general_model: string;
   reasoning_model: string;
+  template_categories: QATemplateCategoryConfig[];
+  templates: QATemplateConfig[];
+}
+
+export interface QATemplateCategoryConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+}
+
+export interface QATemplateConfig {
+  id: string;
+  name: string;
+  desc: string;
+  category_id: string;
+  prompt: string;
+  icon: string;
+  color: string;
+  bg: string;
+  enabled: boolean;
+  show_on_home: boolean;
 }
 
 export interface QAModelOption {

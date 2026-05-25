@@ -6,9 +6,11 @@ import {
   Check,
   ChevronDown,
   FileText,
+  Globe,
   Globe2,
   Layers3,
   Loader2,
+  MessageSquare,
   Mic,
   Paperclip,
   PenLine,
@@ -35,7 +37,7 @@ import {
   type WorkstationChatMessage,
   type WorkstationConversation,
 } from '../api/content';
-import { fetchQaModelOptions, type QAConfig, type QAModelOption } from '../api/adminConfig';
+import { fetchQaModelOptions, type QAConfig, type QAModelOption, type QATemplateCategoryConfig, type QATemplateConfig } from '../api/adminConfig';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
 import s from './QAPage.module.css';
 
@@ -68,7 +70,6 @@ interface ConfiguredQaModelChoice {
   typeLabel: '通用模型' | '推理模型';
 }
 
-type TemplateCategory = '全部' | '工作汇报' | '方案策划' | '研究报告' | '政务公文';
 type AnswerMode = 'quick' | 'normal' | 'expert';
 
 interface AnswerModeOption {
@@ -77,165 +78,21 @@ interface AnswerModeOption {
   desc: string;
 }
 
-interface WritingTemplate {
-  id: string;
-  title: string;
-  desc: string;
-  category: Exclude<TemplateCategory, '全部'>;
-  prompt: string;
-  tone: 'blue' | 'green' | 'orange' | 'purple' | 'rose';
-}
-
 type KnowledgeSpaceGroupLabel = '个人知识库' | '团队知识库' | '部门知识库' | '公共知识库' | '其他知识库';
 
-const TEMPLATE_CATEGORIES: TemplateCategory[] = ['全部', '工作汇报', '方案策划', '研究报告', '政务公文'];
+const ALL_TEMPLATE_CATEGORY_ID = '__all__';
 
-const WRITING_TEMPLATES: WritingTemplate[] = [
-  {
-    id: 'thought-report',
-    title: '思想汇报',
-    desc: '深度反思梳理，提升理论联系实际能力',
-    category: '政务公文',
-    prompt: '请帮我起草一份思想汇报，要求结构规范、表达稳重，并结合实际工作认识。',
-    tone: 'green',
-  },
-  {
-    id: 'experience-note',
-    title: '心得体会',
-    desc: '提炼归纳感悟，形成规范心得文稿',
-    category: '工作汇报',
-    prompt: '请帮我写一份心得体会，突出学习收获、实践启发和后续改进方向。',
-    tone: 'purple',
-  },
-  {
-    id: 'work-plan',
-    title: '工作计划',
-    desc: '明确目标方向，生成执行路线图',
-    category: '方案策划',
-    prompt: '请帮我制定一份工作计划，包含目标、重点任务、时间节点、责任分工和风险保障。',
-    tone: 'orange',
-  },
-  {
-    id: 'debriefing-report',
-    title: '述职报告',
-    desc: '回顾履职成效，展现专业岗位贡献',
-    category: '工作汇报',
-    prompt: '请帮我写一份述职报告，围绕岗位职责、履职成效、能力提升和不足改进展开。',
-    tone: 'rose',
-  },
-  {
-    id: 'office-writing',
-    title: '办公材料撰写',
-    desc: '多场景办公材料智能生成',
-    category: '政务公文',
-    prompt: '请帮我撰写一份办公材料，要求条理清晰、语言规范，适合企业内部流转。',
-    tone: 'blue',
-  },
-  {
-    id: 'project-impl-plan',
-    title: '项目实施方案',
-    desc: '明确路径、责任与节点，保障项目落地',
-    category: '方案策划',
-    prompt: '请帮我生成项目实施方案，包含背景目标、实施路径、组织分工、里程碑和保障措施。',
-    tone: 'green',
-  },
-  {
-    id: 'work-push-plan',
-    title: '工作推进方案',
-    desc: '压实责任分工，推动任务高效完成',
-    category: '方案策划',
-    prompt: '请帮我写一份工作推进方案，重点说明任务拆解、推进机制、责任分工和验收标准。',
-    tone: 'purple',
-  },
-  {
-    id: 'special-action-plan',
-    title: '专项行动方案',
-    desc: '集中资源攻坚，形成阶段性突破',
-    category: '方案策划',
-    prompt: '请帮我起草专项行动方案，要求目标明确、措施具体、节奏清晰、风险可控。',
-    tone: 'orange',
-  },
-  {
-    id: 'ops-plan',
-    title: '运营策划方案',
-    desc: '提升运营效率，驱动业务增长',
-    category: '方案策划',
-    prompt: '请帮我写一份运营策划方案，包含用户洞察、运营目标、活动机制和数据复盘。',
-    tone: 'rose',
-  },
-  {
-    id: 'topic-research-report',
-    title: '课题研究报告',
-    desc: '结构化呈现成果，提升学术规范',
-    category: '研究报告',
-    prompt: '请帮我生成课题研究报告大纲，并围绕研究背景、方法、发现和建议展开正文。',
-    tone: 'blue',
-  },
-  {
-    id: 'tech-whitepaper',
-    title: '技术白皮书',
-    desc: '解析技术逻辑，建立行业专业标准',
-    category: '研究报告',
-    prompt: '请帮我写一份技术白皮书，说明技术背景、架构设计、关键能力、应用价值和落地路径。',
-    tone: 'green',
-  },
-  {
-    id: 'product-prd',
-    title: '产品需求说明书',
-    desc: '逻辑清晰无歧义，直接对接研发',
-    category: '研究报告',
-    prompt: '请帮我写一份产品需求说明书，包含背景、用户场景、功能需求、非功能需求和验收标准。',
-    tone: 'purple',
-  },
-  {
-    id: 'talent-dev-report',
-    title: '人才培养发展报告',
-    desc: '体系化培育员工，提升组织核心能力',
-    category: '研究报告',
-    prompt: '请帮我写一份人才培养发展报告，分析现状、问题、培养体系和阶段性推进建议。',
-    tone: 'orange',
-  },
-  {
-    id: 'party-speech',
-    title: '党建专题讲话',
-    desc: '强化政治引领，输出高站位讲话稿',
-    category: '政务公文',
-    prompt: '请帮我起草一份党建专题讲话稿，要求主题鲜明、结构稳健、语言庄重。',
-    tone: 'rose',
-  },
-  {
-    id: 'gov-summary',
-    title: '政务工作总结',
-    desc: '数据支撑、成效凝练，生成规范总结',
-    category: '政务公文',
-    prompt: '请帮我写一份政务工作总结，突出主要做法、工作成效、存在问题和下一步安排。',
-    tone: 'blue',
-  },
-  {
-    id: 'hero-semantic-search',
-    title: '语义搜索',
-    desc: '面向知识库的语义检索与要点汇总',
-    category: '研究报告',
-    prompt: '请基于知识库进行语义搜索，汇总与该主题相关的核心资料、关键观点和引用来源。',
-    tone: 'green',
-  },
-  {
-    id: 'hero-open-qa',
-    title: '智能问答',
-    desc: '结合知识库的开放式问答',
-    category: '研究报告',
-    prompt: '请结合知识库回答我的问题，并给出依据、引用来源和可执行建议。',
-    tone: 'purple',
-  },
-  {
-    id: 'hero-doc-translate',
-    title: '文档翻译',
-    desc: '多语言文档翻译辅助',
-    category: '研究报告',
-    prompt: '请将下列文本或段落翻译为[目标语言，如：英文]，保持术语与公文风格一致，专有名词首次出现可附原文括号备注。\n\n【原文】\n[粘贴待译内容]',
-    tone: 'orange',
-  },
-];
+const TEMPLATE_ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
+  BriefcaseBusiness,
+  Layers3,
+  FileText,
+  ScrollText,
+  PenLine,
+  Search,
+  MessageSquare,
+  Globe,
+  Bot,
+};
 
 const ANSWER_MODES: AnswerModeOption[] = [
   { id: 'quick', label: '快速模式', desc: '极速、简短生成，关联知识库。' },
@@ -466,15 +323,12 @@ function CitationList({ items }: { items: Citation[] }) {
   );
 }
 
-function getTemplateIcon(category: WritingTemplate['category']) {
-  if (category === '工作汇报') return BriefcaseBusiness;
-  if (category === '方案策划') return Layers3;
-  if (category === '研究报告') return FileText;
-  return ScrollText;
+function getTemplateIcon(icon: string) {
+  return TEMPLATE_ICON_MAP[icon] || FileText;
 }
 
-function findWritingTemplateById(templateId: string): WritingTemplate | undefined {
-  return WRITING_TEMPLATES.find((template) => template.id === templateId);
+function findWritingTemplateById(templates: QATemplateConfig[], templateId: string): QATemplateConfig | undefined {
+  return templates.find((template) => template.id === templateId);
 }
 
 const INITIAL_DRAFT_SESSION = createDraftSession();
@@ -490,7 +344,14 @@ export default function QAPage() {
   const [availableSpaces, setAvailableSpaces] = useState<KnowledgeSpace[]>([]);
   const [selectedKnowledgeSpaceIds, setSelectedKnowledgeSpaceIds] = useState<number[]>([]);
   const [loadingKnowledgeSpaces, setLoadingKnowledgeSpaces] = useState(true);
-  const [templateCategory, setTemplateCategory] = useState<TemplateCategory>('全部');
+  const [templateCategories, setTemplateCategories] = useState<QATemplateCategoryConfig[]>([]);
+  const [writingTemplates, setWritingTemplates] = useState<QATemplateConfig[]>([]);
+  const [templateCategory, setTemplateCategory] = useState(ALL_TEMPLATE_CATEGORY_ID);
+  const [pendingTemplateId, setPendingTemplateId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('templateId')?.trim() || '';
+  });
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [modelChoices, setModelChoices] = useState<ConfiguredQaModelChoice[]>([]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -504,9 +365,13 @@ export default function QAPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeSession = sessions.find((ss) => ss.id === activeId) ?? sessions[0];
-  const visibleTemplates = templateCategory === '全部'
-    ? WRITING_TEMPLATES
-    : WRITING_TEMPLATES.filter((item) => item.category === templateCategory);
+  const enabledCategories = templateCategories.filter((category) => category.enabled);
+  const enabledCategoryIds = new Set(enabledCategories.map((category) => category.id));
+  const visibleTemplates = writingTemplates.filter((item) => (
+    item.enabled
+      && enabledCategoryIds.has(item.category_id)
+      && (templateCategory === ALL_TEMPLATE_CATEGORY_ID || item.category_id === templateCategory)
+  ));
   const hasConversation = Boolean(activeSession.conversationId)
     || activeSession.messages.some((msg) => msg.role === 'user')
     || streaming;
@@ -526,25 +391,24 @@ export default function QAPage() {
     loadingKnowledgeSpaces,
   );
 
-  const applyWritingTemplate = (template: WritingTemplate) => {
-    setTemplateCategory(template.category);
+  const applyWritingTemplate = (template: QATemplateConfig) => {
+    setTemplateCategory(template.category_id);
     setInput(template.prompt);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const templateId = params.get('templateId')?.trim();
-    if (!templateId) return;
-    const template = findWritingTemplateById(templateId);
-    if (!template) return;
+    if (!pendingTemplateId || !templatesLoaded) return;
+    const template = findWritingTemplateById(writingTemplates, pendingTemplateId);
+    if (template) applyWritingTemplate(template);
 
-    applyWritingTemplate(template);
+    const params = new URLSearchParams(window.location.search);
     params.delete('templateId');
     const query = params.toString();
     const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
-  }, []);
+    setPendingTemplateId('');
+  }, [pendingTemplateId, templatesLoaded, writingTemplates]);
 
   useEffect(() => {
     msgEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -565,9 +429,13 @@ export default function QAPage() {
         };
         const choices = buildConfiguredQaModelChoices(qaModelConfig, modelOptions);
         setAssistantGreeting(getWelcomeMessage(config.qa.welcome_message));
+        setTemplateCategories(config.qa.template_categories);
+        setWritingTemplates(config.qa.templates);
         setModelChoices(choices);
       } catch {
         // 配置失败时保留页面本地默认值，保证问答页可用。
+      } finally {
+        if (active) setTemplatesLoaded(true);
       }
     })();
     return () => {
@@ -752,7 +620,7 @@ export default function QAPage() {
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  const chooseTemplate = (template: WritingTemplate) => {
+  const chooseTemplate = (template: QATemplateConfig) => {
     applyWritingTemplate(template);
   };
 
@@ -913,22 +781,22 @@ export default function QAPage() {
                   </div>
                 </div>
                 <div className={s.templateTabs} role="tablist" aria-label="写作模板分类">
-                  {TEMPLATE_CATEGORIES.map((category) => (
+                  {[{ id: ALL_TEMPLATE_CATEGORY_ID, name: '全部' }, ...enabledCategories].map((category) => (
                     <button
-                      key={category}
+                      key={category.id}
                       type="button"
                       role="tab"
-                      aria-selected={templateCategory === category}
-                      className={`${s.templateTab} ${templateCategory === category ? s.templateTabActive : ''}`}
-                      onClick={() => setTemplateCategory(category)}
+                      aria-selected={templateCategory === category.id}
+                      className={`${s.templateTab} ${templateCategory === category.id ? s.templateTabActive : ''}`}
+                      onClick={() => setTemplateCategory(category.id)}
                     >
-                      {category}
+                      {category.name}
                     </button>
                   ))}
                 </div>
                 <div className={s.templateGrid}>
                   {visibleTemplates.map((template) => {
-                    const TemplateIcon = getTemplateIcon(template.category);
+                    const TemplateIcon = getTemplateIcon(template.icon);
                     return (
                       <button
                         key={template.id}
@@ -936,11 +804,11 @@ export default function QAPage() {
                         className={s.templateCard}
                         onClick={() => chooseTemplate(template)}
                       >
-                        <span className={`${s.templateIcon} ${s[`templateIcon_${template.tone}`]}`}>
+                        <span className={s.templateIcon} style={{ background: template.color }}>
                           <TemplateIcon size={17} />
                         </span>
                         <span className={s.templateText}>
-                          <strong>{template.title}</strong>
+                          <strong>{template.name}</strong>
                           <span>{template.desc}</span>
                         </span>
                         <span className={s.templateLines} aria-hidden="true" />

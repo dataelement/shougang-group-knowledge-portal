@@ -27,6 +27,14 @@ def test_portal_config_service_seeds_default_config(tmp_path: Path):
     assert config.qa.quick_mode_system_prompt
     assert config.qa.normal_mode_system_prompt
     assert config.qa.expert_mode_system_prompt
+    assert [category.name for category in config.qa.template_categories] == [
+        "工作汇报", "方案策划", "研究报告", "政务公文",
+    ]
+    assert len(config.qa.templates) == 18
+    assert {template.id for template in config.qa.templates if template.show_on_home} == {
+        "office-writing", "hero-semantic-search", "hero-open-qa", "hero-doc-translate",
+    }
+    assert config.qa.templates[0].prompt
 
 
 def test_portal_config_service_imports_legacy_json_once(tmp_path: Path):
@@ -50,6 +58,8 @@ def test_portal_config_service_imports_legacy_json_once(tmp_path: Path):
     assert service.get_config().qa.quick_mode_system_prompt
     assert service.get_config().qa.normal_mode_system_prompt
     assert service.get_config().qa.expert_mode_system_prompt
+    assert service.get_config().qa.template_categories
+    assert service.get_config().qa.templates
 
     config_path.write_text(
         config_path.read_text(encoding="utf-8").replace("旧业务域", "被忽略业务域"),

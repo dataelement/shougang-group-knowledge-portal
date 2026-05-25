@@ -42,7 +42,9 @@ class PortalConfigService:
 
     def get_config(self) -> PortalConfig:
         data = self._read_data()
-        if self._ensure_qa_model_compat(data):
+        qa_model_changed = self._ensure_qa_model_compat(data)
+        qa_templates_changed = self._ensure_qa_templates_compat(data)
+        if qa_model_changed or qa_templates_changed:
             self._write_data(data)
         if not data.get("banners"):
             data["banners"] = list(DEFAULT_PORTAL_CONFIG.get("banners") or [])
@@ -204,6 +206,21 @@ class PortalConfigService:
             if key not in qa_data:
                 qa_data[key] = default_value
                 changed = True
+        return changed
+
+    @staticmethod
+    def _ensure_qa_templates_compat(data: dict[str, Any]) -> bool:
+        qa_data = data.get("qa")
+        if not isinstance(qa_data, dict):
+            return False
+        default_qa = DEFAULT_PORTAL_CONFIG.get("qa") or {}
+        changed = False
+        if "template_categories" not in qa_data or not isinstance(qa_data.get("template_categories"), list):
+            qa_data["template_categories"] = list(default_qa.get("template_categories") or [])
+            changed = True
+        if "templates" not in qa_data or not isinstance(qa_data.get("templates"), list):
+            qa_data["templates"] = list(default_qa.get("templates") or [])
+            changed = True
         return changed
 
     @staticmethod

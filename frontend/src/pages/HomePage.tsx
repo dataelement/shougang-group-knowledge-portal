@@ -4,9 +4,9 @@ import {
   Search, Building, Star, AlertTriangle, LayoutGrid,
   ArrowUp, BarChart3, Bot, ChevronLeft, ChevronRight, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
-  PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
+  BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Award, MessageSquarePlus, Sparkles,
-  BookOpen, Package, Video, Flame, Briefcase, Users, Tag, TrendingUp, FolderOpen,
+  BookOpen, Package, Video, Flame, Briefcase, Users, Tag, TrendingUp, FolderOpen, ScrollText,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
@@ -29,7 +29,7 @@ const DOMAIN_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
 };
 
 const APP_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
-  PenLine, Search, MessageSquare, Globe, BarChart3, Network, FileText, Bot,
+  PenLine, Search, MessageSquare, Globe, BarChart3, Network, FileText, Bot, BriefcaseBusiness, Layers3, ScrollText,
 };
 
 const SECTION_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
@@ -315,13 +315,6 @@ function buildBannerBackground(imageUrl: string): string {
   return `${BANNER_OVERLAY_GRADIENT}, url("${imageUrl}")`;
 }
 
-const HOME_QA_SHORTCUTS = [
-  { id: 'app-writing', name: '写作助手', templateId: 'office-writing', iconKey: 'PenLine' as const },
-  { id: 'app-semantic-search', name: '语义搜索', templateId: 'hero-semantic-search', iconKey: 'Search' as const },
-  { id: 'app-qa', name: '智能问答', templateId: 'hero-open-qa', iconKey: 'MessageSquare' as const },
-  { id: 'app-doc-translate', name: '文档翻译', templateId: 'hero-doc-translate', iconKey: 'Globe' as const },
-];
-
 function getPrimaryTag(file: FileItem) {
   return file.tags.find((t) => t !== '最新精选' && t !== '典型案例');
 }
@@ -519,7 +512,7 @@ export default function HomePage() {
   ];
   const expertHotQuestions = [...qaHotQuestions, ...expertQuestionFallbacks].slice(0, 7);
 
-  const appEntryItems = HOME_QA_SHORTCUTS;
+  const appEntryItems = (config?.qa.templates || []).filter((template) => template.enabled && template.show_on_home);
   const heroStats = [
     { value: formatCount(totalFiles), label: '篇文档' },
     { value: '1.17亿', label: '次阅读' },
@@ -628,22 +621,22 @@ export default function HomePage() {
           </div>
           <div className={s.heroBottomRow} onClick={(event) => event.stopPropagation()}>
             <div className={s.appShortcutList}>
-              {appEntryItems.map((app) => {
-                const AppIcon = APP_ICONS[app.iconKey] || Bot;
+              {appEntryItems.map((template) => {
+                const AppIcon = APP_ICONS[template.icon] || Bot;
                 return (
                   <button
-                    key={app.id}
+                    key={template.id}
                     type="button"
                     className={s.appShortcut}
                     onClick={(event) => {
                       event.stopPropagation();
-                      navigate(`/portal/qa?templateId=${encodeURIComponent(app.templateId)}`);
+                      navigate(`/portal/qa?templateId=${encodeURIComponent(template.id)}`);
                     }}
                   >
                     <span className={s.appShortcutIcon}>
                       <AppIcon size={13} />
                     </span>
-                    <span className={s.appShortcutText}>{app.name}</span>
+                    <span className={s.appShortcutText}>{template.name}</span>
                   </button>
                 );
               })}

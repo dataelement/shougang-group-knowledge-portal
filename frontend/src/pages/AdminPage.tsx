@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings,
+  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import Header from '../components/Header';
@@ -17,6 +17,8 @@ import {
   fetchSpaceOptions,
   type IntegrationsConfig,
   type PortalConfig,
+  type QATemplateCategoryConfig,
+  type QATemplateConfig,
   type QAModelOption,
   type RecommendationConfig,
   type SectionConfig,
@@ -57,6 +59,16 @@ import {
   validateBannerDraft,
   type BannerDraft,
 } from '../utils/adminBanners';
+import {
+  canDeleteQaTemplateCategory,
+  createQaTemplateCategoryDraft,
+  createQaTemplateDraft,
+  QA_TEMPLATE_ICON_OPTIONS,
+  validateQaTemplateCategoryDraft,
+  validateQaTemplateDraft,
+  type QaTemplateCategoryDraft,
+  type QaTemplateDraft,
+} from '../utils/adminQaTemplates';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { canDeleteSpace, getSpaceBindingState, getSpaceUsage, getSpaceUsageSummary, setSpaceEnabled, upsertSpace } from '../utils/adminSpaces';
@@ -79,6 +91,7 @@ const NAV_ITEMS = [
   { key: 'sections', label: '首页分区', icon: Tag },
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
   { key: 'qa', label: '问答配置', icon: Bot },
+  { key: 'qaTemplates', label: '问答模板', icon: FileText },
   { key: 'recommend', label: '推荐策略', icon: Star },
   { key: 'display', label: '展示配置', icon: SlidersHorizontal },
   { key: 'apps', label: '应用市场', icon: LayoutGrid },
@@ -124,6 +137,16 @@ interface AppDraft {
   url: string;
   enabled: boolean;
 }
+
+type QaCategoryDeleteTarget = {
+  category: QATemplateCategoryConfig;
+  index: number;
+};
+
+type QaTemplateDeleteTarget = {
+  template: QATemplateConfig;
+  index: number;
+};
 
 interface BishengDraft {
   base_url: string;
@@ -182,6 +205,16 @@ export default function AdminPage() {
   const [qaModelDraft, setQaModelDraft] = useState<QaModelDraft>({ general_model: '', reasoning_model: '' });
   const [qaModelLoading, setQaModelLoading] = useState(false);
   const [qaModelError, setQaModelError] = useState('');
+  const [qaCategoryEditorOpen, setQaCategoryEditorOpen] = useState(false);
+  const [qaCategoryEditorIndex, setQaCategoryEditorIndex] = useState<number | null>(null);
+  const [qaCategoryDraft, setQaCategoryDraft] = useState<QaTemplateCategoryDraft>(createQaTemplateCategoryDraft());
+  const [qaCategoryFormError, setQaCategoryFormError] = useState('');
+  const [qaCategoryDeleteTarget, setQaCategoryDeleteTarget] = useState<QaCategoryDeleteTarget | null>(null);
+  const [qaTemplateEditorOpen, setQaTemplateEditorOpen] = useState(false);
+  const [qaTemplateEditorIndex, setQaTemplateEditorIndex] = useState<number | null>(null);
+  const [qaTemplateDraft, setQaTemplateDraft] = useState<QaTemplateDraft>(createQaTemplateDraft());
+  const [qaTemplateFormError, setQaTemplateFormError] = useState('');
+  const [qaTemplateDeleteTarget, setQaTemplateDeleteTarget] = useState<QaTemplateDeleteTarget | null>(null);
   const [recommendDialogKey, setRecommendDialogKey] = useState<RecommendationDialogKey>(null);
   const [recommendDraft, setRecommendDraft] = useState('');
   const [appEditorOpen, setAppEditorOpen] = useState(false);
@@ -355,6 +388,37 @@ export default function AdminPage() {
     setQaDialogError('');
   }
 
+  function openCreateQaCategoryDialog() {
+    setQaCategoryEditorOpen(true);
+    setQaCategoryEditorIndex(null);
+    setQaCategoryDraft(createQaTemplateCategoryDraft());
+    setQaCategoryFormError('');
+  }
+
+  function openEditQaCategoryDialog(category: QATemplateCategoryConfig, index: number) {
+    setQaCategoryEditorOpen(true);
+    setQaCategoryEditorIndex(index);
+    setQaCategoryDraft(createQaTemplateCategoryDraft(category));
+    setQaCategoryFormError('');
+  }
+
+  function openCreateQaTemplateDialog() {
+    setQaTemplateEditorOpen(true);
+    setQaTemplateEditorIndex(null);
+    setQaTemplateDraft({
+      ...createQaTemplateDraft(),
+      categoryId: config?.qa.template_categories[0]?.id ?? '',
+    });
+    setQaTemplateFormError('');
+  }
+
+  function openEditQaTemplateDialog(template: QATemplateConfig, index: number) {
+    setQaTemplateEditorOpen(true);
+    setQaTemplateEditorIndex(index);
+    setQaTemplateDraft(createQaTemplateDraft(template));
+    setQaTemplateFormError('');
+  }
+
   function openRecommendationDialog(key: Exclude<RecommendationDialogKey, null>, value: string) {
     setRecommendDialogKey(key);
     setRecommendDraft(value);
@@ -480,6 +544,44 @@ export default function AdminPage() {
               onEditQuickPrompt={() => openQaTextDialog('quick_mode_system_prompt', config.qa.quick_mode_system_prompt)}
               onEditNormalPrompt={() => openQaTextDialog('normal_mode_system_prompt', config.qa.normal_mode_system_prompt)}
               onEditExpertPrompt={() => openQaTextDialog('expert_mode_system_prompt', config.qa.expert_mode_system_prompt)}
+            />
+          )}
+          {config && active === 'qaTemplates' && (
+            <QATemplatesTable
+              qa={config.qa}
+              saving={saving}
+              onAddCategory={openCreateQaCategoryDialog}
+              onEditCategory={(index) => openEditQaCategoryDialog(config.qa.template_categories[index], index)}
+              onDeleteCategory={(index) => setQaCategoryDeleteTarget({ category: config.qa.template_categories[index], index })}
+              onMoveCategory={(index, direction) => {
+                const nextIndex = index + direction;
+                if (nextIndex < 0 || nextIndex >= config.qa.template_categories.length) return;
+                const updated = [...config.qa.template_categories];
+                const [moved] = updated.splice(index, 1);
+                updated.splice(nextIndex, 0, moved);
+                void runSave(() => persistQa({ ...config.qa, template_categories: updated }, setConfig));
+              }}
+              onToggleCategory={(index, enabled) => {
+                const updated = [...config.qa.template_categories];
+                updated[index] = { ...updated[index], enabled };
+                void runSave(() => persistQa({ ...config.qa, template_categories: updated }, setConfig));
+              }}
+              onAddTemplate={openCreateQaTemplateDialog}
+              onEditTemplate={(index) => openEditQaTemplateDialog(config.qa.templates[index], index)}
+              onDeleteTemplate={(index) => setQaTemplateDeleteTarget({ template: config.qa.templates[index], index })}
+              onMoveTemplate={(index, direction) => {
+                const nextIndex = index + direction;
+                if (nextIndex < 0 || nextIndex >= config.qa.templates.length) return;
+                const updated = [...config.qa.templates];
+                const [moved] = updated.splice(index, 1);
+                updated.splice(nextIndex, 0, moved);
+                void runSave(() => persistQa({ ...config.qa, templates: updated }, setConfig));
+              }}
+              onToggleTemplate={(index, enabled) => {
+                const updated = [...config.qa.templates];
+                updated[index] = { ...updated[index], enabled };
+                void runSave(() => persistQa({ ...config.qa, templates: updated }, setConfig));
+              }}
             />
           )}
           {active === 'bisheng' && (
@@ -794,6 +896,116 @@ export default function AdminPage() {
           }}
         />
       ) : null}
+      {config && qaCategoryEditorOpen ? (
+        <QaTemplateCategoryDialog
+          open
+          draft={qaCategoryDraft}
+          saving={saving}
+          error={qaCategoryFormError}
+          onClose={() => setQaCategoryEditorOpen(false)}
+          onChange={(patch) => {
+            setQaCategoryDraft((current) => ({ ...current, ...patch }));
+            setQaCategoryFormError('');
+          }}
+          onSubmit={() => {
+            const currentId = qaCategoryEditorIndex === null
+              ? undefined
+              : config.qa.template_categories[qaCategoryEditorIndex]?.id;
+            const result = validateQaTemplateCategoryDraft(qaCategoryDraft, config.qa.template_categories, currentId);
+            if (!result.category) {
+              setQaCategoryFormError(result.error || '模板分类配置无效');
+              return;
+            }
+            const nextCategory = result.category;
+            void runSave(async () => {
+              const updated = [...config.qa.template_categories];
+              if (qaCategoryEditorIndex === null) {
+                updated.push(nextCategory);
+              } else {
+                updated[qaCategoryEditorIndex] = nextCategory;
+              }
+              await persistQa({ ...config.qa, template_categories: updated }, setConfig);
+              setQaCategoryEditorOpen(false);
+            });
+          }}
+        />
+      ) : null}
+      {config && qaCategoryDeleteTarget ? (
+        <QaTemplateCategoryDeleteDialog
+          open
+          category={qaCategoryDeleteTarget.category}
+          saving={saving}
+          onClose={() => setQaCategoryDeleteTarget(null)}
+          onConfirm={() => {
+            const target = qaCategoryDeleteTarget;
+            if (!canDeleteQaTemplateCategory(target.category.id, config.qa.templates)) {
+              setQaCategoryDeleteTarget(null);
+              setError('该分类下仍有关联模板，请先调整或删除模板。');
+              return;
+            }
+            void runSave(async () => {
+              await persistQa({
+                ...config.qa,
+                template_categories: config.qa.template_categories.filter((_, index) => index !== target.index),
+              }, setConfig);
+              setQaCategoryDeleteTarget(null);
+            });
+          }}
+        />
+      ) : null}
+      {config && qaTemplateEditorOpen ? (
+        <QaTemplateDialog
+          open
+          draft={qaTemplateDraft}
+          categories={config.qa.template_categories}
+          saving={saving}
+          error={qaTemplateFormError}
+          onClose={() => setQaTemplateEditorOpen(false)}
+          onChange={(patch) => {
+            setQaTemplateDraft((current) => ({ ...current, ...patch }));
+            setQaTemplateFormError('');
+          }}
+          onSubmit={() => {
+            const currentId = qaTemplateEditorIndex === null
+              ? undefined
+              : config.qa.templates[qaTemplateEditorIndex]?.id;
+            const result = validateQaTemplateDraft(qaTemplateDraft, config.qa.template_categories, config.qa.templates, currentId);
+            if (!result.template) {
+              setQaTemplateFormError(result.error || '问答模板配置无效');
+              return;
+            }
+            const nextTemplate = result.template;
+            void runSave(async () => {
+              const updated = [...config.qa.templates];
+              if (qaTemplateEditorIndex === null) {
+                updated.push(nextTemplate);
+              } else {
+                updated[qaTemplateEditorIndex] = nextTemplate;
+              }
+              await persistQa({ ...config.qa, templates: updated }, setConfig);
+              setQaTemplateEditorOpen(false);
+            });
+          }}
+        />
+      ) : null}
+      {config && qaTemplateDeleteTarget ? (
+        <QaTemplateDeleteDialog
+          open
+          template={qaTemplateDeleteTarget.template}
+          saving={saving}
+          onClose={() => setQaTemplateDeleteTarget(null)}
+          onConfirm={() => {
+            const target = qaTemplateDeleteTarget;
+            void runSave(async () => {
+              await persistQa({
+                ...config.qa,
+                templates: config.qa.templates.filter((_, index) => index !== target.index),
+              }, setConfig);
+              setQaTemplateDeleteTarget(null);
+            });
+          }}
+        />
+      ) : null}
       {config && recommendDialogKey ? (
         <TextEditorDialog
           open
@@ -1090,7 +1302,7 @@ function SpacePickerDialog({
 
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
-      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+      <div className={`${s.modalCard} ${s.qaTemplateModal}`} onClick={(event) => event.stopPropagation()}>
         <div className={s.modalHeader}>
           <div>
             <h3 className={s.modalTitle}>添加知识空间</h3>
@@ -1789,8 +2001,8 @@ function BishengEditorDialog({
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
         {error ? <div className={s.errorBox}>{error}</div> : null}
-        <div className={s.modalScrollBody}>
-          <div className={s.formGrid}>
+        <div className={`${s.modalScrollBody} ${s.qaTemplateScrollBody}`}>
+          <div className={`${s.formGrid} ${s.qaTemplateFormGrid}`}>
             <label className={`${s.formField} ${s.formFieldWide}`}>
               <span className={s.fieldLabel}>大模型应用平台地址</span>
               <input className={s.formInput} value={draft.base_url} onChange={(event) => onChange({ base_url: event.target.value })} placeholder="例如：http://192.168.106.114:7860（大模型应用平台后端 API，不是浏览器入口）" />
@@ -1980,6 +2192,360 @@ function QAConfigTable({
         </tbody>
       </table>
     </>
+  );
+}
+
+function QATemplatesTable({
+  qa,
+  saving,
+  onAddCategory,
+  onEditCategory,
+  onDeleteCategory,
+  onMoveCategory,
+  onToggleCategory,
+  onAddTemplate,
+  onEditTemplate,
+  onDeleteTemplate,
+  onMoveTemplate,
+  onToggleTemplate,
+}: {
+  qa: QAConfig;
+  saving: boolean;
+  onAddCategory: () => void;
+  onEditCategory: (index: number) => void;
+  onDeleteCategory: (index: number) => void;
+  onMoveCategory: (index: number, direction: -1 | 1) => void;
+  onToggleCategory: (index: number, enabled: boolean) => void;
+  onAddTemplate: () => void;
+  onEditTemplate: (index: number) => void;
+  onDeleteTemplate: (index: number) => void;
+  onMoveTemplate: (index: number, direction: -1 | 1) => void;
+  onToggleTemplate: (index: number, enabled: boolean) => void;
+}) {
+  const categoryNameById = new Map(qa.template_categories.map((category) => [category.id, category.name]));
+
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>问答模板</h2>
+        <button className={s.addBtn} onClick={onAddTemplate} disabled={saving || qa.template_categories.length === 0}><Plus size={14} /> 添加模板</button>
+      </div>
+      <p className={s.pageNote}>
+        这里维护知识问答页“AI 帮我写”卡片和首页快捷入口。分类下仍有模板时不能删除分类。
+      </p>
+
+      <div className={s.titleBar}>
+        <h3 className={s.sectionTitle}>模板分类</h3>
+        <button className={s.subtleBtn} onClick={onAddCategory} disabled={saving}><Plus size={14} /> 添加分类</button>
+      </div>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>分类名称</th>
+            <th>状态</th>
+            <th>模板数</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {qa.template_categories.map((category, index) => {
+            const templateCount = qa.templates.filter((template) => template.category_id === category.id).length;
+            const deletable = canDeleteQaTemplateCategory(category.id, qa.templates);
+            return (
+              <tr key={category.id}>
+                <td><div className={s.valueStack}><span className={s.valueTitle}>{category.name}</span><span className={s.valueMeta}>{category.id}</span></div></td>
+                <td><span className={category.enabled ? s.stateEnabled : s.stateDisabled}>{category.enabled ? '已启用' : '已停用'}</span></td>
+                <td>{templateCount}</td>
+                <td>
+                  <div className={s.actionGroup}>
+                    <button className={s.inlineBtn} onClick={() => onMoveCategory(index, -1)} disabled={saving || index === 0}>上移</button>
+                    <button className={s.inlineBtn} onClick={() => onMoveCategory(index, 1)} disabled={saving || index === qa.template_categories.length - 1}>下移</button>
+                    <button className={s.inlineBtn} onClick={() => onToggleCategory(index, !category.enabled)} disabled={saving}>{category.enabled ? '停用' : '启用'}</button>
+                    <button className={s.inlineBtn} onClick={() => onEditCategory(index)} disabled={saving}>编辑</button>
+                    <button
+                      className={deletable ? s.inlineDangerBtn : s.inlineMutedBtn}
+                      onClick={() => onDeleteCategory(index)}
+                      disabled={saving || !deletable}
+                      title={deletable ? '删除分类' : '请先调整或删除该分类下的模板'}
+                    >
+                      删除
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className={s.titleBar}>
+        <h3 className={s.sectionTitle}>模板列表</h3>
+      </div>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>模板名称</th>
+            <th>分类</th>
+            <th>图标</th>
+            <th>提示词</th>
+            <th>展示</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {qa.templates.map((template, index) => (
+            <tr key={template.id}>
+              <td>
+                <div className={s.valueStack}>
+                  <span className={s.valueTitle}>{template.name}</span>
+                  <span className={s.valueMeta}>{template.desc || template.id}</span>
+                </div>
+              </td>
+              <td>{categoryNameById.get(template.category_id) || '分类不存在'}</td>
+              <td><DomainIcon icon={template.icon} color={template.color} bg={template.bg} size={32} /></td>
+              <td>{truncateText(template.prompt, 42)}</td>
+              <td>
+                <div className={s.valueStack}>
+                  <span className={template.enabled ? s.stateEnabled : s.stateDisabled}>{template.enabled ? '已启用' : '已停用'}</span>
+                  {template.show_on_home ? <span className={s.valueMeta}>首页展示</span> : <span className={s.valueMeta}>仅问答页</span>}
+                </div>
+              </td>
+              <td>
+                <div className={s.actionGroup}>
+                  <button className={s.inlineBtn} onClick={() => onMoveTemplate(index, -1)} disabled={saving || index === 0}>上移</button>
+                  <button className={s.inlineBtn} onClick={() => onMoveTemplate(index, 1)} disabled={saving || index === qa.templates.length - 1}>下移</button>
+                  <button className={s.inlineBtn} onClick={() => onToggleTemplate(index, !template.enabled)} disabled={saving}>{template.enabled ? '停用' : '启用'}</button>
+                  <button className={s.inlineBtn} onClick={() => onEditTemplate(index)} disabled={saving}>编辑</button>
+                  <button className={s.inlineDangerBtn} onClick={() => onDeleteTemplate(index)} disabled={saving}>删除</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function QaTemplateCategoryDialog({
+  open,
+  draft,
+  saving,
+  error,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  draft: QaTemplateCategoryDraft;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onChange: (patch: Partial<QaTemplateCategoryDraft>) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>{draft.name.trim() ? `编辑分类 · ${draft.name}` : '新增分类'}</h3>
+            <p className={s.modalNote}>分类用于知识问答页模板筛选；分类 ID 保存后保持稳定。</p>
+          </div>
+          <div className={s.modalHeaderActions}>
+            <button type="button" className={s.headerSwitch} onClick={() => onChange({ enabled: !draft.enabled })}>
+              <span>{draft.enabled ? '已启用' : '已停用'}</span>
+              <span className={`${s.switchTrack} ${draft.enabled ? s.switchTrackActive : ''}`}>
+                <span className={`${s.switchThumb} ${draft.enabled ? s.switchThumbActive : ''}`} />
+              </span>
+            </button>
+            <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+          </div>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.formGrid}>
+          <label className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>分类名称</span>
+            <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：工作汇报" />
+          </label>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QaTemplateDialog({
+  open,
+  draft,
+  categories,
+  saving,
+  error,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  draft: QaTemplateDraft;
+  categories: QATemplateCategoryConfig[];
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onChange: (patch: Partial<QaTemplateDraft>) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>{draft.name.trim() ? `编辑模板 · ${draft.name}` : '新增模板'}</h3>
+            <p className={s.modalNote}>模板会显示在知识问答页；打开首页展示后也会显示在首页快捷入口。</p>
+          </div>
+          <div className={s.modalHeaderActions}>
+            <button type="button" className={s.headerSwitch} onClick={() => onChange({ showOnHome: !draft.showOnHome })}>
+              <span>{draft.showOnHome ? '首页展示' : '不在首页'}</span>
+              <span className={`${s.switchTrack} ${draft.showOnHome ? s.switchTrackActive : ''}`}>
+                <span className={`${s.switchThumb} ${draft.showOnHome ? s.switchThumbActive : ''}`} />
+              </span>
+            </button>
+            <button type="button" className={s.headerSwitch} onClick={() => onChange({ enabled: !draft.enabled })}>
+              <span>{draft.enabled ? '已启用' : '已停用'}</span>
+              <span className={`${s.switchTrack} ${draft.enabled ? s.switchTrackActive : ''}`}>
+                <span className={`${s.switchThumb} ${draft.enabled ? s.switchThumbActive : ''}`} />
+              </span>
+            </button>
+            <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+          </div>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.modalScrollBody}>
+          <div className={s.formGrid}>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>模板名称</span>
+              <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：工作计划" />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>所属分类</span>
+              <select className={s.formInput} value={draft.categoryId} onChange={(event) => onChange({ categoryId: event.target.value })}>
+                <option value="">请选择分类</option>
+                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </label>
+            <div className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>图标</span>
+              <div className={s.optionPickerRow}>
+                {QA_TEMPLATE_ICON_OPTIONS.map((icon) => (
+                  <button
+                    key={icon}
+                    type="button"
+                    className={`${s.iconOptionBtn} ${draft.icon === icon ? s.iconOptionBtnActive : ''}`}
+                    onClick={() => onChange({ icon })}
+                  >
+                    <DomainIcon icon={icon} color={draft.color} bg={draft.bg} size={32} />
+                    <span className={s.optionLabel}>{icon}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>颜色</span>
+              <div className={s.optionPickerRow}>
+                {DOMAIN_COLOR_OPTIONS.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    className={`${s.colorOptionBtn} ${draft.color === option.color && draft.bg === option.bg ? s.colorOptionBtnActive : ''}`}
+                    onClick={() => onChange({ color: option.color, bg: option.bg })}
+                  >
+                    <span className={s.colorPairPreview}>
+                      <span className={s.colorSwatchMain} style={{ background: option.color }} />
+                      <span className={s.colorSwatchBg} style={{ background: option.bg }} />
+                    </span>
+                    <span className={s.optionLabel}>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>模板描述</span>
+              <textarea className={`${s.formTextarea} ${s.qaTemplateDescInput}`} value={draft.desc} onChange={(event) => onChange({ desc: event.target.value })} placeholder="一句话说明模板用途" />
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>提示词</span>
+              <textarea className={`${s.formTextarea} ${s.qaTemplatePromptInput}`} value={draft.prompt} onChange={(event) => onChange({ prompt: event.target.value })} placeholder="点击模板后填入问答输入框的提示词" />
+            </label>
+          </div>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QaTemplateCategoryDeleteDialog({
+  open,
+  category,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  category: QATemplateCategoryConfig;
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
+        <h3 className={s.modalTitle}>删除模板分类</h3>
+        <p className={s.modalNote}>删除后该分类不再出现在知识问答页筛选中。</p>
+        <div className={s.confirmLine}><strong>分类名称：</strong>{category.name}</div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QaTemplateDeleteDialog({
+  open,
+  template,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  template: QATemplateConfig;
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
+        <h3 className={s.modalTitle}>删除问答模板</h3>
+        <p className={s.modalNote}>删除后知识问答页和首页快捷入口都会同步下线。</p>
+        <div className={s.confirmLine}><strong>模板名称：</strong>{template.name}</div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

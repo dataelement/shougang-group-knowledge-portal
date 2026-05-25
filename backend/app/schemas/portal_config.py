@@ -44,6 +44,61 @@ class SectionConfig(BaseModel):
     enabled: bool = True
 
 
+class QATemplateCategoryConfig(BaseModel):
+    id: str
+    name: str
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def normalize_and_validate(self):
+        self.id = self.id.strip()
+        self.name = self.name.strip()
+        if not self.id:
+            raise ValueError("Template category id is required")
+        if not self.name:
+            raise ValueError("Template category name is required")
+        return self
+
+
+class QATemplateConfig(BaseModel):
+    id: str
+    name: str
+    desc: str = ""
+    category_id: str
+    prompt: str
+    icon: str
+    color: str
+    bg: str
+    enabled: bool = True
+    show_on_home: bool = False
+
+    @model_validator(mode="after")
+    def normalize_and_validate(self):
+        self.id = self.id.strip()
+        self.name = self.name.strip()
+        self.desc = self.desc.strip()
+        self.category_id = self.category_id.strip()
+        self.prompt = self.prompt.strip()
+        self.icon = self.icon.strip()
+        self.color = self.color.strip()
+        self.bg = self.bg.strip()
+        if not self.id:
+            raise ValueError("Template id is required")
+        if not self.name:
+            raise ValueError("Template name is required")
+        if not self.category_id:
+            raise ValueError("Template category is required")
+        if not self.prompt:
+            raise ValueError("Template prompt is required")
+        if not self.icon:
+            raise ValueError("Template icon is required")
+        if not self.color:
+            raise ValueError("Template color is required")
+        if not self.bg:
+            raise ValueError("Template background color is required")
+        return self
+
+
 class QAConfig(BaseModel):
     knowledge_space_ids: list[int] = Field(default_factory=list)
     welcome_message: str = "你好，我是首钢股份知库智能助手，请问有什么可以帮您？"
@@ -56,13 +111,31 @@ class QAConfig(BaseModel):
     selected_model: str = ""
     general_model: str = ""
     reasoning_model: str = ""
+    template_categories: list[QATemplateCategoryConfig] = Field(default_factory=list)
+    templates: list[QATemplateConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def normalize_model_fields(self):
+    def normalize_and_validate(self):
         if not self.general_model and self.selected_model:
             self.general_model = self.selected_model
         if not self.selected_model and self.general_model:
             self.selected_model = self.general_model
+        category_ids = [category.id for category in self.template_categories]
+        duplicate_category_ids = {category_id for category_id in category_ids if category_ids.count(category_id) > 1}
+        if duplicate_category_ids:
+            raise ValueError("Template category ids must be unique")
+        template_ids = [template.id for template in self.templates]
+        duplicate_template_ids = {template_id for template_id in template_ids if template_ids.count(template_id) > 1}
+        if duplicate_template_ids:
+            raise ValueError("Template ids must be unique")
+        valid_category_ids = set(category_ids)
+        orphan_templates = [
+            template.id
+            for template in self.templates
+            if template.category_id not in valid_category_ids
+        ]
+        if orphan_templates:
+            raise ValueError("Template category must exist")
         return self
 
 
