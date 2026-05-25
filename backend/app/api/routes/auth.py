@@ -35,12 +35,15 @@ async def login(
 @router.get("/me")
 async def get_me(
     request: Request,
+    response: Response,
     service: PortalAuthService = Depends(get_portal_auth_service),
 ):
     try:
-        session = service.require_session(request)
+        session, recovered = await service.require_session_or_bisheng_cookie(request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
+    if recovered:
+        service.attach_session_cookie(response, session, remember=True)
     return response_ok(PortalAuthData(user=session.user))
 
 

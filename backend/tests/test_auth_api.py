@@ -29,7 +29,7 @@ class FakeAuthBishengClient:
         if path == "/api/v1/user/public_key":
             return {"status_code": 200, "data": {"public_key": "fake-public-key"}}
         if path == "/api/v1/user/info":
-            assert self.api_token == "user-token"
+            assert self.api_token in {"user-token", "existing-token"}
             return {
                 "status_code": 200,
                 "data": {
@@ -93,3 +93,21 @@ def test_login_me_logout_roundtrip_sets_httponly_session_cookie():
     assert me_response.json()["data"]["user"]["account"] == "bisheng-user"
     assert logout_response.status_code == 200
     assert after_logout_response.status_code == 401
+
+
+def test_me_recovers_portal_session_from_bisheng_cookie():
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = make_auth_service()
+        try:
+            client.cookies.set("access_token_cookie", "existing-token")
+            me_response = client.get("/api/v1/auth/me")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert me_response.status_code == 200
+    assert "test_portal_session=" in me_response.headers["set-cookie"]
+    user = me_response.json()["data"]["user"]
+    assert user["account"] == "bisheng-user"
+    assert user["name"] == "王工"

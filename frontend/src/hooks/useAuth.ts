@@ -43,9 +43,8 @@ export function useAuth() {
   }, []);
 
   // localStorage 是前端登录态，BFF 重启 / session 过期 / cookie 丢失会让它和后端脱钩。
-  // 挂载时拉一次 /auth/me 校准：401 就清掉本地用户，避免 Header 显示已登录而内页提示需要登录。
+  // 挂载时始终拉一次 /auth/me：后端可用门户 session 或 Bisheng cookie 恢复用户态。
   useEffect(() => {
-    if (!readStoredUser()) return;
     let active = true;
     void fetchPortalMe()
       .then((next) => {

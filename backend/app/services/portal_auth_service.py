@@ -153,6 +153,39 @@ class PortalAuthService:
             raise PortalAuthError("请先登录", status_code=401)
         return session
 
+    async def require_session_or_bisheng_cookie(self, request: Request) -> tuple[PortalSession, bool]:
+        session = self.get_session(request)
+        if session is not None:
+            return session, False
+
+        access_token = request.cookies.get(self._bisheng_cookie_name, "").strip()
+        if not access_token:
+            raise PortalAuthError("请先登录", status_code=401)
+
+        base_url, timeout_seconds = self._runtime_service.get_connection_settings()
+        user = await self._fetch_user(
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            access_token=access_token,
+            fallback_account="",
+            strict=True,
+        )
+        expires_at = self._resolve_expiry(access_token)
+        if expires_at <= time.time():
+            raise PortalAuthError("登录态已失效，请重新登录", status_code=401)
+
+        session = PortalSession(
+            session_id=secrets.token_urlsafe(32),
+            access_token=access_token,
+            user=user,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            expires_at=expires_at,
+        )
+        self._cleanup_expired()
+        self._sessions[session.session_id] = session
+        return session, True
+
     def logout(self, request: Request) -> None:
         session_id = request.cookies.get(self._cookie_name, "")
         if session_id:
@@ -217,17 +250,22 @@ class PortalAuthService:
         timeout_seconds: float,
         access_token: str,
         fallback_account: str,
+        strict: bool = False,
     ) -> PortalUserView:
         client = self._client_factory(base_url, timeout_seconds, access_token)
         try:
             response = await client.get_json("/api/v1/user/info")
             data = _unwrap_bisheng_payload(response)
         except Exception:
+            if strict:
+                raise PortalAuthError("BiSheng 登录态校验失败，请重新登录", status_code=401)
             data = {}
         finally:
             await client.aclose()
 
         account = self._first_str(data, "user_name", "username", "account", "email") or fallback_account
+        if strict and not account:
+            raise PortalAuthError("BiSheng 登录态缺少用户信息，请重新登录", status_code=401)
         name = self._first_str(data, "nick_name", "nickname", "name", "real_name", "user_name") or account
         role = self._first_str(data, "role_name", "role", "position", "department_name", "department")
         external_id = self._first_str(data, "external_id", "employee_id", "staff_id")
