@@ -10,13 +10,10 @@ import {
   Send,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { isPortalAdmin } from '../utils/adminAccess';
-import {
-  PORTAL_APPROVAL_EVENT,
-  type PortalApprovalAction,
-  storePendingPortalApprovalAction,
-} from '../utils/portalApprovalBridge';
+import { PORTAL_APPROVAL_EVENT, type PortalApprovalAction } from '../utils/portalApprovalBridge';
 import s from './Header.module.css';
 
 type HeaderNavItem =
@@ -30,10 +27,15 @@ const NAV_ITEMS: HeaderNavItem[] = [
   { label: '应用市场', to: '/apps' },
 ];
 
+function formatBadgeCount(count: number): string {
+  return count > 99 ? '99+' : String(count);
+}
+
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const badges = useNotificationSummary(Boolean(user));
   const { config } = usePortalConfig();
   const bishengAdminUrl = config?.integrations?.bisheng_admin_entry_url?.trim() || '';
   const headerBrandName = config?.site?.header_brand_name?.trim() || '首钢股份知库';
@@ -66,16 +68,10 @@ export default function Header() {
 
   const openPortalApprovalAction = (action: PortalApprovalAction) => {
     closeMenu();
-    if (location.pathname === '/knowledge-spaces') {
-      window.dispatchEvent(new CustomEvent(PORTAL_APPROVAL_EVENT, { detail: { action } }));
-      return;
-    }
-    try {
-      storePendingPortalApprovalAction(window.sessionStorage, action);
-    } catch {
-      // sessionStorage 不可用时只跳转页面，用户可在知识页重新点击入口。
-    }
-    navigate('/knowledge-spaces');
+    // The global ApprovalDialogHost listens for this event and opens the
+    // BiSheng dialog as an overlay on whatever page the user is on, so we no
+    // longer navigate to the knowledge workbench.
+    window.dispatchEvent(new CustomEvent(PORTAL_APPROVAL_EVENT, { detail: { action } }));
   };
 
   return (
@@ -130,6 +126,9 @@ export default function Header() {
               <LayoutDashboard size={13} className={s.userTriggerIcon} />
               <span className={s.userTriggerName}>{user.name}</span>
               <ChevronDown size={12} className={s.userTriggerCaret} />
+              {badges.total > 0 ? (
+                <span className={s.triggerDot} aria-label={`有 ${badges.total} 条新消息`} />
+              ) : null}
             </button>
             {menuOpen ? (
               <div className={s.userMenu} role="menu">
@@ -165,6 +164,9 @@ export default function Header() {
                 >
                   <ClipboardList size={15} />
                   待办
+                  {badges.todo > 0 ? (
+                    <span className={s.menuBadge}>{formatBadgeCount(badges.todo)}</span>
+                  ) : null}
                 </button>
                 <button
                   type="button"
@@ -181,6 +183,9 @@ export default function Header() {
                 >
                   <Bell size={15} />
                   消息
+                  {badges.messages > 0 ? (
+                    <span className={s.menuBadge}>{formatBadgeCount(badges.messages)}</span>
+                  ) : null}
                 </button>
                 <div className={s.userMenuDivider} />
                 <button

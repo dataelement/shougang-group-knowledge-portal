@@ -3,6 +3,9 @@ export type PortalApprovalAction = 'tasks' | 'requests' | 'notifications';
 export const PORTAL_APPROVAL_EVENT = 'shougang-portal:open-approval';
 export const PENDING_PORTAL_APPROVAL_KEY = 'shougang-portal:pending-approval';
 
+/** Posted by the embedded BiSheng dialog host when all dialogs have closed. */
+export const PORTAL_DIALOG_CLOSED_MESSAGE = 'shougang-portal:dialog-closed';
+
 export const PORTAL_APPROVAL_MESSAGE_TYPES: Record<PortalApprovalAction, string> = {
   tasks: 'shougang-portal:open-approval-tasks',
   requests: 'shougang-portal:open-approval-requests',

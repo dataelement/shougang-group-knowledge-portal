@@ -144,17 +144,48 @@
   color: var(--neutral-700);
 }
 
-.summary {
+.summaryBox {
   padding: 11px 12px;
   border-radius: 6px;
   background: var(--neutral-50);
+}
+
+/*
+ * The clamp lives on this inner element with NO padding: -webkit-line-clamp
+ * leaks a partial extra line when the clamped box also has bottom padding,
+ * which showed up as "3.5 lines". Padding/background sit on .summaryBox instead.
+ */
+.summary {
   font-size: 0.96rem;
   color: var(--neutral-800);
   line-height: 1.65;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.summaryExpanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.summaryToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--primary-600, #2563eb);
+}
+
+.summaryToggle:hover {
+  text-decoration: underline;
 }
 
 .tags {

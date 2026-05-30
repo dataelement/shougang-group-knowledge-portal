@@ -14,6 +14,7 @@ import ExpertQAPage from './pages/ExpertQAPage';
 import ExpertQAAskPage from './pages/ExpertQAAskPage';
 import ExpertQADetailPage from './pages/ExpertQADetailPage';
 import KnowledgeSpacesPage from './pages/KnowledgeSpacesPage';
+import ApprovalDialogHost from './components/ApprovalDialogHost';
 import WikiPage from './pages/WikiPage';
 import WikiDetailPage from './pages/WikiDetailPage';
 import CoursePage from './pages/CoursePage';
@@ -126,6 +127,7 @@ export default function App() {
         <Route path="/admin" element={<AdminRoute />} />
         <Route path="/login" element={<LoginPage />} />
       </Routes>
+      <ApprovalDialogHost />
     </>
   );
 }

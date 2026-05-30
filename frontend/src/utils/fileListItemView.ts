@@ -65,11 +65,16 @@ export function buildFileListItemView(
   const displayTags = file.tags.filter((tag) => tag && !META_TAGS.has(tag));
   const visibleTags = displayTags.slice(0, visibleTagCount);
   const summaryText = file.summary.trim();
+  const folderPath = file.folderPath?.trim();
 
   return {
     documentTypeLabel,
     dateLabel: formatCardDate(file.date),
-    sourcePath: file.source ? `${file.source} > ${documentTypeLabel}` : documentTypeLabel,
+    // Source folder breadcrumb: the resolved path (e.g. 测试02/C011/C0001), which
+    // is just the space name when the file sits directly under the space; falls
+    // back to the space name when no source path could be resolved. The document
+    // type is shown separately, so it is not appended here.
+    sourcePath: folderPath || file.source || '',
     summaryText,
     visibleTags,
     hiddenTagCount: Math.max(displayTags.length - visibleTags.length, 0),

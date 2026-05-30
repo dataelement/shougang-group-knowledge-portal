@@ -14,6 +14,7 @@ class KnowledgeFileItem(BaseModel):
     file_ext: str = ""
     file_size: str = ""
     file_encoding: str = ""
+    folder_path: str = ""
 
 
 class KnowledgeFileSpace(BaseModel):

@@ -1,6 +1,18 @@
+import { useEffect, useRef, useState } from 'react';
 import type { FileItem } from '../api/content';
 import TagPill from './TagPill';
-import { CalendarClock, Download, FileText, FolderTree, MessageCircle, Share2, Star, Tag } from 'lucide-react';
+import {
+  CalendarClock,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FileText,
+  FolderTree,
+  MessageCircle,
+  Share2,
+  Star,
+  Tag,
+} from 'lucide-react';
 import { buildFileListItemView } from '../utils/fileListItemView';
 import s from './FileListItem.module.css';
 
@@ -22,6 +34,25 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
     canAsk: Boolean(onAsk),
   });
 
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [summaryOverflowing, setSummaryOverflowing] = useState(false);
+
+  // Detect whether the clamped (2-line) summary actually overflows so the
+  // expand toggle only shows when there is hidden text. Skip measuring while
+  // expanded (clamp removed → scrollHeight === clientHeight) to keep the last
+  // known overflow state, and re-measure on resize since wrapping is width-based.
+  useEffect(() => {
+    if (summaryExpanded) return;
+    const el = summaryRef.current;
+    if (!el) return;
+    const measure = () => setSummaryOverflowing(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [view.summaryText, summaryExpanded]);
+
   return (
     <article className={s.item}>
       <div className={s.body}>
@@ -39,10 +70,12 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
                   {view.dateLabel}
                 </span>
               ) : null}
-              <span className={s.metaItem}>
-                <FolderTree size={15} />
-                {view.sourcePath}
-              </span>
+              {view.sourcePath ? (
+                <span className={s.metaItem}>
+                  <FolderTree size={15} />
+                  {view.sourcePath}
+                </span>
+              ) : null}
             </div>
           </div>
           {view.actions.length > 0 ? (
@@ -110,7 +143,28 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
         {view.summaryText ? (
           <section className={s.textBlock}>
             <div className={s.blockTitle}>文档摘要</div>
-            <div className={s.summary}>{view.summaryText}</div>
+            <div className={s.summaryBox}>
+              <div
+                ref={summaryRef}
+                className={`${s.summary} ${summaryExpanded ? s.summaryExpanded : ''}`}
+              >
+                {view.summaryText}
+              </div>
+            </div>
+            {summaryOverflowing || summaryExpanded ? (
+              <button
+                type="button"
+                className={s.summaryToggle}
+                aria-expanded={summaryExpanded}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSummaryExpanded((prev) => !prev);
+                }}
+              >
+                {summaryExpanded ? '收起' : '展开'}
+                {summaryExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
+            ) : null}
           </section>
         ) : null}
 

@@ -21,12 +21,18 @@ test('builds rich list card fields from existing file data', () => {
 
   assert.equal(view.documentTypeLabel, 'PDF 文档');
   assert.equal(view.dateLabel, '2024/12/08 09:30');
-  assert.equal(view.sourcePath, '团队知识库 > PDF 文档');
+  // No resolved folder path -> falls back to the space name (old "<space> > <type>" dropped).
+  assert.equal(view.sourcePath, '团队知识库');
   assert.equal(view.summaryText, baseFile.summary);
   assert.equal(Object.hasOwn(view, 'snippetText'), false);
   assert.deepEqual(view.visibleTags, ['数据库', 'PostgreSQL', '迁移']);
   assert.equal(view.hiddenTagCount, 1);
   assert.deepEqual(view.actions, []);
+});
+
+test('sourcePath uses the resolved folder breadcrumb when present', () => {
+  const view = buildFileListItemView({ ...baseFile, folderPath: '测试02/C011/C0001' });
+  assert.equal(view.sourcePath, '测试02/C011/C0001');
 });
 
 test('does not fabricate unsupported confidence or actions', () => {

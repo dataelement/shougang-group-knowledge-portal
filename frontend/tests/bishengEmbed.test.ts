@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveKnowledgeEmbedUrl } from '../src/utils/bishengEmbed';
+import {
+  applyEmbedOriginOverride,
+  resolveKnowledgeEmbedUrl,
+  resolvePortalDialogsEmbedUrl,
+} from '../src/utils/bishengEmbed';
 
 const portalLocation = {
   protocol: 'http:',
@@ -38,4 +42,33 @@ test('runtime asset URL is converted to the knowledge page on the current portal
 test('fallback default avoids localhost so iframe can receive portal cookies', () => {
   const url = resolveKnowledgeEmbedUrl('', '', portalLocation);
   assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1');
+});
+
+test('dialogs embed URL swaps the last path segment for portal-dialogs', () => {
+  const url = resolvePortalDialogsEmbedUrl(
+    '',
+    'http://192.168.106.114:4001/workspace/knowledge',
+    portalLocation,
+  );
+  assert.equal(url, 'http://110.16.193.170:4001/workspace/portal-dialogs?portal_embed=1');
+});
+
+test('dialogs embed URL falls back to default host path', () => {
+  const url = resolvePortalDialogsEmbedUrl('', '', portalLocation);
+  assert.equal(url, 'http://110.16.193.170:4001/workspace/portal-dialogs?portal_embed=1');
+});
+
+test('origin override swaps protocol/host/port but keeps path and query', () => {
+  const base = 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1';
+  assert.equal(
+    applyEmbedOriginOverride(base, 'http://192.168.106.171:3002'),
+    'http://192.168.106.171:3002/workspace/knowledge-portal?portal_embed=1',
+  );
+});
+
+test('origin override is a no-op when empty or unparseable', () => {
+  const base = 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1';
+  assert.equal(applyEmbedOriginOverride(base, ''), base);
+  assert.equal(applyEmbedOriginOverride(base, undefined), base);
+  assert.equal(applyEmbedOriginOverride(base, 'not a url'), base);
 });

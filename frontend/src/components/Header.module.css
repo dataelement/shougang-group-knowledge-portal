@@ -111,6 +111,7 @@
 }
 
 .userTrigger {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -122,6 +123,17 @@
   border: 0;
   color: #fff;
   transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.triggerDot {
+  position: absolute;
+  top: 2px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px #003b8f;
 }
 
 .userTrigger:hover {
@@ -220,6 +232,26 @@
 
 .userMenuItem:hover svg {
   color: var(--primary-600);
+}
+
+.menuBadge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.userMenuItem:hover .menuBadge {
+  color: #fff;
 }
 
 .userMenuDivider {

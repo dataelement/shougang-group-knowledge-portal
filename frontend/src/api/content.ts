@@ -11,6 +11,8 @@ export interface FileItem {
   ext: string;
   sizeLabel: string;
   fileEncoding: string;
+  /** Readable source folder path "<source space>/<folder>/<folder>"; empty when not resolvable. */
+  folderPath?: string;
 }
 
 export interface FileDetail extends FileItem {
@@ -153,6 +155,7 @@ interface KnowledgeFileItemDto {
   file_ext?: string;
   file_size?: string;
   file_encoding?: string;
+  folder_path?: string;
 }
 
 interface KnowledgeFileDetailDto extends KnowledgeFileItemDto {
@@ -305,6 +308,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     ext: dto.file_ext ?? '',
     sizeLabel: dto.file_size ?? '',
     fileEncoding: dto.file_encoding ?? '',
+    folderPath: dto.folder_path ?? '',
   };
 }
 

@@ -34,6 +34,47 @@ function withPortalKnowledgeRoute(rawUrl: string, locationOverride?: EmbedLocati
   return toSameHostUrl(parsed.toString(), locationOverride);
 }
 
+/**
+ * Override the protocol/host/port of an already-resolved embed URL while
+ * keeping its path and query. Used only for local development via
+ * VITE_BISHENG_EMBED_ORIGIN, so a local portal can embed a remote (test-env)
+ * BiSheng instead of the same-host default. Returns the URL unchanged if the
+ * override is empty or unparseable.
+ */
+export function applyEmbedOriginOverride(rawUrl: string, originOverride?: string): string {
+  const origin = originOverride?.trim();
+  if (!origin) return rawUrl;
+  try {
+    const target = new URL(origin);
+    const parsed = new URL(rawUrl, target.origin);
+    parsed.protocol = target.protocol;
+    parsed.host = target.host; // host includes the port
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+/**
+ * Derive the chrome-less dialog-host embed URL ("/workspace/portal-dialogs")
+ * from the same inputs as the knowledge embed, by swapping the last path
+ * segment. Keeps the host normalization and the portal_embed marker.
+ */
+export function resolvePortalDialogsEmbedUrl(
+  runtimeAssetBaseUrl?: string,
+  knowledgeEntryUrl?: string,
+  locationOverride?: EmbedLocation,
+): string {
+  const knowledgeUrl = resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl, knowledgeEntryUrl, locationOverride);
+  try {
+    const parsed = new URL(knowledgeUrl, getCurrentLocation(locationOverride).origin);
+    parsed.pathname = parsed.pathname.replace(/\/[^/]*$/, '/portal-dialogs');
+    return parsed.toString();
+  } catch {
+    return knowledgeUrl;
+  }
+}
+
 export function resolveKnowledgeEmbedUrl(
   runtimeAssetBaseUrl?: string,
   knowledgeEntryUrl?: string,

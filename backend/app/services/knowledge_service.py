@@ -552,6 +552,7 @@ class KnowledgeService:
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
                 file_encoding=str(item.get("file_encoding") or ""),
+                folder_path=str(item.get("folder_path") or ""),
             )
             for item in raw_items
             if isinstance(item, dict)
