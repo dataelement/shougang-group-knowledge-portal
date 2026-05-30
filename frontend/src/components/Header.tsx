@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { isPortalAdmin } from '../utils/adminAccess';
 import {
   PORTAL_APPROVAL_EVENT,
   type PortalApprovalAction,
@@ -56,6 +57,7 @@ export default function Header() {
 
   const initial = user ? (user.initial || user.name.slice(0, 1)) : '';
   const externalId = user?.externalId?.trim() || user?.account || '';
+  const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
 
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
@@ -140,7 +142,7 @@ export default function Header() {
                     ) : null}
                   </div>
                 </div>
-                {bishengAdminUrl ? (
+                {canOpenAdmin ? (
                   <>
                     <button
                       type="button"

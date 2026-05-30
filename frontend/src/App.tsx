@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Navigate, Routes, Route, useLocation } from 'react-router-dom';
 import { useEffect, useLayoutEffect } from 'react';
 import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
@@ -18,6 +18,9 @@ import WikiPage from './pages/WikiPage';
 import WikiDetailPage from './pages/WikiDetailPage';
 import CoursePage from './pages/CoursePage';
 import { usePortalConfig } from './hooks/usePortalConfig';
+import { useAuth } from './hooks/useAuth';
+import Header from './components/Header';
+import { buildAdminLoginRedirect, getAdminAccessState } from './utils/adminAccess';
 
 function RouteScrollReset() {
   const location = useLocation();
@@ -71,6 +74,30 @@ function SiteHeadConfig() {
   return null;
 }
 
+function AdminRoute() {
+  const location = useLocation();
+  const { user } = useAuth();
+  const accessState = getAdminAccessState(user);
+
+  if (accessState === 'login') {
+    return <Navigate to={buildAdminLoginRedirect(location.pathname, location.search)} replace />;
+  }
+
+  if (accessState === 'forbidden') {
+    return (
+      <>
+        <Header />
+        <main style={{ padding: '96px 24px', textAlign: 'center' }}>
+          <h1>无权限</h1>
+          <p>仅管理员和系统管理员可以访问知识管理后台。</p>
+        </main>
+      </>
+    );
+  }
+
+  return <AdminPage />;
+}
+
 export default function App() {
   return (
     <>
@@ -96,7 +123,7 @@ export default function App() {
         <Route path="/course" element={<CoursePage />} />
         <Route path="/course/:courseId" element={<CoursePage />} />
         <Route path="/apps" element={<AppsPage />} />
-        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin" element={<AdminRoute />} />
         <Route path="/login" element={<LoginPage />} />
       </Routes>
     </>

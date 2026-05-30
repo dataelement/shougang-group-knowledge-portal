@@ -31,5 +31,5 @@ backend/**/*.py[cod]
 # Frontend
 frontend/node_modules/
 frontend/dist/
-frontend/.test-dist/
+frontend/.test-dist*/
 frontend/*.local

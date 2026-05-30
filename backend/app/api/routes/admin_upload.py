@@ -6,9 +6,14 @@ from typing import Final
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from PIL import Image, UnidentifiedImageError
 
+from app.api.dependencies import require_admin_session
 from app.schemas.common import response_ok
 
-router = APIRouter(prefix="/api/v1/admin/upload", tags=["admin-upload"])
+router = APIRouter(
+    prefix="/api/v1/admin/upload",
+    tags=["admin-upload"],
+    dependencies=[Depends(require_admin_session)],
+)
 
 MAX_BANNER_BYTES: Final[int] = 5 * 1024 * 1024
 ALLOWED_MIME: Final[set[str]] = {"image/jpeg", "image/png", "image/webp"}

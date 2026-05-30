@@ -47,6 +47,32 @@ def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
     raise HTTPException(status_code=status_code, detail=err.status_message)
 
 
+async def _fetch_shougang_portal_space_info(
+    bisheng_client: BishengClient,
+    space_ids: list[int],
+) -> dict[int, dict]:
+    if not space_ids:
+        return {}
+    try:
+        response = await bisheng_client.post_json(
+            "/api/v1/knowledge/shougang-portal/spaces/info",
+            json={"space_ids": space_ids},
+        )
+    except Exception:
+        return {}
+    data = response.get("data") or {}
+    raw_spaces = data.get("spaces") if isinstance(data, dict) else []
+    if not isinstance(raw_spaces, list):
+        return {}
+    live_space_data: dict[int, dict] = {}
+    for item in raw_spaces:
+        if not isinstance(item, dict) or item.get("id") is None:
+            continue
+        item_data = item.get("data") or {}
+        live_space_data[int(item["id"])] = item_data if isinstance(item_data, dict) else {}
+    return live_space_data
+
+
 def _require_share_access(
     request: Request,
     share_token: str,
@@ -105,6 +131,19 @@ async def get_home_content(
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
     return response_ok(await service.get_home_content())
+
+
+@router.get("/config")
+async def get_portal_config(
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    config = portal_config_service.get_config()
+    live_space_data = await _fetch_shougang_portal_space_info(
+        bisheng_client,
+        [space.id for space in config.spaces],
+    )
+    return response_ok(portal_config_service.with_live_space_data(config, live_space_data))
 
 
 @router.get("/spaces")

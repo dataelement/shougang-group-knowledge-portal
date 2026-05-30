@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_bisheng_client, get_bisheng_runtime_service, get_portal_config_service
+from app.api.dependencies import (
+    get_bisheng_client,
+    get_bisheng_runtime_service,
+    get_portal_config_service,
+    require_admin_session,
+)
 from app.clients.bisheng import BishengClient
 from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
 from app.schemas.common import response_error, response_ok
@@ -20,7 +25,11 @@ from app.schemas.portal_config import (
 from app.services.portal_config_service import PortalConfigService
 from app.services.bisheng_runtime_service import BishengRuntimeService
 
-router = APIRouter(prefix="/api/v1/admin/config", tags=["admin-config"])
+router = APIRouter(
+    prefix="/api/v1/admin/config",
+    tags=["admin-config"],
+    dependencies=[Depends(require_admin_session)],
+)
 
 
 async def _fetch_shougang_portal_space_info(

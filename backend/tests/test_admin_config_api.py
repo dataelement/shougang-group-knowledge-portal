@@ -1,10 +1,15 @@
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.api.dependencies import require_admin_session
 from app.main import app
+from app.schemas.auth import PortalUserView
 from app.schemas.portal_config import SpacesConfigUpdate
 from app.services.bisheng_runtime_service import BishengRuntimeService
+from app.services.portal_auth_service import PortalAuthError
 from app.services.portal_config_service import PortalConfigService
 
 
@@ -188,6 +193,46 @@ class FakeRuntimeBishengClient:
         return None
 
 
+class FakeAdminAuthService:
+    def __init__(self, role: str | None, account: str = "portal-user"):
+        self.role = role
+        self.account = account
+
+    def require_session(self, _request):
+        if self.role is None:
+            raise PortalAuthError("请先登录", status_code=401)
+        return SimpleNamespace(
+            user=PortalUserView(
+                account=self.account,
+                name="门户用户",
+                initial="门",
+                role=self.role,
+                external_id="00014",
+                login_at=1,
+            )
+        )
+
+
+def make_admin_session(role: str = "管理员"):
+    return SimpleNamespace(
+        user=PortalUserView(
+            account="portal-admin",
+            name="门户管理员",
+            initial="门",
+            role=role,
+            external_id="",
+            login_at=1,
+        )
+    )
+
+
+@pytest.fixture(autouse=True)
+def allow_admin_access_by_default():
+    app.dependency_overrides[require_admin_session] = make_admin_session
+    yield
+    app.dependency_overrides.pop(require_admin_session, None)
+
+
 def create_runtime_service(tmp_path: Path) -> BishengRuntimeService:
     return BishengRuntimeService(
         config_path=tmp_path / "bisheng_runtime.json",
@@ -197,6 +242,69 @@ def create_runtime_service(tmp_path: Path) -> BishengRuntimeService:
         client_factory=FakeRuntimeBishengClient,
         password_encryptor=lambda _public_key, _password: "encrypted-password",
     )
+
+
+def test_admin_config_requires_login(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    app.dependency_overrides.pop(require_admin_session, None)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.portal_auth_service = FakeAdminAuthService(role=None)
+        response = client.get("/api/v1/admin/config/integrations")
+
+    assert response.status_code == 401
+
+
+def test_admin_config_rejects_non_admin_user(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    app.dependency_overrides.pop(require_admin_session, None)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.portal_auth_service = FakeAdminAuthService(role="设备管理部")
+        response = client.get("/api/v1/admin/config/integrations")
+
+    assert response.status_code == 403
+
+
+def test_admin_config_allows_bisheng_admin_role(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    app.dependency_overrides.pop(require_admin_session, None)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.portal_auth_service = FakeAdminAuthService(role="admin")
+        response = client.get("/api/v1/admin/config/integrations")
+
+    assert response.status_code == 200
+
+
+def test_admin_config_allows_admin_account_fallback(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    app.dependency_overrides.pop(require_admin_session, None)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.portal_auth_service = FakeAdminAuthService(
+            role="内部员工",
+            account="Admin",
+        )
+        response = client.get("/api/v1/admin/config/integrations")
+
+    assert response.status_code == 200
+
+
+def test_public_portal_config_does_not_require_admin(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    app.dependency_overrides.pop(require_admin_session, None)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        response = client.get("/api/v1/knowledge/config")
+
+    assert response.status_code == 200
+    assert "site" in response.json()["data"]
 
 
 def test_get_admin_config_uses_portal_config_service(tmp_path: Path):

@@ -1,4 +1,4 @@
-import { fetchAdminConfig, type PortalConfig } from './adminConfig';
+import type { PortalConfig } from './adminConfig';
 
 export interface FileItem {
   id: number;
@@ -370,7 +370,7 @@ export function invalidatePortalContentConfigCache() {
 
 export async function fetchPortalContentConfig(): Promise<PortalConfig> {
   if (!portalContentConfigPromise) {
-    portalContentConfigPromise = fetchAdminConfig().catch((error) => {
+    portalContentConfigPromise = request<PortalConfig>('/api/v1/knowledge/config').catch((error) => {
       portalContentConfigPromise = null;
       throw error;
     });

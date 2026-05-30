@@ -23,7 +23,8 @@ test('portal content config shares concurrent requests', async () => {
   invalidatePortalContentConfigCache();
   const originalFetch = globalThis.fetch;
   let calls = 0;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(String(input), '/api/v1/knowledge/config');
     calls += 1;
     await new Promise((resolve) => setTimeout(resolve, 5));
     return new Response(JSON.stringify({
