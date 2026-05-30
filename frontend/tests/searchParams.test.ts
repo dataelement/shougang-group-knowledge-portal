@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildDomainSearchPath,
+  buildTagSearchPath,
   createDomainFilterSearchParams,
   createSubmittedSearchParams,
   getSearchDisplayKeyword,
@@ -12,6 +13,13 @@ test('domain navigation uses prefill without creating a keyword query', () => {
   assert.equal(
     buildDomainSearchPath('生产'),
     '/search?domain=%E7%94%9F%E4%BA%A7&prefill=%E7%94%9F%E4%BA%A7&page=1',
+  );
+});
+
+test('hot search navigation uses tag filtered search results', () => {
+  assert.equal(
+    buildTagSearchPath('废料'),
+    '/search?tag=%E5%BA%9F%E6%96%99&prefill=%E5%BA%9F%E6%96%99&page=1',
   );
 });
 

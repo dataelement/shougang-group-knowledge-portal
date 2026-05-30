@@ -7,6 +7,18 @@ export function buildDomainSearchPath(domainName: string): string {
   return `/search?${params.toString()}`;
 }
 
+export function buildTagSearchPath(tagName: string): string {
+  const trimmedTagName = tagName.trim();
+  if (!trimmedTagName) return '/search';
+
+  const params = new URLSearchParams({
+    tag: trimmedTagName,
+    prefill: trimmedTagName,
+    page: '1',
+  });
+  return `/search?${params.toString()}`;
+}
+
 export function getSearchDisplayKeyword(params: URLSearchParams): string {
   return params.get('q') || params.get('domain') || params.get('prefill') || '';
 }

@@ -18,7 +18,7 @@ import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, getEnabledSpaces, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
-import { buildDomainSearchPath } from '../utils/searchParams';
+import { buildDomainSearchPath, buildTagSearchPath } from '../utils/searchParams';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
 import s from './HomePage.module.css';
@@ -606,7 +606,7 @@ export default function HomePage() {
                         className={s.hotSearchTag}
                         onClick={() => {
                           setShowHotTagMenu(false);
-                          navigate(`/list?tag=${encodeURIComponent(tagName)}`);
+                          navigate(buildTagSearchPath(tagName));
                         }}
                       >
                         {tagName}
