@@ -18,7 +18,6 @@ import {
   ScrollText,
   Search,
   Send,
-  Sparkles,
   User,
   X,
 } from 'lucide-react';
@@ -774,12 +773,6 @@ export default function QAPage() {
           <div className={s.contentArea}>
             {!hasConversation ? (
               <div className={s.templatePanel}>
-                <div className={s.templateHeading}>
-                  <div className={s.templateTitle}>
-                    <Sparkles size={18} />
-                    AI 帮我写
-                  </div>
-                </div>
                 <div className={s.templateTabs} role="tablist" aria-label="写作模板分类">
                   {[{ id: ALL_TEMPLATE_CATEGORY_ID, name: '全部' }, ...enabledCategories].map((category) => (
                     <button
