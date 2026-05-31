@@ -15,6 +15,7 @@ import {
   Users,
 } from 'lucide-react';
 import { fetchPortalMe, loginPortal } from '../api/auth';
+import { fetchBishengBootstrapStatus } from '../api/bootstrap';
 import { loadPortalUser, savePortalUser } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import s from './LoginPage.module.css';
@@ -64,6 +65,19 @@ export default function LoginPage() {
   const [passwordError, setPasswordError] = useState('');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [bootstrapRequired, setBootstrapRequired] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetchBishengBootstrapStatus()
+      .then((status) => {
+        if (active) setBootstrapRequired(status.required);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function clearErrors() {
     setAccountError('');
@@ -185,6 +199,12 @@ export default function LoginPage() {
                 <div className={s.formError}>
                   <AlertCircle size={14} />
                   <span>{formError}</span>
+                </div>
+              ) : null}
+              {bootstrapRequired ? (
+                <div className={s.bootstrapNotice}>
+                  Bisheng 数据源不可用，请先
+                  <Link to="/bootstrap/bisheng">初始化数据源</Link>
                 </div>
               ) : null}
 

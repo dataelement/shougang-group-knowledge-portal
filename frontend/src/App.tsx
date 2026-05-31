@@ -10,6 +10,7 @@ import AppsPage from './pages/AppsPage';
 import AdminPage from './pages/AdminPage';
 import DomainsPage from './pages/DomainsPage';
 import LoginPage from './pages/LoginPage';
+import BootstrapBishengPage from './pages/BootstrapBishengPage';
 import ExpertQAPage from './pages/ExpertQAPage';
 import ExpertQAAskPage from './pages/ExpertQAAskPage';
 import ExpertQADetailPage from './pages/ExpertQADetailPage';
@@ -126,6 +127,7 @@ export default function App() {
         <Route path="/apps" element={<AppsPage />} />
         <Route path="/admin" element={<AdminRoute />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/bootstrap/bisheng" element={<BootstrapBishengPage />} />
       </Routes>
       <ApprovalDialogHost />
     </>

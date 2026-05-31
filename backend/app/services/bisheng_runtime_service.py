@@ -103,6 +103,16 @@ class BishengRuntimeService:
     def get_public_config(self) -> BishengRuntimeConfigView:
         return self._to_public_view(self._read_config())
 
+    def is_bootstrap_required(self) -> bool:
+        return not self._connected
+
+    async def refresh_connection_status(self) -> BishengRuntimeConfigView:
+        async with self._lock:
+            if self._client is None:
+                await self._replace_client(self._read_config())
+        await self._refresh_runtime_account_info()
+        return self.get_public_config()
+
     def get_connection_settings(self) -> tuple[str, float]:
         config = self._read_config()
         return str(config.base_url), config.timeout_seconds
