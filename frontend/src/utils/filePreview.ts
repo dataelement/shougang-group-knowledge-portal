@@ -1,4 +1,4 @@
-import type { FilePreviewManifest, FilePreviewMode, FilePreviewSourceKind } from '../api/content';
+import type { FileItem, FilePreviewManifest, FilePreviewMode, FilePreviewSourceKind } from '../api/content';
 
 export interface ResolvedFilePreview {
   downloadUrl: string;
@@ -32,4 +32,9 @@ export function resolveFilePreview(preview: FilePreviewManifest | null): Resolve
     supportsChunksFallback: preview.supportsChunksFallback,
     viewerUrl: preview.viewerUrl,
   };
+}
+
+export function resolvePreviewModalFrameUrl(file: FileItem, _preview?: FilePreviewManifest | null): string {
+  void _preview;
+  return `/space/${file.spaceId}/file/${file.id}?embed=1`;
 }

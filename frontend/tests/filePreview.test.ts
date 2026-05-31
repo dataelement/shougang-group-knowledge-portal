@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveFilePreview } from '../src/utils/filePreview';
+import { resolveFilePreview, resolvePreviewModalFrameUrl } from '../src/utils/filePreview';
 
 test('resolveFilePreview keeps backend-selected pdf manifest', () => {
   const resolved = resolveFilePreview({
@@ -68,4 +68,31 @@ test('resolveFilePreview falls back to chunks when preview manifest is missing',
   assert.equal(resolved.mode, 'chunks');
   assert.equal(resolved.prefersChunks, true);
   assert.equal(resolved.viewerUrl, '');
+});
+
+test('resolvePreviewModalFrameUrl uses embedded detail page instead of direct asset viewer url', () => {
+  const url = resolvePreviewModalFrameUrl(
+    {
+      id: 1580,
+      spaceId: 12,
+      title: '安全操作手册',
+      summary: '',
+      source: '团队知识库',
+      date: '2026-05-31T12:00:00',
+      tags: [],
+      ext: 'pdf',
+      sizeLabel: '',
+      fileEncoding: '',
+    },
+    {
+      downloadUrl: '/bisheng/original/1580.pdf?X-Amz-Signature=abc',
+      mode: 'pdf',
+      reason: '',
+      sourceKind: 'original_url',
+      supportsChunksFallback: true,
+      viewerUrl: '/bisheng/original/1580.pdf?X-Amz-Signature=abc',
+    },
+  );
+
+  assert.equal(url, '/space/12/file/1580?embed=1');
 });

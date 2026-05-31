@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { fetchFilePreview, type FileItem } from '../api/content';
+import type { FileItem } from '../api/content';
+import { resolvePreviewModalFrameUrl } from '../utils/filePreview';
 import s from './FilePreviewModal.module.css';
 
 interface Props {
@@ -14,27 +15,9 @@ export default function FilePreviewModal({ file, onClose }: Props) {
 
   useEffect(() => {
     if (!file) return;
-    let active = true;
     setLoading(true);
-    setSrc('');
-    // Prefer the original-file viewer stream so the modal shows the real
-    // document (PDF/image/webpage/...) just like the knowledge base preview,
-    // instead of the parsed markdown/chunk content. Only fall back to the
-    // embedded detail page when there is no directly previewable resource.
-    void fetchFilePreview(file.spaceId, file.id)
-      .then((manifest) => {
-        if (!active) return;
-        setSrc(manifest?.viewerUrl || `/space/${file.spaceId}/file/${file.id}?embed=1`);
-      })
-      .catch(() => {
-        if (active) setSrc(`/space/${file.spaceId}/file/${file.id}?embed=1`);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    setSrc(resolvePreviewModalFrameUrl(file));
+    setLoading(false);
   }, [file]);
 
   useEffect(() => {

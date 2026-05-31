@@ -29,6 +29,7 @@ export default defineConfig({
         target: bishengMinioProxyTarget,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/workspace/, ''),
+        
       },
       '/workspace/': {
         target: bishengWebProxyTarget,
