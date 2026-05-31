@@ -791,29 +791,25 @@ def test_get_file_detail_and_preview(tmp_path: Path):
     assert preview["viewer_url"].endswith("source_kind=preview_url")
 
 
-def test_get_file_preview_normalizes_relative_urls(tmp_path: Path):
+def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_assets(tmp_path: Path):
     class RelativePreviewBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.asset_resolution_requests = []
+
         async def get_json(self, path: str, params=None):
             if path == "/api/v1/knowledge/space/12/files/1580/preview":
                 return {
                     "data": {
-                        "original_url": "/bisheng/original/1580.pdf?signature=demo",
+                        "original_url": "/bisheng/original/1580.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=demo",
                         "preview_url": "",
                     }
                 }
             return await super().get_json(path, params=params)
 
         def resolve_asset_url(self, path_or_url: str) -> str:
-            return f"https://bisheng.example.com{path_or_url}" if path_or_url.startswith("/") else path_or_url
-
-        async def get(self, path: str, params=None):
-            if path == "https://bisheng.example.com/bisheng/original/1580.pdf?signature=demo":
-                return httpx.Response(
-                    200,
-                    headers={"content-type": "application/pdf"},
-                    content=b"%PDF-relative-1580",
-                )
-            return await super().get(path, params=params)
+            self.asset_resolution_requests.append(path_or_url)
+            return f"http://192.168.106.171:7860{path_or_url}" if path_or_url.startswith("/") else path_or_url
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
@@ -826,9 +822,13 @@ def test_get_file_preview_normalizes_relative_urls(tmp_path: Path):
     assert preview_response.status_code == 200
     preview = preview_response.json()["data"]
     assert preview["mode"] == "pdf"
-    assert preview["download_url"] == "https://bisheng.example.com/bisheng/original/1580.pdf?signature=demo"
+    assert (
+        preview["download_url"]
+        == "/bisheng/original/1580.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=demo"
+    )
     assert preview["source_kind"] == "original_url"
-    assert preview["viewer_url"].endswith("source_kind=original_url")
+    assert preview["viewer_url"] == preview["download_url"]
+    assert fake_bisheng.asset_resolution_requests == []
 
 
 def test_get_file_preview_uses_preview_task_when_direct_urls_missing(tmp_path: Path):

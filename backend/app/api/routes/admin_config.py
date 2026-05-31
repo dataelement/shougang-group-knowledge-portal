@@ -1,4 +1,10 @@
-from fastapi import APIRouter, Depends
+import json
+from datetime import UTC, datetime
+from typing import Final
+
+from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from app.api.dependencies import (
     get_bisheng_client,
@@ -8,6 +14,7 @@ from app.api.dependencies import (
 )
 from app.clients.bisheng import BishengClient
 from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
+from app.schemas.admin_config_transfer import AdminConfigExportPayload, AdminConfigImportPayload
 from app.schemas.common import response_error, response_ok
 from app.schemas.portal_config import (
     AppsConfigUpdate,
@@ -30,6 +37,13 @@ router = APIRouter(
     tags=["admin-config"],
     dependencies=[Depends(require_admin_session)],
 )
+
+MAX_CONFIG_IMPORT_BYTES: Final[int] = 2 * 1024 * 1024
+ALLOWED_CONFIG_IMPORT_MIME: Final[set[str]] = {
+    "application/json",
+    "text/json",
+    "application/octet-stream",
+}
 
 
 async def _fetch_shougang_portal_space_info(
@@ -70,6 +84,65 @@ async def get_portal_config(
     )
     live_config = service.with_live_space_data(config, live_space_data)
     return response_ok(live_config)
+
+
+@router.get("/export")
+async def export_admin_config(
+    service: PortalConfigService = Depends(get_portal_config_service),
+    runtime_service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
+):
+    payload = AdminConfigExportPayload(
+        exported_at=datetime.now(UTC).isoformat(),
+        portal=service.get_config(),
+        bisheng=runtime_service.export_importable_config(),
+    )
+    filename = f"portal-config-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.json"
+    return JSONResponse(
+        content=payload.model_dump(mode="json"),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import")
+async def import_admin_config(
+    file: UploadFile = File(...),
+    service: PortalConfigService = Depends(get_portal_config_service),
+    runtime_service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
+):
+    if file.content_type and file.content_type not in ALLOWED_CONFIG_IMPORT_MIME:
+        return response_error(f"不支持的配置文件类型: {file.content_type}", status_code=415)
+
+    payload_bytes = await file.read(MAX_CONFIG_IMPORT_BYTES + 1)
+    if len(payload_bytes) > MAX_CONFIG_IMPORT_BYTES:
+        return response_error("配置文件不得超过 2MB", status_code=413)
+    if not payload_bytes:
+        return response_error("配置文件为空", status_code=400)
+
+    try:
+        raw_payload = json.loads(payload_bytes.decode("utf-8"))
+        payload = AdminConfigImportPayload.model_validate(raw_payload)
+        if payload.version != 1:
+            return response_error("配置文件格式不正确：不支持的配置版本", status_code=400)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as err:
+        return response_error(f"配置文件格式不正确：{err}", status_code=400)
+
+    previous_portal = service.get_config()
+    previous_runtime = runtime_service.snapshot_config()
+    try:
+        updated_portal = service.replace_config(payload.portal)
+        updated_runtime = await runtime_service.replace_importable_config(payload.bisheng)
+    except Exception as err:
+        service.replace_config(previous_portal)
+        await runtime_service.restore_config(previous_runtime)
+        return response_error(f"配置导入失败，已回滚：{err}", status_code=500)
+
+    return response_ok(
+        {
+            "portal": updated_portal,
+            "bisheng": updated_runtime,
+            "message": "配置导入成功。BiSheng 数据源不包含令牌，必要时请重新输入密码并保存验证。",
+        }
+    )
 
 
 @router.post("")

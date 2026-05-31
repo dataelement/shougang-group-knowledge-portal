@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies import require_admin_session
 from app.main import app
 from app.schemas.auth import PortalUserView
+from app.schemas.bisheng_runtime import BishengRuntimeConfig
 from app.schemas.portal_config import SpacesConfigUpdate
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthError
@@ -242,6 +243,171 @@ def create_runtime_service(tmp_path: Path) -> BishengRuntimeService:
         client_factory=FakeRuntimeBishengClient,
         password_encryptor=lambda _public_key, _password: "encrypted-password",
     )
+
+
+def test_export_admin_config_includes_non_sensitive_runtime_config(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    runtime_service._write_config(
+        BishengRuntimeConfig(
+            base_url="http://bisheng.example.com",
+            asset_base_url="http://assets.example.com",
+            username="portal-admin",
+            timeout_seconds=12,
+            api_token="secret-token",
+            last_auth_at="2026-05-31T10:00:00+00:00",
+        )
+    )
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.get("/api/v1/admin/config/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment;")
+    body = response.json()
+    assert body["version"] == 1
+    assert "exported_at" in body
+    assert "portal" in body
+    assert body["bisheng"] == {
+        "base_url": "http://bisheng.example.com/",
+        "asset_base_url": "http://assets.example.com",
+        "username": "portal-admin",
+        "timeout_seconds": 12.0,
+        "last_auth_at": "2026-05-31T10:00:00+00:00",
+    }
+    serialized = response.text
+    assert "secret-token" not in serialized
+    assert "api_token" not in serialized
+    assert "password" not in serialized
+
+
+def test_import_admin_config_replaces_portal_and_non_sensitive_runtime_config(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    current = service.get_config()
+    payload = {
+        "version": 1,
+        "portal": {
+            **current.model_dump(mode="json"),
+            "spaces": [
+                {"id": 88, "name": "导入空间", "file_count": 5, "tag_count": 0, "space_level": "department", "enabled": True}
+            ],
+            "site": {
+                **current.site.model_dump(mode="json"),
+                "browser_title": "导入后的门户",
+            },
+        },
+        "bisheng": {
+            "base_url": "http://imported-bisheng.example.com",
+            "asset_base_url": "http://imported-assets.example.com",
+            "username": "import-admin",
+            "timeout_seconds": 45,
+            "last_auth_at": "2026-05-31T11:00:00+00:00",
+            "api_token": "should-be-ignored",
+        },
+    }
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.post(
+            "/api/v1/admin/config/import",
+            files={"file": ("portal-config.json", __import__("json").dumps(payload), "application/json")},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status_code"] == 200
+    assert body["data"]["portal"]["site"]["browser_title"] == "导入后的门户"
+    assert service.get_config().spaces[0].name == "导入空间"
+    assert str(runtime_service._read_config().base_url) == "http://imported-bisheng.example.com/"
+    assert runtime_service._read_config().asset_base_url == "http://imported-assets.example.com"
+    assert runtime_service._read_config().username == "import-admin"
+    assert runtime_service._read_config().api_token == ""
+
+
+def test_import_admin_config_rejects_invalid_payload_without_writing(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    original_title = service.get_config().site.browser_title
+    original_runtime = runtime_service._read_config()
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.post(
+            "/api/v1/admin/config/import",
+            files={"file": ("portal-config.json", '{"version":1,"portal":{"qa":{}}}', "application/json")},
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["status_code"] == 400
+    assert "配置文件格式不正确" in body["status_message"]
+    assert service.get_config().site.browser_title == original_title
+    assert runtime_service._read_config() == original_runtime
+
+
+def test_import_admin_config_rolls_back_runtime_token_when_runtime_write_fails(tmp_path: Path):
+    class FailingRuntimeService(BishengRuntimeService):
+        async def replace_importable_config(self, payload):
+            if payload.username == "fail-admin":
+                raise RuntimeError("runtime write failed")
+            return await super().replace_importable_config(payload)
+
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = FailingRuntimeService(
+        config_path=tmp_path / "bisheng_runtime.json",
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        default_api_token="",
+        client_factory=FakeRuntimeBishengClient,
+        password_encryptor=lambda _public_key, _password: "encrypted-password",
+    )
+    runtime_service._write_config(
+        BishengRuntimeConfig(
+            base_url="http://bisheng.example.com",
+            asset_base_url="",
+            username="portal-admin",
+            timeout_seconds=30,
+            api_token="keep-token",
+            last_auth_at="2026-05-31T10:00:00+00:00",
+        )
+    )
+    original_title = service.get_config().site.browser_title
+    original_runtime = runtime_service._read_config()
+    payload = {
+        "version": 1,
+        "portal": {
+            **service.get_config().model_dump(mode="json"),
+            "site": {
+                **service.get_config().site.model_dump(mode="json"),
+                "browser_title": "不应写入",
+            },
+        },
+        "bisheng": {
+            "base_url": "http://imported-bisheng.example.com",
+            "asset_base_url": "",
+            "username": "fail-admin",
+            "timeout_seconds": 30,
+            "last_auth_at": "",
+        },
+    }
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.post(
+            "/api/v1/admin/config/import",
+            files={"file": ("portal-config.json", __import__("json").dumps(payload), "application/json")},
+        )
+
+    assert response.status_code == 500
+    assert service.get_config().site.browser_title == original_title
+    assert runtime_service._read_config() == original_runtime
+    assert runtime_service._read_config().api_token == "keep-token"
 
 
 def test_admin_config_requires_login(tmp_path: Path):

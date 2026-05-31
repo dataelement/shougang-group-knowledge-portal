@@ -355,7 +355,12 @@ async def get_file_preview(
     preview = await service.get_file_preview(space_id=space_id, file_id=file_id)
     if preview and share_session and not share_session.allow_download:
         preview.download_url = ""
-    if preview and preview.source_kind != "none" and preview.mode not in {"unsupported", "chunks"}:
+    if (
+        preview
+        and not preview.viewer_url
+        and preview.source_kind != "none"
+        and preview.mode not in {"unsupported", "chunks"}
+    ):
         query = f"source_kind={preview.source_kind}"
         if share_token:
             query = f"{query}&share_token={quote(share_token)}"

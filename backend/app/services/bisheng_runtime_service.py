@@ -11,6 +11,7 @@ import httpx
 
 from app.clients.bisheng import BishengClient
 from app.schemas.bisheng_runtime import (
+    BishengRuntimeImportConfig,
     BishengRuntimeAuthUser,
     BishengRuntimeConfig,
     BishengRuntimeConfigUpdate,
@@ -102,6 +103,41 @@ class BishengRuntimeService:
 
     def get_public_config(self) -> BishengRuntimeConfigView:
         return self._to_public_view(self._read_config())
+
+    def export_importable_config(self) -> BishengRuntimeImportConfig:
+        current = self._read_config()
+        return BishengRuntimeImportConfig(
+            base_url=current.base_url,
+            asset_base_url=current.asset_base_url,
+            username=current.username,
+            timeout_seconds=current.timeout_seconds,
+            last_auth_at=current.last_auth_at,
+        )
+
+    def snapshot_config(self) -> BishengRuntimeConfig:
+        return self._read_config()
+
+    async def restore_config(self, config: BishengRuntimeConfig) -> BishengRuntimeConfigView:
+        async with self._lock:
+            self._write_config(config)
+            await self._replace_client(config)
+        await self._refresh_runtime_account_info()
+        return self.get_public_config()
+
+    async def replace_importable_config(self, payload: BishengRuntimeImportConfig) -> BishengRuntimeConfigView:
+        updated = BishengRuntimeConfig(
+            base_url=payload.base_url,
+            asset_base_url=payload.asset_base_url,
+            username=payload.username.strip(),
+            timeout_seconds=payload.timeout_seconds,
+            api_token="",
+            last_auth_at=payload.last_auth_at,
+        )
+        async with self._lock:
+            self._write_config(updated)
+            await self._replace_client(updated)
+        await self._refresh_runtime_account_info()
+        return self.get_public_config()
 
     def is_bootstrap_required(self) -> bool:
         return not self._connected

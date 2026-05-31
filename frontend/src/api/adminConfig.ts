@@ -200,6 +200,12 @@ export interface PortalConfig {
   site: SiteConfig;
 }
 
+export interface AdminConfigImportResult {
+  portal: PortalConfig;
+  bisheng: BishengRuntimeConfig;
+  message: string;
+}
+
 interface ApiEnvelope<T> {
   status_code: number;
   status_message: string;
@@ -236,6 +242,48 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function fetchAdminConfig() {
   return request<PortalConfig>('/api/v1/admin/config');
+}
+
+async function getErrorMessage(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    if (!text) return `请求失败：${response.status}`;
+    const payload = JSON.parse(text) as Partial<ApiEnvelope<unknown>>;
+    return payload.status_message || `请求失败：${response.status}`;
+  } catch {
+    return `请求失败：${response.status}`;
+  }
+}
+
+function getDownloadFilename(disposition: string | null): string {
+  const match = disposition?.match(/filename="?([^";]+)"?/i);
+  return match?.[1] || `portal-config-${new Date().toISOString().slice(0, 10)}.json`;
+}
+
+export async function exportAdminConfig(): Promise<void> {
+  const response = await fetch('/api/v1/admin/config/export');
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = getDownloadFilename(response.headers.get('content-disposition'));
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function importAdminConfig(file: File): Promise<AdminConfigImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch('/api/v1/admin/config/import', {
+    method: 'POST',
+    body: form,
+  });
+  return parseResponse<AdminConfigImportResult>(response);
 }
 
 export function updateSpacesConfig(spaces: SpaceConfig[]) {

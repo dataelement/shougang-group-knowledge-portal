@@ -1,4 +1,4 @@
-from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, field_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 
 def _validate_asset_base_url(value: str | None) -> str:
@@ -58,6 +58,28 @@ class BishengRuntimeConfigUpdate(BaseModel):
     username: str = ""
     password: SecretStr | None = None
     timeout_seconds: float = 30.0
+
+    @field_validator("timeout_seconds")
+    @classmethod
+    def validate_timeout(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        return value
+
+    @field_validator("asset_base_url", mode="before")
+    @classmethod
+    def normalize_asset_base_url(cls, value: str | None) -> str:
+        return _validate_asset_base_url(value)
+
+
+class BishengRuntimeImportConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    base_url: AnyHttpUrl
+    asset_base_url: str = ""
+    username: str = ""
+    timeout_seconds: float = 30.0
+    last_auth_at: str = ""
 
     @field_validator("timeout_seconds")
     @classmethod

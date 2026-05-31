@@ -102,7 +102,6 @@ docker run -d --name frontend --network portal-net -p 3001:80 \
 
 可外挂的关键配置：
 
-- 前端 nginx 配置：通过 `BISHENG_WEB_UPSTREAM`、`BISHENG_API_UPSTREAM`、`BISHENG_MINIO_UPSTREAM` 调整 Bisheng 同源反代目标；也可 `-v /path/to/my-nginx.conf:/etc/nginx/conf.d/default.conf:ro` 覆盖完整 nginx 配置
+- 前端 nginx 配置：通过 `BISHENG_WEB_UPSTREAM`、`BISHENG_API_UPSTREAM`、`BISHENG_MINIO_UPSTREAM` 调整 Bisheng 同源反代目标；`BISHENG_MINIO_SIGNED_HOST` 必须与 BiSheng 后端 `object_storage.minio.sharepoint` 完全一致（不带 `http://` 或 `https://`），否则 MinIO 预签名 URL 会返回 `SignatureDoesNotMatch`；也可 `-v /path/to/my-nginx.conf:/etc/nginx/conf.d/default.conf:ro` 覆盖完整 nginx 配置
 - 后端运行时数据：`-v /opt/portal-data:/app/app/config/data` —— 持久化 `portal_config.json` + `bisheng_runtime.json` + `uploads/`，容器重建不丢 admin 配置
 - 后端环境变量：通过 `-e PORTAL_*=...` 注入 BiSheng 接入参数（完整变量见 `backend/app/settings.py`）
-

@@ -25,7 +25,7 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/workspace/, ''),
       },
-      '^/workspace/bisheng|^/tmp-dir': {
+      '^/bisheng|^/workspace/bisheng|^/tmp-dir': {
         target: bishengMinioProxyTarget,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/workspace/, ''),

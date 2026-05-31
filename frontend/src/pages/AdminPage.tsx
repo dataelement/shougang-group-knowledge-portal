@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText,
+  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import Header from '../components/Header';
@@ -15,6 +15,8 @@ import {
   fetchBishengRuntimeConfig,
   fetchQaModelOptions,
   fetchSpaceOptions,
+  exportAdminConfig,
+  importAdminConfig,
   type IntegrationsConfig,
   type PortalConfig,
   type QATemplateCategoryConfig,
@@ -233,6 +235,11 @@ export default function AdminPage() {
   const [siteDialogOpen, setSiteDialogOpen] = useState(false);
   const [siteDraft, setSiteDraft] = useState<SiteDraft>(createSiteDraft());
   const [siteDialogError, setSiteDialogError] = useState('');
+  const configImportInputRef = useRef<HTMLInputElement>(null);
+  const [configImportFile, setConfigImportFile] = useState<File | null>(null);
+  const [configImportConfirmOpen, setConfigImportConfirmOpen] = useState(false);
+  const [configTransferError, setConfigTransferError] = useState('');
+  const [configTransferMessage, setConfigTransferMessage] = useState('');
 
   async function loadConfig() {
     setLoading(true);
@@ -452,6 +459,49 @@ export default function AdminPage() {
     setBannerFormError('');
   }
 
+  async function handleExportConfig() {
+    setSaving(true);
+    setError('');
+    setConfigTransferError('');
+    setConfigTransferMessage('');
+    try {
+      await exportAdminConfig();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '导出配置失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleSelectImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = '';
+    if (!file) return;
+    setConfigImportFile(file);
+    setConfigTransferError('');
+    setConfigTransferMessage('');
+    setConfigImportConfirmOpen(true);
+  }
+
+  async function handleConfirmImportConfig() {
+    if (!configImportFile) return;
+    setSaving(true);
+    setError('');
+    setConfigTransferError('');
+    setConfigTransferMessage('');
+    try {
+      const result = await importAdminConfig(configImportFile);
+      setConfigImportConfirmOpen(false);
+      setConfigImportFile(null);
+      await loadConfig();
+      setConfigTransferMessage(result.message || '配置导入成功。');
+    } catch (err) {
+      setConfigTransferError(err instanceof Error ? err.message : '导入配置失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const displayItems = config ? getDisplayItems(config.display) : [];
   const deletingSpace = config && spaceDeleteIndex !== null ? config.spaces[spaceDeleteIndex] : null;
   const deletingApp = config && appDeleteIndex !== null ? config.apps[appDeleteIndex] : null;
@@ -482,14 +532,32 @@ export default function AdminPage() {
         <main className={s.main}>
           <div className={s.statusRow}>
             <div className={s.statusText}>
-              {loading ? '正在加载配置...' : saving ? '正在保存配置...' : '配置已加载，可直接编辑并保存。'}
+              {loading ? '正在加载配置...' : saving ? '正在保存配置...' : configTransferMessage || '配置已加载，可直接编辑并保存。'}
             </div>
-            <button className={s.subtleBtn} onClick={() => void loadConfig()} disabled={loading || saving}>
-              <RefreshCw size={14} />
-              刷新
-            </button>
+            <div className={s.actions}>
+              <button className={s.subtleBtn} onClick={() => void handleExportConfig()} disabled={loading || saving}>
+                <Download size={14} />
+                导出配置
+              </button>
+              <button className={s.subtleBtn} onClick={() => configImportInputRef.current?.click()} disabled={loading || saving}>
+                <Upload size={14} />
+                导入配置
+              </button>
+              <input
+                ref={configImportInputRef}
+                type="file"
+                accept="application/json,.json"
+                style={{ display: 'none' }}
+                onChange={handleSelectImportFile}
+              />
+              <button className={s.subtleBtn} onClick={() => void loadConfig()} disabled={loading || saving}>
+                <RefreshCw size={14} />
+                刷新
+              </button>
+            </div>
           </div>
           {error ? <div className={s.errorBox}>{error}</div> : null}
+          {configTransferMessage ? <div className={s.successBox}>{configTransferMessage}</div> : null}
           {!config && !loading ? (
             <div className={s.emptyState}>配置暂时不可用</div>
           ) : null}
@@ -663,6 +731,19 @@ export default function AdminPage() {
           onQueryChange={setSpaceQuery}
           spaces={config.spaces}
           onToggle={(option) => void handleAddSpace(config.spaces, option, runSave, setConfig)}
+        />
+      ) : null}
+      {configImportConfirmOpen && configImportFile ? (
+        <ConfigImportConfirmDialog
+          file={configImportFile}
+          saving={saving}
+          error={configTransferError}
+          onClose={() => {
+            setConfigImportConfirmOpen(false);
+            setConfigImportFile(null);
+            setConfigTransferError('');
+          }}
+          onConfirm={() => void handleConfirmImportConfig()}
         />
       ) : null}
       {config && deletingSpace ? (
@@ -1355,6 +1436,48 @@ function SpacePickerDialog({
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfigImportConfirmDialog({
+  file,
+  saving,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  file: File;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>确认导入配置</h3>
+            <p className={s.modalNote}>
+              导入会全量覆盖当前门户配置和大模型应用平台非敏感运行配置。导出文件不包含密码和 api_token，导入后如连接不可用，请在数据源配置里重新输入密码并保存验证。
+            </p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.confirmBody}>
+          <div className={s.confirmLine}><strong>文件名：</strong>{file.name}</div>
+          <div className={s.confirmLine}><strong>文件大小：</strong>{formatFileSize(file.size)}</div>
+          <div className={s.confirmLine}><strong>覆盖范围：</strong>门户展示配置、业务配置、Bisheng 地址、资源地址、账号和超时时间。</div>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+          <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>
+            {saving ? '导入中...' : '全量覆盖导入'}
+          </button>
         </div>
       </div>
     </div>
@@ -3846,6 +3969,12 @@ async function handleMoveSection(
 function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
+}
+
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function formatQaModelLabel(models: QAModelOption[], modelId: string): string {

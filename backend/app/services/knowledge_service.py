@@ -49,6 +49,7 @@ PREVIEW_TASK_CACHE_TTL_SECONDS = 900.0
 PREVIEW_TASK_POLL_ATTEMPTS = 6
 PREVIEW_TASK_POLL_DELAY_SECONDS = 0.4
 PREVIEW_TASK_FAILURE_STATUSES = {"cancelled", "canceled", "error", "failed", "failure", "timeout"}
+FRONTEND_PROXY_ASSET_PATH_PREFIXES = ("/bisheng/", "/workspace/bisheng/", "/tmp-dir")
 SHARE_ACCESS_COOKIE_NAME = "portal_share_access"
 SHARE_ACCESS_TTL_SECONDS = 3600
 SPACE_LIST_ENDPOINTS = (
@@ -631,6 +632,7 @@ class KnowledgeService:
         return FilePreviewManifest(
             mode=mode,
             download_url=download_url or source.url,
+            viewer_url=source.url if self._is_frontend_proxy_asset_url(source.url) else "",
             source_kind=source.source_kind,
             supports_chunks_fallback=True,
         )
@@ -680,8 +682,8 @@ class KnowledgeService:
             return None
         normalized = {
             **data,
-            "original_url": self._bisheng.resolve_asset_url(str(data.get("original_url") or "")),
-            "preview_url": self._bisheng.resolve_asset_url(str(data.get("preview_url") or "")),
+            "original_url": str(data.get("original_url") or "").strip(),
+            "preview_url": str(data.get("preview_url") or "").strip(),
         }
         return FilePreviewData.model_validate(normalized)
 
@@ -794,8 +796,15 @@ class KnowledgeService:
         values = self._collect_nested_values(payload.get("data") or {}, {"file_url", "preview_url", "url"})
         for value in values:
             if isinstance(value, str) and value.strip():
-                return self._bisheng.resolve_asset_url(value.strip())
+                return value.strip()
         return ""
+
+    @staticmethod
+    def _is_frontend_proxy_asset_url(url: str) -> bool:
+        parsed = urlparse(url)
+        if parsed.scheme or parsed.netloc:
+            return False
+        return parsed.path.startswith(FRONTEND_PROXY_ASSET_PATH_PREFIXES)
 
     def _is_preview_task_failed(self, payload: dict[str, Any]) -> bool:
         statuses = self._collect_nested_values(payload.get("data") or {}, {"status", "state", "task_status"})
