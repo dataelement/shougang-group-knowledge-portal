@@ -5,6 +5,16 @@
   padding: 28px 24px 56px;
 }
 
+/* Embedded (iframe) rendering used by the search/list preview modal. */
+.embedRoot {
+  min-height: 100vh;
+  background: var(--neutral-50);
+}
+
+.embedRoot .container {
+  padding: 20px 20px 32px;
+}
+
 .topBar {
   display: flex;
   align-items: center;

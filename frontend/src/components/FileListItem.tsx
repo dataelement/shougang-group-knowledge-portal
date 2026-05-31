@@ -22,10 +22,11 @@ interface Props {
   onDownload?: (file: FileItem) => void | Promise<void>;
   onShare?: (file: FileItem) => void;
   onAsk?: (file: FileItem) => void;
+  onOpen?: (file: FileItem) => void;
   visibleTagCount?: number;
 }
 
-export default function FileListItem({ file, onFavorite, onDownload, onShare, onAsk, visibleTagCount = 2 }: Props) {
+export default function FileListItem({ file, onFavorite, onDownload, onShare, onAsk, onOpen, visibleTagCount = 2 }: Props) {
   const view = buildFileListItemView(file, {
     visibleTagCount,
     canFavorite: Boolean(onFavorite),
@@ -58,7 +59,21 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
       <div className={s.body}>
         <div className={s.header}>
           <div className={s.heading}>
-            <div className={s.title}>{file.title}</div>
+            {onOpen ? (
+              <button
+                type="button"
+                className={`${s.title} ${s.titleButton}`}
+                title={file.title}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpen(file);
+                }}
+              >
+                {file.title}
+              </button>
+            ) : (
+              <div className={s.title}>{file.title}</div>
+            )}
             <div className={s.meta}>
               <span className={s.metaItem}>
                 <FileText size={15} />

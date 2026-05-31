@@ -5,6 +5,7 @@ import FileListItem from '../components/FileListItem';
 import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
 import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
+import FilePreviewModal from '../components/FilePreviewModal';
 import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
@@ -62,6 +63,7 @@ export default function SearchPage() {
   const { config } = usePortalConfig();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState<number>(displayConfig.search.pageSize);
   const [tags, setTags] = useState<string[]>([]);
@@ -332,6 +334,7 @@ export default function SearchPage() {
             onDownload={handleDownload}
             onShare={openShare}
             onAsk={openDocumentQa}
+            onOpen={setPreviewFile}
           />
         ))}
 
@@ -346,6 +349,7 @@ export default function SearchPage() {
         <FavoriteDocumentModal {...favoriteModalProps} />
         <ShareDocumentModal {...shareModalProps} />
         <DocumentQaModal {...documentQaModalProps} />
+        <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
       </div>
     </PageShell>
   );

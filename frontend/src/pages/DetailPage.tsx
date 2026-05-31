@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useParams, useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Download, Sparkles, Star } from 'lucide-react';
 import PageShell from '../components/PageShell';
@@ -32,6 +32,9 @@ export default function DetailPage() {
   const fileId = Number(fileIdStr);
   const spaceId = Number(spaceIdStr);
   const shareToken = searchParams.get('share_token') || '';
+  // When embedded inside an iframe (e.g. the search/list preview modal) we render
+  // only the document card without the portal chrome or related recommendations.
+  const embed = searchParams.get('embed') === '1';
   const backTarget = resolveDetailBackTarget(location.state?.returnTo, spaceIdStr);
 
   useEffect(() => {
@@ -44,7 +47,7 @@ export default function DetailPage() {
         const [detailResult, previewResult, relatedResult] = await Promise.all([
           fetchFileDetail(spaceId, fileId, shareToken || undefined),
           fetchFilePreview(spaceId, fileId, shareToken || undefined),
-          shareToken
+          shareToken || embed
             ? Promise.resolve([])
             : fetchRelatedFiles(spaceId, fileId, displayConfig.detail.relatedFilesCount),
         ]);
@@ -67,29 +70,28 @@ export default function DetailPage() {
     return () => {
       active = false;
     };
-  }, [displayConfig.detail.relatedFilesCount, fileId, shareToken, spaceId]);
+  }, [displayConfig.detail.relatedFilesCount, embed, fileId, shareToken, spaceId]);
+
+  const wrap = (children: ReactNode) =>
+    embed ? <div className={s.embedRoot}>{children}</div> : <PageShell>{children}</PageShell>;
 
   if (loading) {
-    return (
-      <PageShell>
-        <div className={s.container}>
-          <p style={{ padding: '48px 0', textAlign: 'center', color: 'var(--neutral-400)' }}>
-            正在加载文档详情...
-          </p>
-        </div>
-      </PageShell>
+    return wrap(
+      <div className={s.container}>
+        <p style={{ padding: '48px 0', textAlign: 'center', color: 'var(--neutral-400)' }}>
+          正在加载文档详情...
+        </p>
+      </div>,
     );
   }
 
   if (error || !detail) {
-    return (
-      <PageShell>
-        <div className={s.container}>
-          <p style={{ padding: '48px 0', textAlign: 'center', color: 'var(--neutral-400)' }}>
-            {error || '文档不存在'}
-          </p>
-        </div>
-      </PageShell>
+    return wrap(
+      <div className={s.container}>
+        <p style={{ padding: '48px 0', textAlign: 'center', color: 'var(--neutral-400)' }}>
+          {error || '文档不存在'}
+        </p>
+      </div>,
     );
   }
 
@@ -118,16 +120,17 @@ export default function DetailPage() {
     }
   }
 
-  return (
-    <PageShell>
-      <div className={s.container}>
-        <div className={s.topBar}>
-          <Link to={backTarget} className={s.backLink}>
-            <ArrowLeft size={16} />
-            返回列表
-          </Link>
-          <span className={s.sourceLabel}>来源：{detail.space.name}</span>
-        </div>
+  return wrap(
+    <div className={s.container}>
+        {embed ? null : (
+          <div className={s.topBar}>
+            <Link to={backTarget} className={s.backLink}>
+              <ArrowLeft size={16} />
+              返回列表
+            </Link>
+            <span className={s.sourceLabel}>来源：{detail.space.name}</span>
+          </div>
+        )}
 
         <div className={s.card}>
           <h1 className={s.title}>{detail.title}</h1>
@@ -221,7 +224,6 @@ export default function DetailPage() {
             </div>
           </div>
         )}
-      </div>
-    </PageShell>
+    </div>,
   );
 }

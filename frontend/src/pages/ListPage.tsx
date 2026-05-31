@@ -6,6 +6,7 @@ import FileListItem from '../components/FileListItem';
 import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
 import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
+import FilePreviewModal from '../components/FilePreviewModal';
 import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
@@ -72,6 +73,7 @@ export default function ListPage() {
   const [pageTitle, setPageTitle] = useState('知识列表');
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [total, setTotal] = useState(0);
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [pageSize, setPageSize] = useState<number>(displayConfig.list.pageSize);
@@ -202,6 +204,7 @@ export default function ListPage() {
             onDownload={handleDownload}
             onShare={openShare}
             onAsk={openDocumentQa}
+            onOpen={setPreviewFile}
           />
         ))}
 
@@ -214,6 +217,7 @@ export default function ListPage() {
         <FavoriteDocumentModal {...favoriteModalProps} />
         <ShareDocumentModal {...shareModalProps} />
         <DocumentQaModal {...documentQaModalProps} />
+        <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
       </div>
     </PageShell>
   );
