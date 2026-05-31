@@ -66,6 +66,16 @@
   background: var(--neutral-50);
 }
 
+.state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--neutral-400);
+  font-size: 0.95rem;
+}
+
 .frame {
   width: 100%;
   height: 100%;
