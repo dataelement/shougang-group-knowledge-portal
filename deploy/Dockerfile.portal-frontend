@@ -9,8 +9,8 @@ RUN npm run build
 # Stage 2: serve via nginx (configurable)
 FROM nginx:1.27-alpine
 COPY --from=builder /src/dist /usr/share/nginx/html
-ENV BISHENG_WEB_UPSTREAM=http://frontend:3001
-ENV BISHENG_API_UPSTREAM=http://backend:7860
-ENV BISHENG_MINIO_UPSTREAM=http://minio:9000
+ENV BISHENG_WEB_UPSTREAM=http://bisheng-frontend:3001
+ENV BISHENG_API_UPSTREAM=http://bisheng-backend:7860
+ENV BISHENG_MINIO_UPSTREAM=http://bisheng-minio:9000
 COPY deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 EXPOSE 80
