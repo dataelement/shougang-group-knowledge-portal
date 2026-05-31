@@ -23,7 +23,6 @@ type HeaderNavItem =
 const NAV_ITEMS: HeaderNavItem[] = [
   { label: '首页', to: '/' },
   { label: '我的知识', to: '/knowledge-spaces' },
-  { label: '知识商城', placeholder: true },
   { label: '应用市场', to: '/apps' },
 ];
 
