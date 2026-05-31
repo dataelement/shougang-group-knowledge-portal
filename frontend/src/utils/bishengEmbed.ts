@@ -1,4 +1,3 @@
-const DEFAULT_BISHENG_ASSET_PORT = '4001';
 const DEFAULT_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge-portal';
 const LEGACY_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
 const EMBED_PARAM = 'portal_embed';
@@ -15,11 +14,13 @@ function getCurrentLocation(locationOverride?: EmbedLocation): EmbedLocation {
   };
 }
 
-function toSameHostUrl(rawUrl: string, locationOverride?: EmbedLocation): string {
+function toPortalOriginUrl(rawUrl: string, locationOverride?: EmbedLocation): string {
   const current = getCurrentLocation(locationOverride);
   const parsed = new URL(rawUrl, current.origin);
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return rawUrl;
-  parsed.hostname = current.hostname;
+  const portalOrigin = new URL(current.origin);
+  parsed.protocol = portalOrigin.protocol;
+  parsed.host = portalOrigin.host;
   return parsed.toString();
 }
 
@@ -31,7 +32,7 @@ function withPortalKnowledgeRoute(rawUrl: string, locationOverride?: EmbedLocati
     parsed.pathname = DEFAULT_BISHENG_KNOWLEDGE_PATH;
   }
   parsed.searchParams.set(EMBED_PARAM, '1');
-  return toSameHostUrl(parsed.toString(), locationOverride);
+  return toPortalOriginUrl(parsed.toString(), locationOverride);
 }
 
 /**
@@ -91,12 +92,12 @@ export function resolveKnowledgeEmbedUrl(
       parsed.search = '';
       parsed.hash = '';
       parsed.searchParams.set(EMBED_PARAM, '1');
-      return toSameHostUrl(parsed.toString(), locationOverride);
+      return toPortalOriginUrl(parsed.toString(), locationOverride);
     } catch {
       // Fall through to the deployment default.
     }
   }
 
   const current = getCurrentLocation(locationOverride);
-  return `${current.protocol}//${current.hostname}:${DEFAULT_BISHENG_ASSET_PORT}${DEFAULT_BISHENG_KNOWLEDGE_PATH}?${EMBED_PARAM}=1`;
+  return `${current.origin}${DEFAULT_BISHENG_KNOWLEDGE_PATH}?${EMBED_PARAM}=1`;
 }

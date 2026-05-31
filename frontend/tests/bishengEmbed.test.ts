@@ -9,39 +9,39 @@ import {
 const portalLocation = {
   protocol: 'http:',
   hostname: '110.16.193.170',
-  origin: 'http://110.16.193.170:3001',
+  origin: 'http://110.16.193.170:3002',
 };
 
-test('configured legacy knowledge URL uses the portal knowledge route on current hostname', () => {
+test('configured legacy knowledge URL uses the portal same-origin knowledge route', () => {
   const url = resolveKnowledgeEmbedUrl(
     '',
     'http://192.168.106.114:4001/workspace/knowledge',
     portalLocation,
   );
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1');
+  assert.equal(url, 'http://110.16.193.170:3002/workspace/knowledge-portal?portal_embed=1');
 });
 
-test('configured custom knowledge URL keeps path and merges embed params on current hostname', () => {
+test('configured custom knowledge URL keeps path and merges embed params on portal origin', () => {
   const url = resolveKnowledgeEmbedUrl(
     '',
     'http://192.168.106.114:4001/workspace/custom-knowledge?foo=bar',
     portalLocation,
   );
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/custom-knowledge?foo=bar&portal_embed=1');
+  assert.equal(url, 'http://110.16.193.170:3002/workspace/custom-knowledge?foo=bar&portal_embed=1');
 });
 
-test('runtime asset URL is converted to the knowledge page on the current portal hostname', () => {
+test('runtime asset URL is converted to the knowledge page on the portal origin', () => {
   const url = resolveKnowledgeEmbedUrl(
     'http://127.0.0.1:4001',
     '',
     portalLocation,
   );
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1');
+  assert.equal(url, 'http://110.16.193.170:3002/workspace/knowledge-portal?portal_embed=1');
 });
 
-test('fallback default avoids localhost so iframe can receive portal cookies', () => {
+test('fallback default uses portal origin so iframe can receive portal cookies', () => {
   const url = resolveKnowledgeEmbedUrl('', '', portalLocation);
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/knowledge-portal?portal_embed=1');
+  assert.equal(url, 'http://110.16.193.170:3002/workspace/knowledge-portal?portal_embed=1');
 });
 
 test('dialogs embed URL swaps the last path segment for portal-dialogs', () => {
@@ -50,12 +50,12 @@ test('dialogs embed URL swaps the last path segment for portal-dialogs', () => {
     'http://192.168.106.114:4001/workspace/knowledge',
     portalLocation,
   );
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/portal-dialogs?portal_embed=1');
+  assert.equal(url, 'http://110.16.193.170:3002/workspace/portal-dialogs?portal_embed=1');
 });
 
 test('dialogs embed URL falls back to default host path', () => {
   const url = resolvePortalDialogsEmbedUrl('', '', portalLocation);
-  assert.equal(url, 'http://110.16.193.170:4001/workspace/portal-dialogs?portal_embed=1');
+  assert.equal(url, 'http://110.16.193.170:3002/workspace/portal-dialogs?portal_embed=1');
 });
 
 test('origin override swaps protocol/host/port but keeps path and query', () => {
