@@ -14,7 +14,7 @@ import {
   type Citation,
   type FileItem,
 } from '../api/content';
-import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
+import { renderChatMarkdown } from '../utils/chatMessage';
 import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
@@ -103,7 +103,6 @@ export default function SearchPage() {
       : []),
     [config],
   );
-  const qaSpaceIds = useMemo(() => config?.qa.knowledge_space_ids ?? [], [config]);
   const selectedDomain = domains.find((item) => item.name === domain);
   const sids = selectedDomain?.spaceIds;
   const visibleRange = getVisibleRange(total, page, pageSize, files.length);
@@ -172,7 +171,8 @@ export default function SearchPage() {
     void streamChatCompletion({
       scene: 'search',
       text: aiKeyword,
-      knowledgeSpaceIds: qaSpaceIds,
+      knowledgeSpaceIds: sids ?? [],
+      spaceLevel: spaceLevel || undefined,
       onUpdate(text) {
         if (requestSeq.current !== currentRequest) return;
         setAiText(text);
@@ -187,7 +187,7 @@ export default function SearchPage() {
         setAiThinking(false);
       }
     });
-  }, [displayKeyword, qaSpaceIds]);
+  }, [displayKeyword, sids, spaceLevel]);
 
   const submitSearch = () => {
     setParams(createSubmittedSearchParams(params, draft));
@@ -260,7 +260,8 @@ export default function SearchPage() {
         )}
 
         {hasSearch && (() => {
-          const referenced = extractReferencedCitations(aiText, aiCitations);
+          // 总结基于检索到的前 N 个文件摘要，直接展示这些来源文件
+          const referenced = aiCitations;
           return (
             <div className={s.aiOverview}>
               <div className={s.aiBadge}>

@@ -398,11 +398,15 @@ class KnowledgeService:
         self,
         requested_space_ids: Optional[list[int]] = None,
         space_level: Optional[str] = None,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> list[int]:
-        enabled_space_ids = set(self.get_enabled_space_ids_by_level(space_level))
+        base_space_ids = set(self.get_enabled_space_ids_by_level(space_level))
+        if extra_space_ids:
+            # 登录用户的个人可见库并入（不在 config 中、无 space_level 信息，故不按级别过滤）
+            base_space_ids |= set(extra_space_ids)
         if requested_space_ids:
-            return sorted(enabled_space_ids.intersection(requested_space_ids))
-        return sorted(enabled_space_ids)
+            return sorted(base_space_ids.intersection(requested_space_ids))
+        return sorted(base_space_ids)
 
     def _resolve_document_chat_model_id(self, requested_model: str = "") -> int:
         config = self._config_service.get_config()
@@ -446,12 +450,13 @@ class KnowledgeService:
         sort: str,
         page: int,
         page_size: int,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> PagedKnowledgeFileData:
         has_filter = bool(tag or requested_space_ids or space_level or file_ext)
         if not q and not has_filter:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
-        space_ids = self.resolve_requested_space_ids(requested_space_ids, space_level)
+        space_ids = self.resolve_requested_space_ids(requested_space_ids, space_level, extra_space_ids)
         if not space_ids:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 

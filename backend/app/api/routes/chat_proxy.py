@@ -131,27 +131,44 @@ async def chat_completions(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = _require_portal_session(request, auth_service)
-    bisheng_client = auth_service.create_bisheng_client(session)
+    session = auth_service.get_session(request)
+    is_anonymous = session is None
+    # 仅搜索助手允许未登录访问；问答（qa）仍要求登录
+    if is_anonymous and payload.scene != "search":
+        raise HTTPException(status_code=401, detail="请先登录")
+    if is_anonymous:
+        # 未登录：系统客户端（常驻单例，请求结束后勿关闭）
+        bisheng_client = get_bisheng_client(request)
+    else:
+        # 已登录：个人 token 客户端，用完需关闭
+        bisheng_client = auth_service.create_bisheng_client(session)
+
+    async def _close_owned_client() -> None:
+        if not is_anonymous:
+            await bisheng_client.aclose()
+
     service = ChatProxyService(
         bisheng_client=bisheng_client,
         portal_config_service=portal_config_service,
         default_model=get_settings().bisheng_default_model,
+        is_anonymous=is_anonymous,
     )
     try:
-        path, request_body = await service.build_chat_request(payload)
+        path, request_body, trailing_events = await service.build_chat_request(payload)
     except ValueError as err:
-        await bisheng_client.aclose()
+        await _close_owned_client()
         raise HTTPException(status_code=400, detail=str(err)) from err
     except PermissionError as err:
-        await bisheng_client.aclose()
+        await _close_owned_client()
         raise HTTPException(status_code=403, detail=str(err)) from err
 
     async def stream():
         try:
             async for chunk in service.stream_prepared_chat_completion(path, request_body):
                 yield chunk
+            for event in trailing_events:
+                yield event
         finally:
-            await bisheng_client.aclose()
+            await _close_owned_client()
 
     return StreamingResponse(stream(), media_type="text/event-stream")

@@ -835,6 +835,7 @@ export async function streamChatCompletion(params: {
   scene: 'search' | 'qa';
   text: string;
   knowledgeSpaceIds: number[];
+  spaceLevel?: string;
   files?: ChatAttachment[];
   conversationId?: string;
   model?: string;
@@ -852,6 +853,7 @@ export async function streamChatCompletion(params: {
       model: params.model ?? '',
       answer_mode: params.answerMode ?? 'normal',
       scene: params.scene,
+      space_level: params.spaceLevel,
       text: params.text,
       use_knowledge_base: {
         personal_knowledge_enabled: false,

@@ -93,6 +93,7 @@ def _require_share_access(
 
 @router.get("/files")
 async def search_files(
+    request: Request,
     q: Optional[str] = None,
     tag: Optional[str] = None,
     space_ids: Annotated[Optional[list[int]], Query()] = None,
@@ -101,20 +102,57 @@ async def search_files(
     sort: str = "updated_at",
     page: int = 1,
     page_size: int = 20,
-    service: KnowledgeService = Depends(get_knowledge_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok(
-        await service.search_files(
-            q=q,
-            tag=tag,
-            requested_space_ids=space_ids,
-            space_level=space_level,
-            file_ext=file_ext,
-            sort=sort,
-            page=page,
-            page_size=page_size,
+    session = auth_service.get_session(request)
+
+    # 未登录：系统客户端（常驻单例，勿关闭），范围 = 后台启用库
+    if session is None:
+        service = KnowledgeService(
+            bisheng_client=get_bisheng_client(request),
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
         )
-    )
+        return response_ok(
+            await service.search_files(
+                q=q,
+                tag=tag,
+                requested_space_ids=space_ids,
+                space_level=space_level,
+                file_ext=file_ext,
+                sort=sort,
+                page=page,
+                page_size=page_size,
+                extra_space_ids=None,
+            )
+        )
+
+    # 已登录：个人 token 客户端，范围 = 后台启用库 ∪ 个人可见库
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        visible_spaces = await service.list_visible_spaces()
+        extra_space_ids = [space.id for space in visible_spaces.data]
+        return response_ok(
+            await service.search_files(
+                q=q,
+                tag=tag,
+                requested_space_ids=space_ids,
+                space_level=space_level,
+                file_ext=file_ext,
+                sort=sort,
+                page=page,
+                page_size=page_size,
+                extra_space_ids=extra_space_ids,
+            )
+        )
+    finally:
+        await bisheng_client.aclose()
 
 
 @router.get("/tags")

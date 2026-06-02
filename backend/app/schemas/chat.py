@@ -13,6 +13,7 @@ class PortalChatCompletionRequest(BaseModel):
     clientTimestamp: str
     model: str = ""
     scene: str = "qa"
+    space_level: Optional[str] = None
     answer_mode: Literal["quick", "normal", "expert"] = "normal"
     conversationId: Optional[str] = None
     error: bool = False

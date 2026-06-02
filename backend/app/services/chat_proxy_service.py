@@ -1,7 +1,9 @@
+import json
 from collections.abc import AsyncIterator
 
 from app.clients.bisheng import BishengClient
 from app.schemas.chat import PortalChatCompletionRequest, UseKnowledgeBaseParam
+from app.schemas.knowledge import KnowledgeFileItem
 from app.services.knowledge_service import KnowledgeService
 from app.services.portal_config_service import PortalConfigService
 
@@ -12,51 +14,82 @@ class ChatProxyService:
         "normal": "normal_mode_system_prompt",
         "expert": "expert_mode_system_prompt",
     }
+    # 搜索助手：基于检索到的前 N 个文件摘要进行总结
+    _SEARCH_SUMMARY_FILE_LIMIT = 10
 
     def __init__(
         self,
         bisheng_client: BishengClient,
         portal_config_service: PortalConfigService,
         default_model: str | None = None,
+        is_anonymous: bool = False,
     ):
         self._bisheng = bisheng_client
         self._config_service = portal_config_service
         self._default_model = default_model or ""
+        self._is_anonymous = is_anonymous
 
     async def stream_chat_completion(self, payload: PortalChatCompletionRequest) -> AsyncIterator[bytes]:
-        path, request_body = await self.build_chat_request(payload)
+        path, request_body, trailing_events = await self.build_chat_request(payload)
         async for chunk in self.stream_prepared_chat_completion(path, request_body):
             yield chunk
+        for event in trailing_events:
+            yield event
 
     async def stream_prepared_chat_completion(self, path: str, request_body: dict) -> AsyncIterator[bytes]:
         async for chunk in self._bisheng.stream_post(path, json=request_body):
             yield chunk
 
-    async def build_chat_request(self, payload: PortalChatCompletionRequest) -> tuple[str, dict]:
+    async def build_chat_request(
+        self, payload: PortalChatCompletionRequest
+    ) -> tuple[str, dict, list[bytes]]:
         config = self._config_service.get_config()
-        enabled_space_ids = {space.id for space in config.spaces if space.enabled}
-        allowed_knowledge_space_ids = [
-            space_id
-            for space_id in config.qa.knowledge_space_ids
-            if space_id in enabled_space_ids
-        ]
         scene = payload.scene if payload.scene in {"search", "qa"} else "qa"
         use_knowledge_base = payload.use_knowledge_base or UseKnowledgeBaseParam()
-        request_body = payload.model_dump(exclude={"scene", "answer_mode"}, mode="json")
-        request_body["use_knowledge_base"] = {
-            "personal_knowledge_enabled": use_knowledge_base.personal_knowledge_enabled,
-            "organization_knowledge_ids": use_knowledge_base.organization_knowledge_ids,
-            "knowledge_space_ids": allowed_knowledge_space_ids,
-        }
+        request_body = payload.model_dump(exclude={"scene", "answer_mode", "space_level"}, mode="json")
 
         if scene == "search":
-            selected_model = payload.model or config.qa.selected_model or self._default_model
-            request_body["model"] = selected_model
-            request_body["text"] = self._build_final_prompt(
+            # 范围与文件列表一致：未登录=后台启用库；已登录=后台启用库 ∪ 个人可见库
+            knowledge_service = KnowledgeService(
+                bisheng_client=self._bisheng,
+                portal_config_service=self._config_service,
+            )
+            extra_space_ids = (
+                None
+                if self._is_anonymous
+                else sorted(await self._get_current_user_visible_space_ids())
+            )
+            requested_space_ids = self._normalize_space_ids(use_knowledge_base.knowledge_space_ids)
+
+            # 取检索到的前 N 个文件，基于其摘要进行总结（不再走 RAG）
+            top_files = await knowledge_service.search_files(
+                q=payload.text or None,
+                tag=None,
+                requested_space_ids=requested_space_ids,
+                space_level=payload.space_level,
+                file_ext=None,
+                sort="relevance",
+                page=1,
+                page_size=self._SEARCH_SUMMARY_FILE_LIMIT,
+                extra_space_ids=extra_space_ids,
+            )
+            docs = top_files.data[: self._SEARCH_SUMMARY_FILE_LIMIT]
+            space_name_map = knowledge_service.get_space_name_map()
+
+            request_body["use_knowledge_base"] = {
+                "personal_knowledge_enabled": False,
+                "organization_knowledge_ids": [],
+                "knowledge_space_ids": [],  # 关闭 RAG，仅依据给定摘要做归纳
+            }
+            request_body["search_enabled"] = False
+            request_body["model"] = payload.model or config.qa.selected_model or self._default_model
+            request_body["text"] = self._build_search_summary_prompt(
                 config.qa.ai_search_system_prompt,
                 payload.text,
+                docs,
             )
-            return "/api/v1/workstation/chat/completions", request_body
+            trailing_events = self._build_citation_events(docs, space_name_map)
+            return "/api/v1/workstation/chat/completions", request_body, trailing_events
 
         requested_space_ids = self._normalize_space_ids(use_knowledge_base.knowledge_space_ids)
         if requested_space_ids:
@@ -86,7 +119,56 @@ class ChatProxyService:
         request_body["model"] = selected_model
         request_body["text"] = payload.text
         request_body["system_prompt"] = str(getattr(config.qa, prompt_field) or "")
-        return "/api/v1/workstation/shougang-portal/chat/completions", request_body
+        return "/api/v1/workstation/shougang-portal/chat/completions", request_body, []
+
+    @staticmethod
+    def _build_search_summary_prompt(
+        instruction: str,
+        query: str,
+        docs: list[KnowledgeFileItem],
+    ) -> str:
+        base = (instruction or "").strip() or "你是知识库搜索助手，请基于检索到的资料进行归纳总结。"
+        if docs:
+            docs_block = "\n".join(
+                f"{idx}. 《{doc.title}》：{(doc.summary or '').strip() or '（无摘要）'}"
+                for idx, doc in enumerate(docs, start=1)
+            )
+        else:
+            docs_block = "（未检索到相关文档）"
+        return (
+            f"{base}\n\n"
+            "请仅依据下列检索到的文档摘要，对用户的搜索意图进行整体归纳总结，"
+            "不要编造资料之外的内容；若资料不足以回答，请直接说明未找到相关内容。"
+            "输出控制在 350 字以内。\n\n"
+            f"【用户搜索】{query.strip()}\n\n"
+            f"【检索到的文档摘要】\n{docs_block}"
+        )
+
+    @staticmethod
+    def _build_citation_events(
+        docs: list[KnowledgeFileItem],
+        space_name_map: dict[int, str],
+    ) -> list[bytes]:
+        if not docs:
+            return []
+        citations = [
+            {
+                "key": f"doc:{doc.id}",
+                "itemId": str(doc.id),
+                "sourcePayload": {
+                    "knowledgeId": doc.space_id,
+                    "knowledgeName": space_name_map.get(doc.space_id, ""),
+                    "documentId": doc.id,
+                    "documentName": doc.title,
+                    "fileType": doc.file_ext,
+                    "snippet": (doc.summary or "")[:200],
+                },
+            }
+            for doc in docs
+        ]
+        payload = {"category": "stream", "type": "end", "citations": citations}
+        event = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+        return [event]
 
     async def _get_current_user_visible_space_ids(self) -> set[int]:
         service = KnowledgeService(
