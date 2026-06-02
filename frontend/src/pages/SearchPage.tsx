@@ -3,7 +3,7 @@ import { Search, Loader2 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
 import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
-import ShareDocumentModal from '../components/ShareDocumentModal';
+// import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
 import Pagination from '../components/Pagination';
@@ -18,7 +18,7 @@ import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMes
 import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
-import { useShareDocument } from '../hooks/useShareDocument';
+// import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import { getVisibleRange } from '../utils/listControls';
@@ -74,7 +74,7 @@ export default function SearchPage() {
   const [error, setError] = useState('');
   const requestSeq = useRef(0);
   const { openFavorite, favoriteModalProps } = useFavoriteDocument();
-  const { openShare, shareModalProps } = useShareDocument();
+  // const { openShare, shareModalProps } = useShareDocument();
   const { openDocumentQa, documentQaModalProps } = useDocumentQa();
 
   const handleDownload = useCallback(async (file: FileItem) => {
@@ -332,7 +332,7 @@ export default function SearchPage() {
             visibleTagCount={displayConfig.search.visibleTagCount}
             onFavorite={openFavorite}
             onDownload={handleDownload}
-            onShare={openShare}
+            // onShare={openShare}
             onAsk={openDocumentQa}
             onOpen={setPreviewFile}
           />
@@ -347,7 +347,7 @@ export default function SearchPage() {
           />
         )}
         <FavoriteDocumentModal {...favoriteModalProps} />
-        <ShareDocumentModal {...shareModalProps} />
+        {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
         <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
       </div>
