@@ -228,16 +228,16 @@ DEFAULT_QA_TEMPLATES = [
 DEFAULT_PORTAL_CONFIG = {
     "spaces": [],
     "domains": [
-        {"name": "营销", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "CheckCircle", "background_image": "/domain-covers/marketing.png", "enabled": True},
-        {"name": "财务", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/domain-covers/finance.png", "enabled": True},
-        {"name": "设备", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/domain-covers/equipment.png", "enabled": True},
-        {"name": "安全", "space_ids": [], "color": "#dc2626", "bg": "#fee2e2", "icon": "Shield", "background_image": "/domain-covers/safety.png", "enabled": True},
-        {"name": "环保", "space_ids": [], "color": "#16a34a", "bg": "#dcfce7", "icon": "Leaf", "background_image": "/domain-covers/environment.png", "enabled": True},
-        {"name": "人力", "space_ids": [], "color": "#be185d", "bg": "#fce7f3", "icon": "GraduationCap", "background_image": "/domain-covers/hr.png", "enabled": True},
-        {"name": "信息", "space_ids": [], "color": "#6366f1", "bg": "#ede9fe", "icon": "Network", "background_image": "/domain-covers/it.png", "enabled": True},
-        {"name": "能源", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "Zap", "background_image": "/domain-covers/energy.png", "enabled": True},
-        {"name": "质量", "space_ids": [], "color": "#7c3aed", "bg": "#f5f3ff", "icon": "CheckCircle", "background_image": "/domain-covers/quality.png", "enabled": True},
-        {"name": "管理", "space_ids": [], "color": "#475569", "bg": "#e2e8f0", "icon": "Settings", "background_image": "/domain-covers/management.png", "enabled": True},
+        {"name": "营销", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "CheckCircle", "background_image": "/domain-covers/marketing.png", "enabled": True, "code": "SD"},
+        {"name": "财务", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/domain-covers/finance.png", "enabled": True, "code": "FI"},
+        {"name": "设备", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/domain-covers/equipment.png", "enabled": True, "code": "PM"},
+        {"name": "安全", "space_ids": [], "color": "#dc2626", "bg": "#fee2e2", "icon": "Shield", "background_image": "/domain-covers/safety.png", "enabled": True, "code": "SA"},
+        {"name": "环保", "space_ids": [], "color": "#16a34a", "bg": "#dcfce7", "icon": "Leaf", "background_image": "/domain-covers/environment.png", "enabled": True, "code": "EN"},
+        {"name": "人力", "space_ids": [], "color": "#be185d", "bg": "#fce7f3", "icon": "GraduationCap", "background_image": "/domain-covers/hr.png", "enabled": True, "code": "HR"},
+        {"name": "信息", "space_ids": [], "color": "#6366f1", "bg": "#ede9fe", "icon": "Network", "background_image": "/domain-covers/it.png", "enabled": True, "code": "IT"},
+        {"name": "能源", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "Zap", "background_image": "/domain-covers/energy.png", "enabled": True, "code": "EM"},
+        {"name": "质量", "space_ids": [], "color": "#7c3aed", "bg": "#f5f3ff", "icon": "CheckCircle", "background_image": "/domain-covers/quality.png", "enabled": True, "code": "QM"},
+        {"name": "管理", "space_ids": [], "color": "#475569", "bg": "#e2e8f0", "icon": "Settings", "background_image": "/domain-covers/management.png", "enabled": True, "code": "AD"},
     ],
     "sections": [
         {

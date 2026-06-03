@@ -32,6 +32,7 @@ class DomainConfig(BaseModel):
     icon: str
     background_image: str = ""
     enabled: bool = True
+    code: str = ""
 
 
 class SectionConfig(BaseModel):
