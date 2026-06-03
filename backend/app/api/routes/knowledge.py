@@ -1,7 +1,7 @@
 from typing import Annotated, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import get_bisheng_client, get_portal_auth_service, get_portal_config_service
@@ -14,6 +14,7 @@ from app.schemas.knowledge import (
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
+from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
     SHARE_ACCESS_COOKIE_NAME,
     SHARE_ACCESS_TTL_SECONDS,
@@ -39,6 +40,16 @@ def get_knowledge_service(
         bisheng_client=bisheng_client,
         portal_config_service=portal_config_service,
         default_model=get_settings().bisheng_default_model,
+    )
+
+
+def get_domain_file_count_service(
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+) -> DomainFileCountService:
+    return DomainFileCountService(
+        bisheng_client=bisheng_client,
+        config_service=portal_config_service,
     )
 
 
@@ -182,6 +193,20 @@ async def get_portal_config(
         [space.id for space in config.spaces],
     )
     return response_ok(portal_config_service.with_live_space_data(config, live_space_data))
+
+
+@router.get("/domain-file-counts")
+async def get_domain_file_counts(
+    background_tasks: BackgroundTasks,
+    service: DomainFileCountService = Depends(get_domain_file_count_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    domains = portal_config_service.get_config().domains
+    codes = sorted({d.code.strip().upper() for d in domains if d.code and d.code.strip()})
+    counts, stale = service.read_cached(codes)
+    if stale and codes:
+        background_tasks.add_task(service.refresh_in_background, codes)
+    return response_ok({"counts": counts})
 
 
 @router.get("/spaces")
