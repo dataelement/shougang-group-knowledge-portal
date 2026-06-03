@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Callable
 
+logger = logging.getLogger(__name__)
+
 DOMAIN_FILE_COUNTS_PATH = "/api/v1/knowledge/shougang-portal/domain-file-counts"
 _DEFAULT_TTL_SECONDS = 43200
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 @dataclass
@@ -89,7 +99,7 @@ class DomainFileCountService:
         result: dict[str, int] = {}
         with _LOCK:
             for code in codes:
-                count = int(raw.get(code) or 0)
+                count = _safe_int(raw.get(code))
                 _MEMORY_CACHE[code] = _CountEntry(count=count, fetched_at=now)
                 result[code] = count
             doc: dict[str, Any] = {
@@ -110,7 +120,7 @@ class DomainFileCountService:
         try:
             await self.refresh(codes)
         except Exception:
-            pass
+            logger.warning("domain-file-count background refresh failed", exc_info=True)
         finally:
             with _LOCK:
                 _INFLIGHT.discard(key)
