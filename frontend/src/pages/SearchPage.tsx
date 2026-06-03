@@ -9,6 +9,7 @@ import FilePreviewModal from '../components/FilePreviewModal';
 import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
+  fetchKnowledgeSpaces,
   searchFiles,
   streamChatCompletion,
   type Citation,
@@ -17,6 +18,7 @@ import {
 import { renderChatMarkdown } from '../utils/chatMessage';
 import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { useAuth } from '../hooks/useAuth';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 // import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
@@ -28,18 +30,18 @@ import {
   openFileDownloadWindow,
   resolveFileDownloadUrl,
 } from '../utils/fileDownload';
-import { getEnabledDomains, toRuntimeDisplayConfig } from '../utils/portalConfig';
+import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import {
-  createDomainFilterSearchParams,
   createSubmittedSearchParams,
   getSearchDisplayKeyword,
   hasSearchContext,
 } from '../utils/searchParams';
 import s from './SearchPage.module.css';
 
-type DomainOption = {
+type SpaceOption = {
+  id: number;
   name: string;
-  spaceIds: number[];
+  spaceLevel: string;
 };
 
 const SPACE_LEVEL_OPTIONS = [
@@ -52,16 +54,19 @@ const SPACE_LEVEL_OPTIONS = [
 export default function SearchPage() {
   const { params, page, resultsTopRef, setFilter, setParams } = useListControls();
   const q = params.get('q') || '';
-  const domain = params.get('domain') || '';
   const displayKeyword = getSearchDisplayKeyword(params);
   const [draft, setDraft] = useState(displayKeyword);
   const spaceLevel = params.get('space_level') || '';
+  const spaceId = params.get('space_id') || '';
   const fileExt = params.get('file_ext') || '';
   const tag = params.get('tag') || '';
   const sort = params.get('sort') || 'relevance';
   const hasSearch = hasSearchContext(params);
   const { config } = usePortalConfig();
+  const { user } = useAuth();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
+  // 登录用户个人可见空间（按个人权限），用于扩充二级「知识空间」筛选
+  const [visibleSpaces, setVisibleSpaces] = useState<SpaceOption[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [total, setTotal] = useState(0);
@@ -94,23 +99,54 @@ export default function SearchPage() {
     }
   }, []);
 
-  const domains = useMemo<DomainOption[]>(
-    () => (config
-      ? getEnabledDomains(config.domains, config.spaces).map((item) => ({
-        name: item.name,
-        spaceIds: item.space_ids,
-      }))
-      : []),
-    [config],
-  );
-  const selectedDomain = domains.find((item) => item.name === domain);
-  const sids = selectedDomain?.spaceIds;
+  // 选中具体空间时按该空间检索；否则为整个范围
+  const sids = useMemo(() => (spaceId ? [Number(spaceId)] : undefined), [spaceId]);
   const visibleRange = getVisibleRange(total, page, pageSize, files.length);
-  const resultHeading = q ? `搜索 “${q}”` : domain ? `业务域 “${domain}”` : `筛选 “${displayKeyword}”`;
 
   useEffect(() => {
     setDraft(displayKeyword);
   }, [displayKeyword]);
+
+  // 登录后拉取个人可见空间；未登录则清空（二级仅用启用库）
+  useEffect(() => {
+    if (!user) {
+      setVisibleSpaces([]);
+      return;
+    }
+    let active = true;
+    void fetchKnowledgeSpaces()
+      .then((res) => {
+        if (!active) return;
+        setVisibleSpaces(res.data.map((sp) => ({ id: sp.id, name: sp.name, spaceLevel: sp.spaceLevel })));
+      })
+      .catch(() => {
+        if (active) setVisibleSpaces([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  // 二级「知识空间」候选：未登录=后台启用库；登录=启用库 ∪ 个人可见库；再按一级所选级别过滤、按 id 去重
+  const availableSpaces = useMemo<SpaceOption[]>(() => {
+    const byId = new Map<number, SpaceOption>();
+    for (const sp of config?.spaces ?? []) {
+      if (sp.enabled) byId.set(sp.id, { id: sp.id, name: sp.name, spaceLevel: sp.space_level ?? '' });
+    }
+    for (const sp of visibleSpaces) {
+      if (!byId.has(sp.id)) byId.set(sp.id, sp);
+    }
+    let list = [...byId.values()];
+    if (spaceLevel) list = list.filter((sp) => sp.spaceLevel === spaceLevel);
+    return list;
+  }, [config, visibleSpaces, spaceLevel]);
+
+  const selectedSpace = availableSpaces.find((sp) => String(sp.id) === spaceId);
+  const resultHeading = q
+    ? `搜索 “${q}”`
+    : selectedSpace
+      ? `知识空间 “${selectedSpace.name}”`
+      : `筛选 “${displayKeyword}”`;
 
   useEffect(() => {
     let active = true;
@@ -122,11 +158,6 @@ export default function SearchPage() {
       setTags([]);
       return;
     }
-    if (domain && !config) {
-      setLoading(true);
-      return;
-    }
-
     setLoading(true);
     setError('');
     void (async () => {
@@ -159,18 +190,24 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [config, displayConfig.search.pageSize, domain, fileExt, hasSearch, page, q, sids, spaceLevel, sort, tag]);
+  }, [displayConfig.search.pageSize, fileExt, hasSearch, page, q, sids, spaceLevel, sort, tag]);
 
   useEffect(() => {
-    const aiKeyword = displayKeyword.trim();
-    if (!aiKeyword) return;
+    // 有关键词、或处于知识空间/级别浏览上下文时都触发；无上下文则清空
+    const aiHasContext = Boolean(q || spaceLevel || spaceId);
+    if (!aiHasContext) {
+      setAiText('');
+      setAiCitations([]);
+      setAiThinking(false);
+      return;
+    }
     const currentRequest = ++requestSeq.current;
     setAiText('');
     setAiCitations([]);
     setAiThinking(true);
     void streamChatCompletion({
       scene: 'search',
-      text: aiKeyword,
+      text: q,
       knowledgeSpaceIds: sids ?? [],
       spaceLevel: spaceLevel || undefined,
       onUpdate(text) {
@@ -187,7 +224,7 @@ export default function SearchPage() {
         setAiThinking(false);
       }
     });
-  }, [displayKeyword, sids, spaceLevel]);
+  }, [q, spaceLevel, spaceId, sids]);
 
   const submitSearch = () => {
     setParams(createSubmittedSearchParams(params, draft));
@@ -229,17 +266,24 @@ export default function SearchPage() {
 
         {hasSearch && (
           <div className={s.filterBar}>
-            <select className={s.filterSelect} value={spaceLevel} onChange={(e) => setFilter('space_level', e.target.value)}>
+            <select
+              className={s.filterSelect}
+              value={spaceLevel}
+              onChange={(e) => {
+                const next = new URLSearchParams(params);
+                if (e.target.value) next.set('space_level', e.target.value);
+                else next.delete('space_level');
+                next.delete('space_id'); // 切换级别时重置二级「知识空间」
+                next.set('page', '1');
+                setParams(next);
+              }}
+            >
               <option value="">全部知识库</option>
               {SPACE_LEVEL_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
-            <select
-              className={s.filterSelect}
-              value={domain}
-              onChange={(e) => setParams(createDomainFilterSearchParams(params, e.target.value))}
-            >
-              <option value="">业务域</option>
-              {domains.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+            <select className={s.filterSelect} value={spaceId} onChange={(e) => setFilter('space_id', e.target.value)}>
+              <option value="">全部空间</option>
+              {availableSpaces.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
             </select>
             <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
               <option value="">文档类型</option>

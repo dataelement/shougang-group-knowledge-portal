@@ -135,15 +135,26 @@ class ChatProxyService:
             )
         else:
             docs_block = "（未检索到相关文档）"
-        return (
-            f"{base}\n\n"
-            "请仅依据下列检索到的文档摘要，对用户的搜索意图进行整体归纳总结，"
-            "不要编造资料之外的内容；若资料不足以回答，请直接说明未找到相关内容。"
+        common_rules = (
             "总结正文控制在 350 字以内；直接输出总结内容即可，"
-            "不要输出字数统计，也不要附加任何与总结正文无关的说明。\n\n"
-            f"【用户搜索】{query.strip()}\n\n"
-            f"【检索到的文档摘要】\n{docs_block}"
+            "不要输出字数统计，也不要附加任何与总结正文无关的说明。"
         )
+        normalized_query = query.strip()
+        if normalized_query:
+            instruction_body = (
+                "请仅依据下列检索到的文档摘要，对用户的搜索意图进行整体归纳总结，"
+                "不要编造资料之外的内容；若资料不足以回答，请直接说明未找到相关内容。"
+                f"{common_rules}\n\n"
+                f"【用户搜索】{normalized_query}\n\n"
+            )
+        else:
+            # 无用户问题（浏览模式）：对检索到的文档内容做整体概述
+            instruction_body = (
+                "请仅依据下列检索到的文档摘要，对这些文档的主要内容做整体概述与要点提炼，"
+                "不要编造资料之外的内容。"
+                f"{common_rules}\n\n"
+            )
+        return f"{base}\n\n{instruction_body}【检索到的文档摘要】\n{docs_block}"
 
     @staticmethod
     def _build_citation_events(

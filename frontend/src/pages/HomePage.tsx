@@ -18,7 +18,7 @@ import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, getEnabledSpaces, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
-import { buildDomainSearchPath, buildTagSearchPath } from '../utils/searchParams';
+import { buildSpaceSearchPath } from '../utils/searchParams';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
 import s from './HomePage.module.css';
@@ -42,17 +42,6 @@ type HomeQaMessage = {
   role: 'bot' | 'user';
   text: string;
 };
-
-const MOCK_HOT_TAGS = [
-  '安全生产',
-  '设备点检',
-  '环保排放',
-  '炼铁工艺',
-  '质量事故',
-  '能源管控',
-  '制度规范',
-  '典型案例',
-];
 
 const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
   {
@@ -343,7 +332,6 @@ export default function HomePage() {
   const [domainPage, setDomainPage] = useState(0);
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionDataFailed, setSectionDataFailed] = useState(false);
-  const [hotTags, setHotTags] = useState<string[]>([]);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [welcomeToast, setWelcomeToast] = useState<string>(() => {
@@ -453,7 +441,6 @@ export default function HomePage() {
         const homeContent = await fetchHomeContent();
         if (!active) return;
         setSectionData(homeContent.sections);
-        setHotTags(homeContent.tags);
         setSectionDataFailed(false);
         setLoadError('');
       } catch (err) {
@@ -487,7 +474,6 @@ export default function HomePage() {
     });
     return [domain.name, spaces.reduce((total, space) => total + space.file_count, 0)];
   }));
-  const rankedHotTags = (useMockHomeContent ? MOCK_HOT_TAGS : hotTags).slice(0, displayConfig.home.hotTagsCount);
   const homeSections = (useMockHomeContent ? MOCK_HOME_SECTIONS : enabledSections).slice(0, 3);
   const contentSections = homeSections;
   const assistantGreeting = getWelcomeMessage(config?.qa.welcome_message);
@@ -597,24 +583,24 @@ export default function HomePage() {
             </div>
             {showHotTagMenu ? (
               <div id="home-hot-tag-menu" className={s.hotSearchMenu}>
-                {rankedHotTags.length > 0 ? (
+                {qaHotQuestions.length > 0 ? (
                   <div className={s.hotSearchTags}>
-                    {rankedHotTags.map((tagName) => (
+                    {qaHotQuestions.map((question) => (
                       <button
-                        key={tagName}
+                        key={question}
                         type="button"
                         className={s.hotSearchTag}
                         onClick={() => {
                           setShowHotTagMenu(false);
-                          navigate(buildTagSearchPath(tagName));
+                          navigate(`/search?q=${encodeURIComponent(question)}`);
                         }}
                       >
-                        {tagName}
+                        {question}
                       </button>
                     ))}
                   </div>
                 ) : (
-                  <div className={s.hotSearchEmpty}>暂无热门标签</div>
+                  <div className={s.hotSearchEmpty}>暂无热门问题</div>
                 )}
               </div>
             ) : null}
@@ -695,7 +681,10 @@ export default function HomePage() {
                     key={d.name}
                     className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
                     style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
-                    onClick={() => navigateToTop(buildDomainSearchPath(d.name))}
+                    onClick={() => {
+                      const targetSpaceId = d.space_ids[0];
+                      if (targetSpaceId != null) navigateToTop(buildSpaceSearchPath(targetSpaceId));
+                    }}
                   >
                     {usesBannerThumb ? null : (
                       <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>

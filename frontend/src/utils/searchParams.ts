@@ -7,6 +7,14 @@ export function buildDomainSearchPath(domainName: string): string {
   return `/search?${params.toString()}`;
 }
 
+export function buildSpaceSearchPath(spaceId: number): string {
+  const params = new URLSearchParams({
+    space_id: String(spaceId),
+    page: '1',
+  });
+  return `/search?${params.toString()}`;
+}
+
 export function buildTagSearchPath(tagName: string): string {
   const trimmedTagName = tagName.trim();
   if (!trimmedTagName) return '/search';
@@ -29,6 +37,7 @@ export function hasSearchContext(params: URLSearchParams): boolean {
     || (params.get('domain') || '').trim()
     || (params.get('prefill') || '').trim()
     || (params.get('space_level') || '').trim()
+    || (params.get('space_id') || '').trim()
     || (params.get('file_ext') || '').trim()
     || (params.get('tag') || '').trim(),
   );
