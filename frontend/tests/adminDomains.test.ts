@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDomainDraft, isSelectedDomainColor, validateDomainDraft } from '../src/utils/adminDomains';
+import { createDomainDraft, isSelectedDomainColor, validateDomainDraft, DOMAIN_CODE_OPTIONS } from '../src/utils/adminDomains';
 
-test('createDomainDraft maps existing domain values to editable strings', () => {
+test('createDomainDraft maps existing domain values incl. code', () => {
   const draft = createDomainDraft({
     name: '轧线',
     space_ids: [12],
@@ -11,6 +11,7 @@ test('createDomainDraft maps existing domain values to editable strings', () => 
     icon: 'Factory',
     background_image: '/rolling-domain-bg.jpg',
     enabled: false,
+    code: 'PP',
   });
 
   assert.deepEqual(draft, {
@@ -21,14 +22,11 @@ test('createDomainDraft maps existing domain values to editable strings', () => 
     color: '#059669',
     bg: '#d1fae5',
     enabled: false,
-    publicLabel: '公共知识',
-    publicFolderIds: [],
-    professionalLabel: '专业知识',
-    professionalFolderIds: [],
+    code: 'PP',
   });
 });
 
-test('validateDomainDraft returns a domain config for valid input', () => {
+test('validateDomainDraft returns a domain config incl. uppercased code', () => {
   const result = validateDomainDraft({
     name: '冷轧',
     spaceId: '18',
@@ -37,10 +35,7 @@ test('validateDomainDraft returns a domain config for valid input', () => {
     color: '#6366f1',
     bg: '#ede9fe',
     enabled: true,
-    publicLabel: '制度知识',
-    publicFolderIds: [101],
-    professionalLabel: '专业资料',
-    professionalFolderIds: [102, 103],
+    code: 'pp',
   }, [
     { id: 18, name: '冷轧技术手册', file_count: 10, tag_count: 0, enabled: true },
   ]);
@@ -54,17 +49,12 @@ test('validateDomainDraft returns a domain config for valid input', () => {
       color: '#6366f1',
       bg: '#ede9fe',
       enabled: true,
-      public_label: '制度知识',
-      public_folder_ids: [101],
-      public_count: 0,
-      professional_label: '专业资料',
-      professional_folder_ids: [102, 103],
-      professional_count: 0,
+      code: 'PP',
     },
   });
 });
 
-test('validateDomainDraft accepts empty spaceId as unbound (treated as 待补绑定)', () => {
+test('validateDomainDraft allows empty code', () => {
   const result = validateDomainDraft({
     name: '能源',
     spaceId: '',
@@ -73,29 +63,11 @@ test('validateDomainDraft accepts empty spaceId as unbound (treated as 待补绑
     color: '#d97706',
     bg: '#fef3c7',
     enabled: true,
-    publicLabel: '',
-    publicFolderIds: [],
-    professionalLabel: '',
-    professionalFolderIds: [],
+    code: '',
   }, []);
 
-  assert.deepEqual(result, {
-    domain: {
-      name: '能源',
-      space_ids: [],
-      icon: 'Zap',
-      background_image: '/energy-domain-bg.jpg',
-      color: '#d97706',
-      bg: '#fef3c7',
-      enabled: true,
-      public_label: '公共知识',
-      public_folder_ids: [],
-      public_count: 0,
-      professional_label: '专业知识',
-      professional_folder_ids: [],
-      professional_count: 0,
-    },
-  });
+  assert.equal(result.domain?.code, '');
+  assert.deepEqual(result.domain?.space_ids, []);
 });
 
 test('validateDomainDraft still rejects unknown spaces', () => {
@@ -107,10 +79,7 @@ test('validateDomainDraft still rejects unknown spaces', () => {
     color: '#d97706',
     bg: '#fef3c7',
     enabled: true,
-    publicLabel: '公共知识',
-    publicFolderIds: [],
-    professionalLabel: '专业知识',
-    professionalFolderIds: [],
+    code: '',
   }, [
     { id: 12, name: '轧线技术案例库', file_count: 10, tag_count: 0, enabled: true },
   ]);
@@ -118,19 +87,12 @@ test('validateDomainDraft still rejects unknown spaces', () => {
   assert.equal(unknown.error, '绑定空间不存在');
 });
 
+test('DOMAIN_CODE_OPTIONS covers the 14 business-domain codes', () => {
+  assert.equal(DOMAIN_CODE_OPTIONS.length, 14);
+  assert.ok(DOMAIN_CODE_OPTIONS.some((o) => o.code === 'PP' && o.label === '生产'));
+});
+
 test('isSelectedDomainColor matches preset color pairs exactly', () => {
-  assert.equal(
-    isSelectedDomainColor(
-      { color: '#2563eb', bg: '#eff6ff' },
-      { color: '#2563eb', bg: '#eff6ff' },
-    ),
-    true,
-  );
-  assert.equal(
-    isSelectedDomainColor(
-      { color: '#2563eb', bg: '#eff6ff' },
-      { color: '#059669', bg: '#d1fae5' },
-    ),
-    false,
-  );
+  assert.equal(isSelectedDomainColor({ color: '#2563eb', bg: '#eff6ff' }, { color: '#2563eb', bg: '#eff6ff' }), true);
+  assert.equal(isSelectedDomainColor({ color: '#2563eb', bg: '#eff6ff' }, { color: '#059669', bg: '#d1fae5' }), false);
 });

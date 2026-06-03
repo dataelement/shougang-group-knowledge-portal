@@ -400,6 +400,11 @@ export async function fetchHomeContent(): Promise<{ sections: Record<string, Fil
   };
 }
 
+export async function fetchDomainFileCounts(): Promise<Record<string, number>> {
+  const data = await request<{ counts: Record<string, number> }>('/api/v1/knowledge/domain-file-counts');
+  return data.counts ?? {};
+}
+
 export async function fetchSpaceTags(spaceId: number): Promise<string[]> {
   return request<string[]>(`/api/v1/knowledge/space/${spaceId}/tags`);
 }

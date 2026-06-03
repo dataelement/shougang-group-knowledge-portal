@@ -43,6 +43,7 @@ import {
 } from '../api/adminConfig';
 import {
   createDomainDraft,
+  DOMAIN_CODE_OPTIONS,
   DOMAIN_COLOR_OPTIONS,
   DOMAIN_ICON_OPTIONS,
   isSelectedDomainColor,
@@ -170,6 +171,7 @@ interface SiteDraft {
   login_logo_url: string;
   browser_title: string;
   favicon_url: string;
+  domain_count_cache_ttl_seconds: string;
 }
 
 export default function AdminPage() {
@@ -1680,6 +1682,22 @@ function DomainEditorDialog({
             />
           </label>
           <label className={s.formField}>
+            <span className={s.fieldLabel}>业务域编码</span>
+            <input
+              className={s.formInput}
+              value={draft.code}
+              list="domain-code-options"
+              onChange={(event) => onChange({ code: event.target.value })}
+              placeholder="例如：PP（生产）"
+            />
+            <datalist id="domain-code-options">
+              {DOMAIN_CODE_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>{`${option.code} ${option.label}`}</option>
+              ))}
+            </datalist>
+            <span className={s.fieldHint}>对应文件编码第 3 段（如 SGGF-STD-PP-… 中的 PP）。可从候选快速选择，也可手动填写；留空则该业务域知识数量按 0 计。保存时统一转大写。</span>
+          </label>
+          <label className={s.formField}>
             <span className={s.fieldLabel}>绑定空间</span>
             <select
               className={s.formInput}
@@ -1697,9 +1715,9 @@ function DomainEditorDialog({
           </label>
           <div className={`${s.formField} ${s.formFieldWide}`}>
             <span className={s.fieldLabel}>首页统计口径</span>
-            <div className={s.emptyState}>首页业务域卡片统一展示“知识数量”，数量来自该业务域绑定知识空间下的全部文档数。</div>
+            <div className={s.emptyState}>首页业务域卡片「知识数量」来自全部知识库中文件编码第 3 段等于该业务域编码、且解析成功的文档数。</div>
             <span className={s.fieldHint}>
-              如需调整数量口径，请调整业务域绑定的知识空间；不再单独维护公共知识、专业知识或文件夹级统计。
+              数量口径由「业务域编码」决定，与绑定空间无关；未配编码则显示 0。统计结果带缓存（见站点配置的缓存有效期）。
             </span>
           </div>
           <label className={s.formField}>
@@ -2864,6 +2882,11 @@ function SiteConfigTable({
             </td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
           </tr>
+          <tr>
+            <td>业务域计数缓存有效期</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{site.domain_count_cache_ttl_seconds} 秒</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
+          </tr>
         </tbody>
       </table>
     </>
@@ -3180,6 +3203,17 @@ function SiteEditorDialog({
           <label className={s.formField}>
             <span className={s.fieldLabel}>浏览器标签页图标</span>
             <input className={s.formInput} value={draft.favicon_url} onChange={(event) => onChange({ ...draft, favicon_url: event.target.value })} placeholder="例如：/site-favicon-horizontal-v2.png 或 https://example.com/favicon.ico" />
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>业务域计数缓存有效期（秒）</span>
+            <input
+              className={s.formInput}
+              type="number"
+              min={60}
+              value={draft.domain_count_cache_ttl_seconds}
+              onChange={(event) => onChange({ ...draft, domain_count_cache_ttl_seconds: event.target.value })}
+              placeholder="例如：43200（12 小时）"
+            />
           </label>
         </div>
         <div className={s.confirmActions}>
@@ -4049,10 +4083,15 @@ function createSiteDraft(current?: SiteConfig): SiteDraft {
     login_logo_url: current?.login_logo_url ?? '/shougang-stock-logo.png',
     browser_title: current?.browser_title ?? '首钢股份知库',
     favicon_url: current?.favicon_url ?? '/site-favicon-horizontal-v2.png',
+    domain_count_cache_ttl_seconds: String(current?.domain_count_cache_ttl_seconds ?? 43200),
   };
 }
 
 function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: string } {
+  const ttl = Number(draft.domain_count_cache_ttl_seconds.trim());
+  if (!Number.isInteger(ttl) || ttl < 60) {
+    return { error: '业务域计数缓存有效期需为不小于 60 的整数（秒）' };
+  }
   const site: SiteConfig = {
     header_brand_name: draft.header_brand_name.trim(),
     header_logo_url: normalizeAssetUrl(draft.header_logo_url),
@@ -4060,6 +4099,7 @@ function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: strin
     login_logo_url: normalizeAssetUrl(draft.login_logo_url),
     browser_title: draft.browser_title.trim(),
     favicon_url: normalizeAssetUrl(draft.favicon_url),
+    domain_count_cache_ttl_seconds: ttl,
   };
   if (!site.header_brand_name) return { error: '请输入顶部品牌名' };
   if (!site.login_brand_name) return { error: '请输入登录页品牌名' };

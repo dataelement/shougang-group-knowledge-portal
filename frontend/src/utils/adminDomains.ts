@@ -23,6 +23,23 @@ export const DOMAIN_COLOR_OPTIONS = [
   { label: '设备灰', color: '#475569', bg: '#e2e8f0' },
 ] as const;
 
+export const DOMAIN_CODE_OPTIONS = [
+  { code: 'PP', label: '生产' },
+  { code: 'QM', label: '质量' },
+  { code: 'PM', label: '设备' },
+  { code: 'EM', label: '能源' },
+  { code: 'SA', label: '安全' },
+  { code: 'EN', label: '环保' },
+  { code: 'IM', label: '投资' },
+  { code: 'RD', label: '研发' },
+  { code: 'MM', label: '采购' },
+  { code: 'SD', label: '营销' },
+  { code: 'FI', label: '财务' },
+  { code: 'HR', label: '人力' },
+  { code: 'IT', label: '信息' },
+  { code: 'AD', label: '管理' },
+] as const;
+
 export interface DomainDraft {
   name: string;
   spaceId: string;
@@ -31,6 +48,7 @@ export interface DomainDraft {
   color: string;
   bg: string;
   enabled: boolean;
+  code: string;
 }
 
 export function createDomainDraft(current?: DomainConfig): DomainDraft {
@@ -42,6 +60,7 @@ export function createDomainDraft(current?: DomainConfig): DomainDraft {
     color: current?.color ?? '#2563eb',
     bg: current?.bg ?? '#eff6ff',
     enabled: current?.enabled ?? true,
+    code: current?.code ?? '',
   };
 }
 
@@ -67,6 +86,8 @@ export function validateDomainDraft(draft: DomainDraft, spaces: SpaceConfig[]): 
   const bg = draft.bg.trim();
   if (!bg) return { error: '请输入背景色值' };
 
+  const code = draft.code.trim().toUpperCase();
+
   return {
     domain: {
       name,
@@ -76,6 +97,7 @@ export function validateDomainDraft(draft: DomainDraft, spaces: SpaceConfig[]): 
       color,
       bg,
       enabled: true,
+      code,
     },
   };
 }

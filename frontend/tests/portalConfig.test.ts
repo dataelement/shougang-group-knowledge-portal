@@ -56,9 +56,9 @@ test('enabled helpers filter disabled records and orphaned domains', () => {
     { id: 18, name: '冷轧', file_count: 1, tag_count: 1, enabled: false },
   ]);
   const domains = getEnabledDomains([
-    { name: '设备', space_ids: [12], color: '#111', bg: '#eee', icon: 'Factory', background_image: '', enabled: true },
-    { name: '冷轧', space_ids: [18], color: '#111', bg: '#eee', icon: 'Snowflake', background_image: '', enabled: true },
-    { name: '安全', space_ids: [12], color: '#111', bg: '#eee', icon: 'Shield', background_image: '', enabled: false },
+    { name: '设备', space_ids: [12], color: '#111', bg: '#eee', icon: 'Factory', background_image: '', enabled: true, code: '' },
+    { name: '冷轧', space_ids: [18], color: '#111', bg: '#eee', icon: 'Snowflake', background_image: '', enabled: true, code: '' },
+    { name: '安全', space_ids: [12], color: '#111', bg: '#eee', icon: 'Shield', background_image: '', enabled: false, code: '' },
   ], spaces);
   const sections = getEnabledSections([
     { title: '精选', tag: '最新精选', link: '/list?tag=最新精选', icon: 'Star', color: '#2563eb', bg: '#eff6ff', enabled: true },
