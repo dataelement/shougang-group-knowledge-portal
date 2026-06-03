@@ -409,5 +409,6 @@ DEFAULT_PORTAL_CONFIG = {
         "login_logo_url": "/shougang-stock-logo.png",
         "browser_title": "首钢股份知库",
         "favicon_url": "/site-favicon-horizontal-v2.png",
+        "domain_count_cache_ttl_seconds": 43200,
     },
 }

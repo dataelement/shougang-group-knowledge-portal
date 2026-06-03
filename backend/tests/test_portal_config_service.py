@@ -136,3 +136,10 @@ def test_domain_config_round_trips_code(tmp_path):
         )
     )
     assert service.get_config().domains[0].code == "PP"
+
+
+def test_site_config_has_default_cache_ttl(tmp_path):
+    from app.services.portal_config_service import PortalConfigService
+
+    service = PortalConfigService(config_path=tmp_path / "portal.json")
+    assert service.get_config().site.domain_count_cache_ttl_seconds == 43200

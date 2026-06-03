@@ -260,6 +260,7 @@ class SiteConfig(BaseModel):
     login_logo_url: str = "/shougang-stock-logo.png"
     browser_title: str = "首钢股份知库"
     favicon_url: str = "/site-favicon-horizontal-v2.png"
+    domain_count_cache_ttl_seconds: int = 43200
 
 
 class PortalConfig(BaseModel):
