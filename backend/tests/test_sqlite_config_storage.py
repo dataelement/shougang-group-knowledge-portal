@@ -120,3 +120,15 @@ def test_config_services_migrate_legacy_document_rows_to_distinct_tables(tmp_pat
 
     assert portal_rows == 1
     assert runtime_rows == 1
+
+
+def test_domain_count_cache_read_write(tmp_path):
+    from app.services.portal_config_service import PortalConfigService
+
+    service = PortalConfigService(config_path=tmp_path / "portal.json")
+    assert service.read_domain_count_cache() == {}
+
+    doc = {"PP": {"count": 12, "fetched_at": 1000.0}}
+    service.write_domain_count_cache(doc)
+    assert service.read_domain_count_cache() == doc
+    assert service.get_config().domains is not None  # main config table unaffected

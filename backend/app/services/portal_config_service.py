@@ -33,6 +33,7 @@ from app.services.config_store import SQLiteConfigStore
 
 class PortalConfigService:
     _TABLE_NAME = "portal_config"
+    _DOMAIN_COUNT_CACHE_TABLE = "domain_count_cache"
     _LEGACY_CONFIG_KEY = "portal_config"
 
     def __init__(self, config_path: Path, database_path: Path | None = None):
@@ -117,6 +118,12 @@ class PortalConfigService:
         data = self.get_config().model_dump()
         data["domains"] = payload.model_dump()["domains"]
         return self._write_config(PortalConfig.model_validate(data))
+
+    def read_domain_count_cache(self) -> dict[str, Any]:
+        return self._store.get_document(self._DOMAIN_COUNT_CACHE_TABLE) or {}
+
+    def write_domain_count_cache(self, doc: dict[str, Any]) -> None:
+        self._store.upsert_document(self._DOMAIN_COUNT_CACHE_TABLE, doc)
 
     def update_sections(self, payload: SectionsConfigUpdate) -> PortalConfig:
         data = self.get_config().model_dump()
