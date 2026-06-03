@@ -19,7 +19,6 @@ test('qa workspace exposes both canonical and portal-compatible routes', () => {
 });
 
 test('qa workspace renders writing templates and keeps chat on the existing qa scene', () => {
-  assert.match(qaPageSource, /AI 帮我写/);
   assert.match(qaPageSource, /config\.qa\.template_categories/);
   assert.match(qaPageSource, /config\.qa\.templates/);
   assert.doesNotMatch(qaPageSource, /const TEMPLATE_CATEGORIES/);

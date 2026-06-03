@@ -15,7 +15,7 @@ test('getSpaceBindingState distinguishes new, enabled, and disabled spaces', () 
 
 test('getSpaceUsage and canDeleteSpace block deletion for referenced spaces', () => {
   const usage = getSpaceUsage(12, [
-    { name: '轧线', space_ids: [12], color: '#111', bg: '#eee', icon: 'Factory', background_image: '', enabled: true },
+    { name: '轧线', space_ids: [12], color: '#111', bg: '#eee', icon: 'Factory', background_image: '', enabled: true, code: '' },
   ], {
     knowledge_space_ids: [12, 18],
     hot_questions: [],
