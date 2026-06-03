@@ -12,7 +12,7 @@ import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
-import { fetchHomeContent, streamChatCompletion, type FileItem } from '../api/content';
+import { fetchHomeContent, fetchDomainFileCounts, streamChatCompletion, type FileItem } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
@@ -344,6 +344,7 @@ export default function HomePage() {
   const [sectionDataFailed, setSectionDataFailed] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
   const [welcomeToast, setWelcomeToast] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     try {
@@ -388,6 +389,21 @@ export default function HomePage() {
     const timer = window.setTimeout(() => setWelcomeToast(''), 1800);
     return () => window.clearTimeout(timer);
   }, [welcomeToast]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const counts = await fetchDomainFileCounts();
+        if (active) setDomainCounts(counts);
+      } catch {
+        /* keep empty -> cards show 0; do not block the page */
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSearch = useCallback(() => {
     if (query.trim()) navigate(`/search?q=${encodeURIComponent(query.trim())}`);
@@ -476,13 +492,9 @@ export default function HomePage() {
   const domainPageCount = Math.max(1, Math.ceil(homeDomains.length / DOMAIN_PAGE_SIZE));
   const safeDomainPage = domainPage % domainPageCount;
   const visibleDomains = homeDomains.slice(safeDomainPage * DOMAIN_PAGE_SIZE, safeDomainPage * DOMAIN_PAGE_SIZE + DOMAIN_PAGE_SIZE);
-  const spaceById = new Map(enabledSpaces.map((space) => [space.id, space]));
   const domainTotals = isUsingMockDomains ? MOCK_DOMAIN_STATS : new Map(homeDomains.map((domain) => {
-    const spaces = domain.space_ids.flatMap((spaceId) => {
-      const space = spaceById.get(spaceId);
-      return space ? [space] : [];
-    });
-    return [domain.name, spaces.reduce((total, space) => total + space.file_count, 0)];
+    const code = (domain.code || '').trim().toUpperCase();
+    return [domain.name, code ? (domainCounts[code] ?? 0) : 0] as [string, number];
   }));
   const homeSections = (useMockHomeContent ? MOCK_HOME_SECTIONS : enabledSections).slice(0, 3);
   const contentSections = homeSections;
