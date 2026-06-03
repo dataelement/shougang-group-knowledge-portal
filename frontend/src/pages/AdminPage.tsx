@@ -171,6 +171,7 @@ interface SiteDraft {
   login_logo_url: string;
   browser_title: string;
   favicon_url: string;
+  domain_count_cache_ttl_seconds: string;
 }
 
 export default function AdminPage() {
@@ -2881,6 +2882,11 @@ function SiteConfigTable({
             </td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
           </tr>
+          <tr>
+            <td>业务域计数缓存有效期</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{site.domain_count_cache_ttl_seconds} 秒</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
+          </tr>
         </tbody>
       </table>
     </>
@@ -3197,6 +3203,17 @@ function SiteEditorDialog({
           <label className={s.formField}>
             <span className={s.fieldLabel}>浏览器标签页图标</span>
             <input className={s.formInput} value={draft.favicon_url} onChange={(event) => onChange({ ...draft, favicon_url: event.target.value })} placeholder="例如：/site-favicon-horizontal-v2.png 或 https://example.com/favicon.ico" />
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>业务域计数缓存有效期（秒）</span>
+            <input
+              className={s.formInput}
+              type="number"
+              min={60}
+              value={draft.domain_count_cache_ttl_seconds}
+              onChange={(event) => onChange({ ...draft, domain_count_cache_ttl_seconds: event.target.value })}
+              placeholder="例如：43200（12 小时）"
+            />
           </label>
         </div>
         <div className={s.confirmActions}>
@@ -4066,10 +4083,15 @@ function createSiteDraft(current?: SiteConfig): SiteDraft {
     login_logo_url: current?.login_logo_url ?? '/shougang-stock-logo.png',
     browser_title: current?.browser_title ?? '首钢股份知库',
     favicon_url: current?.favicon_url ?? '/site-favicon-horizontal-v2.png',
+    domain_count_cache_ttl_seconds: String(current?.domain_count_cache_ttl_seconds ?? 43200),
   };
 }
 
 function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: string } {
+  const ttl = Number(draft.domain_count_cache_ttl_seconds.trim());
+  if (!Number.isInteger(ttl) || ttl < 60) {
+    return { error: '业务域计数缓存有效期需为不小于 60 的整数（秒）' };
+  }
   const site: SiteConfig = {
     header_brand_name: draft.header_brand_name.trim(),
     header_logo_url: normalizeAssetUrl(draft.header_logo_url),
@@ -4077,7 +4099,7 @@ function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: strin
     login_logo_url: normalizeAssetUrl(draft.login_logo_url),
     browser_title: draft.browser_title.trim(),
     favicon_url: normalizeAssetUrl(draft.favicon_url),
-    domain_count_cache_ttl_seconds: 43200,
+    domain_count_cache_ttl_seconds: ttl,
   };
   if (!site.header_brand_name) return { error: '请输入顶部品牌名' };
   if (!site.login_brand_name) return { error: '请输入登录页品牌名' };
