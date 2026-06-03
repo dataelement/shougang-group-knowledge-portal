@@ -52,6 +52,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'CheckCircle',
     background_image: '/domain-covers/marketing.png',
     enabled: true,
+    code: '',
   },
   {
     name: '财务',
@@ -61,6 +62,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'Settings',
     background_image: '/domain-covers/finance.png',
     enabled: true,
+    code: '',
   },
   {
     name: '设备',
@@ -70,6 +72,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'Settings',
     background_image: '/domain-covers/equipment.png',
     enabled: true,
+    code: '',
   },
   {
     name: '安全',
@@ -79,6 +82,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'Shield',
     background_image: '/domain-covers/safety.png',
     enabled: true,
+    code: '',
   },
   {
     name: '环保',
@@ -88,6 +92,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'Leaf',
     background_image: '/domain-covers/environment.png',
     enabled: true,
+    code: '',
   },
   {
     name: '人力',
@@ -97,6 +102,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'GraduationCap',
     background_image: '/domain-covers/hr.png',
     enabled: true,
+    code: '',
   },
   {
     name: '信息',
@@ -106,6 +112,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'Network',
     background_image: '/domain-covers/it.png',
     enabled: true,
+    code: '',
   },
   {
     name: '能源',
@@ -115,6 +122,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'Zap',
     background_image: '/domain-covers/energy.png',
     enabled: true,
+    code: '',
   },
   {
     name: '质量',
@@ -124,6 +132,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'CheckCircle',
     background_image: '/domain-covers/quality.png',
     enabled: true,
+    code: '',
   },
   {
     name: '管理',
@@ -133,6 +142,7 @@ const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
     icon: 'Settings',
     background_image: '/domain-covers/management.png',
     enabled: true,
+    code: '',
   },
 ];
 

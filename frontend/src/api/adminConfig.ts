@@ -15,6 +15,7 @@ export interface DomainConfig {
   icon: string;
   background_image: string;
   enabled: boolean;
+  code: string;
 }
 
 export interface SectionConfig {
@@ -185,6 +186,7 @@ export interface SiteConfig {
   login_logo_url: string;
   browser_title: string;
   favicon_url: string;
+  domain_count_cache_ttl_seconds: number;
 }
 
 export interface PortalConfig {

@@ -4060,6 +4060,7 @@ function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: strin
     login_logo_url: normalizeAssetUrl(draft.login_logo_url),
     browser_title: draft.browser_title.trim(),
     favicon_url: normalizeAssetUrl(draft.favicon_url),
+    domain_count_cache_ttl_seconds: 43200,
   };
   if (!site.header_brand_name) return { error: '请输入顶部品牌名' };
   if (!site.login_brand_name) return { error: '请输入登录页品牌名' };
