@@ -369,6 +369,51 @@ class FakeBishengClient:
     async def post_json(self, path: str, json=None):
         self.post_calls.append((path, json))
         if path == "/api/v1/knowledge/shougang-portal/files/search":
+            if json == {
+                "q": None,
+                "tag": None,
+                "space_ids": [12],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "updated_at",
+                "page": 1,
+                "page_size": 10,
+            }:
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "热轧1580产线精轧机振动纹治理实践",
+                                "summary": "振动纹治理实践摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": ["热轧", "振动纹"],
+                                "file_ext": "pdf",
+                                "file_size": "949.33KB",
+                                "file_encoding": "GF-ZD-SC-202604-01201",
+                                "source_path": "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf",
+                            },
+                            {
+                                "id": 1590,
+                                "space_id": 12,
+                                "title": "热轧加热炉温度控制",
+                                "summary": "温度控制摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-10T08:00:00",
+                                "tags": ["热轧"],
+                                "file_ext": "docx",
+                                "file_size": "2.32MB",
+                                "file_encoding": "GF-ZD-SC-202604-01193",
+                                "source_path": "轧线技术案例库>热轧/热轧加热炉温度控制.docx",
+                            },
+                        ],
+                        "total": 2,
+                        "page": 1,
+                        "page_size": 10,
+                    }
+                }
             assert json == {
                 "q": "振动纹",
                 "tag": None,
@@ -1720,7 +1765,7 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
 
 
 def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path):
-    for client, _, _ in make_client(tmp_path):
+    for client, _, fake_bisheng in make_client(tmp_path):
         response = client.get("/api/v1/knowledge/files?space_ids=12&page=1&page_size=10")
 
     assert response.status_code == 200
@@ -1730,6 +1775,22 @@ def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path)
     assert [item["title"] for item in body["data"]] == [
         "热轧1580产线精轧机振动纹治理实践",
         "热轧加热炉温度控制",
+    ]
+    assert body["data"][0]["source_path"] == "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf"
+    assert fake_bisheng.post_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/files/search",
+            {
+                "q": None,
+                "tag": None,
+                "space_ids": [12],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "updated_at",
+                "page": 1,
+                "page_size": 10,
+            },
+        )
     ]
 
 

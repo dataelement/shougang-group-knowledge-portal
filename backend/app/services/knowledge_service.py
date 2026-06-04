@@ -460,7 +460,7 @@ class KnowledgeService:
         if not space_ids:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
-        if len(space_ids) > 1 or space_level:
+        if requested_space_ids or len(space_ids) > 1 or space_level:
             try:
                 return await self._search_shougang_portal_files(
                     q=q,
