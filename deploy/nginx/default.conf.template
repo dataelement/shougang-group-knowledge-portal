@@ -65,7 +65,7 @@ server {
         rewrite ^/workspace(/.*)$ $1 break;
         proxy_pass         ${BISHENG_MINIO_UPSTREAM};
         proxy_http_version 1.1;
-        proxy_set_header   Host              ${BISHENG_MINIO_SIGNED_HOST};
+        proxy_set_header   Host              minio:9000
         proxy_read_timeout 300s;
     }
 }

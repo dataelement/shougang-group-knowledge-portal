@@ -35,6 +35,18 @@ test('sourcePath uses the resolved folder breadcrumb when present', () => {
   assert.equal(view.sourcePath, '测试02/C011/C0001');
 });
 
+test('sourcePath uses the full document source path when supplied', () => {
+  const fileWithSourcePath = {
+    ...baseFile,
+    folderPath: '信息/桃树栽培',
+    sourcePath: '信息>桃树栽培/CO_2施肥对设施油桃生物学特性的影响.pdf',
+  };
+
+  const view = buildFileListItemView(fileWithSourcePath);
+
+  assert.equal(view.sourcePath, '信息>桃树栽培/CO_2施肥对设施油桃生物学特性的影响.pdf');
+});
+
 test('does not fabricate unsupported confidence or actions', () => {
   const view = buildFileListItemView({ ...baseFile, summary: '', ext: '', tags: ['典型案例'] });
 

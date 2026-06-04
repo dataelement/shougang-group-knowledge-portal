@@ -393,6 +393,7 @@ class FakeBishengClient:
                             "file_ext": "pdf",
                             "file_size": "949.33KB",
                             "file_encoding": "GF-ZD-SC-202604-01201",
+                            "source_path": "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf",
                         }
                     ],
                     "total": 1,
@@ -1611,6 +1612,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
                                 "file_ext": "pdf",
                                 "file_size": "949.33KB",
                                 "file_encoding": "GF-ZD-SC-202604-01201",
+                                "source_path": "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf",
                             }
                         ],
                         "total": 1,
@@ -1632,6 +1634,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
     body = response.json()["data"]
     assert body["total"] == 1
     assert body["data"][0]["space_id"] == 12
+    assert body["data"][0]["source_path"] == "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf"
     assert fake_bisheng.post_calls == [
         (
             "/api/v1/knowledge/shougang-portal/files/search",

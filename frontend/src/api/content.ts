@@ -11,8 +11,10 @@ export interface FileItem {
   ext: string;
   sizeLabel: string;
   fileEncoding: string;
-  /** Readable source folder path "<source space>/<folder>/<folder>"; empty when not resolvable. */
+  /** 可读来源目录路径 "<source space>/<folder>/<folder>"，无法解析时为空。 */
   folderPath?: string;
+  /** 可读文档来源路径 "<source space>><folder>/<file>"，根目录文件仅使用知识空间名称。 */
+  sourcePath?: string;
 }
 
 export interface FileDetail extends FileItem {
@@ -156,6 +158,7 @@ interface KnowledgeFileItemDto {
   file_size?: string;
   file_encoding?: string;
   folder_path?: string;
+  source_path?: string;
 }
 
 interface KnowledgeFileDetailDto extends KnowledgeFileItemDto {
@@ -309,6 +312,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     sizeLabel: dto.file_size ?? '',
     fileEncoding: dto.file_encoding ?? '',
     folderPath: dto.folder_path ?? '',
+    sourcePath: dto.source_path ?? '',
   };
 }
 
