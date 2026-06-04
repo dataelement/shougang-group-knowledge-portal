@@ -42,6 +42,39 @@ def _seed_test_spaces(service: PortalConfigService) -> None:
     )
 
 
+def _seed_anonymous_qa_spaces(service: PortalConfigService) -> None:
+    service.update_spaces(
+        SpacesConfigUpdate(
+            spaces=[
+                {
+                    "id": 9101,
+                    "name": "门户公共制度库",
+                    "file_count": 0,
+                    "tag_count": 0,
+                    "space_level": "public",
+                    "enabled": True,
+                },
+                {
+                    "id": 9102,
+                    "name": "部门内部知识库",
+                    "file_count": 0,
+                    "tag_count": 0,
+                    "space_level": "department",
+                    "enabled": True,
+                },
+                {
+                    "id": 9103,
+                    "name": "停用公共知识库",
+                    "file_count": 0,
+                    "tag_count": 0,
+                    "space_level": "public",
+                    "enabled": False,
+                },
+            ]
+        )
+    )
+
+
 class FakeBishengClient:
     def __init__(self):
         self.chat_payload = None
@@ -464,6 +497,11 @@ class FakePortalAuthService:
 class NoSessionPortalAuthService(FakePortalAuthService):
     def get_session(self, _request):
         return None
+
+    def require_session(self, _request):
+        from app.services.portal_auth_service import PortalAuthError
+
+        raise PortalAuthError("请先登录", status_code=401)
 
 
 def test_list_visible_spaces_uses_grouped_bisheng_endpoint(tmp_path: Path):
@@ -1216,6 +1254,119 @@ def test_upload_chat_attachment_forwards_to_current_user_bisheng_session(tmp_pat
     assert user_bisheng.multipart_payload["path"] == "/api/v1/workstation/files"
     assert user_bisheng.multipart_payload["data"]["file_id"] == "temp-001"
     assert data_source_bisheng.multipart_payload is None
+
+
+def test_chat_proxy_allows_anonymous_qa_with_public_spaces(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_anonymous_qa_spaces(config_service)
+    qa_config = config_service.get_config().qa.model_copy(
+        update={"general_model": "10", "normal_mode_system_prompt": "匿名普通提示词"}
+    )
+    config_service.update_qa(qa_config)
+    system_bisheng = FakeBishengClient()
+
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        previous_bisheng = getattr(client.app.state, "bisheng_client", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = system_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(FakeBishengClient())
+        try:
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-05-19T10:00:00",
+                    "model": "",
+                    "scene": "qa",
+                    "answer_mode": "normal",
+                    "text": "未登录也要能问公共知识库",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [9101],
+                    },
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+            if previous_bisheng is not None:
+                client.app.state.bisheng_client = previous_bisheng
+
+    assert response.status_code == 200
+    assert system_bisheng.chat_payload is not None
+    assert system_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
+    assert system_bisheng.chat_payload["json"]["system_prompt"] == "匿名普通提示词"
+    assert system_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [9101]
+
+
+def test_chat_proxy_rejects_anonymous_qa_non_public_spaces(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_anonymous_qa_spaces(config_service)
+    qa_config = config_service.get_config().qa.model_copy(update={"general_model": "10"})
+    config_service.update_qa(qa_config)
+    system_bisheng = FakeBishengClient()
+
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        previous_bisheng = getattr(client.app.state, "bisheng_client", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = system_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(FakeBishengClient())
+        try:
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-05-19T10:00:00",
+                    "model": "",
+                    "scene": "qa",
+                    "answer_mode": "normal",
+                    "text": "不能问部门空间",
+                    "use_knowledge_base": {
+                        "knowledge_space_ids": [9102],
+                    },
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+            if previous_bisheng is not None:
+                client.app.state.bisheng_client = previous_bisheng
+
+    assert response.status_code == 403
+    assert "公共" in response.json()["detail"]
+    assert system_bisheng.chat_payload is None
+
+
+def test_upload_chat_attachment_allows_anonymous_system_bisheng_session(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    system_bisheng = FakeBishengClient()
+    user_bisheng = FakeBishengClient()
+
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        previous_bisheng = getattr(client.app.state, "bisheng_client", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = system_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(user_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/workstation/files",
+                data={"file_id": "anon-temp-001"},
+                files={"file": ("anonymous.pdf", b"%PDF anonymous", "application/pdf")},
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+            if previous_bisheng is not None:
+                client.app.state.bisheng_client = previous_bisheng
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["filename"] == "attachment.pdf"
+    assert body["temp_file_id"] == "anon-temp-001"
+    assert system_bisheng.multipart_payload is not None
+    assert system_bisheng.multipart_payload["path"] == "/api/v1/workstation/files"
+    assert system_bisheng.multipart_payload["data"]["file_id"] == "anon-temp-001"
+    assert user_bisheng.multipart_payload is None
 
 
 def test_chat_proxy_rejects_expert_mode_without_reasoning_model(tmp_path: Path):

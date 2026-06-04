@@ -106,8 +106,9 @@ async def upload_chat_attachment(
     file_id: str = Form(default=""),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
 ):
-    session = _require_portal_session(request, auth_service)
-    bisheng_client = auth_service.create_bisheng_client(session)
+    session = auth_service.get_session(request)
+    is_anonymous = session is None
+    bisheng_client = get_bisheng_client(request) if is_anonymous else auth_service.create_bisheng_client(session)
     temp_file_id = file_id.strip() or uuid4().hex
     filename = file.filename or "attachment"
     try:
@@ -121,7 +122,8 @@ async def upload_chat_attachment(
         raise HTTPException(status_code=502, detail="附件上传失败") from err
     finally:
         await file.close()
-        await bisheng_client.aclose()
+        if not is_anonymous:
+            await bisheng_client.aclose()
 
 
 @router.post("/chat/completions")
@@ -133,9 +135,6 @@ async def chat_completions(
 ):
     session = auth_service.get_session(request)
     is_anonymous = session is None
-    # 仅搜索助手允许未登录访问；问答（qa）仍要求登录
-    if is_anonymous and payload.scene != "search":
-        raise HTTPException(status_code=401, detail="请先登录")
     if is_anonymous:
         # 未登录：系统客户端（常驻单例，请求结束后勿关闭）
         bisheng_client = get_bisheng_client(request)

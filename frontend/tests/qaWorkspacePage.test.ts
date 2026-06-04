@@ -83,6 +83,16 @@ test('qa workspace selects visible knowledge spaces for chat scope', () => {
   assert.doesNotMatch(qaPageSource, /展开目录/);
 });
 
+test('qa workspace lets anonymous users chat with public spaces only', () => {
+  assert.match(qaPageSource, /useAuth\(\)/);
+  assert.match(qaPageSource, /getAnonymousPublicKnowledgeSpaces/);
+  assert.match(qaPageSource, /space\.enabled/);
+  assert.match(qaPageSource, /space\.space_level\s*===\s*'public'/);
+  assert.match(qaPageSource, /if\s*\(!user\)\s*\{[\s\S]*const spaces = getAnonymousPublicKnowledgeSpaces\(config\)[\s\S]*setAvailableSpaces\(spaces\)/);
+  assert.match(qaPageSource, /if\s*\(!user\)\s*\{[\s\S]*setLoadingSessions\(false\)/);
+  assert.doesNotMatch(qaPageSource, /请先登录后再使用智能问答/);
+});
+
 test('qa workspace uploads temporary attachments for chat', () => {
   assert.match(contentApiSource, /uploadChatAttachment/);
   assert.match(contentApiSource, /\/api\/v1\/workstation\/files/);
@@ -104,6 +114,17 @@ test('qa workspace model selector only shows model names', () => {
   assert.doesNotMatch(qaPageSource, /ID \$\{model\.id\}/);
   assert.doesNotMatch(qaPageSource, /Key \$\{model\.key\}/);
   assert.doesNotMatch(qaPageSource, /choice\.fullLabel/);
+});
+
+test('qa workspace closes model and knowledge popovers on outside pointer down', () => {
+  assert.match(qaPageSource, /const modelMenuRef = useRef<HTMLDivElement>\(null\)/);
+  assert.match(qaPageSource, /const knowledgePickerRef = useRef<HTMLDivElement>\(null\)/);
+  assert.match(qaPageSource, /document\.addEventListener\('pointerdown', handlePointerDown\)/);
+  assert.match(qaPageSource, /document\.removeEventListener\('pointerdown', handlePointerDown\)/);
+  assert.match(qaPageSource, /modelMenuOpen[\s\S]*!modelMenuRef\.current\.contains\(target\)[\s\S]*setModelMenuOpen\(false\)/);
+  assert.match(qaPageSource, /knowledgePickerOpen[\s\S]*!knowledgePickerRef\.current\.contains\(target\)[\s\S]*setKnowledgePickerOpen\(false\)/);
+  assert.match(qaPageSource, /<div className=\{s\.modelWrap\} ref=\{modelMenuRef\}>/);
+  assert.match(qaPageSource, /<div className=\{s\.knowledgePicker\} ref=\{knowledgePickerRef\}>/);
 });
 
 test('qa workspace allows switching quick normal expert answer modes', () => {

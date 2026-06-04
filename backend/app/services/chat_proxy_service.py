@@ -93,13 +93,19 @@ class ChatProxyService:
 
         requested_space_ids = self._normalize_space_ids(use_knowledge_base.knowledge_space_ids)
         if requested_space_ids:
-            visible_space_ids = await self._get_current_user_visible_space_ids()
+            visible_space_ids = (
+                self._get_anonymous_public_space_ids()
+                if self._is_anonymous
+                else await self._get_current_user_visible_space_ids()
+            )
             invisible_space_ids = [space_id for space_id in requested_space_ids if space_id not in visible_space_ids]
             if invisible_space_ids:
+                if self._is_anonymous:
+                    raise PermissionError("未登录仅可使用公共知识库")
                 raise PermissionError("包含无权限或不存在的知识库")
         request_body["use_knowledge_base"] = {
-            "personal_knowledge_enabled": use_knowledge_base.personal_knowledge_enabled,
-            "organization_knowledge_ids": use_knowledge_base.organization_knowledge_ids,
+            "personal_knowledge_enabled": False if self._is_anonymous else use_knowledge_base.personal_knowledge_enabled,
+            "organization_knowledge_ids": [] if self._is_anonymous else use_knowledge_base.organization_knowledge_ids,
             "knowledge_space_ids": requested_space_ids,
         }
 
@@ -189,6 +195,14 @@ class ChatProxyService:
         )
         spaces = await service.list_visible_spaces()
         return {space.id for space in spaces.data}
+
+    def _get_anonymous_public_space_ids(self) -> set[int]:
+        config = self._config_service.get_config()
+        return {
+            space.id
+            for space in config.spaces
+            if space.enabled and (space.space_level or "").strip().lower() == "public"
+        }
 
     @staticmethod
     def _normalize_space_ids(space_ids: list[int]) -> list[int]:

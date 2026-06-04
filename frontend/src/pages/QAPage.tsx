@@ -36,7 +36,8 @@ import {
   type WorkstationChatMessage,
   type WorkstationConversation,
 } from '../api/content';
-import { fetchQaModelOptions, type QAConfig, type QAModelOption, type QATemplateCategoryConfig, type QATemplateConfig } from '../api/adminConfig';
+import { fetchQaModelOptions, type PortalConfig, type QAConfig, type QAModelOption, type QATemplateCategoryConfig, type QATemplateConfig, type SpaceConfig } from '../api/adminConfig';
+import { useAuth } from '../hooks/useAuth';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
 import s from './QAPage.module.css';
 
@@ -183,6 +184,30 @@ function mapChatMessage(message: WorkstationChatMessage): Message {
     files: message.files,
     citations: message.citations,
   };
+}
+
+function mapConfigSpaceToKnowledgeSpace(space: SpaceConfig): KnowledgeSpace {
+  return {
+    id: space.id,
+    name: space.name,
+    description: '',
+    authType: 'public',
+    userRole: '',
+    spaceKind: 'normal',
+    spaceLevel: space.space_level ?? '',
+    departmentName: '',
+    fileCount: space.file_count ?? 0,
+    memberCount: 0,
+    isPinned: false,
+    updatedAt: '',
+    sources: ['portal-config'],
+  };
+}
+
+function getAnonymousPublicKnowledgeSpaces(config: PortalConfig): KnowledgeSpace[] {
+  return config.spaces
+    .filter((space) => space.enabled && space.space_level === 'public')
+    .map(mapConfigSpaceToKnowledgeSpace);
 }
 
 function getAttachmentName(file: ChatAttachment): string {
@@ -333,6 +358,7 @@ function findWritingTemplateById(templates: QATemplateConfig[], templateId: stri
 const INITIAL_DRAFT_SESSION = createDraftSession();
 
 export default function QAPage() {
+  const { user } = useAuth();
   const [assistantGreeting, setAssistantGreeting] = useState(getWelcomeMessage());
   const [sessions, setSessions] = useState<Session[]>(() => [INITIAL_DRAFT_SESSION]);
   const [activeId, setActiveId] = useState(() => INITIAL_DRAFT_SESSION.id);
@@ -362,6 +388,8 @@ export default function QAPage() {
   const msgEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
+  const knowledgePickerRef = useRef<HTMLDivElement>(null);
 
   const activeSession = sessions.find((ss) => ss.id === activeId) ?? sessions[0];
   const enabledCategories = templateCategories.filter((category) => category.enabled);
@@ -414,6 +442,25 @@ export default function QAPage() {
   }, [activeSession.messages, streaming]);
 
   useEffect(() => {
+    if (!modelMenuOpen && !knowledgePickerOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+
+      if (modelMenuOpen && modelMenuRef.current && !modelMenuRef.current.contains(target)) {
+        setModelMenuOpen(false);
+      }
+      if (knowledgePickerOpen && knowledgePickerRef.current && !knowledgePickerRef.current.contains(target)) {
+        setKnowledgePickerOpen(false);
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [modelMenuOpen, knowledgePickerOpen]);
+
+  useEffect(() => {
     let active = true;
     void (async () => {
       try {
@@ -444,6 +491,29 @@ export default function QAPage() {
 
   useEffect(() => {
     let active = true;
+    setLoadingKnowledgeSpaces(true);
+    if (!user) {
+      void fetchPortalContentConfig()
+        .then((config) => {
+          if (!active) return;
+          const spaces = getAnonymousPublicKnowledgeSpaces(config);
+          setAvailableSpaces(spaces);
+          setSelectedKnowledgeSpaceIds([]);
+          if (!spaces.length) {
+            setComposerTip('当前暂无可用公共知识库。');
+          }
+        })
+        .catch(() => {
+          if (active) setComposerTip('公共知识库列表加载失败，请稍后重试。');
+        })
+        .finally(() => {
+          if (active) setLoadingKnowledgeSpaces(false);
+        });
+      return () => {
+        active = false;
+      };
+    }
+
     void fetchKnowledgeSpaces()
       .then(({ data: spaces }) => {
         if (!active) return;
@@ -462,10 +532,21 @@ export default function QAPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let active = true;
+    setLoadingSessions(true);
+    if (!user) {
+      const draft = createDraftSession();
+      setSessions([draft]);
+      setActiveId(draft.id);
+      setLoadingSessions(false);
+      return () => {
+        active = false;
+      };
+    }
+
     void fetchWorkstationConversations({ page: 1, limit: 50 })
       .then((items) => {
         if (!active) return;
@@ -485,7 +566,7 @@ export default function QAPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!composerTip) return;
@@ -589,8 +670,8 @@ export default function QAPage() {
         updateLastBotMessage(targetSessionId, (last) => ({ ...last, citations: list }));
       },
     }).catch((error: unknown) => {
-      const text = error instanceof ApiRequestError && error.status === 401
-        ? '请先登录后再使用智能问答。'
+      const text = error instanceof ApiRequestError
+        ? error.message || '问答请求失败，请稍后重试。'
         : '问答请求失败，请稍后重试。';
       updateLastBotMessage(targetSessionId, () => ({
         role: 'bot',
@@ -736,7 +817,7 @@ export default function QAPage() {
               <h1>知识问答</h1>
               <p>基于企业知识范围的演示对话</p>
             </div>
-            <div className={s.modelWrap}>
+            <div className={s.modelWrap} ref={modelMenuRef}>
               <button
                 className={s.modelSelect}
                 type="button"
@@ -928,7 +1009,7 @@ export default function QAPage() {
                     </div>
                   ) : null}
                 </div>
-                <div className={s.knowledgePicker}>
+                <div className={s.knowledgePicker} ref={knowledgePickerRef}>
                   <button
                     type="button"
                     className={s.pillButton}
