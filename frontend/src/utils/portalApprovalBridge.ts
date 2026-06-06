@@ -1,4 +1,5 @@
 export type PortalApprovalAction = 'tasks' | 'requests' | 'notifications';
+export type PortalFrameAction = PortalApprovalAction | 'my_uploads';
 
 export const PORTAL_APPROVAL_EVENT = 'shougang-portal:open-approval';
 export const PENDING_PORTAL_APPROVAL_KEY = 'shougang-portal:pending-approval';
@@ -6,17 +7,18 @@ export const PENDING_PORTAL_APPROVAL_KEY = 'shougang-portal:pending-approval';
 /** Posted by the embedded BiSheng dialog host when all dialogs have closed. */
 export const PORTAL_DIALOG_CLOSED_MESSAGE = 'shougang-portal:dialog-closed';
 
-export const PORTAL_APPROVAL_MESSAGE_TYPES: Record<PortalApprovalAction, string> = {
+export const PORTAL_APPROVAL_MESSAGE_TYPES: Record<PortalFrameAction, string> = {
   tasks: 'shougang-portal:open-approval-tasks',
   requests: 'shougang-portal:open-approval-requests',
   notifications: 'shougang-portal:open-notifications',
+  my_uploads: 'shougang-portal:open-my-upload',
 };
 
 export function isPortalApprovalAction(value: unknown): value is PortalApprovalAction {
   return value === 'tasks' || value === 'requests' || value === 'notifications';
 }
 
-export function getPortalApprovalMessageType(action: PortalApprovalAction): string {
+export function getPortalApprovalMessageType(action: PortalFrameAction): string {
   return PORTAL_APPROVAL_MESSAGE_TYPES[action];
 }
 
@@ -36,7 +38,7 @@ export type PortalApprovalFrameTarget = {
 
 export function postPortalApprovalMessageToFrame(
   frame: PortalApprovalFrameTarget | null,
-  action: PortalApprovalAction,
+  action: PortalFrameAction,
 ): boolean {
   if (!frame?.contentWindow) return false;
   frame.contentWindow.postMessage({ type: getPortalApprovalMessageType(action) }, '*');

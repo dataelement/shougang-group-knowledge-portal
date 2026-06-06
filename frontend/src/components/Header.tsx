@@ -8,12 +8,17 @@ import {
   LogIn,
   LogOut,
   Send,
+  Upload,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { isPortalAdmin } from '../utils/adminAccess';
-import { PORTAL_APPROVAL_EVENT, type PortalApprovalAction } from '../utils/portalApprovalBridge';
+import {
+  PORTAL_APPROVAL_EVENT,
+  postPortalApprovalMessageToFrame,
+  type PortalApprovalAction,
+} from '../utils/portalApprovalBridge';
 import s from './Header.module.css';
 
 type HeaderNavItem =
@@ -59,6 +64,7 @@ export default function Header() {
   const initial = user ? (user.initial || user.name.slice(0, 1)) : '';
   const externalId = user?.externalId?.trim() || user?.account || '';
   const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
+  const showMyUploadsEntry = location.pathname === '/knowledge-spaces';
 
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
@@ -71,6 +77,12 @@ export default function Header() {
     // BiSheng dialog as an overlay on whatever page the user is on, so we no
     // longer navigate to the knowledge workbench.
     window.dispatchEvent(new CustomEvent(PORTAL_APPROVAL_EVENT, { detail: { action } }));
+  };
+
+  const openMyUploads = () => {
+    closeMenu();
+    const knowledgeFrame = document.getElementById('bisheng-knowledge-frame') as HTMLIFrameElement | null;
+    postPortalApprovalMessageToFrame(knowledgeFrame, 'my_uploads');
   };
 
   return (
@@ -155,6 +167,16 @@ export default function Header() {
                     </button>
                     <div className={s.userMenuDivider} />
                   </>
+                ) : null}
+                {showMyUploadsEntry ? (
+                  <button
+                    type="button"
+                    className={s.userMenuItem}
+                    onClick={openMyUploads}
+                  >
+                    <Upload size={15} />
+                    我的上传
+                  </button>
                 ) : null}
                 <button
                   type="button"

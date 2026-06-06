@@ -35,6 +35,7 @@ test('portal approval actions map to iframe message types', () => {
   assert.equal(getPortalApprovalMessageType('tasks'), 'shougang-portal:open-approval-tasks');
   assert.equal(getPortalApprovalMessageType('requests'), 'shougang-portal:open-approval-requests');
   assert.equal(getPortalApprovalMessageType('notifications'), 'shougang-portal:open-notifications');
+  assert.equal(getPortalApprovalMessageType('my_uploads'), 'shougang-portal:open-my-upload');
 });
 
 test('pending approval action is consumed once from storage', () => {
@@ -65,6 +66,20 @@ test('postPortalApprovalMessageToFrame sends the mapped message to iframe window
 
   assert.equal(sent, true);
   assert.deepEqual(messages, [{ type: 'shougang-portal:open-notifications' }]);
+});
+
+test('postPortalApprovalMessageToFrame sends my uploads message to knowledge iframe', () => {
+  const messages: unknown[] = [];
+  const sent = postPortalApprovalMessageToFrame({
+    contentWindow: {
+      postMessage(message: unknown) {
+        messages.push(message);
+      },
+    } as Pick<Window, 'postMessage'>,
+  }, 'my_uploads');
+
+  assert.equal(sent, true);
+  assert.deepEqual(messages, [{ type: 'shougang-portal:open-my-upload' }]);
 });
 
 test('postPortalApprovalMessageToFrame reports false when iframe is unavailable', () => {
