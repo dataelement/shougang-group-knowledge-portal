@@ -42,23 +42,25 @@ test('search page does not render AI summary source file list', () => {
   assert.equal(activeSource.includes('referenced.map'), false);
 });
 
-test('search page refreshes aggregated tags only when space scope changes', () => {
+test('search page derives filter options from current search results', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
   const activeSource = stripComments(source);
-  const tagsCall = activeSource.indexOf('fetchAggregatedTags(');
-  const effectStart = activeSource.lastIndexOf('useEffect(() =>', tagsCall);
-  const depsStart = activeSource.indexOf('}, [', tagsCall);
-  const depsEnd = activeSource.indexOf(']);', depsStart);
-  const tagsEffect = activeSource.slice(effectStart, depsEnd);
-  const deps = activeSource.slice(depsStart, depsEnd);
 
-  assert.notEqual(tagsCall, -1);
-  assert.notEqual(effectStart, -1);
-  assert.equal(tagsEffect.includes('searchFiles({'), false);
-  assert.equal(deps.includes('q'), false);
-  assert.equal(deps.includes('sort'), false);
-  assert.equal(deps.includes('fileExt'), false);
-  assert.equal(deps.includes('tag'), false);
-  assert.match(deps, /sids/);
-  assert.match(deps, /spaceLevel/);
+  assert.equal(activeSource.includes('fetchAggregatedTags'), false);
+  assert.match(activeSource, /const resultSpaceLevelOptions = useMemo/);
+  assert.match(activeSource, /const resultSpaceOptions = useMemo/);
+  assert.match(activeSource, /const resultFileExtOptions = useMemo/);
+  assert.match(activeSource, /const resultTagOptions = useMemo/);
+  assert.match(activeSource, /spaceById\.get\(file\.spaceId\)\?\.spaceLevel/);
+  assert.match(activeSource, /addSpaceId\(file\.spaceId\)/);
+  assert.match(activeSource, /normalizeFileExt\(file\.ext\)/);
+  assert.match(activeSource, /for \(const item of file\.tags\)/);
+  assert.match(activeSource, /addStringOption\(levelSet, spaceLevel\)/);
+  assert.match(activeSource, /addSpaceId\(selectedSpaceId\)/);
+  assert.match(activeSource, /addStringOption\(extSet, normalizeFileExt\(fileExt\)\)/);
+  assert.match(activeSource, /addStringOption\(tagSet, tag\)/);
+  assert.match(activeSource, /resultSpaceLevelOptions\.map/);
+  assert.match(activeSource, /resultSpaceOptions\.map/);
+  assert.match(activeSource, /resultFileExtOptions\.map/);
+  assert.match(activeSource, /resultTagOptions\.map/);
 });

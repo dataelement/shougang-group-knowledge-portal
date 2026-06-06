@@ -7,7 +7,6 @@ import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
 import {
-  fetchAggregatedTags,
   fetchKnowledgeSpaces,
   searchFiles,
   streamChatCompletion,
@@ -49,6 +48,15 @@ const SPACE_LEVEL_OPTIONS = [
   { value: 'personal', label: '个人空间' },
 ];
 
+function normalizeFileExt(value: string): string {
+  return value.trim().toLowerCase().replace(/^\./, '');
+}
+
+function addStringOption(target: Set<string>, value: string) {
+  const normalized = value.trim();
+  if (normalized) target.add(normalized);
+}
+
 export default function SearchPage() {
   const { params, resultsTopRef, setFilter, setParams } = useListControls();
   const q = params.get('q') || '';
@@ -68,7 +76,6 @@ export default function SearchPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [total, setTotal] = useState(0);
-  const [tags, setTags] = useState<string[]>([]);
   const [aiText, setAiText] = useState('');
   const [aiCitations, setAiCitations] = useState<Citation[]>([]);
   const [aiThinking, setAiThinking] = useState(false);
@@ -123,8 +130,8 @@ export default function SearchPage() {
     };
   }, [user]);
 
-  // 二级「知识空间」候选：未登录=后台启用库；登录=启用库 ∪ 个人可见库；再按一级所选级别过滤、按 id 去重
-  const availableSpaces = useMemo<SpaceOption[]>(() => {
+  // 搜索页空间元数据：未登录=后台启用库；登录=启用库 ∪ 个人可见库；按 id 去重。
+  const searchSpaces = useMemo<SpaceOption[]>(() => {
     const byId = new Map<number, SpaceOption>();
     for (const sp of config?.spaces ?? []) {
       if (sp.enabled) byId.set(sp.id, { id: sp.id, name: sp.name, spaceLevel: sp.space_level ?? '' });
@@ -132,12 +139,68 @@ export default function SearchPage() {
     for (const sp of visibleSpaces) {
       if (!byId.has(sp.id)) byId.set(sp.id, sp);
     }
-    let list = [...byId.values()];
-    if (spaceLevel) list = list.filter((sp) => sp.spaceLevel === spaceLevel);
-    return list;
-  }, [config, visibleSpaces, spaceLevel]);
+    return [...byId.values()];
+  }, [config, visibleSpaces]);
 
-  const selectedSpace = availableSpaces.find((sp) => String(sp.id) === spaceId);
+  const spaceById = useMemo(() => new Map(searchSpaces.map((sp) => [sp.id, sp])), [searchSpaces]);
+  const selectedSpaceId = Number(spaceId);
+  const selectedSpace = Number.isFinite(selectedSpaceId) ? spaceById.get(selectedSpaceId) : undefined;
+
+  const resultSpaceLevelOptions = useMemo(() => {
+    const levelSet = new Set<string>();
+    for (const file of files) {
+      const level = spaceById.get(file.spaceId)?.spaceLevel ?? '';
+      addStringOption(levelSet, level);
+    }
+    addStringOption(levelSet, spaceLevel);
+    return SPACE_LEVEL_OPTIONS.filter((item) => levelSet.has(item.value));
+  }, [files, spaceById, spaceLevel]);
+
+  const resultSpaceOptions = useMemo<SpaceOption[]>(() => {
+    const optionIds: number[] = [];
+    const seen = new Set<number>();
+    const resultSpaceNames = new Map<number, string>();
+    const addSpaceId = (id: number) => {
+      if (!Number.isFinite(id) || id <= 0 || seen.has(id)) return;
+      seen.add(id);
+      optionIds.push(id);
+    };
+    for (const file of files) {
+      addSpaceId(file.spaceId);
+      if (file.source) resultSpaceNames.set(file.spaceId, file.source);
+    }
+    addSpaceId(selectedSpaceId);
+    return optionIds.map((id) => (
+      spaceById.get(id) ?? {
+        id,
+        name: resultSpaceNames.get(id) ?? String(id),
+        spaceLevel: '',
+      }
+    ));
+  }, [files, selectedSpaceId, spaceById]);
+
+  const resultFileExtOptions = useMemo(() => {
+    const extSet = new Set<string>();
+    for (const file of files) {
+      addStringOption(extSet, normalizeFileExt(file.ext));
+    }
+    addStringOption(extSet, normalizeFileExt(fileExt));
+    const knownOptions = FILE_EXT_OPTIONS.filter((item) => extSet.has(item));
+    const customOptions = [...extSet]
+      .filter((item) => !FILE_EXT_OPTIONS.includes(item as (typeof FILE_EXT_OPTIONS)[number]))
+      .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+    return [...knownOptions, ...customOptions];
+  }, [fileExt, files]);
+
+  const resultTagOptions = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const file of files) {
+      for (const item of file.tags) addStringOption(tagSet, item);
+    }
+    addStringOption(tagSet, tag);
+    return [...tagSet].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+  }, [files, tag]);
+
   const resultHeading = q
     ? `搜索 “${q}”`
     : selectedSpace
@@ -147,30 +210,11 @@ export default function SearchPage() {
   useEffect(() => {
     let active = true;
     if (!hasSearch) {
-      setTags([]);
-      return;
-    }
-    void fetchAggregatedTags(sids, spaceLevel || undefined)
-      .then((loadedTags) => {
-        if (active) setTags(loadedTags);
-      })
-      .catch(() => {
-        if (active) setTags([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, [hasSearch, sids, spaceLevel]);
-
-  useEffect(() => {
-    let active = true;
-    if (!hasSearch) {
       setFiles([]);
       setTotal(0);
       setAiText('');
       setAiCitations([]);
       setAiThinking(false);
-      setTags([]);
       requestSeq.current += 1;
       return;
     }
@@ -278,19 +322,19 @@ export default function SearchPage() {
               }}
             >
               <option value="">全部知识库</option>
-              {SPACE_LEVEL_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              {resultSpaceLevelOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select className={s.filterSelect} value={spaceId} onChange={(e) => setFilter('space_id', e.target.value, false)}>
               <option value="">全部空间</option>
-              {availableSpaces.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
+              {resultSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
             </select>
             <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value, false)}>
               <option value="">文档类型</option>
-              {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              {resultFileExtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
             <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
               <option value="">标签</option>
-              {tags.map((item) => <option key={item} value={item}>{item}</option>)}
+              {resultTagOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
             <div className={s.sortWrap}>
               排序：
