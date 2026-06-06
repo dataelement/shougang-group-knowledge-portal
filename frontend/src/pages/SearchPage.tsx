@@ -6,7 +6,6 @@ import FavoriteDocumentModal from '../components/FavoriteDocumentModal';
 // import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
-import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
   fetchKnowledgeSpaces,
@@ -23,7 +22,6 @@ import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 // import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
-import { getVisibleRange } from '../utils/listControls';
 import {
   closeFileDownloadWindow,
   openFileDownloadUrl,
@@ -52,7 +50,7 @@ const SPACE_LEVEL_OPTIONS = [
 ];
 
 export default function SearchPage() {
-  const { params, page, resultsTopRef, setFilter, setParams } = useListControls();
+  const { params, resultsTopRef, setFilter, setParams } = useListControls();
   const q = params.get('q') || '';
   const displayKeyword = getSearchDisplayKeyword(params);
   const [draft, setDraft] = useState(displayKeyword);
@@ -70,7 +68,6 @@ export default function SearchPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [total, setTotal] = useState(0);
-  const [pageSize, setPageSize] = useState<number>(displayConfig.search.pageSize);
   const [tags, setTags] = useState<string[]>([]);
   const [aiText, setAiText] = useState('');
   const [aiCitations, setAiCitations] = useState<Citation[]>([]);
@@ -101,7 +98,6 @@ export default function SearchPage() {
 
   // 选中具体空间时按该空间检索；否则为整个范围
   const sids = useMemo(() => (spaceId ? [Number(spaceId)] : undefined), [spaceId]);
-  const visibleRange = getVisibleRange(total, page, pageSize, files.length);
 
   useEffect(() => {
     setDraft(displayKeyword);
@@ -151,38 +147,76 @@ export default function SearchPage() {
   useEffect(() => {
     let active = true;
     if (!hasSearch) {
+      setTags([]);
+      return;
+    }
+    void fetchAggregatedTags(sids, spaceLevel || undefined)
+      .then((loadedTags) => {
+        if (active) setTags(loadedTags);
+      })
+      .catch(() => {
+        if (active) setTags([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [hasSearch, sids, spaceLevel]);
+
+  useEffect(() => {
+    let active = true;
+    if (!hasSearch) {
       setFiles([]);
       setTotal(0);
       setAiText('');
       setAiCitations([]);
+      setAiThinking(false);
       setTags([]);
+      requestSeq.current += 1;
       return;
     }
     setLoading(true);
     setError('');
+    setAiText('');
+    setAiCitations([]);
+    setAiThinking(true);
     void (async () => {
       try {
-        const [result, loadedTags] = await Promise.all([
-          searchFiles({
-            q: q || undefined,
-            tag: tag || undefined,
-            spaceIds: sids,
-            spaceLevel: spaceLevel || undefined,
-            fileExt: fileExt || undefined,
-            sort,
-            page,
-            pageSize: displayConfig.search.pageSize,
-          }),
-          fetchAggregatedTags(sids, spaceLevel || undefined),
-        ]);
+        const result = await searchFiles({
+          q: q || undefined,
+          tag: tag || undefined,
+          spaceIds: sids,
+          spaceLevel: spaceLevel || undefined,
+          fileExt: fileExt || undefined,
+          sort,
+        });
         if (!active) return;
         setFiles(result.data);
         setTotal(result.total);
-        setPageSize(result.pageSize);
-        setTags(loadedTags);
+        const currentRequest = ++requestSeq.current;
+        void streamChatCompletion({
+          scene: 'search',
+          text: q,
+          knowledgeSpaceIds: sids ?? [],
+          spaceLevel: spaceLevel || undefined,
+          searchResults: result.data.slice(0, 10),
+          onUpdate(text) {
+            if (!active || requestSeq.current !== currentRequest) return;
+            setAiText(text);
+            setAiThinking(false);
+          },
+          onCitations(list) {
+            if (!active || requestSeq.current !== currentRequest) return;
+            setAiCitations(list);
+          },
+        }).finally(() => {
+          if (active && requestSeq.current === currentRequest) {
+            setAiThinking(false);
+          }
+        });
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : '搜索失败');
+        setAiThinking(false);
       } finally {
         if (active) setLoading(false);
       }
@@ -190,41 +224,7 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [displayConfig.search.pageSize, fileExt, hasSearch, page, q, sids, spaceLevel, sort, tag]);
-
-  useEffect(() => {
-    // 有关键词、或处于知识空间/级别浏览上下文时都触发；无上下文则清空
-    const aiHasContext = Boolean(q || spaceLevel || spaceId);
-    if (!aiHasContext) {
-      setAiText('');
-      setAiCitations([]);
-      setAiThinking(false);
-      return;
-    }
-    const currentRequest = ++requestSeq.current;
-    setAiText('');
-    setAiCitations([]);
-    setAiThinking(true);
-    void streamChatCompletion({
-      scene: 'search',
-      text: q,
-      knowledgeSpaceIds: sids ?? [],
-      spaceLevel: spaceLevel || undefined,
-      onUpdate(text) {
-        if (requestSeq.current !== currentRequest) return;
-        setAiText(text);
-        setAiThinking(false);
-      },
-      onCitations(list) {
-        if (requestSeq.current !== currentRequest) return;
-        setAiCitations(list);
-      },
-    }).finally(() => {
-      if (requestSeq.current === currentRequest) {
-        setAiThinking(false);
-      }
-    });
-  }, [q, spaceLevel, spaceId, sids]);
+  }, [fileExt, hasSearch, q, sids, spaceLevel, sort, tag]);
 
   const submitSearch = () => {
     setParams(createSubmittedSearchParams(params, draft));
@@ -258,8 +258,7 @@ export default function SearchPage() {
             </div>
           ) : (
             <div className={s.resultCount}>
-              {resultHeading} 共 {total} 条结果
-              {total > 0 ? `，当前显示 ${visibleRange.start}-${visibleRange.end} 条` : ''}
+              {resultHeading} 共找到 {total} 个相关文件
             </div>
           )}
         </div>
@@ -274,28 +273,28 @@ export default function SearchPage() {
                 if (e.target.value) next.set('space_level', e.target.value);
                 else next.delete('space_level');
                 next.delete('space_id'); // 切换级别时重置二级「知识空间」
-                next.set('page', '1');
+                next.delete('page');
                 setParams(next);
               }}
             >
               <option value="">全部知识库</option>
               {SPACE_LEVEL_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
-            <select className={s.filterSelect} value={spaceId} onChange={(e) => setFilter('space_id', e.target.value)}>
+            <select className={s.filterSelect} value={spaceId} onChange={(e) => setFilter('space_id', e.target.value, false)}>
               <option value="">全部空间</option>
               {availableSpaces.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
             </select>
-            <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
+            <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value, false)}>
               <option value="">文档类型</option>
               {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
-            <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value)}>
+            <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
               <option value="">标签</option>
               {tags.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
             <div className={s.sortWrap}>
               排序：
-              <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value)}>
+              <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value, false)}>
                 <option value="relevance">相关性优先</option>
                 <option value="updated_at">最近更新</option>
               </select>
@@ -304,8 +303,8 @@ export default function SearchPage() {
         )}
 
         {hasSearch && (() => {
-          // 总结基于检索到的前 N 个文件摘要，直接展示这些来源文件
-          const referenced = aiCitations;
+          // 临时隐藏 AI 总结下方的溯源文件列表，保留数据接收与正文引用渲染，便于后续恢复。
+          // const referenced = aiCitations;
           return (
             <div className={s.aiOverview}>
               <div className={s.aiBadge}>
@@ -323,6 +322,7 @@ export default function SearchPage() {
                   dangerouslySetInnerHTML={{ __html: renderChatMarkdown(aiText, aiCitations) }}
                 />
               )}
+              {/*
               {referenced.length > 0 && (
                 <ol className={s.citations}>
                   {referenced.map((c, idx) => {
@@ -353,6 +353,7 @@ export default function SearchPage() {
                   })}
                 </ol>
               )}
+              */}
             </div>
           );
         })()}
@@ -382,15 +383,6 @@ export default function SearchPage() {
             onOpen={setPreviewFile}
           />
         ))}
-
-        {hasSearch && (
-          <Pagination
-            page={page}
-            total={total}
-            pageSize={pageSize}
-            onChange={(nextPage) => setFilter('page', String(nextPage), false)}
-          />
-        )}
         <FavoriteDocumentModal {...favoriteModalProps} />
         {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />

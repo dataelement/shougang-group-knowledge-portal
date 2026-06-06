@@ -1,4 +1,6 @@
+import logging
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 from fastapi.testclient import TestClient
@@ -1042,7 +1044,7 @@ def test_get_file_chunks_returns_sorted_chunk_text(tmp_path: Path):
     ]
 
 
-def test_chat_proxy_uses_portal_prompt_and_whitelisted_spaces(tmp_path: Path):
+def test_chat_proxy_uses_portal_prompt_and_disables_rag_for_search_summary(tmp_path: Path):
     for client, config_service, fake_bisheng in make_client(tmp_path):
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
@@ -1074,7 +1076,62 @@ def test_chat_proxy_uses_portal_prompt_and_whitelisted_spaces(tmp_path: Path):
     assert fake_bisheng.chat_payload is not None
     assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/chat/completions"
     assert "搜索提示词" in fake_bisheng.chat_payload["json"]["text"]
-    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [12, 18]
+    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == []
+
+
+def test_search_ai_summary_reuses_supplied_search_results_without_second_search(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(
+                update={
+                    "selected_model": "summary-model",
+                    "ai_search_system_prompt": "搜索总结提示词",
+                }
+            )
+            config_service.update_qa(qa_config)
+
+            with patch(
+                "app.services.knowledge_service.KnowledgeService.search_files",
+                side_effect=AssertionError("search summary must reuse supplied search_results"),
+            ) as mock_search_files:
+                response = client.post(
+                    "/api/v1/workstation/chat/completions",
+                    json={
+                        "clientTimestamp": "2026-06-05T10:00:00",
+                        "model": "",
+                        "scene": "search",
+                        "text": "振动纹如何排查？",
+                        "search_results": [
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "热轧1580产线精轧机振动纹治理实践",
+                                "summary": "振动纹治理实践摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": ["热轧", "振动纹"],
+                                "file_ext": "pdf",
+                                "file_size": "949.33KB",
+                                "file_encoding": "GF-ZD-SC-202604-01201",
+                                "source_path": "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf",
+                            }
+                        ],
+                    },
+                )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    mock_search_files.assert_not_called()
+    assert fake_bisheng.chat_payload is not None
+    assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/chat/completions"
+    assert "搜索总结提示词" in fake_bisheng.chat_payload["json"]["text"]
+    assert "热轧1580产线精轧机振动纹治理实践" in fake_bisheng.chat_payload["json"]["text"]
+    assert "振动纹治理实践摘要" in fake_bisheng.chat_payload["json"]["text"]
+    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == []
 
 
 def test_chat_proxy_falls_back_to_general_qa_model(tmp_path: Path):
@@ -1695,6 +1752,152 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
             },
         )
     ]
+
+
+def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(tmp_path: Path):
+    class SemanticOnlyBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path.endswith("/search"):
+                raise AssertionError("keyword file search should use shougang portal semantic endpoint")
+            return await super().get_json(path, params=params)
+
+        async def post_json(self, path: str, json=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": "振动纹",
+                    "tag": None,
+                    "space_ids": [12],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "relevance",
+                    "page": 1,
+                    "page_size": 20,
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "热轧1580产线精轧机振动纹治理实践",
+                                "summary": "振动纹治理实践摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": ["热轧", "振动纹"],
+                                "file_ext": "pdf",
+                                "file_size": "949.33KB",
+                                "file_encoding": "GF-ZD-SC-202604-01201",
+                            }
+                        ],
+                        "total": 1,
+                        "page": 1,
+                        "page_size": 50,
+                    }
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_spaces(
+        SpacesConfigUpdate(
+            spaces=[
+                {
+                    "id": 12,
+                    "name": "轧线技术案例库",
+                    "file_count": 0,
+                    "tag_count": 0,
+                    "space_level": "department",
+                    "enabled": True,
+                }
+            ]
+        )
+    )
+    fake_bisheng = SemanticOnlyBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["total"] == 1
+    assert body["data"][0]["space_id"] == 12
+    assert fake_bisheng.post_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/files/search",
+            {
+                "q": "振动纹",
+                "tag": None,
+                "space_ids": [12],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "relevance",
+                "page": 1,
+                "page_size": 20,
+            },
+        )
+    ]
+
+
+def test_search_files_logs_shougang_portal_fallback(tmp_path: Path, caplog):
+    class FailingPortalBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                raise httpx.HTTPError("semantic endpoint unavailable")
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_spaces(
+        SpacesConfigUpdate(
+            spaces=[
+                {
+                    "id": 12,
+                    "name": "轧线技术案例库",
+                    "file_count": 0,
+                    "tag_count": 0,
+                    "space_level": "department",
+                    "enabled": True,
+                }
+            ]
+        )
+    )
+    fake_bisheng = FailingPortalBishengClient()
+    caplog.set_level(logging.WARNING, logger="app.services.knowledge_service")
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["total"] == 1
+    assert body["data"][0]["id"] == 1580
+    assert fake_bisheng.post_calls[0][0] == "/api/v1/knowledge/shougang-portal/files/search"
+    assert "fallback to legacy file search after shougang portal search failed" in caplog.text
+
+
+def test_related_files_use_full_space_search_without_portal_top50(tmp_path: Path):
+    class RelatedFilesBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                raise AssertionError("related files should not use shougang portal Top 50 search endpoint")
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = RelatedFilesBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/space/12/files/1580/related?limit=5")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["total"] == 1
+    assert [item["id"] for item in body["data"]] == [1590]
+    assert fake_bisheng.post_calls == []
 
 
 def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Path):

@@ -4,7 +4,6 @@ from collections.abc import AsyncIterator
 from app.clients.bisheng import BishengClient
 from app.schemas.chat import PortalChatCompletionRequest, UseKnowledgeBaseParam
 from app.schemas.knowledge import KnowledgeFileItem
-from app.services.knowledge_service import KnowledgeService
 from app.services.portal_config_service import PortalConfigService
 
 
@@ -46,35 +45,11 @@ class ChatProxyService:
         config = self._config_service.get_config()
         scene = payload.scene if payload.scene in {"search", "qa"} else "qa"
         use_knowledge_base = payload.use_knowledge_base or UseKnowledgeBaseParam()
-        request_body = payload.model_dump(exclude={"scene", "answer_mode", "space_level"}, mode="json")
+        request_body = payload.model_dump(exclude={"scene", "answer_mode", "space_level", "search_results"}, mode="json")
 
         if scene == "search":
-            # 范围与文件列表一致：未登录=后台启用库；已登录=后台启用库 ∪ 个人可见库
-            knowledge_service = KnowledgeService(
-                bisheng_client=self._bisheng,
-                portal_config_service=self._config_service,
-            )
-            extra_space_ids = (
-                None
-                if self._is_anonymous
-                else sorted(await self._get_current_user_visible_space_ids())
-            )
-            requested_space_ids = self._normalize_space_ids(use_knowledge_base.knowledge_space_ids)
-
-            # 取检索到的前 N 个文件，基于其摘要进行总结（不再走 RAG）
-            top_files = await knowledge_service.search_files(
-                q=payload.text or None,
-                tag=None,
-                requested_space_ids=requested_space_ids,
-                space_level=payload.space_level,
-                file_ext=None,
-                sort="relevance",
-                page=1,
-                page_size=self._SEARCH_SUMMARY_FILE_LIMIT,
-                extra_space_ids=extra_space_ids,
-            )
-            docs = top_files.data[: self._SEARCH_SUMMARY_FILE_LIMIT]
-            space_name_map = knowledge_service.get_space_name_map()
+            docs = payload.search_results[: self._SEARCH_SUMMARY_FILE_LIMIT]
+            space_name_map = self._get_config_space_name_map()
 
             request_body["use_knowledge_base"] = {
                 "personal_knowledge_enabled": False,
@@ -175,7 +150,7 @@ class ChatProxyService:
                 "itemId": str(doc.id),
                 "sourcePayload": {
                     "knowledgeId": doc.space_id,
-                    "knowledgeName": space_name_map.get(doc.space_id, ""),
+                    "knowledgeName": space_name_map.get(doc.space_id, doc.source),
                     "documentId": doc.id,
                     "documentName": doc.title,
                     "fileType": doc.file_ext,
@@ -188,7 +163,13 @@ class ChatProxyService:
         event = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
         return [event]
 
+    def _get_config_space_name_map(self) -> dict[int, str]:
+        config = self._config_service.get_config()
+        return {space.id: space.name for space in config.spaces}
+
     async def _get_current_user_visible_space_ids(self) -> set[int]:
+        from app.services.knowledge_service import KnowledgeService
+
         service = KnowledgeService(
             bisheng_client=self._bisheng,
             portal_config_service=self._config_service,

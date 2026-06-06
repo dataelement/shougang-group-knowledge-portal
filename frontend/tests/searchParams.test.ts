@@ -12,14 +12,14 @@ import {
 test('domain navigation uses prefill without creating a keyword query', () => {
   assert.equal(
     buildDomainSearchPath('生产'),
-    '/search?domain=%E7%94%9F%E4%BA%A7&prefill=%E7%94%9F%E4%BA%A7&page=1',
+    '/search?domain=%E7%94%9F%E4%BA%A7&prefill=%E7%94%9F%E4%BA%A7',
   );
 });
 
 test('hot search navigation uses tag filtered search results', () => {
   assert.equal(
     buildTagSearchPath('废料'),
-    '/search?tag=%E5%BA%9F%E6%96%99&prefill=%E5%BA%9F%E6%96%99&page=1',
+    '/search?tag=%E5%BA%9F%E6%96%99&prefill=%E5%BA%9F%E6%96%99',
   );
 });
 
@@ -47,7 +47,7 @@ test('domain filter changes keep prefill aligned only before real keyword search
 
   assert.equal(changed.get('domain'), '设备');
   assert.equal(changed.get('prefill'), '设备');
-  assert.equal(changed.get('page'), '1');
+  assert.equal(changed.get('page'), null);
 
   const cleared = createDomainFilterSearchParams(changed, '');
   assert.equal(cleared.get('domain'), null);

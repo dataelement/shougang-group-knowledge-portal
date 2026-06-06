@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import secrets
 import time
 from collections.abc import AsyncIterator
@@ -36,6 +37,8 @@ from app.schemas.knowledge import (
     ShareDocumentRequest,
 )
 from app.services.portal_config_service import PortalConfigService
+
+logger = logging.getLogger(__name__)
 
 SUCCESS_STATUS = 2
 FILE_TYPE = 1
@@ -460,20 +463,22 @@ class KnowledgeService:
         if not space_ids:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
-        if requested_space_ids or len(space_ids) > 1 or space_level:
-            try:
-                return await self._search_shougang_portal_files(
-                    q=q,
-                    tag=tag,
-                    space_ids=space_ids,
-                    space_level=space_level,
-                    file_ext=file_ext,
-                    sort=sort,
-                    page=page,
-                    page_size=page_size,
-                )
-            except Exception:
-                pass
+        try:
+            return await self._search_shougang_portal_files(
+                q=q,
+                tag=tag,
+                space_ids=space_ids,
+                space_level=space_level,
+                file_ext=file_ext,
+                sort=sort,
+                page=page,
+                page_size=page_size,
+            )
+        except Exception:
+            logger.warning(
+                "fallback to legacy file search after shougang portal search failed",
+                exc_info=True,
+            )
 
         results = await asyncio.gather(
             *[
@@ -912,17 +917,12 @@ class KnowledgeService:
 
         candidate_map: dict[int, dict[str, Any]] = {}
         for tag_name in detail.tags:
-            search_result = await self.search_files(
-                q=None,
-                tag=tag_name,
-                requested_space_ids=None,
-                space_level=None,
-                file_ext=None,
-                sort="updated_at",
-                page=1,
-                page_size=self._page_size_limit,
+            search_result = await self._fetch_space_files(
+                space_id=space_id,
+                keyword=None,
+                tag_name=tag_name,
             )
-            for item in search_result.data:
+            for item in self._map_items(search_result.items):
                 if item.id == file_id:
                     continue
                 entry = candidate_map.setdefault(

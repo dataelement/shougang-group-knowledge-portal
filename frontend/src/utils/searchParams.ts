@@ -2,7 +2,6 @@ export function buildDomainSearchPath(domainName: string): string {
   const params = new URLSearchParams({
     domain: domainName,
     prefill: domainName,
-    page: '1',
   });
   return `/search?${params.toString()}`;
 }
@@ -10,7 +9,6 @@ export function buildDomainSearchPath(domainName: string): string {
 export function buildSpaceSearchPath(spaceId: number): string {
   const params = new URLSearchParams({
     space_id: String(spaceId),
-    page: '1',
   });
   return `/search?${params.toString()}`;
 }
@@ -22,7 +20,6 @@ export function buildTagSearchPath(tagName: string): string {
   const params = new URLSearchParams({
     tag: trimmedTagName,
     prefill: trimmedTagName,
-    page: '1',
   });
   return `/search?${params.toString()}`;
 }
@@ -65,6 +62,6 @@ export function createDomainFilterSearchParams(params: URLSearchParams, domainNa
     next.delete('prefill');
   }
 
-  next.set('page', '1');
+  next.delete('page');
   return next;
 }

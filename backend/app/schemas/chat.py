@@ -2,6 +2,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.knowledge import KnowledgeFileItem
+
 
 class UseKnowledgeBaseParam(BaseModel):
     personal_knowledge_enabled: bool = False
@@ -23,6 +25,7 @@ class PortalChatCompletionRequest(BaseModel):
     text: str = ""
     search_enabled: bool = False
     use_knowledge_base: Optional[UseKnowledgeBaseParam] = None
+    search_results: list[KnowledgeFileItem] = Field(default_factory=list)
     files: list[dict[str, Any]] = Field(default_factory=list)
     parentMessageId: Optional[str] = None
     overrideParentMessageId: Optional[str] = None

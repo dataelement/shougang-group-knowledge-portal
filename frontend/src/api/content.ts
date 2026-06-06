@@ -316,6 +316,23 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
   };
 }
 
+function mapSearchResultForSummary(item: FileItem) {
+  return {
+    id: item.id,
+    space_id: item.spaceId,
+    title: item.title,
+    summary: item.summary,
+    source: item.source,
+    updated_at: item.date,
+    tags: item.tags,
+    file_ext: item.ext,
+    file_size: item.sizeLabel,
+    file_encoding: item.fileEncoding,
+    folder_path: item.folderPath,
+    source_path: item.sourcePath,
+  };
+}
+
 function mapKnowledgeFileDetail(dto: KnowledgeFileDetailDto): FileDetail {
   return {
     ...mapKnowledgeFileItem(dto),
@@ -845,6 +862,7 @@ export async function streamChatCompletion(params: {
   text: string;
   knowledgeSpaceIds: number[];
   spaceLevel?: string;
+  searchResults?: FileItem[];
   files?: ChatAttachment[];
   conversationId?: string;
   model?: string;
@@ -864,6 +882,7 @@ export async function streamChatCompletion(params: {
       scene: params.scene,
       space_level: params.spaceLevel,
       text: params.text,
+      search_results: params.searchResults?.map(mapSearchResultForSummary) ?? [],
       use_knowledge_base: {
         personal_knowledge_enabled: false,
         organization_knowledge_ids: [],
