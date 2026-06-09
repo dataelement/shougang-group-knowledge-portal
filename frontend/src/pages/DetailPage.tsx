@@ -6,6 +6,7 @@ import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
 import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewManifest } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { useAuth } from '../hooks/useAuth';
 import { resolveDetailBackTarget } from '../utils/detailPage';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { resolveFilePreview } from '../utils/filePreview';
@@ -20,6 +21,7 @@ export default function DetailPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { config } = usePortalConfig();
+  const { user } = useAuth();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [detail, setDetail] = useState<FileDetail | null>(null);
   const [preview, setPreview] = useState<FilePreviewManifest | null>(null);
@@ -176,22 +178,24 @@ export default function DetailPage() {
               />
             </Suspense>
           </div>
-          <div className={s.downloadBar}>
-            <a
-              className={s.downloadBtn}
-              href={effectivePreview.downloadUrl}
-              download={effectivePreview.downloadUrl ? `${detail.title}.${detail.ext}` : undefined}
-              target={effectivePreview.downloadUrl ? '_blank' : undefined}
-              rel={effectivePreview.downloadUrl ? 'noreferrer' : undefined}
-              aria-disabled={!effectivePreview.downloadUrl}
-              onClick={(event) => {
-                if (!effectivePreview.downloadUrl) event.preventDefault();
-              }}
-            >
-              <Download size={16} />
-              下载原文件
-            </a>
-          </div>
+          {user ? (
+            <div className={s.downloadBar}>
+              <a
+                className={s.downloadBtn}
+                href={effectivePreview.downloadUrl}
+                download={effectivePreview.downloadUrl ? `${detail.title}.${detail.ext}` : undefined}
+                target={effectivePreview.downloadUrl ? '_blank' : undefined}
+                rel={effectivePreview.downloadUrl ? 'noreferrer' : undefined}
+                aria-disabled={!effectivePreview.downloadUrl}
+                onClick={(event) => {
+                  if (!effectivePreview.downloadUrl) event.preventDefault();
+                }}
+              >
+                <Download size={16} />
+                下载原文件
+              </a>
+            </div>
+          ) : null}
         </div>
 
         {related.length > 0 && (

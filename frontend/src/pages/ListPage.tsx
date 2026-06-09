@@ -18,6 +18,7 @@ import {
 import type { PortalConfig } from '../api/adminConfig';
 import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { useAuth } from '../hooks/useAuth';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 // import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
@@ -46,7 +47,7 @@ function resolveListContext(
   let pageTitle = '';
   if (spaceId) {
     const space = config.spaces.find((item) => item.id === spaceId);
-    pageTitle = matchedDomain?.name || space?.name || '知识空间';
+    pageTitle = matchedDomain?.name || space?.name || '知识库';
   } else if (titleParam) {
     pageTitle = titleParam;
   } else if (tagParam) {
@@ -79,9 +80,11 @@ export default function ListPage() {
   const [pageSize, setPageSize] = useState<number>(displayConfig.list.pageSize);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { user } = useAuth();
   const { openFavorite, favoriteModalProps } = useFavoriteDocument();
   // const { openShare, shareModalProps } = useShareDocument();
   const { openDocumentQa, documentQaModalProps } = useDocumentQa();
+  const canDownload = Boolean(user);
 
   const handleDownload = useCallback(async (file: FileItem) => {
     const downloadWindow = openFileDownloadWindow();
@@ -201,7 +204,7 @@ export default function ListPage() {
             file={f}
             visibleTagCount={displayConfig.list.visibleTagCount}
             onFavorite={openFavorite}
-            onDownload={handleDownload}
+            onDownload={canDownload ? handleDownload : undefined}
             // onShare={openShare}
             onAsk={openDocumentQa}
             onOpen={setPreviewFile}

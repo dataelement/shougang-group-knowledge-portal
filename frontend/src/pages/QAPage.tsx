@@ -1051,7 +1051,7 @@ export default function QAPage() {
                                     </span>
                                     <span className={s.knowledgeItemText}>
                                       <strong>{space.name}</strong>
-                                      <span>{getKnowledgeSpaceMeta(space) || '知识空间'}</span>
+                                      <span>{getKnowledgeSpaceMeta(space) || '知识库'}</span>
                                     </span>
                                   </button>
                                 );

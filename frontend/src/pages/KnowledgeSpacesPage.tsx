@@ -42,7 +42,7 @@ export default function KnowledgeSpacesPage() {
             id="bisheng-knowledge-frame"
             className={s.frame}
             src={embedUrl}
-            title="BiSheng 知识空间"
+            title="BiSheng 知识库"
             allow="clipboard-read; clipboard-write"
           />
         </div>

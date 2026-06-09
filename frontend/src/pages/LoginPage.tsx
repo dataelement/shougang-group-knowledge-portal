@@ -160,7 +160,7 @@ export default function LoginPage() {
             <div className={s.visualPoint}>
               <div className={s.visualPointIco}><FolderLock size={18} /></div>
               <div>
-                <div className={s.visualPointTitle}>受控知识空间</div>
+                <div className={s.visualPointTitle}>受控知识库</div>
                 <div className={s.visualPointDesc}>按权限可见内部技术规范、案例库</div>
               </div>
             </div>

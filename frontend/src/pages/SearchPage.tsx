@@ -85,6 +85,7 @@ export default function SearchPage() {
   const { openFavorite, favoriteModalProps } = useFavoriteDocument();
   // const { openShare, shareModalProps } = useShareDocument();
   const { openDocumentQa, documentQaModalProps } = useDocumentQa();
+  const canDownload = Boolean(user);
 
   const handleDownload = useCallback(async (file: FileItem) => {
     const downloadWindow = openFileDownloadWindow();
@@ -204,7 +205,7 @@ export default function SearchPage() {
   const resultHeading = q
     ? `搜索 “${q}”`
     : selectedSpace
-      ? `知识空间 “${selectedSpace.name}”`
+      ? `知识库 “${selectedSpace.name}”`
       : `筛选 “${displayKeyword}”`;
 
   useEffect(() => {
@@ -321,11 +322,11 @@ export default function SearchPage() {
                 setParams(next);
               }}
             >
-              <option value="">全部知识库</option>
+              <option value="">知识库类型</option>
               {resultSpaceLevelOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select className={s.filterSelect} value={spaceId} onChange={(e) => setFilter('space_id', e.target.value, false)}>
-              <option value="">全部空间</option>
+              <option value="">知识库</option>
               {resultSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
             </select>
             <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value, false)}>
@@ -421,7 +422,7 @@ export default function SearchPage() {
             file={f}
             visibleTagCount={displayConfig.search.visibleTagCount}
             onFavorite={openFavorite}
-            onDownload={handleDownload}
+            onDownload={canDownload ? handleDownload : undefined}
             // onShare={openShare}
             onAsk={openDocumentQa}
             onOpen={setPreviewFile}
