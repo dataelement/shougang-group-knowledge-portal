@@ -23,6 +23,7 @@
 /* ===== Hero ===== */
 .hero {
   padding: 0;
+  --hero-content-width: clamp(638px, 56vw, 760px);
 }
 
 .heroBanner {
@@ -139,7 +140,8 @@
 
 .heroSearchPanel {
   position: relative;
-  max-width: 638px;
+  width: min(calc(100% - 48px), var(--hero-content-width));
+  max-width: var(--hero-content-width);
   margin: 26px auto 0;
   z-index: 1;
 }
@@ -293,26 +295,30 @@
 .heroBottomRow {
   position: relative;
   z-index: 1;
-  max-width: 638px;
+  width: min(calc(100% - 48px), var(--hero-content-width));
+  max-width: var(--hero-content-width);
   margin: 36px auto 0;
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 20px;
 }
 
 .appShortcutList {
-  display: grid;
-  grid-template-columns: repeat(4, 94px);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .appShortcut {
-  width: 94px;
-  height: 40px;
-  padding: 0 8px;
+  width: auto;
+  min-width: 94px;
+  min-height: 40px;
+  padding: 6px 10px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -348,12 +354,13 @@
 
 .appShortcutText {
   min-width: 0;
-  flex: 1;
-  line-height: 1.08;
-  white-space: nowrap;
+  flex: 0 1 auto;
+  line-height: 1.2;
+  white-space: normal;
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
 }
 
 .heroStatsPanel {
@@ -1404,17 +1411,21 @@
   }
 
   .heroSearchPanel {
+    width: 100%;
+    max-width: none;
     padding: 0 20px;
   }
 
   .heroBottomRow {
+    width: 100%;
+    max-width: none;
     padding: 0 20px;
     flex-direction: column;
     gap: 16px;
   }
 
   .appShortcutList {
-    grid-template-columns: repeat(2, 94px);
+    width: 100%;
     justify-content: center;
   }
 
