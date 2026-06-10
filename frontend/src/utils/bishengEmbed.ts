@@ -1,6 +1,8 @@
 const DEFAULT_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge-portal';
 const LEGACY_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
 const EMBED_PARAM = 'portal_embed';
+const DEEP_LINK_SPACE_PARAM = 'spaceId';
+const DEEP_LINK_FILE_PARAM = 'fileId';
 
 export type EmbedLocation = Pick<Location, 'protocol' | 'hostname' | 'origin'>;
 
@@ -50,6 +52,26 @@ export function applyEmbedOriginOverride(rawUrl: string, originOverride?: string
     const parsed = new URL(rawUrl, target.origin);
     parsed.protocol = target.protocol;
     parsed.host = target.host; // host includes the port
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+export function mergeKnowledgeDeepLinkParams(
+  rawUrl: string,
+  searchParams: URLSearchParams,
+  locationOverride?: EmbedLocation,
+): string {
+  const spaceId = searchParams.get(DEEP_LINK_SPACE_PARAM)?.trim();
+  const fileId = searchParams.get(DEEP_LINK_FILE_PARAM)?.trim();
+  if (!spaceId || !fileId) return rawUrl;
+
+  try {
+    const current = getCurrentLocation(locationOverride);
+    const parsed = new URL(rawUrl, current.origin);
+    parsed.searchParams.set(DEEP_LINK_SPACE_PARAM, spaceId);
+    parsed.searchParams.set(DEEP_LINK_FILE_PARAM, fileId);
     return parsed.toString();
   } catch {
     return rawUrl;

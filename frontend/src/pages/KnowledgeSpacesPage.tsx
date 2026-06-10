@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import PageShell from '../components/PageShell';
 import { fetchBishengRuntimeConfig } from '../api/adminConfig';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { applyEmbedOriginOverride, resolveKnowledgeEmbedUrl } from '../utils/bishengEmbed';
+import { applyEmbedOriginOverride, mergeKnowledgeDeepLinkParams, resolveKnowledgeEmbedUrl } from '../utils/bishengEmbed';
 import s from './KnowledgeSpacesPage.module.css';
 
 export default function KnowledgeSpacesPage() {
   const { config } = usePortalConfig();
+  const [searchParams] = useSearchParams();
   const [runtimeAssetBaseUrl, setRuntimeAssetBaseUrl] = useState('');
 
   useEffect(() => {
@@ -27,11 +29,14 @@ export default function KnowledgeSpacesPage() {
 
   const embedUrl = useMemo(
     () =>
-      applyEmbedOriginOverride(
-        resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url),
-        import.meta.env.VITE_BISHENG_EMBED_ORIGIN,
+      mergeKnowledgeDeepLinkParams(
+        applyEmbedOriginOverride(
+          resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url),
+          import.meta.env.VITE_BISHENG_EMBED_ORIGIN,
+        ),
+        searchParams,
       ),
-    [runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url],
+    [runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url, searchParams],
   );
 
   return (

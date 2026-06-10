@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyEmbedOriginOverride,
+  mergeKnowledgeDeepLinkParams,
   resolveKnowledgeEmbedUrl,
   resolvePortalDialogsEmbedUrl,
 } from '../src/utils/bishengEmbed';
@@ -71,4 +72,23 @@ test('origin override is a no-op when empty or unparseable', () => {
   assert.equal(applyEmbedOriginOverride(base, ''), base);
   assert.equal(applyEmbedOriginOverride(base, undefined), base);
   assert.equal(applyEmbedOriginOverride(base, 'not a url'), base);
+});
+
+test('knowledge embed URL receives portal deep-link file params', () => {
+  const base = 'http://110.16.193.170:3002/workspace/knowledge-portal?portal_embed=1';
+  const url = mergeKnowledgeDeepLinkParams(
+    base,
+    new URLSearchParams('spaceId=118&fileId=345'),
+    portalLocation,
+  );
+  assert.equal(
+    url,
+    'http://110.16.193.170:3002/workspace/knowledge-portal?portal_embed=1&spaceId=118&fileId=345',
+  );
+});
+
+test('knowledge embed URL ignores incomplete portal deep-link params', () => {
+  const base = 'http://110.16.193.170:3002/workspace/knowledge-portal?portal_embed=1';
+  assert.equal(mergeKnowledgeDeepLinkParams(base, new URLSearchParams('spaceId=118'), portalLocation), base);
+  assert.equal(mergeKnowledgeDeepLinkParams(base, new URLSearchParams('fileId=345'), portalLocation), base);
 });
