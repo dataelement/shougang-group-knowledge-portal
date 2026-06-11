@@ -37,6 +37,7 @@ export default function DetailPage() {
   // When embedded inside an iframe (e.g. the search/list preview modal) we render
   // only the document card without the portal chrome or related recommendations.
   const embed = searchParams.get('embed') === '1';
+  const relatedFilesCount = embed || shareToken ? 0 : displayConfig.detail.relatedFilesCount;
   const backTarget = resolveDetailBackTarget(location.state?.returnTo, spaceIdStr);
 
   useEffect(() => {
@@ -49,9 +50,9 @@ export default function DetailPage() {
         const [detailResult, previewResult, relatedResult] = await Promise.all([
           fetchFileDetail(spaceId, fileId, shareToken || undefined),
           fetchFilePreview(spaceId, fileId, shareToken || undefined, embed ? 'search_result_preview' : 'home_result_preview'),
-          shareToken || embed
+          relatedFilesCount === 0
             ? Promise.resolve([])
-            : fetchRelatedFiles(spaceId, fileId, displayConfig.detail.relatedFilesCount),
+            : fetchRelatedFiles(spaceId, fileId, relatedFilesCount),
         ]);
         if (!active) return;
         const chunkResult = (previewResult?.mode === 'chunks' && detailResult)
@@ -72,7 +73,7 @@ export default function DetailPage() {
     return () => {
       active = false;
     };
-  }, [displayConfig.detail.relatedFilesCount, embed, fileId, shareToken, spaceId]);
+  }, [embed, fileId, relatedFilesCount, shareToken, spaceId]);
 
   const wrap = (children: ReactNode) =>
     embed ? <div className={s.embedRoot}>{children}</div> : <PageShell>{children}</PageShell>;
