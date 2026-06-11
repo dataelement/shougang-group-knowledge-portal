@@ -44,8 +44,8 @@ class BishengClient:
         if api_token:
             self._client.cookies.set("access_token_cookie", api_token)
 
-    async def get(self, path: str, params: Optional[dict] = None) -> httpx.Response:
-        response = await self._client.get(path, params=params)
+    async def get(self, path: str, params: Optional[dict] = None, headers: Optional[dict[str, str]] = None) -> httpx.Response:
+        response = await self._client.get(path, params=params, headers=headers)
         response.raise_for_status()
         return response
 
@@ -56,8 +56,13 @@ class BishengClient:
         response.raise_for_status()
         return response
 
-    async def post(self, path: str, json: Optional[dict] = None) -> httpx.Response:
-        response = await self._client.post(path, json=json)
+    async def post(
+        self,
+        path: str,
+        json: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> httpx.Response:
+        response = await self._client.post(path, json=json, headers=headers)
         response.raise_for_status()
         return response
 
@@ -66,12 +71,22 @@ class BishengClient:
         response.raise_for_status()
         return response.json()
 
-    async def get_json(self, path: str, params: Optional[dict] = None) -> dict:
-        response = await self.get(path, params=params)
+    async def get_json(
+        self,
+        path: str,
+        params: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> dict:
+        response = await self.get(path, params=params, headers=headers)
         return response.json()
 
-    async def post_json(self, path: str, json: Optional[dict] = None) -> dict:
-        response = await self.post(path, json=json)
+    async def post_json(
+        self,
+        path: str,
+        json: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> dict:
+        response = await self.post(path, json=json, headers=headers)
         return response.json()
 
     def resolve_url(self, path_or_url: str) -> str:
@@ -101,8 +116,13 @@ class BishengClient:
         query_keys = {key.lower() for key, _ in parse_qsl(parsed.query, keep_blank_values=True)}
         return not PRESIGNED_QUERY_KEYS.isdisjoint(query_keys)
 
-    async def stream_post(self, path: str, json: Optional[dict] = None) -> AsyncIterator[bytes]:
-        async with self._client.stream("POST", path, json=json) as response:
+    async def stream_post(
+        self,
+        path: str,
+        json: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> AsyncIterator[bytes]:
+        async with self._client.stream("POST", path, json=json, headers=headers) as response:
             response.raise_for_status()
             async for chunk in response.aiter_bytes():
                 if chunk:

@@ -15,6 +15,7 @@ class PortalChatCompletionRequest(BaseModel):
     clientTimestamp: str
     model: str = ""
     scene: str = "qa"
+    entry_point: str = ""
     space_level: Optional[str] = None
     answer_mode: Literal["quick", "normal", "expert"] = "normal"
     conversationId: Optional[str] = None

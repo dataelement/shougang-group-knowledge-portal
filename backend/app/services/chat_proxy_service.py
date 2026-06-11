@@ -45,7 +45,10 @@ class ChatProxyService:
         config = self._config_service.get_config()
         scene = payload.scene if payload.scene in {"search", "qa"} else "qa"
         use_knowledge_base = payload.use_knowledge_base or UseKnowledgeBaseParam()
-        request_body = payload.model_dump(exclude={"scene", "answer_mode", "space_level", "search_results"}, mode="json")
+        request_body = payload.model_dump(
+            exclude={"scene", "entry_point", "answer_mode", "space_level", "search_results"},
+            mode="json",
+        )
 
         if scene == "search":
             docs = payload.search_results[: self._SEARCH_SUMMARY_FILE_LIMIT]

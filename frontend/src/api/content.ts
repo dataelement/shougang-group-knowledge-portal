@@ -51,6 +51,13 @@ export interface FavoriteDocumentResult {
   title: string;
 }
 
+export interface HomeStats {
+  totalDocuments: number;
+  readCount: number;
+  favoriteCount: number;
+  qaCount: number;
+}
+
 export type ShareDocumentType = 'link' | 'invite_code';
 export type ShareDocumentVisibility = 'department' | 'public';
 
@@ -252,6 +259,13 @@ interface HomeKnowledgeDataDto {
   tags: string[];
 }
 
+interface HomeStatsDataDto {
+  total_documents: number;
+  read_count: number;
+  favorite_count: number;
+  qa_count: number;
+}
+
 interface FilePreviewManifestDto {
   download_url: string;
   mode: FilePreviewMode;
@@ -426,6 +440,16 @@ export async function fetchDomainFileCounts(): Promise<Record<string, number>> {
   return data.counts ?? {};
 }
 
+export async function fetchHomeStats(): Promise<HomeStats> {
+  const data = await request<HomeStatsDataDto>('/api/v1/knowledge/home/stats');
+  return {
+    totalDocuments: data.total_documents ?? 0,
+    readCount: data.read_count ?? 0,
+    favoriteCount: data.favorite_count ?? 0,
+    qaCount: data.qa_count ?? 0,
+  };
+}
+
 export async function fetchSpaceTags(spaceId: number): Promise<string[]> {
   return request<string[]>(`/api/v1/knowledge/space/${spaceId}/tags`);
 }
@@ -598,9 +622,18 @@ export async function fetchFileDetail(spaceId: number, fileId: number, shareToke
   return data ? mapKnowledgeFileDetail(data) : null;
 }
 
-export async function fetchFilePreview(spaceId: number, fileId: number, shareToken?: string): Promise<FilePreviewManifest | null> {
+export async function fetchFilePreview(
+  spaceId: number,
+  fileId: number,
+  shareToken?: string,
+  entryPoint?: 'home_result_preview' | 'search_result_preview',
+): Promise<FilePreviewManifest | null> {
+  const path = appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/preview`, shareToken);
+  const previewPath = entryPoint
+    ? `${path}${path.includes('?') ? '&' : '?'}entry_point=${encodeURIComponent(entryPoint)}`
+    : path;
   const data = await request<FilePreviewManifestDto | null>(
-    appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/preview`, shareToken),
+    previewPath,
   );
   if (!data) return null;
   return {
@@ -859,6 +892,7 @@ async function consumeChatStream(
 
 export async function streamChatCompletion(params: {
   scene: 'search' | 'qa';
+  entryPoint?: 'home_qa' | 'qa_page';
   text: string;
   knowledgeSpaceIds: number[];
   spaceLevel?: string;
@@ -880,6 +914,7 @@ export async function streamChatCompletion(params: {
       model: params.model ?? '',
       answer_mode: params.answerMode ?? 'normal',
       scene: params.scene,
+      entry_point: params.entryPoint ?? '',
       space_level: params.spaceLevel,
       text: params.text,
       search_results: params.searchResults?.map(mapSearchResultForSummary) ?? [],

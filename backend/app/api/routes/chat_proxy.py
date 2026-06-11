@@ -17,6 +17,7 @@ from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.chat_proxy_service import ChatProxyService
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_telemetry_service import PortalTelemetryService
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/workstation", tags=["chat-proxy"])
@@ -162,8 +163,19 @@ async def chat_completions(
         raise HTTPException(status_code=403, detail=str(err)) from err
 
     async def stream():
+        telemetry_recorded = False
         try:
             async for chunk in service.stream_prepared_chat_completion(path, request_body):
+                if not telemetry_recorded and path == "/api/v1/workstation/shougang-portal/chat/completions":
+                    await PortalTelemetryService(bisheng_client).record_event(
+                        event_type="portal_qa",
+                        source_app="shougang_portal",
+                        scene="smart_qa",
+                        entry_point=payload.entry_point or "qa_page",
+                        resource_type="knowledge_space",
+                        conversation_id=payload.conversationId,
+                    )
+                    telemetry_recorded = True
                 yield chunk
             for event in trailing_events:
                 yield event

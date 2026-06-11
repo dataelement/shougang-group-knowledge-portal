@@ -648,6 +648,7 @@ export default function QAPage() {
 
     void streamChatCompletion({
       scene: 'qa',
+      entryPoint: 'qa_page',
       text: finalText,
       knowledgeSpaceIds: selectedKnowledgeSpaceIds,
       files: attachedFiles,

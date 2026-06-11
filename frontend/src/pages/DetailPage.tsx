@@ -48,7 +48,7 @@ export default function DetailPage() {
       try {
         const [detailResult, previewResult, relatedResult] = await Promise.all([
           fetchFileDetail(spaceId, fileId, shareToken || undefined),
-          fetchFilePreview(spaceId, fileId, shareToken || undefined),
+          fetchFilePreview(spaceId, fileId, shareToken || undefined, embed ? 'search_result_preview' : 'home_result_preview'),
           shareToken || embed
             ? Promise.resolve([])
             : fetchRelatedFiles(spaceId, fileId, displayConfig.detail.relatedFilesCount),

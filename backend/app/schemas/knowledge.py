@@ -44,6 +44,13 @@ class HomeKnowledgeData(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class HomeStatsData(BaseModel):
+    total_documents: int = 0
+    read_count: int = 0
+    favorite_count: int = 0
+    qa_count: int = 0
+
+
 class KnowledgeSpaceItem(BaseModel):
     id: int
     name: str

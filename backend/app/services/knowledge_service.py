@@ -37,6 +37,7 @@ from app.schemas.knowledge import (
     ShareDocumentRequest,
 )
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_telemetry_service import PORTAL_BFF_TELEMETRY_HEADERS
 
 logger = logging.getLogger(__name__)
 
@@ -325,6 +326,7 @@ class KnowledgeService:
                 "query": req.query,
                 "modelId": model_id,
             },
+            headers=PORTAL_BFF_TELEMETRY_HEADERS,
         )
 
     @staticmethod
@@ -687,7 +689,10 @@ class KnowledgeService:
         detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
         if detail is None:
             return None
-        preview_resp = await self._bisheng.get_json(f"/api/v1/knowledge/space/{space_id}/files/{file_id}/preview")
+        preview_resp = await self._bisheng.get_json(
+            f"/api/v1/knowledge/space/{space_id}/files/{file_id}/preview",
+            headers=PORTAL_BFF_TELEMETRY_HEADERS,
+        )
         data = preview_resp.get("data") or {}
         if not data:
             return None

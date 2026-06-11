@@ -11,6 +11,7 @@ from app.schemas.knowledge import (
     DocumentFileChatRequest,
     FavoriteDocumentRequest,
     FilePreviewSourceKind,
+    HomeStatsData,
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
@@ -24,6 +25,7 @@ from app.services.knowledge_service import (
 )
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_telemetry_service import PortalTelemetryService, PortalTelemetryStatsError
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
@@ -182,6 +184,23 @@ async def get_home_content(
     return response_ok(await service.get_home_content())
 
 
+@router.get("/home/stats")
+async def get_home_stats(
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        counts = await PortalTelemetryService(bisheng_client).fetch_home_stats_counts()
+    except PortalTelemetryStatsError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    total_documents = sum(
+        space.file_count
+        for space in portal_config_service.get_config().spaces
+        if space.enabled
+    )
+    return response_ok(HomeStatsData(total_documents=total_documents, **counts))
+
+
 @router.get("/config")
 async def get_portal_config(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
@@ -271,7 +290,20 @@ async def create_favorite(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        return response_ok(await service.create_favorite(req))
+        result = await service.create_favorite(req)
+        await PortalTelemetryService(bisheng_client).record_event(
+            event_type="portal_favorite",
+            source_app="shougang_portal",
+            scene="search_result_favorite",
+            entry_point="search_result_favorite",
+            resource_type="document",
+            source_space_id=req.source_space_id,
+            source_file_id=req.source_file_id,
+            target_space_id=req.target_space_id,
+            space_id=req.source_space_id,
+            file_id=req.source_file_id,
+        )
+        return response_ok(result)
     except BishengBusinessError as err:
         if err.status_code == _BISHENG_DUPLICATE_FAVORITE_CODE:
             raise HTTPException(status_code=409, detail="该文档已收藏到所选个人知识库") from err
@@ -412,10 +444,21 @@ async def get_file_preview(
     file_id: int,
     request: Request,
     share_token: Optional[str] = None,
+    entry_point: Optional[str] = Query(default=None),
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
     share_session = _require_share_access(request, share_token, space_id, file_id) if share_token else None
     preview = await service.get_file_preview(space_id=space_id, file_id=file_id)
+    if preview is not None:
+        await PortalTelemetryService(service._bisheng).record_event(
+            event_type="portal_document_read",
+            source_app="shougang_portal",
+            scene="document_preview",
+            entry_point=entry_point or "search_result_preview",
+            resource_type="document",
+            space_id=space_id,
+            file_id=file_id,
+        )
     if preview and share_session and not share_session.allow_download:
         preview.download_url = ""
     if (
@@ -489,10 +532,27 @@ async def chat_document_file(
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
     try:
-        stream = service.stream_document_file_chat(space_id=space_id, file_id=file_id, req=req)
+        upstream = service.stream_document_file_chat(space_id=space_id, file_id=file_id, req=req)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
-    return StreamingResponse(stream, media_type="text/event-stream")
+
+    async def stream():
+        telemetry_recorded = False
+        async for chunk in upstream:
+            if not telemetry_recorded:
+                await PortalTelemetryService(service._bisheng).record_event(
+                    event_type="portal_qa",
+                    source_app="shougang_portal",
+                    scene="search_result_document_qa",
+                    entry_point="search_result_document_qa",
+                    resource_type="document",
+                    space_id=space_id,
+                    file_id=file_id,
+                )
+                telemetry_recorded = True
+            yield chunk
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @router.get("/space/{space_id}/files/{file_id}/related")
