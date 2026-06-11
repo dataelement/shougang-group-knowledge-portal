@@ -97,6 +97,23 @@ export interface BishengRuntimeConfig {
   } | null;
 }
 
+export interface UnifiedAuthRuntimeConfig {
+  enabled: boolean;
+  provider: 'group' | 'stock' | 'custom';
+  client_id: string;
+  redirect_uri: string;
+  authorize_url: string;
+  token_url: string;
+  userinfo_url: string;
+  token_param_style: 'query' | 'form';
+  state_ttl_seconds: number;
+  http_timeout_seconds: number;
+  login_sync_signature_header: string;
+  has_client_secret: boolean;
+  has_state_secret: boolean;
+  has_login_sync_hmac_secret: boolean;
+}
+
 export interface SpaceOption {
   id: number;
   name: string;
@@ -344,6 +361,32 @@ export function updateBishengRuntimeConfig(payload: {
   timeout_seconds: number;
 }) {
   return request<BishengRuntimeConfig>('/api/v1/admin/config/bisheng', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchUnifiedAuthRuntimeConfig() {
+  return request<UnifiedAuthRuntimeConfig>('/api/v1/admin/config/unified-auth');
+}
+
+export function updateUnifiedAuthRuntimeConfig(payload: {
+  enabled: boolean;
+  provider: 'group' | 'stock' | 'custom';
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+  authorize_url: string;
+  token_url: string;
+  userinfo_url: string;
+  token_param_style: 'query' | 'form';
+  state_secret: string;
+  state_ttl_seconds: number;
+  http_timeout_seconds: number;
+  login_sync_hmac_secret: string;
+  login_sync_signature_header: string;
+}) {
+  return request<UnifiedAuthRuntimeConfig>('/api/v1/admin/config/unified-auth', {
     method: 'POST',
     body: JSON.stringify(payload),
   });

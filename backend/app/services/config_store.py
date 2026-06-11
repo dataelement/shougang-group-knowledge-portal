@@ -8,7 +8,12 @@ from typing import Any
 
 
 class SQLiteConfigStore:
-    _ALLOWED_TABLES = {"portal_config", "bisheng_runtime_config", "domain_count_cache"}
+    _ALLOWED_TABLES = {
+        "portal_config",
+        "bisheng_runtime_config",
+        "unified_auth_runtime_config",
+        "domain_count_cache",
+    }
 
     def __init__(self, database_path: Path):
         self._database_path = database_path

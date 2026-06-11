@@ -7,6 +7,8 @@ from app.api.router import api_router
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthService
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_unified_auth_service import PortalUnifiedAuthService
+from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 from app.settings import get_settings
 
 
@@ -32,6 +34,17 @@ async def lifespan(app: FastAPI):
         cookie_name=settings.portal_session_cookie_name,
         ttl_seconds=settings.portal_session_ttl_seconds,
         cookie_secure=settings.portal_session_cookie_secure,
+    )
+    app.state.unified_auth_runtime_service = UnifiedAuthRuntimeService(
+        database_path=settings.portal_database_path,
+        settings=settings,
+    )
+    app.state.portal_unified_auth_service = PortalUnifiedAuthService(
+        settings=settings,
+        runtime_service=app.state.bisheng_runtime_service,
+        auth_service=app.state.portal_auth_service,
+        cookie_secure=settings.portal_session_cookie_secure,
+        config_service=app.state.unified_auth_runtime_service,
     )
     app.state.portal_config_service = PortalConfigService(
         config_path=settings.portal_config_path,

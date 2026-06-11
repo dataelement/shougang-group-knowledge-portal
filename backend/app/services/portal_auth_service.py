@@ -98,6 +98,38 @@ class PortalAuthService:
             session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
         return session
 
+    async def create_session_from_access_token(
+        self,
+        *,
+        access_token: str,
+        remember: bool,
+        fallback_account: str = "",
+    ) -> PortalSession:
+        base_url, timeout_seconds = self._runtime_service.get_connection_settings()
+        user = await self._fetch_user(
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            access_token=access_token,
+            fallback_account=fallback_account,
+            strict=True,
+        )
+        expires_at = self._resolve_expiry(access_token)
+        if expires_at <= time.time():
+            raise PortalAuthError("登录态已失效，请重新登录", status_code=401)
+        session = PortalSession(
+            session_id=secrets.token_urlsafe(32),
+            access_token=access_token,
+            user=user,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            expires_at=expires_at,
+        )
+        self._cleanup_expired()
+        self._sessions[session.session_id] = session
+        if not remember:
+            session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
+        return session
+
     def attach_session_cookie(self, response: Response, session: PortalSession, remember: bool) -> None:
         max_age = max(0, int(session.expires_at - time.time())) if remember else None
         response.set_cookie(

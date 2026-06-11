@@ -20,3 +20,10 @@ class PortalUserView(BaseModel):
 
 class PortalAuthData(BaseModel):
     user: PortalUserView
+
+
+class PortalUnifiedAuthConfigData(BaseModel):
+    enabled: bool
+    provider: str
+    label: str
+    unavailable_reason: str = ""

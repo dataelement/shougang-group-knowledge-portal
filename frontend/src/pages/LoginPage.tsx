@@ -14,27 +14,29 @@ import {
   User,
   Users,
 } from 'lucide-react';
-import { fetchPortalMe, loginPortal } from '../api/auth';
+import {
+  buildUnifiedAuthStartUrl,
+  fetchPortalMe,
+  fetchUnifiedAuthConfig,
+  getUnifiedAuthErrorMessage,
+  loginPortal,
+  normalizePortalRedirect,
+  type PortalUnifiedAuthConfig,
+} from '../api/auth';
 import { fetchBishengBootstrapStatus } from '../api/bootstrap';
 import { loadPortalUser, savePortalUser } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import s from './LoginPage.module.css';
 
-const FALLBACK_REDIRECT = '/';
 const WELCOME_FLAG = 'sg_just_logged_in';
-
-function resolveRedirect(target: string | null): string {
-  if (!target) return FALLBACK_REDIRECT;
-  if (!target.startsWith('/') || target.startsWith('//')) return FALLBACK_REDIRECT;
-  return target;
-}
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { config } = usePortalConfig();
   const params = new URLSearchParams(location.search);
-  const redirect = resolveRedirect(params.get('redirect'));
+  const redirect = normalizePortalRedirect(params.get('redirect'));
+  const unifiedAuthError = getUnifiedAuthErrorMessage(params.get('auth_error'));
   const loginBrandName = config?.site?.login_brand_name?.trim() || '首钢股份知库';
   const loginLogoUrl = config?.site?.login_logo_url?.trim() || '/shougang-stock-logo.png';
 
@@ -66,6 +68,9 @@ export default function LoginPage() {
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [bootstrapRequired, setBootstrapRequired] = useState(false);
+  const [unifiedAuthConfig, setUnifiedAuthConfig] = useState<PortalUnifiedAuthConfig | null>(null);
+  const [unifiedAuthLoading, setUnifiedAuthLoading] = useState(true);
+  const [unifiedAuthStarting, setUnifiedAuthStarting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -74,6 +79,30 @@ export default function LoginPage() {
         if (active) setBootstrapRequired(status.required);
       })
       .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setUnifiedAuthLoading(true);
+    void fetchUnifiedAuthConfig()
+      .then((next) => {
+        if (active) setUnifiedAuthConfig(next);
+      })
+      .catch(() => {
+        if (!active) return;
+        setUnifiedAuthConfig({
+          enabled: false,
+          provider: 'custom',
+          label: '统一身份认证',
+          unavailableReason: 'request_failed',
+        });
+      })
+      .finally(() => {
+        if (active) setUnifiedAuthLoading(false);
+      });
     return () => {
       active = false;
     };
@@ -122,6 +151,15 @@ export default function LoginPage() {
       setSubmitting(false);
     }
   }
+
+  function handleUnifiedAuthLogin() {
+    setUnifiedAuthStarting(true);
+    window.location.assign(buildUnifiedAuthStartUrl(redirect));
+  }
+
+  const unifiedAuthAvailable = unifiedAuthConfig?.enabled === true;
+  const unifiedAuthLabel = unifiedAuthConfig?.label?.trim() || '统一身份认证';
+  const unifiedAuthDisabled = unifiedAuthLoading || !unifiedAuthAvailable || unifiedAuthStarting;
 
   return (
     <div className={s.page}>
@@ -195,6 +233,12 @@ export default function LoginPage() {
             <h2 className={s.formTitle}>账号登录</h2>
 
             <form noValidate onSubmit={handleSubmit}>
+              {unifiedAuthError ? (
+                <div className={s.formError}>
+                  <AlertCircle size={14} />
+                  <span>{unifiedAuthError}</span>
+                </div>
+              ) : null}
               {formError ? (
                 <div className={s.formError}>
                   <AlertCircle size={14} />
@@ -298,8 +342,15 @@ export default function LoginPage() {
 
             <div className={s.divider}>其他登录方式</div>
             <div className={s.ssoRow}>
-              <button type="button" className={s.ssoBtn}>
-                <Building2 size={16} />企业 SSO
+              <button
+                type="button"
+                className={s.ssoBtn}
+                disabled={unifiedAuthDisabled}
+                title={unifiedAuthAvailable ? unifiedAuthLabel : '统一身份认证暂不可用'}
+                onClick={handleUnifiedAuthLogin}
+              >
+                <Building2 size={16} />
+                <span>{unifiedAuthStarting ? '跳转中' : `${unifiedAuthLabel}登录`}</span>
               </button>
             </div>
           </div>

@@ -27,6 +27,22 @@ class Settings(BaseSettings):
     portal_session_cookie_name: str = "sg_portal_session"
     portal_session_ttl_seconds: int = 7 * 24 * 60 * 60
     portal_session_cookie_secure: bool = False
+    unified_auth_enabled: bool = False
+    unified_auth_provider: str = "group"
+    unified_auth_client_id: str = ""
+    unified_auth_client_secret: Optional[SecretStr] = None
+    unified_auth_redirect_uri: str = ""
+    unified_auth_authorize_url: str = ""
+    unified_auth_token_url: str = ""
+    unified_auth_userinfo_url: str = ""
+    unified_auth_token_param_style: str = "query"
+    unified_auth_state_secret: Optional[SecretStr] = None
+    unified_auth_state_ttl_seconds: int = 300
+    unified_auth_http_timeout_seconds: float = 10.0
+    unified_auth_login_sync_hmac_secret: Optional[SecretStr] = None
+    unified_auth_login_sync_signature_header: str = "X-Signature"
+    unified_auth_bisheng_hmac_secret: Optional[SecretStr] = None
+    unified_auth_bisheng_signature_header: str = "X-Signature"
     bisheng_runtime_config_path: Path = Field(
         default=Path(__file__).resolve().parent / "config" / "data" / "bisheng_runtime.json"
     )

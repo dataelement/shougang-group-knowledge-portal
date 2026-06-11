@@ -449,6 +449,16 @@
   color: var(--primary-700);
 }
 
+.ssoBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.ssoBtn:disabled:hover {
+  border-color: var(--neutral-200);
+  color: var(--neutral-700);
+}
+
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;
