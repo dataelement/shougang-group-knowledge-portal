@@ -1,3 +1,4 @@
+import base64
 import asyncio
 import hashlib
 import hmac
@@ -19,6 +20,8 @@ from app.services.portal_unified_auth_service import (
     normalize_redirect,
 )
 from app.settings import Settings
+
+TRACE_PREFIX = "[portal unified auth trace] "
 
 
 class FakeRuntimeService:
@@ -59,7 +62,14 @@ class RecordingUnifiedHttpClient:
         login_sync_payload: dict | None = None,
     ):
         self.token_payload = token_payload or {"access_token": "unified-token", "uid": "token-uid"}
-        self.userinfo_payload = userinfo_payload or {"realName": "张三", "dept_id": "D-01"}
+        self.userinfo_payload = userinfo_payload or {
+            "spRoleList": [],
+            "mail": "zhangsan@example.com",
+            "displayName": "张三",
+            "loginName": "zhangs001",
+            "mobile": "13800000000",
+            "title": "zhangs001#stockOA,zhangs001#oa_group",
+        }
         self.login_sync_payload = login_sync_payload or {"status_code": 200, "data": {"token": "bisheng-token"}}
         self.calls: list[dict] = []
         self.closed = 0
@@ -157,6 +167,20 @@ def restore_services(client: TestClient, previous_auth, previous_unified) -> Non
         client.app.state.portal_auth_service = previous_auth
     if previous_unified is not None:
         client.app.state.portal_unified_auth_service = previous_unified
+
+
+def parse_trace_events(output: str) -> list[dict]:
+    events = []
+    for line in output.splitlines():
+        if line.startswith(TRACE_PREFIX):
+            events.append(json.loads(line[len(TRACE_PREFIX) :]))
+    return events
+
+
+def decode_state_payload(state: str) -> dict:
+    payload_b64 = state.split(".", 1)[0]
+    padding = "=" * (-len(payload_b64) % 4)
+    return json.loads(base64.urlsafe_b64decode(f"{payload_b64}{padding}"))
 
 
 def test_unified_auth_public_config_disabled_is_secret_safe():
@@ -279,12 +303,111 @@ def test_callback_success_exchanges_token_userinfo_login_sync_sets_cookies(capsy
     login_sync_call = http_client.calls[2]
     body = json.loads(login_sync_call["content"].decode("utf-8"))
     assert body["source"] == "sso"
-    assert body["external_user_id"] == "token-uid"
+    assert body["external_user_id"] == "zhangs001"
     assert body["user_attrs"]["name"] == "张三"
-    assert body["primary_dept_external_id"] == "D-01"
+    assert body["user_attrs"]["email"] == "zhangsan@example.com"
+    assert body["user_attrs"]["phone"] == "13800000000"
+    assert "primary_dept_external_id" not in body
     expected_signature = compute_login_sync_signature("POST", LOGIN_SYNC_PATH, login_sync_call["content"], "hmac-secret")
     assert login_sync_call["headers"]["X-Signature"] == expected_signature
     assert "[portal unified auth getUserInfo raw]" in capsys.readouterr().out
+
+
+def test_unified_auth_trace_logs_full_chain_with_redaction(capsys):
+    auth_service = make_auth_service()
+    http_client = RecordingUnifiedHttpClient(
+        token_payload={
+            "access_token": "unified-token-super-secret",
+            "refresh_token": "refresh-token-super-secret",
+            "uid": "token-uid",
+        },
+        login_sync_payload={
+            "status_code": 200,
+            "data": {
+                "token": "bisheng-token",
+                "user_id": 1001,
+            },
+        },
+    )
+    unified_service = make_unified_service(auth_service=auth_service, http_client=http_client)
+    with TestClient(app) as client:
+        previous_auth, previous_unified = install_services(client, unified_service, auth_service)
+        try:
+            start = client.get("/api/v1/auth/unified/start?redirect=/admin", follow_redirects=False)
+            state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+            state_payload = decode_state_payload(state)
+            assert state_payload["trace_id"]
+            response = client.get(
+                f"/api/v1/auth/unified/callback?code=oauth-code&state={state}",
+                follow_redirects=False,
+            )
+            assert response.status_code == 307
+            me_response = client.get("/api/v1/auth/me")
+            assert me_response.status_code == 200
+        finally:
+            restore_services(client, previous_auth, previous_unified)
+
+    output = capsys.readouterr().out
+    events = parse_trace_events(output)
+    assert events
+    trace_ids = {event.get("trace_id") for event in events if event.get("trace_id")}
+    assert trace_ids == {state_payload["trace_id"]}
+
+    stages = {event["stage"] for event in events}
+    assert {
+        "start",
+        "callback",
+        "state",
+        "get_token",
+        "get_userinfo",
+        "mapper",
+        "login_sync",
+        "session",
+        "auth_me",
+    }.issubset(stages)
+
+    assert any(event["stage"] == "mapper" and event["payload"]["mapped_user"]["external_user_id"] == "zhangs001" for event in events)
+    assert any(event["stage"] == "auth_me" and event["payload"]["user"]["account"] == "token-user" for event in events)
+
+    forbidden_values = [
+        "oauth-secret",
+        "hmac-secret",
+        "unified-token-super-secret",
+        "refresh-token-super-secret",
+        "bisheng-token",
+    ]
+    for value in forbidden_values:
+        assert value not in output
+    assert '"redacted": true' in output
+
+
+def test_unified_auth_trace_logs_failure_stage_and_safe_error(capsys):
+    auth_service = make_auth_service()
+    http_client = RecordingUnifiedHttpClient(
+        token_payload={"access_token": "unified-token-super-secret"},
+        userinfo_payload={"displayName": "无主键用户"},
+    )
+    unified_service = make_unified_service(auth_service=auth_service, http_client=http_client)
+    with TestClient(app) as client:
+        previous_auth, previous_unified = install_services(client, unified_service, auth_service)
+        try:
+            start = client.get("/api/v1/auth/unified/start?redirect=/admin", follow_redirects=False)
+            state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+            state_payload = decode_state_payload(state)
+            response = client.get(
+                f"/api/v1/auth/unified/callback?code=oauth-code&state={state}",
+                follow_redirects=False,
+            )
+        finally:
+            restore_services(client, previous_auth, previous_unified)
+
+    assert response.headers["location"] == "/login?auth_error=identity_missing&redirect=%2Fadmin"
+    events = parse_trace_events(capsys.readouterr().out)
+    failure_events = [event for event in events if event["stage"] == "failure"]
+    assert failure_events
+    assert failure_events[-1]["trace_id"] == state_payload["trace_id"]
+    assert failure_events[-1]["payload"]["auth_error"] == "identity_missing"
+    assert failure_events[-1]["payload"]["redirect"] == "/admin"
 
 
 def test_callback_uses_form_token_param_style_when_configured():
@@ -421,6 +544,28 @@ def test_callback_maps_missing_identity_and_login_sync_failure_to_safe_errors():
 
     assert missing_identity.headers["location"] == "/login?auth_error=identity_missing&redirect=%2Fadmin"
     assert permission_denied.headers["location"] == "/login?auth_error=permission_denied&redirect=%2Fadmin"
+
+
+def test_mapper_prefers_login_name_and_maps_captured_userinfo_fields():
+    mapped = map_unified_userinfo(
+        {
+            "spRoleList": [],
+            "mail": "lisi@example.com",
+            "displayName": "李四",
+            "loginName": "lisi001",
+            "mobile": "13900000000",
+            "title": "lisi001#stockOA,lisi001#oa_group",
+        },
+        {"uid": "token-uid"},
+    )
+
+    assert mapped.external_user_id == "lisi001"
+    assert mapped.user_attrs == {
+        "name": "李四",
+        "email": "lisi@example.com",
+        "phone": "13900000000",
+    }
+    assert mapped.primary_dept_external_id is None
 
 
 def test_mapper_supports_uid_fallback_aliases_and_department_mapping():

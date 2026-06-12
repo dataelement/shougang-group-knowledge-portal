@@ -10,6 +10,7 @@ from app.services.portal_unified_auth_service import (
     UnifiedAuthFailure,
     UnifiedAuthUnavailable,
     PortalUnifiedAuthService,
+    log_unified_auth_trace,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -98,6 +99,21 @@ async def get_me(
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
     if recovered:
         service.attach_session_cookie(response, session, remember=True)
+    if session.auth_source == "unified_auth" or session.auth_trace_id or recovered:
+        log_unified_auth_trace(
+            session.auth_trace_id,
+            "auth_me",
+            "session_restored",
+            {
+                "recovered": recovered,
+                "auth_source": session.auth_source,
+                "auth_trace_id": session.auth_trace_id,
+                "session_id": session.session_id,
+                "access_token": session.access_token,
+                "expires_at": session.expires_at,
+                "user": session.user.model_dump(),
+            },
+        )
     return response_ok(PortalAuthData(user=session.user))
 
 

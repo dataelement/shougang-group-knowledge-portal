@@ -78,12 +78,14 @@ class UnifiedAuthStart:
     authorize_url: str
     state: str
     max_age: int
+    trace_id: str
 
 
 @dataclass(frozen=True)
 class UnifiedAuthResult:
     session: PortalSession
     redirect: str
+    trace_id: str
 
 
 @dataclass(frozen=True)
@@ -107,10 +109,94 @@ def compute_login_sync_signature(method: str, path: str, raw_body: bytes, secret
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
+def log_unified_auth_trace(trace_id: str, stage: str, event: str, payload: dict[str, Any] | None = None) -> None:
+    entry = {
+        "trace_id": trace_id,
+        "stage": stage,
+        "event": event,
+        "payload": redact_trace_payload(payload or {}),
+    }
+    try:
+        line = json.dumps(entry, ensure_ascii=False, sort_keys=True)
+    except (TypeError, ValueError):
+        fallback = {
+            "trace_id": trace_id,
+            "stage": stage,
+            "event": event,
+            "payload": {"raw": str(payload)},
+        }
+        line = json.dumps(fallback, ensure_ascii=False, sort_keys=True)
+    print(f"[portal unified auth trace] {line}")
+
+
+def log_unified_auth_failure(
+    trace_id: str,
+    auth_error: str,
+    redirect: str,
+    event: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    details = {
+        "auth_error": auth_error,
+        "redirect": normalize_redirect(redirect),
+    }
+    if payload:
+        details.update(payload)
+    log_unified_auth_trace(trace_id, "failure", event, details)
+
+
+def redact_trace_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _redact_value(str(key), item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_trace_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [redact_trace_payload(item) for item in value]
+    return value
+
+
+def _redact_value(key: str, value: Any) -> Any:
+    key_lower = key.lower().replace("_", "-")
+    sensitive_keys = {
+        "access-token",
+        "refresh-token",
+        "token",
+        "client-secret",
+        "login-sync-hmac-secret",
+        "state-secret",
+        "password",
+        "cookie",
+        "set-cookie",
+        "authorization",
+        "signature",
+        "x-signature",
+        "session-id",
+        "code",
+    }
+    if key_lower in sensitive_keys or key_lower.endswith("-token") or key_lower.endswith("-secret"):
+        return _redacted_marker(value)
+    return redact_trace_payload(value)
+
+
+def _redacted_marker(value: Any) -> dict[str, Any]:
+    if value in (None, ""):
+        return {"redacted": True, "present": False, "type": type(value).__name__}
+    raw = value if isinstance(value, str) else str(value)
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:10]
+    return {
+        "redacted": True,
+        "present": True,
+        "type": type(value).__name__,
+        "length": len(raw),
+        "sha256": digest,
+    }
+
+
 def map_unified_userinfo(userinfo_payload: dict[str, Any], token_payload: dict[str, Any]) -> MappedUnifiedUser:
     userinfo = _select_userinfo_object(userinfo_payload)
     external_user_id = (
-        _first_str(userinfo, "uid")
+        _first_str(userinfo, "loginName", "login_name")
+        or _first_str(userinfo, "uid")
         or _first_str(token_payload, "uid")
         or _first_str(userinfo, "user_id", "userId", "account", "username", "employee_id", "staff_id")
     )
@@ -118,7 +204,20 @@ def map_unified_userinfo(userinfo_payload: dict[str, Any], token_payload: dict[s
         raise ValueError("missing stable unified auth user identifier")
 
     name = (
-        _first_str(userinfo, "real_name", "realName", "name", "nick_name", "nickname", "username", "uid")
+        _first_str(
+            userinfo,
+            "displayName",
+            "display_name",
+            "real_name",
+            "realName",
+            "name",
+            "nick_name",
+            "nickname",
+            "loginName",
+            "login_name",
+            "username",
+            "uid",
+        )
         or external_user_id
     )
     email = _first_str(userinfo, "email", "mail")
@@ -202,12 +301,15 @@ class PortalUnifiedAuthService:
     def build_start(self, redirect: str | None) -> UnifiedAuthStart:
         config = self._resolve_config()
         safe_redirect = normalize_redirect(redirect)
+        trace_id = self._nonce_factory(16)
+        now = int(self._clock())
         state = self._encode_state(
             {
                 "nonce": self._nonce_factory(24),
                 "redirect": safe_redirect,
-                "iat": int(self._clock()),
-                "exp": int(self._clock() + config.state_ttl_seconds),
+                "trace_id": trace_id,
+                "iat": now,
+                "exp": now + config.state_ttl_seconds,
             },
             config.state_secret,
         )
@@ -218,54 +320,202 @@ class PortalUnifiedAuthService:
             "state": state,
         }
         separator = "&" if "?" in config.endpoints.authorize_url else "?"
+        log_unified_auth_trace(
+            trace_id,
+            "start",
+            "authorize_redirect_built",
+            {
+                "redirect": safe_redirect,
+                "provider": config.provider,
+                "label": config.label,
+                "client_id": config.client_id,
+                "client_secret": config.client_secret,
+                "redirect_uri": config.redirect_uri,
+                "response_type": "code",
+                "state_generated": True,
+                "state_ttl_seconds": config.state_ttl_seconds,
+                "state_secret": config.state_secret,
+                "token_param_style": config.token_param_style,
+                "login_sync_hmac_secret": config.login_sync_hmac_secret,
+                "login_sync_signature_header": config.login_sync_signature_header,
+                "endpoints": {
+                    "authorize_url": config.endpoints.authorize_url,
+                    "token_url": config.endpoints.token_url,
+                    "userinfo_url": config.endpoints.userinfo_url,
+                },
+            },
+        )
         return UnifiedAuthStart(
             authorize_url=f"{config.endpoints.authorize_url}{separator}{urlencode(params)}",
             state=state,
             max_age=config.state_ttl_seconds,
+            trace_id=trace_id,
         )
 
     async def complete_callback(self, *, code: str | None, state: str | None, cookie_state: str | None) -> UnifiedAuthResult:
         if not code or not state:
+            log_unified_auth_failure(
+                "",
+                "invalid_callback",
+                "/",
+                "callback_missing_params",
+                {
+                    "code_present": bool(code),
+                    "state_present": bool(state),
+                    "cookie_state_present": bool(cookie_state),
+                },
+            )
             raise UnifiedAuthFailure("invalid_callback", "/")
         if not cookie_state or cookie_state != state:
+            log_unified_auth_failure(
+                "",
+                "invalid_state",
+                "/",
+                "state_cookie_mismatch",
+                {
+                    "code_present": True,
+                    "state_present": True,
+                    "cookie_state_present": bool(cookie_state),
+                },
+            )
             raise UnifiedAuthFailure("invalid_state", "/")
 
         config = self._resolve_config()
         try:
             state_payload = self._decode_state(state, config.state_secret)
-        except UnifiedAuthFailure:
+        except UnifiedAuthFailure as err:
+            log_unified_auth_failure(
+                "",
+                err.auth_error,
+                err.redirect,
+                "state_decode_failed",
+                {
+                    "code_present": True,
+                    "state_present": True,
+                    "cookie_state_present": True,
+                },
+            )
             raise
+        trace_id = str(state_payload.get("trace_id") or "")
         redirect = normalize_redirect(str(state_payload.get("redirect") or "/"))
+        log_unified_auth_trace(
+            trace_id,
+            "callback",
+            "callback_received",
+            {
+                "code": code,
+                "state_present": True,
+                "cookie_state_present": True,
+                "redirect": redirect,
+            },
+        )
+        log_unified_auth_trace(
+            trace_id,
+            "state",
+            "state_validated",
+            {
+                "nonce_present": bool(state_payload.get("nonce")),
+                "trace_id": trace_id,
+                "redirect": redirect,
+                "iat": state_payload.get("iat"),
+                "exp": state_payload.get("exp"),
+            },
+        )
 
-        token_payload = await self._exchange_token(config, code, redirect)
+        token_payload = await self._exchange_token(config, code, redirect, trace_id)
         access_token = _first_str(token_payload, "access_token")
         if not access_token:
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_token_failed",
+                redirect,
+                "missing_access_token",
+                {"token_payload": token_payload},
+            )
             raise UnifiedAuthFailure("oauth_token_failed", redirect)
 
-        userinfo_payload = await self._fetch_userinfo(config, access_token, redirect)
+        userinfo_payload = await self._fetch_userinfo(config, access_token, redirect, trace_id)
+        log_unified_auth_trace(
+            trace_id,
+            "get_userinfo",
+            "raw_userinfo",
+            {"userinfo_payload": userinfo_payload},
+        )
         # 开发测试阶段临时打印，用于确认统一认证 getUserInfo 的真实字段。
         print(
             "[portal unified auth getUserInfo raw] "
-            + json.dumps(userinfo_payload, ensure_ascii=False, sort_keys=True)
+            + json.dumps({"trace_id": trace_id, "payload": userinfo_payload}, ensure_ascii=False, sort_keys=True)
         )
 
         try:
             mapped_user = map_unified_userinfo(userinfo_payload, token_payload)
         except ValueError as err:
             logger.warning("统一认证用户信息缺少稳定标识: %s", err)
+            log_unified_auth_failure(
+                trace_id,
+                "identity_missing",
+                redirect,
+                "mapper_identity_missing",
+                {
+                    "error": str(err),
+                    "userinfo_payload": userinfo_payload,
+                    "token_payload": token_payload,
+                },
+            )
             raise UnifiedAuthFailure("identity_missing", redirect) from err
+        log_unified_auth_trace(
+            trace_id,
+            "mapper",
+            "mapped_user",
+            {
+                "userinfo_payload": userinfo_payload,
+                "token_payload": token_payload,
+                "mapped_user": {
+                    "external_user_id": mapped_user.external_user_id,
+                    "user_attrs": mapped_user.user_attrs,
+                    "primary_dept_external_id": mapped_user.primary_dept_external_id,
+                },
+            },
+        )
 
-        bisheng_token = await self._login_sync(config, mapped_user, redirect)
+        bisheng_token = await self._login_sync(config, mapped_user, redirect, trace_id)
         try:
             session = await self._auth_service.create_session_from_access_token(
                 access_token=bisheng_token,
                 remember=True,
                 fallback_account=mapped_user.external_user_id,
+                auth_source="unified_auth",
+                auth_trace_id=trace_id,
             )
         except PortalAuthError as err:
             logger.warning("统一认证换签后创建门户 session 失败: %s", err.message)
+            log_unified_auth_failure(
+                trace_id,
+                "permission_denied",
+                redirect,
+                "session_create_failed",
+                {
+                    "error": err.message,
+                    "status_code": err.status_code,
+                    "fallback_account": mapped_user.external_user_id,
+                },
+            )
             raise UnifiedAuthFailure("permission_denied", redirect) from err
-        return UnifiedAuthResult(session=session, redirect=redirect)
+        log_unified_auth_trace(
+            trace_id,
+            "session",
+            "session_created",
+            {
+                "redirect": redirect,
+                "session_id": session.session_id,
+                "access_token": session.access_token,
+                "user": session.user.model_dump(),
+                "expires_at": session.expires_at,
+                "auth_source": session.auth_source,
+                "auth_trace_id": session.auth_trace_id,
+            },
+        )
+        return UnifiedAuthResult(session=session, redirect=redirect, trace_id=trace_id)
 
     def build_failure_redirect_url(self, auth_error: str, redirect: str | None = "/") -> str:
         safe_error = auth_error if auth_error in SAFE_ERROR_MESSAGES else "oauth_unavailable"
@@ -438,13 +688,29 @@ class PortalUnifiedAuthService:
             raise UnifiedAuthFailure("invalid_state", "/")
         return payload
 
-    async def _exchange_token(self, config: UnifiedAuthInternalConfig, code: str, redirect: str) -> dict[str, Any]:
+    async def _exchange_token(
+        self,
+        config: UnifiedAuthInternalConfig,
+        code: str,
+        redirect: str,
+        trace_id: str,
+    ) -> dict[str, Any]:
         params = {
             "client_id": config.client_id,
             "client_secret": config.client_secret,
             "code": code,
             "grant_type": "authorization_code",
         }
+        log_unified_auth_trace(
+            trace_id,
+            "get_token",
+            "request",
+            {
+                "url": config.endpoints.token_url,
+                "token_param_style": config.token_param_style,
+                "params": params,
+            },
+        )
         client = self._make_http_client(config.http_timeout_seconds)
         try:
             if config.token_param_style == "form":
@@ -453,17 +719,68 @@ class PortalUnifiedAuthService:
                 response = await client.post(config.endpoints.token_url, params=params)
             response.raise_for_status()
             payload = response.json()
+            log_unified_auth_trace(
+                trace_id,
+                "get_token",
+                "response",
+                {
+                    "status_code": response.status_code,
+                    "payload": payload,
+                },
+            )
         except httpx.HTTPError as err:
             logger.warning("统一认证 getToken HTTP 调用失败: %s", err)
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_unavailable",
+                redirect,
+                "get_token_http_error",
+                {
+                    "error": str(err),
+                    "error_type": type(err).__name__,
+                    "url": config.endpoints.token_url,
+                },
+            )
             raise UnifiedAuthFailure("oauth_unavailable", redirect) from err
+        except ValueError as err:
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_token_failed",
+                redirect,
+                "get_token_invalid_json",
+                {
+                    "error": str(err),
+                    "error_type": type(err).__name__,
+                    "url": config.endpoints.token_url,
+                },
+            )
+            raise UnifiedAuthFailure("oauth_token_failed", redirect) from err
         finally:
             await self._close_http_client(client)
 
         if not isinstance(payload, dict):
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_token_failed",
+                redirect,
+                "get_token_unexpected_payload",
+                {"payload": payload},
+            )
             raise UnifiedAuthFailure("oauth_token_failed", redirect)
         errcode = _first_str(payload, "errcode")
         if errcode:
             logger.warning("统一认证 getToken 返回错误 errcode=%s msg=%s", errcode, _first_str(payload, "msg"))
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_token_failed",
+                redirect,
+                "get_token_business_error",
+                {
+                    "errcode": errcode,
+                    "msg": _first_str(payload, "msg"),
+                    "payload": payload,
+                },
+            )
             raise UnifiedAuthFailure("oauth_token_failed", redirect)
         return payload
 
@@ -472,29 +789,91 @@ class PortalUnifiedAuthService:
         config: UnifiedAuthInternalConfig,
         access_token: str,
         redirect: str,
+        trace_id: str,
     ) -> dict[str, Any]:
+        params = {
+            "access_token": access_token,
+            "client_id": config.client_id,
+        }
+        log_unified_auth_trace(
+            trace_id,
+            "get_userinfo",
+            "request",
+            {
+                "url": config.endpoints.userinfo_url,
+                "params": params,
+            },
+        )
         client = self._make_http_client(config.http_timeout_seconds)
         try:
             response = await client.get(
                 config.endpoints.userinfo_url,
-                params={
-                    "access_token": access_token,
-                    "client_id": config.client_id,
-                },
+                params=params,
             )
             response.raise_for_status()
             payload = response.json()
+            log_unified_auth_trace(
+                trace_id,
+                "get_userinfo",
+                "response",
+                {
+                    "status_code": response.status_code,
+                    "payload": payload,
+                },
+            )
         except httpx.HTTPError as err:
             logger.warning("统一认证 getUserInfo HTTP 调用失败: %s", err)
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_unavailable",
+                redirect,
+                "get_userinfo_http_error",
+                {
+                    "error": str(err),
+                    "error_type": type(err).__name__,
+                    "url": config.endpoints.userinfo_url,
+                },
+            )
             raise UnifiedAuthFailure("oauth_unavailable", redirect) from err
+        except ValueError as err:
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_userinfo_failed",
+                redirect,
+                "get_userinfo_invalid_json",
+                {
+                    "error": str(err),
+                    "error_type": type(err).__name__,
+                    "url": config.endpoints.userinfo_url,
+                },
+            )
+            raise UnifiedAuthFailure("oauth_userinfo_failed", redirect) from err
         finally:
             await self._close_http_client(client)
 
         if not isinstance(payload, dict):
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_userinfo_failed",
+                redirect,
+                "get_userinfo_unexpected_payload",
+                {"payload": payload},
+            )
             raise UnifiedAuthFailure("oauth_userinfo_failed", redirect)
         errcode = _first_str(payload, "errcode")
         if errcode:
             logger.warning("统一认证 getUserInfo 返回错误 errcode=%s msg=%s", errcode, _first_str(payload, "msg"))
+            log_unified_auth_failure(
+                trace_id,
+                "oauth_userinfo_failed",
+                redirect,
+                "get_userinfo_business_error",
+                {
+                    "errcode": errcode,
+                    "msg": _first_str(payload, "msg"),
+                    "payload": payload,
+                },
+            )
             raise UnifiedAuthFailure("oauth_userinfo_failed", redirect)
         return payload
 
@@ -503,10 +882,11 @@ class PortalUnifiedAuthService:
         config: UnifiedAuthInternalConfig,
         mapped_user: MappedUnifiedUser,
         redirect: str,
+        trace_id: str,
     ) -> str:
         base_url, _ = self._runtime_service.get_connection_settings()
         url = f"{base_url.rstrip('/')}{LOGIN_SYNC_PATH}"
-        payload: dict[str, Any] = {
+        request_payload: dict[str, Any] = {
             "source": "sso",
             "external_user_id": mapped_user.external_user_id,
             "user_attrs": mapped_user.user_attrs,
@@ -515,9 +895,21 @@ class PortalUnifiedAuthService:
             "account_disabled": False,
         }
         if mapped_user.primary_dept_external_id:
-            payload["primary_dept_external_id"] = mapped_user.primary_dept_external_id
-        raw_body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            request_payload["primary_dept_external_id"] = mapped_user.primary_dept_external_id
+        raw_body = json.dumps(request_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         signature = compute_login_sync_signature("POST", LOGIN_SYNC_PATH, raw_body, config.login_sync_hmac_secret)
+        log_unified_auth_trace(
+            trace_id,
+            "login_sync",
+            "request",
+            {
+                "url": url,
+                "path": LOGIN_SYNC_PATH,
+                "body": request_payload,
+                "signature_header": config.login_sync_signature_header,
+                "signature": signature,
+            },
+        )
         client = self._make_http_client(config.http_timeout_seconds)
         try:
             response = await client.post(
@@ -530,21 +922,78 @@ class PortalUnifiedAuthService:
             )
             response.raise_for_status()
             payload = response.json()
+            log_unified_auth_trace(
+                trace_id,
+                "login_sync",
+                "response",
+                {
+                    "status_code": response.status_code,
+                    "payload": payload,
+                },
+            )
         except httpx.HTTPError as err:
             logger.warning("BiSheng login-sync 调用失败: %s", err)
+            log_unified_auth_failure(
+                trace_id,
+                "permission_denied",
+                redirect,
+                "login_sync_http_error",
+                {
+                    "error": str(err),
+                    "error_type": type(err).__name__,
+                    "url": url,
+                },
+            )
+            raise UnifiedAuthFailure("permission_denied", redirect) from err
+        except ValueError as err:
+            log_unified_auth_failure(
+                trace_id,
+                "permission_denied",
+                redirect,
+                "login_sync_invalid_json",
+                {
+                    "error": str(err),
+                    "error_type": type(err).__name__,
+                    "url": url,
+                },
+            )
             raise UnifiedAuthFailure("permission_denied", redirect) from err
         finally:
             await self._close_http_client(client)
 
         if not isinstance(payload, dict):
+            log_unified_auth_failure(
+                trace_id,
+                "permission_denied",
+                redirect,
+                "login_sync_unexpected_payload",
+                {"payload": payload},
+            )
             raise UnifiedAuthFailure("permission_denied", redirect)
         status_code = payload.get("status_code")
         if status_code not in (None, 200):
             logger.warning("BiSheng login-sync 返回业务错误 status_code=%s", status_code)
+            log_unified_auth_failure(
+                trace_id,
+                "permission_denied",
+                redirect,
+                "login_sync_business_error",
+                {
+                    "status_code": status_code,
+                    "payload": payload,
+                },
+            )
             raise UnifiedAuthFailure("permission_denied", redirect)
         data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
         token = _first_str(data, "token", "access_token")
         if not token:
+            log_unified_auth_failure(
+                trace_id,
+                "permission_denied",
+                redirect,
+                "login_sync_missing_token",
+                {"payload": payload},
+            )
             raise UnifiedAuthFailure("permission_denied", redirect)
         return token
 

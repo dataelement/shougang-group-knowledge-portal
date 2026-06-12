@@ -32,6 +32,8 @@ class PortalSession:
     base_url: str
     timeout_seconds: float
     expires_at: float
+    auth_source: str = ""
+    auth_trace_id: str = ""
 
 
 class PortalAuthService:
@@ -104,6 +106,8 @@ class PortalAuthService:
         access_token: str,
         remember: bool,
         fallback_account: str = "",
+        auth_source: str = "",
+        auth_trace_id: str = "",
     ) -> PortalSession:
         base_url, timeout_seconds = self._runtime_service.get_connection_settings()
         user = await self._fetch_user(
@@ -123,6 +127,8 @@ class PortalAuthService:
             base_url=base_url,
             timeout_seconds=timeout_seconds,
             expires_at=expires_at,
+            auth_source=auth_source,
+            auth_trace_id=auth_trace_id,
         )
         self._cleanup_expired()
         self._sessions[session.session_id] = session
