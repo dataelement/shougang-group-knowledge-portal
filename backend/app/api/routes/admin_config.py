@@ -26,6 +26,7 @@ from app.schemas.portal_config import (
     PortalConfig,
     QAConfig,
     RecommendationConfig,
+    SearchConfig,
     SectionsConfigUpdate,
     SiteConfig,
     SpacesConfigUpdate,
@@ -321,6 +322,36 @@ async def get_qa_model_options(
     if not isinstance(raw_servers, list):
         raw_servers = []
     return response_ok(service.build_qa_model_options(raw_servers))
+
+
+@router.get("/search")
+async def get_search_config(
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok(service.get_config().search)
+
+
+@router.post("/search")
+async def update_search_config(
+    payload: SearchConfig,
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok(service.update_search(payload).search)
+
+
+@router.get("/search/rerank-model-options")
+async def get_search_rerank_model_options(
+    service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    try:
+        response = await bisheng_client.get_json("/api/v1/llm")
+    except Exception:
+        return response_ok(service.build_search_rerank_model_options([]))
+    raw_servers = response.get("data") if isinstance(response, dict) else []
+    if not isinstance(raw_servers, list):
+        raw_servers = []
+    return response_ok(service.build_search_rerank_model_options(raw_servers))
 
 
 @router.get("/recommendation")

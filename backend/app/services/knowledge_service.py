@@ -527,18 +527,21 @@ class KnowledgeService:
         page: int,
         page_size: int,
     ) -> PagedKnowledgeFileData:
+        request_body = {
+            "q": q,
+            "tag": tag,
+            "space_ids": space_ids,
+            "space_level": space_level,
+            "file_ext": file_ext,
+            "sort": sort,
+            "page": page,
+            "page_size": page_size,
+        }
+        rerank_model_id = str(self._config_service.get_config().search.rerank_model_id or "").strip()
+        request_body["rerank_model_id"] = rerank_model_id
         response = await self._bisheng.post_json(
             "/api/v1/knowledge/shougang-portal/files/search",
-            json={
-                "q": q,
-                "tag": tag,
-                "space_ids": space_ids,
-                "space_level": space_level,
-                "file_ext": file_ext,
-                "sort": sort,
-                "page": page,
-                "page_size": page_size,
-            },
+            json=request_body,
         )
         data = response.get("data") or {}
         raw_items = data.get("data") if isinstance(data, dict) else []

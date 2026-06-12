@@ -80,6 +80,15 @@ export interface QAModelOptionsResponse {
   models: QAModelOption[];
 }
 
+export interface SearchConfig {
+  rerank_model_id: string;
+}
+
+export interface SearchRerankModelOptionsResponse {
+  rerank_model_id: string;
+  models: QAModelOption[];
+}
+
 export interface BishengRuntimeConfig {
   base_url: string;
   asset_base_url: string;
@@ -211,6 +220,7 @@ export interface PortalConfig {
   domains: DomainConfig[];
   sections: SectionConfig[];
   qa: QAConfig;
+  search: SearchConfig;
   recommendation: RecommendationConfig;
   display: DisplayConfig;
   apps: AppConfig[];
@@ -347,6 +357,17 @@ export function updateQaConfig(qa: QAConfig) {
 
 export function fetchQaModelOptions() {
   return request<QAModelOptionsResponse>('/api/v1/admin/config/qa/model-options');
+}
+
+export function fetchSearchRerankModelOptions() {
+  return request<SearchRerankModelOptionsResponse>('/api/v1/admin/config/search/rerank-model-options');
+}
+
+export function updateSearchConfig(search: SearchConfig) {
+  return request<SearchConfig>('/api/v1/admin/config/search', {
+    method: 'POST',
+    body: JSON.stringify(search),
+  });
 }
 
 export function fetchBishengRuntimeConfig() {

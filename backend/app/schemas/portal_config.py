@@ -157,6 +157,15 @@ class QAModelOptionsResponse(BaseModel):
     models: list[QAModelOption] = Field(default_factory=list)
 
 
+class SearchConfig(BaseModel):
+    rerank_model_id: str = ""
+
+
+class SearchRerankModelOptionsResponse(BaseModel):
+    rerank_model_id: str = ""
+    models: list[QAModelOption] = Field(default_factory=list)
+
+
 class SpaceOption(BaseModel):
     id: int
     name: str
@@ -268,6 +277,7 @@ class PortalConfig(BaseModel):
     domains: list[DomainConfig] = Field(default_factory=list)
     sections: list[SectionConfig] = Field(default_factory=list)
     qa: QAConfig
+    search: SearchConfig = Field(default_factory=SearchConfig)
     recommendation: RecommendationConfig
     display: DisplayConfig
     apps: list[AppConfig] = Field(default_factory=list)

@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound,
+  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import Header from '../components/Header';
@@ -14,6 +14,7 @@ import {
   type UnifiedAuthRuntimeConfig,
   fetchAdminConfig,
   fetchBishengRuntimeConfig,
+  fetchSearchRerankModelOptions,
   fetchUnifiedAuthRuntimeConfig,
   fetchQaModelOptions,
   fetchSpaceOptions,
@@ -25,6 +26,7 @@ import {
   type QATemplateConfig,
   type QAModelOption,
   type RecommendationConfig,
+  type SearchConfig,
   type SectionConfig,
   type SiteConfig,
   type SpaceOption,
@@ -36,6 +38,7 @@ import {
   updateDisplayConfig,
   updateDomainsConfig,
   updateIntegrationsConfig,
+  updateSearchConfig,
   updateUnifiedAuthRuntimeConfig,
   updateQaConfig,
   updateRecommendationConfig,
@@ -98,6 +101,7 @@ const NAV_ITEMS = [
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
   { key: 'qa', label: '问答配置', icon: Bot },
   { key: 'qaTemplates', label: '问答模板', icon: FileText },
+  { key: 'search', label: '搜索配置', icon: SearchIcon },
   { key: 'recommend', label: '推荐策略', icon: Star },
   { key: 'display', label: '展示配置', icon: SlidersHorizontal },
   { key: 'apps', label: '应用市场', icon: LayoutGrid },
@@ -234,6 +238,11 @@ export default function AdminPage() {
   const [qaModelDraft, setQaModelDraft] = useState<QaModelDraft>({ general_model: '', reasoning_model: '' });
   const [qaModelLoading, setQaModelLoading] = useState(false);
   const [qaModelError, setQaModelError] = useState('');
+  const [searchRerankModelDialogOpen, setSearchRerankModelDialogOpen] = useState(false);
+  const [searchRerankModelOptions, setSearchRerankModelOptions] = useState<QAModelOption[]>([]);
+  const [searchRerankModelDraft, setSearchRerankModelDraft] = useState('');
+  const [searchRerankModelLoading, setSearchRerankModelLoading] = useState(false);
+  const [searchRerankModelError, setSearchRerankModelError] = useState('');
   const [qaCategoryEditorOpen, setQaCategoryEditorOpen] = useState(false);
   const [qaCategoryEditorIndex, setQaCategoryEditorIndex] = useState<number | null>(null);
   const [qaCategoryDraft, setQaCategoryDraft] = useState<QaTemplateCategoryDraft>(createQaTemplateCategoryDraft());
@@ -406,6 +415,22 @@ export default function AdminPage() {
     }
   }
 
+  async function openSearchRerankModelDialog(search: SearchConfig) {
+    setSearchRerankModelDialogOpen(true);
+    setSearchRerankModelDraft(search.rerank_model_id || '');
+    setSearchRerankModelLoading(true);
+    setSearchRerankModelError('');
+    try {
+      const data = await fetchSearchRerankModelOptions();
+      setSearchRerankModelOptions(data.models);
+      setSearchRerankModelDraft(search.rerank_model_id || data.rerank_model_id || '');
+    } catch (err) {
+      setSearchRerankModelError(err instanceof Error ? err.message : '重排模型列表加载失败');
+    } finally {
+      setSearchRerankModelLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (active !== 'qa' || !config || qaModelOptions.length) return;
     let cancelled = false;
@@ -428,6 +453,29 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [active, config, qaModelOptions.length]);
+
+  useEffect(() => {
+    if (active !== 'search' || !config || searchRerankModelOptions.length) return;
+    let cancelled = false;
+    setSearchRerankModelLoading(true);
+    setSearchRerankModelError('');
+    void (async () => {
+      try {
+        const data = await fetchSearchRerankModelOptions();
+        if (cancelled) return;
+        setSearchRerankModelOptions(data.models);
+      } catch (err) {
+        if (cancelled) return;
+        setSearchRerankModelError(err instanceof Error ? err.message : '重排模型列表加载失败');
+      } finally {
+        if (!cancelled) setSearchRerankModelLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active, config, searchRerankModelOptions.length]);
 
   function openQaTextDialog(mode: Exclude<QaDialogMode, 'spaces' | null>, value: string) {
     setQaDialogMode(mode);
@@ -690,6 +738,16 @@ export default function AdminPage() {
                 updated[index] = { ...updated[index], enabled };
                 void runSave(() => persistQa({ ...config.qa, templates: updated }, setConfig));
               }}
+            />
+          )}
+          {config && active === 'search' && (
+            <SearchConfigTable
+              search={config.search}
+              modelOptions={searchRerankModelOptions}
+              modelLoading={searchRerankModelLoading}
+              modelError={searchRerankModelError}
+              saving={saving}
+              onEditRerankModel={() => void openSearchRerankModelDialog(config.search)}
             />
           )}
           {active === 'bisheng' && (
@@ -1054,6 +1112,27 @@ export default function AdminPage() {
                 reasoning_model: qaModelDraft.reasoning_model,
               }, setConfig);
               setQaModelDialogOpen(false);
+            });
+          }}
+        />
+      ) : null}
+      {config && searchRerankModelDialogOpen ? (
+        <SearchRerankModelDialog
+          open
+          models={searchRerankModelOptions}
+          selectedModel={searchRerankModelDraft}
+          loading={searchRerankModelLoading}
+          saving={saving}
+          error={searchRerankModelError}
+          onClose={() => setSearchRerankModelDialogOpen(false)}
+          onSelect={setSearchRerankModelDraft}
+          onSubmit={() => {
+            void runSave(async () => {
+              await persistSearch({
+                ...config.search,
+                rerank_model_id: searchRerankModelDraft,
+              }, setConfig);
+              setSearchRerankModelDialogOpen(false);
             });
           }}
         />
@@ -2596,6 +2675,70 @@ function QAConfigTable({
   );
 }
 
+function SearchConfigTable({
+  search,
+  modelOptions,
+  modelLoading,
+  modelError,
+  saving,
+  onEditRerankModel,
+}: {
+  search: SearchConfig;
+  modelOptions: QAModelOption[];
+  modelLoading: boolean;
+  modelError: string;
+  saving: boolean;
+  onEditRerankModel: () => void;
+}) {
+  const rerankModelLabel = formatQaModelLabel(modelOptions, search.rerank_model_id) || '未配置';
+
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>搜索配置</h2>
+      </div>
+      <p className={s.pageNote}>
+        这里维护门户首页检索的重排模型配置。未配置时搜索结果只使用 ES 与向量召回融合排序。
+      </p>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>配置项</th>
+            <th>当前值</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>搜索重排模型</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{rerankModelLabel}</span>
+                <span className={s.valueMeta}>
+                  {modelLoading
+                    ? '正在从大模型应用平台模型管理加载 rerank 模型列表...'
+                    : modelError
+                      ? '重排模型列表加载失败，当前显示的是已保存配置。'
+                      : search.rerank_model_id
+                        ? '门户首页检索会使用该模型对融合候选做重排。'
+                        : '未配置时不启用 rerank，搜索仍会正常返回融合排序结果。'}
+                </span>
+              </div>
+            </td>
+            <td>
+              <div className={s.actionGroup}>
+                <button className={s.inlineBtn} onClick={onEditRerankModel} disabled={saving}>
+                  {saving ? '保存中...' : '编辑'}
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 function QATemplatesTable({
   qa,
   saving,
@@ -3620,6 +3763,63 @@ function QaModelDialog({
   );
 }
 
+function SearchRerankModelDialog({
+  open,
+  models,
+  selectedModel,
+  loading,
+  saving,
+  error,
+  onClose,
+  onSelect,
+  onSubmit,
+}: {
+  open: boolean;
+  models: QAModelOption[];
+  selectedModel: string;
+  loading: boolean;
+  saving: boolean;
+  error?: string;
+  onClose: () => void;
+  onSelect: (modelId: string) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>编辑搜索重排模型</h3>
+            <p className={s.modalNote}>候选项来自大模型应用平台模型管理列表，仅展示 rerank 类型模型。可不配置，不配置时搜索只使用融合排序。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.modalHint}>当前候选数：{models.length}</div>
+        <div className={s.optionList}>
+          {loading ? <div className={s.emptyState}>正在加载重排模型列表...</div> : null}
+          {!loading && !models.length ? <div className={s.emptyState}>暂未获取到 rerank 模型候选项</div> : null}
+          {!loading ? (
+            <QaModelCascaderSelect
+              title="搜索重排模型"
+              allowEmpty
+              models={models}
+              selectedModel={selectedModel}
+              onSelect={onSelect}
+            />
+          ) : null}
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving || loading}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface QaModelProviderGroup {
   provider_name: string;
   models: QAModelOption[];
@@ -4076,6 +4276,11 @@ async function persistSections(sections: SectionConfig[], setConfig: Dispatch<Se
 async function persistQa(qa: QAConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
   const data = await updateQaConfig(qa);
   setConfig((current) => (current ? { ...current, qa: data } : current));
+}
+
+async function persistSearch(search: SearchConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
+  const data = await updateSearchConfig(search);
+  setConfig((current) => (current ? { ...current, search: data } : current));
 }
 
 async function persistRecommendation(recommendation: RecommendationConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {

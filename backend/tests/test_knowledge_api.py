@@ -394,6 +394,7 @@ class FakeBishengClient:
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 10,
+                "rerank_model_id": "",
             }:
                 return {
                     "data": {
@@ -439,6 +440,7 @@ class FakeBishengClient:
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 20,
+                "rerank_model_id": "",
             }
             return {
                 "data": {
@@ -1858,6 +1860,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
                     "sort": "updated_at",
                     "page": 1,
                     "page_size": 10,
+                    "rerank_model_id": "",
                 }
                 return {
                     "data": {
@@ -1908,6 +1911,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 10,
+                "rerank_model_id": "",
             },
         )
     ]
@@ -1932,6 +1936,7 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                     "sort": "relevance",
                     "page": 1,
                     "page_size": 20,
+                    "rerank_model_id": "",
                 }
                 return {
                     "data": {
@@ -1993,6 +1998,80 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                 "sort": "relevance",
                 "page": 1,
                 "page_size": 20,
+                "rerank_model_id": "",
+            },
+        )
+    ]
+
+
+def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path: Path):
+    class RerankConfigBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path.endswith("/search"):
+                raise AssertionError("keyword file search should use shougang portal semantic endpoint")
+            return await super().get_json(path, params=params)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": "振动纹",
+                    "tag": None,
+                    "space_ids": [12],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "relevance",
+                    "page": 1,
+                    "page_size": 20,
+                    "rerank_model_id": "5",
+                }
+                return {
+                    "data": {
+                        "data": [],
+                        "total": 0,
+                        "page": 1,
+                        "page_size": 50,
+                    }
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_spaces(
+        SpacesConfigUpdate(
+            spaces=[
+                {
+                    "id": 12,
+                    "name": "轧线技术案例库",
+                    "file_count": 0,
+                    "tag_count": 0,
+                    "space_level": "department",
+                    "enabled": True,
+                }
+            ]
+        )
+    )
+    config_service.update_search(config_service.get_config().search.model_copy(update={"rerank_model_id": "5"}))
+    fake_bisheng = RerankConfigBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["total"] == 0
+    assert fake_bisheng.post_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/files/search",
+            {
+                "q": "振动纹",
+                "tag": None,
+                "space_ids": [12],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "relevance",
+                "page": 1,
+                "page_size": 20,
+                "rerank_model_id": "5",
             },
         )
     ]
@@ -2151,6 +2230,7 @@ def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path)
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 10,
+                "rerank_model_id": "",
             },
         )
     ]
@@ -2176,6 +2256,7 @@ def test_search_files_passes_space_level_to_shougang_portal_search(tmp_path: Pat
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 20,
+                "rerank_model_id": "",
             },
         )
     ]

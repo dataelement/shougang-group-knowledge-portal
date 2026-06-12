@@ -58,6 +58,22 @@ class FakeBishengClient:
                                 "online": True,
                                 "status": 0,
                             },
+                            {
+                                "id": 5,
+                                "name": "BGE Reranker",
+                                "model_name": "bge-reranker-v2",
+                                "model_type": "rerank",
+                                "online": True,
+                                "status": 0,
+                            },
+                            {
+                                "id": 6,
+                                "name": "离线重排",
+                                "model_name": "offline-reranker",
+                                "model_type": "rerank",
+                                "online": False,
+                                "status": 1,
+                            },
                         ],
                     }
                 ]
@@ -505,6 +521,7 @@ def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
     assert "selected_model" in body["data"]["qa"]
     assert "template_categories" in body["data"]["qa"]
     assert "templates" in body["data"]["qa"]
+    assert body["data"]["search"] == {"rerank_model_id": ""}
     assert body["data"]["spaces"][0]["name"] == "空间12"
     assert body["data"]["spaces"][0]["file_count"] == 13
     assert bisheng_client.post_calls == [
@@ -608,6 +625,51 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert service.get_config().qa.general_model == "1"
     assert service.get_config().qa.reasoning_model == "2"
     assert service.get_config().qa.templates[0].id == "work-plan"
+
+
+def test_post_admin_search_updates_rerank_model(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.post(
+            "/api/v1/admin/config/search",
+            json={"rerank_model_id": "5"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"] == {"rerank_model_id": "5"}
+    assert service.get_config().search.rerank_model_id == "5"
+
+
+def test_get_admin_search_rerank_model_options_filters_rerank_models(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    service.update_search(service.get_config().search.model_copy(update={"rerank_model_id": "5"}))
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_client = FakeBishengClient()
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.get("/api/v1/admin/config/search/rerank-model-options")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["rerank_model_id"] == "5"
+    assert body["models"] == [
+        {
+            "key": "5",
+            "id": "5",
+            "name": "bge-reranker-v2",
+            "display_name": "BGE Reranker",
+            "visual": False,
+            "provider_name": "DeepSeek 服务商",
+            "status": 0,
+        },
+    ]
 
 
 def test_post_admin_qa_rejects_invalid_template_config(tmp_path: Path):

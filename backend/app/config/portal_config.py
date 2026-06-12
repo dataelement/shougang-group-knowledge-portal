@@ -280,6 +280,9 @@ DEFAULT_PORTAL_CONFIG = {
         "template_categories": DEFAULT_QA_TEMPLATE_CATEGORIES,
         "templates": DEFAULT_QA_TEMPLATES,
     },
+    "search": {
+        "rerank_model_id": "",
+    },
     "recommendation": {
         "provider": "tag_feed",
         "home_strategy": "tag+updated_at",
