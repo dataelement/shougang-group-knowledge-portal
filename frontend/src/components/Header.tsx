@@ -27,8 +27,9 @@ type HeaderNavItem =
 
 const NAV_ITEMS: HeaderNavItem[] = [
   { label: '首页', to: '/' },
-  { label: '我的知识', to: '/knowledge-spaces' },
-  { label: '应用市场', to: '/apps' },
+  { label: '知识库', to: '/knowledge-spaces' },
+  { label: '专业问答', to: '/expert-qa' },
+  { label: '智能应用', to: '/apps' },
 ];
 
 function formatBadgeCount(count: number): string {
