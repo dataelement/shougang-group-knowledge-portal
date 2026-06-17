@@ -177,6 +177,8 @@ docker run -d --name frontend --network portal-net -p 3002:80 \
 | `PORTAL_BISHENG_BASE_URL` | `http://localhost:7860` | BiSheng 后端 API 地址，门户后端调用知识库、问答等接口使用。 |
 | `PORTAL_BISHENG_TIMEOUT_SECONDS` | `30` | 门户后端请求 BiSheng 的超时时间。 |
 | `PORTAL_BISHENG_API_TOKEN` | 空 | 可选。配置后会作为 `Authorization: Bearer` 和 `access_token_cookie` 传给 BiSheng。 |
+| `PORTAL_BISHENG_USERNAME` | 空 | 可选。系统数据源账号；用于 token 自动续期和认证失败后的自动重登。 |
+| `PORTAL_BISHENG_PASSWORD` | 空 | 可选。系统数据源密码；用于 token 自动续期和认证失败后的自动重登。 |
 | `PORTAL_BISHENG_DEFAULT_MODEL` | 空 | 可选。问答默认模型。 |
 | `PORTAL_BISHENG_PAGE_SIZE_LIMIT` | `100` | 知识列表分页上限。 |
 
@@ -190,6 +192,8 @@ docker run -d --name frontend --network portal-net -p 3002:80 \
 | `BISHENG_MINIO_SIGNED_HOST` | `minio:9000` | 转发 MinIO 预签名 URL 时使用的 `Host` 头，必须与 BiSheng 生成签名时的 sharepoint Host 一致。 |
 | `PORTAL_BACKEND_PORT` | `8010` | 后端容器映射到宿主机的端口。 |
 | `PORTAL_FRONTEND_PORT` | `3002` | 前端 Nginx 映射到宿主机的端口。 |
+
+admin 页面保存的数据源密码会以明文写入 `portal.sqlite3`，用于后续 token 自动续期和认证失败后的自动重登。请限制该数据库文件的读取权限，并避免把运行时数据目录提交到代码仓库。
 
 ### 5. MinIO 预签名 URL 配置要求
 

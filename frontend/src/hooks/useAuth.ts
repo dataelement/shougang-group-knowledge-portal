@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { fetchPortalMe, logoutPortal, type PortalUser } from '../api/auth';
+import { buildPortalLogoutStartUrl, fetchPortalMe, type PortalUser } from '../api/auth';
 import { ApiRequestError } from '../api/content';
 
 export type { PortalUser };
@@ -70,9 +70,9 @@ export function useAuth() {
   }, []);
 
   const logout = useCallback(() => {
-    void logoutPortal().catch(() => undefined);
     clearPortalUser();
     setUser(null);
+    window.location.assign(buildPortalLogoutStartUrl());
   }, []);
 
   return { user, login, logout };

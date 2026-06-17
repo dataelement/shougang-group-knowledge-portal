@@ -216,7 +216,6 @@ export default function Header() {
                   onClick={() => {
                     logout();
                     closeMenu();
-                    navigate('/');
                   }}
                 >
                   <LogOut size={15} />

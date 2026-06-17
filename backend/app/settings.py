@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     unified_auth_login_sync_signature_header: str = "X-Signature"
     unified_auth_bisheng_hmac_secret: Optional[SecretStr] = None
     unified_auth_bisheng_signature_header: str = "X-Signature"
+    unified_auth_glo_url: str = ""
+    unified_auth_glo_entity_id: str = ""
+    unified_auth_glo_redirect_to_url: str = ""
+    unified_auth_glo_redirect_to_login: bool = True
     bisheng_runtime_config_path: Path = Field(
         default=Path(__file__).resolve().parent / "config" / "data" / "bisheng_runtime.json"
     )

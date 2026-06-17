@@ -64,9 +64,23 @@ function mapUnifiedAuthConfig(dto: PortalUnifiedAuthConfigDto): PortalUnifiedAut
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as ApiEnvelope<T>;
+  const text = await response.text();
+  let payload: ApiEnvelope<T> | null = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text) as ApiEnvelope<T>;
+    } catch {
+      if (!response.ok) {
+        throw new ApiRequestError(`请求失败：${response.status}`, response.status);
+      }
+      throw new Error('响应不是有效 JSON');
+    }
+  }
   if (!response.ok) {
-    throw new ApiRequestError(payload?.status_message || payload?.detail || '请求失败', response.status);
+    throw new ApiRequestError(payload?.status_message || payload?.detail || `请求失败：${response.status}`, response.status);
+  }
+  if (!payload) {
+    throw new Error('响应内容为空');
   }
   return payload.data;
 }
@@ -107,6 +121,10 @@ export function normalizePortalRedirect(target: string | null | undefined): stri
 
 export function buildUnifiedAuthStartUrl(redirect: string | null | undefined): string {
   return `/api/v1/auth/unified/start?redirect=${encodeURIComponent(normalizePortalRedirect(redirect))}`;
+}
+
+export function buildPortalLogoutStartUrl(): string {
+  return '/api/v1/auth/unified/logout/start';
 }
 
 const UNIFIED_AUTH_ERROR_MESSAGES: Record<string, string> = {

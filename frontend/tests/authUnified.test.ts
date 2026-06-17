@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  buildPortalLogoutStartUrl,
   buildUnifiedAuthStartUrl,
+  fetchPortalMe,
   getUnifiedAuthErrorMessage,
   normalizePortalRedirect,
 } from '../src/api/auth';
@@ -20,6 +22,7 @@ test('unified auth helpers normalize unsafe redirects before start URL build', (
     '/api/v1/auth/unified/start?redirect=%2Fadmin%3Ftab%3Dusers',
   );
   assert.equal(buildUnifiedAuthStartUrl('https://evil.example.com'), '/api/v1/auth/unified/start?redirect=%2F');
+  assert.equal(buildPortalLogoutStartUrl(), '/api/v1/auth/unified/logout/start');
 });
 
 test('unified auth error helper exposes safe Chinese messages only', () => {
@@ -40,6 +43,27 @@ test('login page keeps password form and wires unified auth button to backend st
 
 test('frontend unified auth config client never references backend secrets', () => {
   assert.match(authApiSource, /\/api\/v1\/auth\/unified\/config/);
+  assert.match(authApiSource, /\/api\/v1\/auth\/unified\/logout\/start/);
+  assert.match(authApiSource, /response\.text\(\)/);
+  assert.doesNotMatch(authApiSource, /response\.json\(\)/);
   assert.doesNotMatch(authApiSource, /client_secret/);
   assert.doesNotMatch(authApiSource, /hmac/i);
+});
+
+test('auth client handles empty error responses without native json parse failure', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('', { status: 401 })) as typeof fetch;
+  try {
+    await assert.rejects(
+      fetchPortalMe(),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, '请求失败：401');
+        assert.equal((err as { status?: number }).status, 401);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

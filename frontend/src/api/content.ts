@@ -383,9 +383,23 @@ function mapPersonalKnowledgeSpace(dto: PersonalKnowledgeSpaceDto): PersonalKnow
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as ApiEnvelope<T>;
+  const text = await response.text();
+  let payload: ApiEnvelope<T> | null = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text) as ApiEnvelope<T>;
+    } catch {
+      if (!response.ok) {
+        throw new ApiRequestError(`请求失败：${response.status}`, response.status);
+      }
+      throw new Error('响应不是有效 JSON');
+    }
+  }
   if (!response.ok) {
-    throw new ApiRequestError(payload?.status_message || payload?.detail || '请求失败', response.status);
+    throw new ApiRequestError(payload?.status_message || payload?.detail || `请求失败：${response.status}`, response.status);
+  }
+  if (!payload) {
+    throw new Error('响应内容为空');
   }
   return payload.data;
 }

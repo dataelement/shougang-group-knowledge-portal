@@ -21,6 +21,9 @@ test('admin page contains unified auth config navigation and editor wiring', () 
   assert.match(adminPageSource, /login_sync_hmac_secret/);
   assert.match(adminPageSource, /client_id/);
   assert.match(adminPageSource, /redirect_uri/);
+  assert.match(adminPageSource, /glo_entity_id/);
+  assert.match(adminPageSource, /glo_redirect_to_url/);
+  assert.match(adminPageSource, /redirctToUrl/);
   assert.match(adminPageSource, /response_type=code/);
   assert.match(adminPageSource, /state 由后端动态生成/);
 });

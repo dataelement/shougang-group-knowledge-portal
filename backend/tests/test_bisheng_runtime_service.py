@@ -104,6 +104,7 @@ def test_runtime_service_logs_in_and_persists_token_without_password(tmp_path: P
     assert (tmp_path / "portal.sqlite3").exists()
     assert reloaded.username == "portal-admin"
     assert reloaded.has_token is True
+    assert reloaded.has_saved_password is True
 
 
 def test_runtime_service_imports_legacy_json_once(tmp_path: Path):
@@ -169,6 +170,68 @@ def test_runtime_service_requires_password_when_endpoint_changes(tmp_path: Path)
         assert "必须重新输入密码" in str(err)
     else:
         raise AssertionError("Expected ValueError when changing endpoint without password")
+
+
+def test_auth_failure_refresh_uses_saved_plaintext_password(tmp_path: Path):
+    config_path = tmp_path / "rt.json"
+    factory, state = _make_scripted_factory(
+        login_tokens=["initial-token", "refreshed-token"]
+    )
+
+    service = BishengRuntimeService(
+        config_path=config_path,
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        client_factory=factory,
+        password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+    )
+
+    async def _run():
+        await service.update_config(
+            BishengRuntimeConfigUpdate(
+                base_url="http://example.com",
+                username="portal-admin",
+                password="super-secret",
+                timeout_seconds=30.0,
+            )
+        )
+        saved = service._read_config()
+        raw_saved = saved.model_dump_json()
+        assert saved.saved_password == "super-secret"
+        assert "super-secret" in raw_saved
+        state["last_login_payload"] = None
+        refreshed = await service.refresh_token_after_auth_failure(saved.api_token)
+        await service.aclose()
+        return refreshed, saved
+
+    refreshed_token, saved_config = asyncio.run(_run())
+
+    assert refreshed_token != saved_config.api_token
+    assert state["login_calls"] == 2
+    assert state["last_login_payload"]["user_name"] == "portal-admin"
+    assert state["last_login_payload"]["password"] == "encrypted-super-secret"
+
+
+def test_auth_failure_refresh_reuses_token_refreshed_by_another_request(tmp_path: Path):
+    config_path = tmp_path / "rt.json"
+    fresh = _make_fake_jwt(24 * 3600)
+    _seed_runtime_config(config_path, api_token=fresh)
+    factory, state = _make_scripted_factory(login_tokens=["unused"])
+
+    service = BishengRuntimeService(
+        config_path=config_path,
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        default_username="portal-admin",
+        default_password="pwd",
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+    )
+
+    token = asyncio.run(service.refresh_token_after_auth_failure("older-token"))
+
+    assert token == fresh
+    assert state["login_calls"] == 0
 
 
 # ---------------- 自动续期相关测试 ----------------
@@ -237,6 +300,60 @@ class _ScriptedBishengClient:
         return None
 
 
+class _AuthRefreshingInfoClient:
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: float,
+        api_token: str | None,
+        state: dict,
+        *,
+        asset_base_url: str | None = None,
+        auth_refresh_handler=None,
+    ):
+        self.base_url = base_url
+        self.timeout_seconds = timeout_seconds
+        self.api_token = api_token
+        self.asset_base_url = asset_base_url
+        self._state = state
+        self._auth_refresh_handler = auth_refresh_handler
+
+    async def get_json(self, path, params=None):
+        if path == "/api/v1/user/get_captcha":
+            return {"status_code": 200, "data": {"captcha_key": "k", "user_capthca": False}}
+        if path == "/api/v1/user/public_key":
+            return {"status_code": 200, "data": {"public_key": "fake-public-key"}}
+        if path == "/api/v1/user/info":
+            self._state["user_info_calls"] += 1
+            if self.api_token == self._state["stale_token"]:
+                self._state["refresh_attempts"] += 1
+                if self._auth_refresh_handler is None:
+                    raise AssertionError("Expected auth refresh handler")
+                self.set_api_token(await self._auth_refresh_handler(self.api_token))
+            return {
+                "status_code": 200,
+                "data": {
+                    "user_name": "portal-admin",
+                    "nick_name": "门户服务账号",
+                    "role_name": "管理员",
+                },
+            }
+        raise AssertionError(f"Unexpected get: {path}")
+
+    async def post_json(self, path, json=None):
+        if path == "/api/v1/user/login":
+            self._state["login_calls"] += 1
+            self._state["last_login_payload"] = json
+            return {"status_code": 200, "data": {"access_token": self._state["refreshed_token"]}}
+        raise AssertionError(f"Unexpected post: {path}")
+
+    def set_api_token(self, token: str):
+        self.api_token = token
+
+    async def aclose(self):
+        return None
+
+
 def _make_scripted_factory(*, login_tokens=None, login_errors=None, user_info_errors=None):
     state = {
         "login_calls": 0,
@@ -255,6 +372,36 @@ def _make_scripted_factory(*, login_tokens=None, login_errors=None, user_info_er
             api_token,
             state,
             asset_base_url=asset_base_url,
+        )
+
+    return factory, state
+
+
+def _make_auth_refreshing_info_factory(*, stale_token: str, refreshed_token: str):
+    state = {
+        "stale_token": stale_token,
+        "refreshed_token": refreshed_token,
+        "refresh_attempts": 0,
+        "login_calls": 0,
+        "last_login_payload": None,
+        "user_info_calls": 0,
+    }
+
+    def factory(
+        base_url,
+        timeout_seconds,
+        api_token=None,
+        *,
+        asset_base_url=None,
+        auth_refresh_handler=None,
+    ):
+        return _AuthRefreshingInfoClient(
+            base_url,
+            timeout_seconds,
+            api_token,
+            state,
+            asset_base_url=asset_base_url,
+            auth_refresh_handler=auth_refresh_handler,
         )
 
     return factory, state
@@ -352,6 +499,45 @@ def test_initialize_reports_disconnected_when_runtime_account_info_fails(tmp_pat
     assert view.auth_user is None
     assert view.auth_message == "BiSheng 数据源登录信息获取失败：bad token"
     assert token not in view.auth_message
+
+
+def test_initialize_does_not_deadlock_when_runtime_account_info_refreshes_token(tmp_path: Path):
+    config_path = tmp_path / "rt.json"
+    stale_token = _make_fake_jwt(2 * 3600)
+    refreshed_token = _make_fake_jwt(24 * 3600)
+    _seed_runtime_config(config_path, api_token=stale_token, username="portal-admin")
+    factory, state = _make_auth_refreshing_info_factory(
+        stale_token=stale_token,
+        refreshed_token=refreshed_token,
+    )
+
+    service = BishengRuntimeService(
+        config_path=config_path,
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        default_username="portal-admin",
+        default_password="pwd",
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+    )
+
+    async def _run():
+        await asyncio.wait_for(service.initialize(), timeout=1)
+        view = service.get_public_config()
+        saved = service._read_config()
+        await service.aclose()
+        return view, saved
+
+    view, saved = asyncio.run(_run())
+
+    assert state["user_info_calls"] == 1
+    assert state["refresh_attempts"] == 1
+    assert state["login_calls"] == 1
+    assert state["last_login_payload"]["user_name"] == "portal-admin"
+    assert saved.api_token == refreshed_token
+    assert view.connected is True
+    assert view.auth_user is not None
+    assert view.auth_user.account == "portal-admin"
 
 
 def test_refresh_skips_when_token_is_fresh(tmp_path: Path):

@@ -11,6 +11,7 @@ from app.services.portal_unified_auth_service import (
     UnifiedAuthUnavailable,
     PortalUnifiedAuthService,
     log_unified_auth_trace,
+    normalize_redirect,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -84,6 +85,46 @@ async def unified_auth_callback(
     response = RedirectResponse(result.redirect)
     service.clear_state_cookie(response)
     auth_service.attach_session_cookie(response, result.session, remember=True)
+    return response
+
+
+@router.get("/unified/logout/start")
+async def start_unified_auth_logout(
+    request: Request,
+    redirect: str = "/login",
+    service: PortalUnifiedAuthService = Depends(get_portal_unified_auth_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+):
+    safe_redirect = normalize_redirect(redirect)
+    if safe_redirect == "/":
+        safe_redirect = "/login"
+
+    should_use_glo = auth_service.is_unified_auth_request(request)
+    target = safe_redirect
+    if should_use_glo:
+        try:
+            target = service.build_logout_start().logout_url
+        except UnifiedAuthUnavailable:
+            target = safe_redirect
+
+    response = RedirectResponse(target)
+    auth_service.logout(request)
+    auth_service.clear_session_cookie(response)
+    return response
+
+
+@router.get("/unified/logout/callback")
+async def unified_auth_logout_callback(
+    request: Request,
+    redirect: str = "/login",
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+):
+    safe_redirect = normalize_redirect(redirect)
+    if safe_redirect == "/":
+        safe_redirect = "/login"
+    response = RedirectResponse(safe_redirect)
+    auth_service.logout(request)
+    auth_service.clear_session_cookie(response)
     return response
 
 

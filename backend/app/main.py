@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
+from app.clients.bisheng import BishengAuthRefreshError
+from app.schemas.common import response_error
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthService
 from app.services.portal_config_service import PortalConfigService
@@ -65,6 +67,13 @@ def create_app() -> FastAPI:
     uploads_root.mkdir(parents=True, exist_ok=True)
     app.state.uploads_root = uploads_root
     app.mount("/uploads", StaticFiles(directory=uploads_root), name="uploads")
+
+    @app.exception_handler(BishengAuthRefreshError)
+    async def bisheng_auth_refresh_exception_handler(
+        _request: Request,
+        exc: BishengAuthRefreshError,
+    ):
+        return response_error(str(exc), status_code=502)
 
     app.include_router(api_router)
     return app

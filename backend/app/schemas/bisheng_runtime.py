@@ -18,6 +18,7 @@ class BishengRuntimeConfig(BaseModel):
     username: str = ""
     timeout_seconds: float = 30.0
     api_token: str = ""
+    saved_password: str = ""
     last_auth_at: str = ""
 
     @field_validator("timeout_seconds")
@@ -46,6 +47,7 @@ class BishengRuntimeConfigView(BaseModel):
     username: str = ""
     timeout_seconds: float = 30.0
     has_token: bool = False
+    has_saved_password: bool = False
     last_auth_at: str = ""
     connected: bool = False
     auth_message: str = "未验证"
