@@ -37,6 +37,42 @@ export interface KnowledgeSpace {
   sources: string[];
 }
 
+export interface QaKnowledgeTreeNode {
+  id: number;
+  spaceId: number;
+  parentId: number | null;
+  type: 'folder' | 'file';
+  name: string;
+  path: string;
+  fileExt: string;
+  selectable: boolean;
+  disabledReason: string;
+  hasChildren: boolean;
+  resolvedFileCount: number;
+}
+
+export interface QaKnowledgeFileRef {
+  knowledgeSpaceId: number;
+  fileId: number;
+}
+
+export interface QaKnowledgeFolderRef {
+  knowledgeSpaceId: number;
+  folderId: number;
+  resolvedFileCount?: number;
+  fileRefs?: QaKnowledgeFileRef[];
+}
+
+export type QaKnowledgeScope =
+  | { mode: 'none' }
+  | { mode: 'knowledge_space'; knowledgeSpaceId: number }
+  | {
+      mode: 'files';
+      fileRefs: QaKnowledgeFileRef[];
+      folderRefs: QaKnowledgeFolderRef[];
+      resolvedFileCount: number;
+    };
+
 export interface PersonalKnowledgeSpace {
   id: number;
   name: string;
@@ -201,6 +237,27 @@ interface KnowledgeSpaceDto {
 interface KnowledgeSpaceListDataDto {
   data: KnowledgeSpaceDto[];
   total: number;
+}
+
+interface QaKnowledgeTreeNodeDto {
+  id: number;
+  space_id: number;
+  parent_id?: number | null;
+  type: 'folder' | 'file';
+  name: string;
+  path?: string;
+  file_ext?: string;
+  selectable?: boolean;
+  disabled_reason?: string;
+  has_children?: boolean;
+  resolved_file_count?: number;
+}
+
+interface QaKnowledgeTreeNodeDataDto {
+  data: QaKnowledgeTreeNodeDto[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 interface PersonalKnowledgeSpaceDto {
@@ -372,6 +429,22 @@ function mapKnowledgeSpace(dto: KnowledgeSpaceDto): KnowledgeSpace {
   };
 }
 
+function mapQaKnowledgeTreeNode(dto: QaKnowledgeTreeNodeDto): QaKnowledgeTreeNode {
+  return {
+    id: dto.id,
+    spaceId: dto.space_id,
+    parentId: dto.parent_id ?? null,
+    type: dto.type,
+    name: dto.name,
+    path: dto.path ?? '',
+    fileExt: dto.file_ext ?? '',
+    selectable: dto.selectable ?? true,
+    disabledReason: dto.disabled_reason ?? '',
+    hasChildren: Boolean(dto.has_children),
+    resolvedFileCount: dto.resolved_file_count ?? (dto.type === 'file' ? 1 : 0),
+  };
+}
+
 function mapPersonalKnowledgeSpace(dto: PersonalKnowledgeSpaceDto): PersonalKnowledgeSpace {
   return {
     id: dto.id,
@@ -526,6 +599,50 @@ export async function fetchKnowledgeSpaces(): Promise<{ data: KnowledgeSpace[]; 
   return {
     data: data.data.map(mapKnowledgeSpace),
     total: data.total,
+  };
+}
+
+export async function fetchQaKnowledgeTreeSpaces(): Promise<{ data: KnowledgeSpace[]; total: number }> {
+  const data = await request<KnowledgeSpaceListDataDto>('/api/v1/knowledge/qa/tree/spaces');
+  return {
+    data: data.data.map(mapKnowledgeSpace),
+    total: data.total,
+  };
+}
+
+export async function fetchQaKnowledgeTreeChildren(
+  spaceId: number,
+  parentId?: number,
+): Promise<{ data: QaKnowledgeTreeNode[]; total: number; page: number; pageSize: number }> {
+  const query = new URLSearchParams();
+  if (parentId) query.set('parent_id', String(parentId));
+  const suffix = query.toString();
+  const data = await request<QaKnowledgeTreeNodeDataDto>(
+    `/api/v1/knowledge/qa/tree/spaces/${spaceId}/children${suffix ? `?${suffix}` : ''}`,
+  );
+  return {
+    data: data.data.map(mapQaKnowledgeTreeNode),
+    total: data.total,
+    page: data.page,
+    pageSize: data.page_size,
+  };
+}
+
+export async function searchQaKnowledgeFiles(
+  q: string,
+  page = 1,
+  pageSize = 20,
+): Promise<{ data: FileItem[]; total: number; page: number; pageSize: number }> {
+  const query = new URLSearchParams();
+  query.set('q', q);
+  query.set('page', String(page));
+  query.set('page_size', String(pageSize));
+  const data = await request<PagedKnowledgeFileDataDto>(`/api/v1/knowledge/qa/files/search?${query.toString()}`);
+  return {
+    data: data.data.map(mapKnowledgeFileItem),
+    total: data.total,
+    page: data.page,
+    pageSize: data.page_size,
   };
 }
 
@@ -811,6 +928,53 @@ function getStreamMessageText(payload: BishengStreamPayload): string {
   return payload.message?.content ?? payload.message?.msg ?? payload.message?.text ?? '';
 }
 
+function buildQaKnowledgeScopePayload(scope?: QaKnowledgeScope, fallbackSpaceIds: number[] = []) {
+  if (!scope) {
+    return {
+      knowledge_space_ids: fallbackSpaceIds,
+    };
+  }
+  if (scope.mode === 'knowledge_space') {
+    return {
+      knowledge_space_ids: [scope.knowledgeSpaceId],
+      knowledge_scope: {
+        mode: 'knowledge_space',
+        knowledge_space_id: scope.knowledgeSpaceId,
+        folder_refs: [],
+        file_refs: [],
+      },
+    };
+  }
+  if (scope.mode === 'files') {
+    const spaceIds = Array.from(new Set([
+      ...scope.folderRefs.map((ref) => ref.knowledgeSpaceId),
+      ...scope.fileRefs.map((ref) => ref.knowledgeSpaceId),
+    ])).sort((a, b) => a - b);
+    return {
+      knowledge_space_ids: spaceIds,
+      knowledge_scope: {
+        mode: 'files',
+        folder_refs: scope.folderRefs.map((ref) => ({
+          knowledge_space_id: ref.knowledgeSpaceId,
+          folder_id: ref.folderId,
+        })),
+        file_refs: scope.fileRefs.map((ref) => ({
+          knowledge_space_id: ref.knowledgeSpaceId,
+          file_id: ref.fileId,
+        })),
+      },
+    };
+  }
+  return {
+    knowledge_space_ids: [],
+    knowledge_scope: {
+      mode: 'none',
+      folder_refs: [],
+      file_refs: [],
+    },
+  };
+}
+
 async function consumeChatStream(
   response: Response,
   onUpdate: (text: string) => void,
@@ -909,6 +1073,7 @@ export async function streamChatCompletion(params: {
   entryPoint?: 'home_qa' | 'qa_page';
   text: string;
   knowledgeSpaceIds: number[];
+  knowledgeScope?: QaKnowledgeScope;
   spaceLevel?: string;
   searchResults?: FileItem[];
   files?: ChatAttachment[];
@@ -935,7 +1100,7 @@ export async function streamChatCompletion(params: {
       use_knowledge_base: {
         personal_knowledge_enabled: false,
         organization_knowledge_ids: [],
-        knowledge_space_ids: params.knowledgeSpaceIds,
+        ...buildQaKnowledgeScopePayload(params.knowledgeScope, params.knowledgeSpaceIds),
       },
       files: params.files ?? [],
     }),

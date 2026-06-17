@@ -25,6 +25,8 @@ from app.schemas.knowledge import (
     KnowledgeFileSpace,
     PersonalKnowledgeSpaceItem,
     PersonalKnowledgeSpaceListData,
+    QaKnowledgeTreeNode,
+    QaKnowledgeTreeNodeData,
     KnowledgeSpaceItem,
     KnowledgeSpaceListData,
     PagedKnowledgeFileData,
@@ -161,6 +163,21 @@ class KnowledgeService:
     def get_space_name_map(self) -> dict[int, str]:
         config = self._config_service.get_config()
         return {space.id: space.name for space in config.spaces}
+
+    def list_public_config_spaces(self) -> KnowledgeSpaceListData:
+        spaces = [
+            KnowledgeSpaceItem(
+                id=space.id,
+                name=space.name,
+                description="",
+                auth_type="public",
+                space_level=space.space_level,
+                file_count=space.file_count,
+            )
+            for space in self._config_service.get_config().spaces
+            if space.enabled and (space.space_level or "").strip().lower() == "public"
+        ]
+        return KnowledgeSpaceListData(data=spaces, total=len(spaces))
 
     async def get_home_content(self) -> HomeKnowledgeData:
         config = self._config_service.get_config()
@@ -497,6 +514,66 @@ class KnowledgeService:
         sorted_items = self._sort_items(filtered, sort=sort, keyword=q)
         mapped = self._map_items(sorted_items)
         return self._paginate(mapped, page=page, page_size=page_size)
+
+    async def get_qa_tree_children(
+        self,
+        space_id: int,
+        parent_id: int | None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> QaKnowledgeTreeNodeData:
+        params: dict[str, Any] = {
+            "page_size": min(max(page_size, 1), self._page_size_limit),
+            "file_status": [SUCCESS_STATUS],
+        }
+        if parent_id is not None:
+            params["parent_id"] = parent_id
+        response = await self._bisheng.get_json(f"/api/v1/knowledge/space/{space_id}/children", params=params)
+        data = response.get("data") or {}
+        raw_items = data.get("data") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        nodes = [
+            self._map_qa_tree_node(item, fallback_space_id=space_id, fallback_parent_id=parent_id)
+            for item in raw_items
+            if isinstance(item, dict)
+        ]
+        return QaKnowledgeTreeNodeData(
+            data=nodes,
+            total=int(data.get("total") or len(nodes)),
+            page=int(data.get("page") or page),
+            page_size=int(data.get("page_size") or params["page_size"]),
+        )
+
+    async def search_qa_files_by_name(
+        self,
+        q: str,
+        space_ids: list[int],
+        page: int = 1,
+        page_size: int = 20,
+    ) -> PagedKnowledgeFileData:
+        normalized_q = q.strip()
+        if not normalized_q or not space_ids:
+            return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/qa/files/search",
+            json={
+                "q": normalized_q,
+                "space_ids": space_ids,
+                "page": page,
+                "page_size": min(max(page_size, 1), 100),
+            },
+        )
+        data = response.get("data") or {}
+        raw_items = data.get("data") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        return PagedKnowledgeFileData(
+            data=self._map_shougang_portal_response_items(raw_items),
+            total=int(data.get("total") or 0),
+            page=int(data.get("page") or page),
+            page_size=int(data.get("page_size") or page_size),
+        )
 
     async def _fetch_shougang_portal_tags(
         self,
@@ -1070,6 +1147,41 @@ class KnowledgeService:
                 )
             )
         return mapped
+
+    def _map_qa_tree_node(
+        self,
+        item: dict[str, Any],
+        fallback_space_id: int,
+        fallback_parent_id: int | None,
+    ) -> QaKnowledgeTreeNode:
+        file_type = self._int_value(item, "file_type", "type")
+        is_file = file_type == FILE_TYPE
+        file_name = self._str_value(item, "file_name", "name", "title")
+        node_id = self._int_value(item, "id", "file_id")
+        space_id = self._int_value(item, "knowledge_id", "space_id", "knowledgeId", "spaceId") or fallback_space_id
+        parent_id = self._int_value(item, "parent_id", "parentId")
+        resolved_file_count = self._int_value(
+            item,
+            "visible_success_file_num",
+            "success_file_num",
+            "resolved_file_count",
+            "file_num",
+            "file_count",
+            "children_count",
+        )
+        return QaKnowledgeTreeNode(
+            id=node_id,
+            space_id=space_id,
+            parent_id=parent_id or fallback_parent_id,
+            type="file" if is_file else "folder",
+            name=file_name or str(node_id),
+            path=self._str_value(item, "source_path", "folder_path", "file_level_path", "path"),
+            file_ext=self._get_file_ext(file_name) if is_file else "",
+            selectable=True,
+            disabled_reason="",
+            has_children=(not is_file) and resolved_file_count > 0,
+            resolved_file_count=1 if is_file else resolved_file_count,
+        )
 
     def _paginate(
         self,

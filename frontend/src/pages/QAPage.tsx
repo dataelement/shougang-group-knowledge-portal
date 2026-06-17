@@ -22,21 +22,25 @@ import {
   X,
 } from 'lucide-react';
 import Header from '../components/Header';
+import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
 import {
   ApiRequestError,
-  fetchKnowledgeSpaces,
+  fetchQaKnowledgeTreeChildren,
+  fetchQaKnowledgeTreeSpaces,
   fetchPortalContentConfig,
   fetchWorkstationConversations,
   fetchWorkstationMessages,
+  searchQaKnowledgeFiles,
   streamChatCompletion,
   uploadChatAttachment,
   type ChatAttachment,
   type Citation,
   type KnowledgeSpace,
+  type QaKnowledgeScope,
   type WorkstationChatMessage,
   type WorkstationConversation,
 } from '../api/content';
-import { fetchQaModelOptions, type PortalConfig, type QAConfig, type QAModelOption, type QATemplateCategoryConfig, type QATemplateConfig, type SpaceConfig } from '../api/adminConfig';
+import { fetchQaModelOptions, type QAConfig, type QAModelOption, type QATemplateCategoryConfig, type QATemplateConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
 import s from './QAPage.module.css';
@@ -78,8 +82,6 @@ interface AnswerModeOption {
   desc: string;
 }
 
-type KnowledgeSpaceGroupLabel = '个人知识库' | '团队知识库' | '部门知识库' | '公共知识库' | '其他知识库';
-
 const ALL_TEMPLATE_CATEGORY_ID = '__all__';
 
 const TEMPLATE_ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
@@ -99,7 +101,6 @@ const ANSWER_MODES: AnswerModeOption[] = [
   { id: 'normal', label: '普通模式', desc: '通用模型，可把问题讲清：分段落、列要点、篇幅适中。' },
   { id: 'expert', label: '专家模式', desc: '基于推理模型，抽丝剥茧解决复杂难题。' },
 ];
-const KNOWLEDGE_SPACE_GROUPS: KnowledgeSpaceGroupLabel[] = ['个人知识库', '团队知识库', '部门知识库', '公共知识库', '其他知识库'];
 const QA_ATTACHMENT_ACCEPT = '.pdf,.txt,.doc,.docx,.ppt,.pptx,.md,.html,.xls,.xlsx,.wps,.dps,.et,.png,.jpg,.jpeg,.bmp';
 const QA_ATTACHMENT_EXTENSIONS = new Set(
   QA_ATTACHMENT_ACCEPT.split(',').map((item) => item.replace('.', '')),
@@ -186,30 +187,6 @@ function mapChatMessage(message: WorkstationChatMessage): Message {
   };
 }
 
-function mapConfigSpaceToKnowledgeSpace(space: SpaceConfig): KnowledgeSpace {
-  return {
-    id: space.id,
-    name: space.name,
-    description: '',
-    authType: 'public',
-    userRole: '',
-    spaceKind: 'normal',
-    spaceLevel: space.space_level ?? '',
-    departmentName: '',
-    fileCount: space.file_count ?? 0,
-    memberCount: 0,
-    isPinned: false,
-    updatedAt: '',
-    sources: ['portal-config'],
-  };
-}
-
-function getAnonymousPublicKnowledgeSpaces(config: PortalConfig): KnowledgeSpace[] {
-  return config.spaces
-    .filter((space) => space.enabled && space.space_level === 'public')
-    .map(mapConfigSpaceToKnowledgeSpace);
-}
-
 function getAttachmentName(file: ChatAttachment): string {
   return file.filename || file.file_id || file.temp_file_id || '附件';
 }
@@ -264,54 +241,19 @@ function AttachmentChips({
   );
 }
 
-function getKnowledgeSpaceGroup(space: KnowledgeSpace): KnowledgeSpaceGroupLabel {
-  if (space.spaceLevel === 'personal') return '个人知识库';
-  if (space.spaceLevel === 'team') return '团队知识库';
-  if (space.spaceLevel === 'department') return '部门知识库';
-  if (space.spaceLevel === 'public') return '公共知识库';
-  if (space.sources.includes('mine') || space.spaceKind === 'personal') return '个人知识库';
-  if (space.sources.includes('joined') || space.sources.includes('managed') || space.spaceKind === 'team') return '团队知识库';
-  if (space.sources.includes('department') || space.spaceKind === 'department') return '部门知识库';
-  return '其他知识库';
-}
-
-function getKnowledgeSpaceMeta(space: KnowledgeSpace): string {
-  const parts = [
-    space.departmentName,
-    space.fileCount ? `${space.fileCount} 个文档` : '',
-    space.userRole,
-  ].filter(Boolean);
-  return parts.join(' · ');
-}
-
-function groupKnowledgeSpaces(spaces: KnowledgeSpace[]): Record<KnowledgeSpaceGroupLabel, KnowledgeSpace[]> {
-  return spaces.reduce(
-    (grouped, space) => {
-      grouped[getKnowledgeSpaceGroup(space)].push(space);
-      return grouped;
-    },
-    {
-      个人知识库: [],
-      团队知识库: [],
-      部门知识库: [],
-      公共知识库: [],
-      其他知识库: [],
-    } as Record<KnowledgeSpaceGroupLabel, KnowledgeSpace[]>,
-  );
-}
-
 function getKnowledgePickerLabel(
   spaces: KnowledgeSpace[],
-  selectedIds: number[],
+  scope: QaKnowledgeScope,
   loading: boolean,
 ): string {
   if (loading) return '知识库加载中';
-  if (!selectedIds.length) return '选择知识库';
-  if (spaces.length > 0 && selectedIds.length === spaces.length) return '全部知识库';
-  if (selectedIds.length === 1) {
-    return spaces.find((space) => space.id === selectedIds[0])?.name || '已选 1 个知识库';
+  if (scope.mode === 'knowledge_space') {
+    return spaces.find((space) => space.id === scope.knowledgeSpaceId)?.name || '已选 1 个知识库';
   }
-  return `已选 ${selectedIds.length} 个知识库`;
+  if (scope.mode === 'files' && (scope.fileRefs.length || scope.folderRefs.length)) {
+    return `已选 ${scope.resolvedFileCount || scope.fileRefs.length} 个文件`;
+  }
+  return '选择知识库';
 }
 
 function CitationList({ items }: { items: Citation[] }) {
@@ -367,7 +309,7 @@ export default function QAPage() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [availableSpaces, setAvailableSpaces] = useState<KnowledgeSpace[]>([]);
-  const [selectedKnowledgeSpaceIds, setSelectedKnowledgeSpaceIds] = useState<number[]>([]);
+  const [selectedKnowledgeScope, setSelectedKnowledgeScope] = useState<QaKnowledgeScope>({ mode: 'none' });
   const [loadingKnowledgeSpaces, setLoadingKnowledgeSpaces] = useState(true);
   const [templateCategories, setTemplateCategories] = useState<QATemplateCategoryConfig[]>([]);
   const [writingTemplates, setWritingTemplates] = useState<QATemplateConfig[]>([]);
@@ -409,12 +351,10 @@ export default function QAPage() {
   const reasoningModelChoice = modelChoices.find((choice) => choice.typeLabel === '推理模型');
   const selectedModelChoice = answerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
   const selectedModel = selectedModelChoice?.id ?? '';
-  const selectedKnowledgeSpaceIdSet = new Set(selectedKnowledgeSpaceIds);
-  const groupedKnowledgeSpaces = groupKnowledgeSpaces(availableSpaces);
   const hasChatAttachments = attachedFiles.length > 0 || uploadingFiles.length > 0;
   const knowledgePickerLabel = getKnowledgePickerLabel(
     availableSpaces,
-    selectedKnowledgeSpaceIds,
+    selectedKnowledgeScope,
     loadingKnowledgeSpaces,
   );
 
@@ -492,39 +432,17 @@ export default function QAPage() {
   useEffect(() => {
     let active = true;
     setLoadingKnowledgeSpaces(true);
-    if (!user) {
-      void fetchPortalContentConfig()
-        .then((config) => {
-          if (!active) return;
-          const spaces = getAnonymousPublicKnowledgeSpaces(config);
-          setAvailableSpaces(spaces);
-          setSelectedKnowledgeSpaceIds([]);
-          if (!spaces.length) {
-            setComposerTip('当前暂无可用公共知识库。');
-          }
-        })
-        .catch(() => {
-          if (active) setComposerTip('公共知识库列表加载失败，请稍后重试。');
-        })
-        .finally(() => {
-          if (active) setLoadingKnowledgeSpaces(false);
-        });
-      return () => {
-        active = false;
-      };
-    }
-
-    void fetchKnowledgeSpaces()
+    void fetchQaKnowledgeTreeSpaces()
       .then(({ data: spaces }) => {
         if (!active) return;
         setAvailableSpaces(spaces);
-        setSelectedKnowledgeSpaceIds([]);
+        setSelectedKnowledgeScope({ mode: 'none' });
         if (!spaces.length) {
-          setComposerTip('当前账号暂无可用知识库。');
+          setComposerTip(user ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
         }
       })
       .catch(() => {
-        if (active) setComposerTip('知识库列表加载失败，请确认登录状态后重试。');
+        if (active) setComposerTip(user ? '知识库列表加载失败，请确认登录状态后重试。' : '公共知识库列表加载失败，请稍后重试。');
       })
       .finally(() => {
         if (active) setLoadingKnowledgeSpaces(false);
@@ -650,7 +568,8 @@ export default function QAPage() {
       scene: 'qa',
       entryPoint: 'qa_page',
       text: finalText,
-      knowledgeSpaceIds: selectedKnowledgeSpaceIds,
+      knowledgeSpaceIds: [],
+      knowledgeScope: selectedKnowledgeScope,
       files: attachedFiles,
       conversationId: activeSession.conversationId,
       model: selectedModel,
@@ -714,22 +633,6 @@ export default function QAPage() {
       prev.map((ss) => (ss.id === activeId ? { ...ss, answerMode: mode } : ss)),
     );
     setModeMenuOpen(false);
-  };
-
-  const toggleKnowledgeSpace = (spaceId: number) => {
-    setSelectedKnowledgeSpaceIds((prev) =>
-      prev.includes(spaceId)
-        ? prev.filter((id) => id !== spaceId)
-        : [...prev, spaceId],
-    );
-  };
-
-  const selectAllKnowledgeSpaces = () => {
-    setSelectedKnowledgeSpaceIds(availableSpaces.map((space) => space.id));
-  };
-
-  const clearKnowledgeSpaces = () => {
-    setSelectedKnowledgeSpaceIds([]);
   };
 
   const handleAttachmentSelect = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1023,44 +926,15 @@ export default function QAPage() {
                   </button>
                   {knowledgePickerOpen ? (
                     <div className={s.knowledgePanel}>
-                      <div className={s.knowledgePanelHead}>
-                        <span>可多选知识库</span>
-                        <span>{selectedKnowledgeSpaceIds.length}/{availableSpaces.length}</span>
-                      </div>
-                      <div className={s.knowledgePanelActions}>
-                        <button type="button" onClick={selectAllKnowledgeSpaces}>全选</button>
-                        <button type="button" onClick={clearKnowledgeSpaces}>清空</button>
-                      </div>
-                      <div className={s.knowledgeList}>
-                        {KNOWLEDGE_SPACE_GROUPS.map((group) => {
-                          const groupSpaces = groupedKnowledgeSpaces[group];
-                          if (!groupSpaces.length) return null;
-                          return (
-                            <section key={group} className={s.knowledgeGroup}>
-                              <div className={s.knowledgeGroupTitle}>{group}</div>
-                              {groupSpaces.map((space) => {
-                                const checked = selectedKnowledgeSpaceIdSet.has(space.id);
-                                return (
-                                  <button
-                                    key={space.id}
-                                    type="button"
-                                    className={`${s.knowledgeItem} ${checked ? s.knowledgeItemActive : ''}`}
-                                    onClick={() => toggleKnowledgeSpace(space.id)}
-                                  >
-                                    <span className={`${s.knowledgeCheckbox} ${checked ? s.knowledgeCheckboxActive : ''}`}>
-                                      {checked ? <Check size={13} /> : null}
-                                    </span>
-                                    <span className={s.knowledgeItemText}>
-                                      <strong>{space.name}</strong>
-                                      <span>{getKnowledgeSpaceMeta(space) || '知识库'}</span>
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </section>
-                          );
-                        })}
-                      </div>
+                      <QAKnowledgeTreePicker
+                        spaces={availableSpaces}
+                        scope={selectedKnowledgeScope}
+                        loading={loadingKnowledgeSpaces}
+                        onChange={setSelectedKnowledgeScope}
+                        onLoadChildren={fetchQaKnowledgeTreeChildren}
+                        onSearchFiles={searchQaKnowledgeFiles}
+                        onTip={setComposerTip}
+                      />
                     </div>
                   ) : null}
                 </div>

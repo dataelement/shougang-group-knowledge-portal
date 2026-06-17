@@ -72,6 +72,27 @@ class KnowledgeSpaceListData(BaseModel):
     total: int = 0
 
 
+class QaKnowledgeTreeNode(BaseModel):
+    id: int
+    space_id: int
+    parent_id: int | None = None
+    type: Literal["folder", "file"]
+    name: str
+    path: str = ""
+    file_ext: str = ""
+    selectable: bool = True
+    disabled_reason: str = ""
+    has_children: bool = False
+    resolved_file_count: int = 0
+
+
+class QaKnowledgeTreeNodeData(BaseModel):
+    data: list[QaKnowledgeTreeNode] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 100
+
+
 class PersonalKnowledgeSpaceItem(BaseModel):
     id: int
     name: str
