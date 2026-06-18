@@ -559,7 +559,11 @@ class KnowledgeService:
                 summary=str(item.get("summary") or item.get("abstract") or ""),
                 source=str(item.get("source") or ""),
                 updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
-                tags=[str(tag) for tag in (item.get("tags") or [])],
+                tags=[
+                    {"tag_name": str(tag.get("tag_name")), "resource_type": str(tag.get("resource_type"))}
+                    for tag in (item.get("tags") or [])
+                    if isinstance(tag, dict)
+                ],
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
                 file_encoding=str(item.get("file_encoding") or ""),
@@ -916,11 +920,11 @@ class KnowledgeService:
             return RelatedKnowledgeFileData(data=[], total=0)
 
         candidate_map: dict[int, dict[str, Any]] = {}
-        for tag_name in detail.tags:
+        for tag in detail.tags:
             search_result = await self._fetch_space_files(
                 space_id=space_id,
                 keyword=None,
-                tag_name=tag_name,
+                tag_name=tag.tag_name,
             )
             for item in self._map_items(search_result.items):
                 if item.id == file_id:

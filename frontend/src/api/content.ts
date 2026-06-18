@@ -1,5 +1,10 @@
 import type { PortalConfig } from './adminConfig';
 
+export interface FileTag {
+  tag_name: string;
+  resource_type: string;
+}
+
 export interface FileItem {
   id: number;
   spaceId: number;
@@ -7,7 +12,7 @@ export interface FileItem {
   summary: string;
   source: string;
   date: string;
-  tags: string[];
+  tags: FileTag[];
   ext: string;
   sizeLabel: string;
   fileEncoding: string;
@@ -153,7 +158,7 @@ interface KnowledgeFileItemDto {
   summary: string;
   source: string;
   updated_at: string;
-  tags: string[];
+  tags: FileTag[];
   file_ext?: string;
   file_size?: string;
   file_encoding?: string;

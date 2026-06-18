@@ -189,7 +189,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '覆盖巡检路线、点检频次、异常记录和交接班协同要求，适合设备岗位日常执行和班组培训使用。',
       source: '设备业务域演示空间',
       date: '2026-05-13T09:20:00+08:00',
-      tags: ['最新精选', '设备', '点检'],
+      tags: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '设备', resource_type: 'manual_tag' }, { tag_name: '点检', resource_type: 'manual_tag' }],
       ext: 'pdf',
       sizeLabel: '2.4 MB',
       fileEncoding: 'UTF-8',
@@ -201,7 +201,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '梳理作业前确认、气体检测、监护配置和应急处置的关键控制项。',
       source: '安全业务域演示空间',
       date: '2026-05-12T16:45:00+08:00',
-      tags: ['最新精选', '安全生产'],
+      tags: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '安全生产', resource_type: 'manual_tag' }],
       ext: 'docx',
       sizeLabel: '1.1 MB',
       fileEncoding: 'UTF-8',
@@ -213,7 +213,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '说明关键指标口径、异常波动识别方式和调度联动流程。',
       source: '能源业务域演示空间',
       date: '2026-05-11T10:12:00+08:00',
-      tags: ['最新精选', '能源管控'],
+      tags: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '能源管控', resource_type: 'manual_tag' }],
       ext: 'xlsx',
       sizeLabel: '860 KB',
       fileEncoding: 'UTF-8',
@@ -225,7 +225,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '统一技术协议命名、版本标识和归档字段，提升营销、质量和研发协同查询效率。',
       source: '营销业务域演示空间',
       date: '2026-05-10T15:18:00+08:00',
-      tags: ['最新精选', '营销'],
+      tags: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '营销', resource_type: 'manual_tag' }],
       ext: 'docx',
       sizeLabel: '1.4 MB',
       fileEncoding: 'UTF-8',
@@ -237,7 +237,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '面向生产一线系统账号开通、权限变更和离岗回收场景，明确审批链路和安全审计要求。',
       source: '信息业务域演示空间',
       date: '2026-05-09T09:35:00+08:00',
-      tags: ['最新精选', '信息'],
+      tags: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '信息', resource_type: 'manual_tag' }],
       ext: 'pdf',
       sizeLabel: '980 KB',
       fileEncoding: 'UTF-8',
@@ -251,7 +251,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '从订单规格、轧制节奏、温控窗口和在线检测数据四个维度复盘板形波动原因，并形成参数优化建议。',
       source: '质量业务域演示空间',
       date: '2026-05-10T14:30:00+08:00',
-      tags: ['典型案例', '质量'],
+      tags: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '质量', resource_type: 'manual_tag' }],
       ext: 'pdf',
       sizeLabel: '3.2 MB',
       fileEncoding: 'UTF-8',
@@ -263,7 +263,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '记录异常发现、现场检查、备件替换和复产验证过程，为同类设备故障提供排查路径。',
       source: '设备业务域演示空间',
       date: '2026-05-09T11:05:00+08:00',
-      tags: ['典型案例', '设备'],
+      tags: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '设备', resource_type: 'manual_tag' }],
       ext: 'docx',
       sizeLabel: '1.8 MB',
       fileEncoding: 'UTF-8',
@@ -275,7 +275,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '围绕检修窗口压缩、外协人员交叉进入和风险告知不足等问题，沉淀班前会与现场监护改进项。',
       source: '安全业务域演示空间',
       date: '2026-05-08T08:40:00+08:00',
-      tags: ['典型案例', '安全生产'],
+      tags: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '安全生产', resource_type: 'manual_tag' }],
       ext: 'pdf',
       sizeLabel: '2.0 MB',
       fileEncoding: 'UTF-8',
@@ -287,7 +287,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '通过分时负荷、设备启停和管网压力数据定位异常点，并形成运行策略调整建议。',
       source: '能源业务域演示空间',
       date: '2026-05-07T13:22:00+08:00',
-      tags: ['典型案例', '能源管控'],
+      tags: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '能源管控', resource_type: 'manual_tag' }],
       ext: 'xlsx',
       sizeLabel: '760 KB',
       fileEncoding: 'UTF-8',
@@ -299,7 +299,7 @@ const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
       summary: '对比产线、班组和科目口径差异，沉淀跨部门成本归集校验清单。',
       source: '财务业务域演示空间',
       date: '2026-05-06T16:10:00+08:00',
-      tags: ['典型案例', '财务'],
+      tags: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '财务', resource_type: 'manual_tag' }],
       ext: 'pdf',
       sizeLabel: '1.2 MB',
       fileEncoding: 'UTF-8',
@@ -315,7 +315,7 @@ function buildBannerBackground(imageUrl: string): string {
 }
 
 function getPrimaryTag(file: FileItem) {
-  return file.tags.find((t) => t !== '最新精选' && t !== '典型案例');
+  return file.tags.find((t) => t.tag_name !== '最新精选' && t.tag_name !== '典型案例')?.tag_name;
 }
 
 function getWelcomeMessage(welcomeMessage?: string) {

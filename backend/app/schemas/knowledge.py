@@ -3,6 +3,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class FileTag(BaseModel):
+    tag_name: str
+    resource_type: str
+
+
 class KnowledgeFileItem(BaseModel):
     id: int
     space_id: int
@@ -10,7 +15,7 @@ class KnowledgeFileItem(BaseModel):
     summary: str
     source: str
     updated_at: str
-    tags: list[str] = Field(default_factory=list)
+    tags: list[FileTag] = Field(default_factory=list)
     file_ext: str = ""
     file_size: str = ""
     file_encoding: str = ""

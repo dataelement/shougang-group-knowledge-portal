@@ -9,6 +9,8 @@ import {
   FileText,
   FolderTree,
   MessageCircle,
+  Network,
+  PencilLine,
   Share2,
   Star,
   Tag,
@@ -183,15 +185,29 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
           </section>
         ) : null}
 
-        {view.visibleTags.length > 0 ? (
-          <div className={s.tags}>
-            <Tag size={17} className={s.tagsIcon} />
-            <div className={s.tagList}>
-              {view.visibleTags.map((tag) => (
-                <TagPill key={tag} name={tag} neutral />
-              ))}
-              {view.hiddenTagCount > 0 ? <span className={s.moreTag}>+{view.hiddenTagCount}</span> : null}
-            </div>
+        {view.tagGroups.length > 0 ? (
+          <div className={s.tagSection}>
+            {view.tagGroups.map((group) => {
+              const Icon =
+                group.label === '系统标签'
+                  ? Network
+                  : group.label === 'AI标签'
+                    ? Tag
+                    : PencilLine;
+              return (
+                <div key={group.label} className={s.tagRow}>
+                  <Icon size={17} className={s.tagRowIcon} />
+                  <div className={s.tagList}>
+                    {group.tags.map((tag) => (
+                      <TagPill key={`${group.label}-${tag}`} name={tag} neutral />
+                    ))}
+                    {group.hiddenCount > 0 ? (
+                      <span className={s.moreTag}>+{group.hiddenCount}</span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : null}
       </div>

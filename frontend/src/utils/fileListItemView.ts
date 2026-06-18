@@ -28,13 +28,18 @@ export interface FileListItemViewOptions {
   canShare?: boolean;
 }
 
+export interface TagGroup {
+  label: string;
+  tags: string[];
+  hiddenCount: number;
+}
+
 export interface FileListItemView {
   documentTypeLabel: string;
   dateLabel: string;
   sourcePath: string;
   summaryText: string;
-  visibleTags: string[];
-  hiddenTagCount: number;
+  tagGroups: TagGroup[];
   confidenceLabel: string;
   actions: FileListItemAction[];
 }
@@ -60,10 +65,47 @@ export function buildFileListItemView(
   file: FileItem,
   options: FileListItemViewOptions = {},
 ): FileListItemView {
-  const visibleTagCount = Math.max(0, options.visibleTagCount ?? 2);
   const documentTypeLabel = getDocumentTypeLabel(file.ext);
-  const displayTags = file.tags.filter((tag) => tag && !META_TAGS.has(tag));
-  const visibleTags = displayTags.slice(0, visibleTagCount);
+
+  const systemTags: string[] = [];
+  const aiTags: string[] = [];
+  const manualTags: string[] = [];
+
+  for (const tag of file.tags) {
+    if (!tag || !tag.tag_name || META_TAGS.has(tag.tag_name)) continue;
+    if (tag.resource_type === 'system_tag') {
+      systemTags.push(tag.tag_name);
+    } else if (tag.resource_type === 'ai_auto_tag') {
+      aiTags.push(tag.tag_name);
+    } else if (tag.resource_type === 'manual_tag') {
+      manualTags.push(tag.tag_name);
+    }
+  }
+
+  const MAX_TAGS_PER_GROUP = 2;
+  const tagGroups: TagGroup[] = [];
+  if (systemTags.length > 0) {
+    tagGroups.push({
+      label: '系统标签',
+      tags: systemTags.slice(0, MAX_TAGS_PER_GROUP),
+      hiddenCount: Math.max(0, systemTags.length - MAX_TAGS_PER_GROUP),
+    });
+  }
+  if (aiTags.length > 0) {
+    tagGroups.push({
+      label: 'AI标签',
+      tags: aiTags.slice(0, MAX_TAGS_PER_GROUP),
+      hiddenCount: Math.max(0, aiTags.length - MAX_TAGS_PER_GROUP),
+    });
+  }
+  if (manualTags.length > 0) {
+    tagGroups.push({
+      label: '手动标签',
+      tags: manualTags.slice(0, MAX_TAGS_PER_GROUP),
+      hiddenCount: Math.max(0, manualTags.length - MAX_TAGS_PER_GROUP),
+    });
+  }
+
   const summaryText = file.summary.trim();
   const sourcePath = file.sourcePath?.trim();
   const folderPath = file.folderPath?.trim();
@@ -74,8 +116,7 @@ export function buildFileListItemView(
     // 完整来源路径优先；历史数据没有该字段时回退到目录路径或知识空间名称。
     sourcePath: sourcePath || folderPath || file.source || '',
     summaryText,
-    visibleTags,
-    hiddenTagCount: Math.max(displayTags.length - visibleTags.length, 0),
+    tagGroups,
     confidenceLabel: '',
     actions: [
       ...(options.canFavorite ? ['favorite' as const] : []),

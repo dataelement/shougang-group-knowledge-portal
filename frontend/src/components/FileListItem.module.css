@@ -203,14 +203,20 @@
   text-decoration: underline;
 }
 
-.tags {
+.tagSection {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 18px;
 }
 
-.tagsIcon {
+.tagRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tagRowIcon {
   flex-shrink: 0;
   margin-top: 4px;
   color: var(--neutral-600);

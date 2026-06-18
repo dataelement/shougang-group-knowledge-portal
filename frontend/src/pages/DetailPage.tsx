@@ -98,7 +98,7 @@ export default function DetailPage() {
   }
 
   const META_TAGS = ['最新精选', '典型案例'];
-  const displayTags = detail.tags.filter((t) => !META_TAGS.includes(t));
+  const displayTags = detail.tags.filter((t) => !META_TAGS.includes(t.tag_name));
   const formattedUpdatedAt = formatDisplayDateTime(detail.date) || '—';
   const resolvedPreview = resolveFilePreview(preview);
   const effectivePreview = clientFallbackActive
@@ -145,7 +145,7 @@ export default function DetailPage() {
               <span className={s.metaLabel}>标签</span>
               <div className={s.metaTags}>
                 {displayTags.length > 0
-                  ? displayTags.map((t) => <TagPill key={t} name={t} neutral />)
+                  ? displayTags.map((t) => <TagPill key={t.tag_name} name={t.tag_name} neutral />)
                   : <span className={s.metaValue}>无</span>}
               </div>
             </div>
@@ -203,7 +203,7 @@ export default function DetailPage() {
             <SectionHeader icon={Star} title="相关推荐" />
             <div className={s.relatedGrid}>
               {related.map((f) => {
-                const rTags = f.tags.filter((t) => !META_TAGS.includes(t));
+                const rTags = f.tags.filter((t) => !META_TAGS.includes(t.tag_name));
                 return (
                   <div
                     key={f.id}
@@ -216,7 +216,7 @@ export default function DetailPage() {
                     <div className={s.relatedTitle}>{f.title}</div>
                     <div className={s.relatedSummary}>{f.summary}</div>
                     <div className={s.relatedTags}>
-                      {rTags.map((t) => <TagPill key={t} name={t} neutral />)}
+                      {rTags.map((t) => <TagPill key={t.tag_name} name={t.tag_name} neutral />)}
                     </div>
                     <div className={s.relatedMeta}>
                       <span className={s.relatedSource}>{f.source}</span>
