@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { resolveFilePreview, resolvePreviewModalFrameUrl } from '../src/utils/filePreview';
+
+function readSource(path: string): string {
+  return readFileSync(resolve(process.cwd(), path), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+}
 
 test('resolveFilePreview keeps backend-selected pdf manifest', () => {
   const resolved = resolveFilePreview({
@@ -95,4 +103,13 @@ test('resolvePreviewModalFrameUrl uses embedded detail page instead of direct as
   );
 
   assert.equal(url, '/space/12/file/1580?embed=1');
+});
+
+test('embedded preview detail page does not refetch preview when display config changes', () => {
+  const source = readSource('src/pages/DetailPage.tsx');
+
+  assert.match(source, /const relatedFilesCount = embed \|\| shareToken \? 0 : displayConfig\.detail\.relatedFilesCount;/);
+  assert.match(source, /relatedFilesCount === 0\s*\?\s*Promise\.resolve\(\[\]\)/);
+  assert.match(source, /\}, \[embed, fileId, relatedFilesCount, shareToken, spaceId\]\);/);
+  assert.doesNotMatch(source, /\}, \[displayConfig\.detail\.relatedFilesCount, embed, fileId, shareToken, spaceId\]\);/);
 });

@@ -10,12 +10,14 @@ from app.api.dependencies import (
     get_bisheng_client,
     get_bisheng_runtime_service,
     get_portal_config_service,
+    get_unified_auth_runtime_service,
     require_admin_session,
 )
 from app.clients.bisheng import BishengClient
 from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
 from app.schemas.admin_config_transfer import AdminConfigExportPayload, AdminConfigImportPayload
 from app.schemas.common import response_error, response_ok
+from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfigUpdate
 from app.schemas.portal_config import (
     AppsConfigUpdate,
     BannersConfigUpdate,
@@ -24,6 +26,7 @@ from app.schemas.portal_config import (
     PortalConfig,
     QAConfig,
     RecommendationConfig,
+    SearchConfig,
     SectionsConfigUpdate,
     SiteConfig,
     SpacesConfigUpdate,
@@ -31,6 +34,7 @@ from app.schemas.portal_config import (
 )
 from app.services.portal_config_service import PortalConfigService
 from app.services.bisheng_runtime_service import BishengRuntimeService
+from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
 router = APIRouter(
     prefix="/api/v1/admin/config",
@@ -320,6 +324,36 @@ async def get_qa_model_options(
     return response_ok(service.build_qa_model_options(raw_servers))
 
 
+@router.get("/search")
+async def get_search_config(
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok(service.get_config().search)
+
+
+@router.post("/search")
+async def update_search_config(
+    payload: SearchConfig,
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok(service.update_search(payload).search)
+
+
+@router.get("/search/rerank-model-options")
+async def get_search_rerank_model_options(
+    service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    try:
+        response = await bisheng_client.get_json("/api/v1/llm")
+    except Exception:
+        return response_ok(service.build_search_rerank_model_options([]))
+    raw_servers = response.get("data") if isinstance(response, dict) else []
+    if not isinstance(raw_servers, list):
+        raw_servers = []
+    return response_ok(service.build_search_rerank_model_options(raw_servers))
+
+
 @router.get("/recommendation")
 async def get_recommendation_config(
     service: PortalConfigService = Depends(get_portal_config_service),
@@ -424,6 +458,25 @@ async def update_bisheng_runtime_config(
 ):
     try:
         config = await service.update_config(payload)
+    except ValueError as err:
+        return response_error(str(err), status_code=400)
+    return response_ok(config)
+
+
+@router.get("/unified-auth")
+async def get_unified_auth_runtime_config(
+    service: UnifiedAuthRuntimeService = Depends(get_unified_auth_runtime_service),
+):
+    return response_ok(service.get_public_config())
+
+
+@router.post("/unified-auth")
+async def update_unified_auth_runtime_config(
+    payload: UnifiedAuthRuntimeConfigUpdate,
+    service: UnifiedAuthRuntimeService = Depends(get_unified_auth_runtime_service),
+):
+    try:
+        config = service.update_config(payload)
     except ValueError as err:
         return response_error(str(err), status_code=400)
     return response_ok(config)

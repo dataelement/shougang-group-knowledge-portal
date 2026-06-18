@@ -67,28 +67,27 @@ test('qa workspace sends the selected configured model with chat requests', () =
   assert.match(qaPageSource, /answerMode/);
 });
 
-test('qa workspace selects visible knowledge spaces for chat scope', () => {
-  assert.match(qaPageSource, /fetchKnowledgeSpaces/);
+test('qa workspace selects visible knowledge scopes for chat scope', () => {
+  assert.match(qaPageSource, /fetchQaKnowledgeTreeSpaces/);
+  assert.match(qaPageSource, /fetchQaKnowledgeTreeChildren/);
+  assert.match(qaPageSource, /searchQaKnowledgeFiles/);
   assert.match(qaPageSource, /availableSpaces/);
-  assert.match(qaPageSource, /selectedKnowledgeSpaceIds/);
-  assert.match(qaPageSource, /setSelectedKnowledgeSpaceIds\(\[\]\)/);
-  assert.match(qaPageSource, /setSelectedKnowledgeSpaceIds\(availableSpaces\.map\(\(space\) => space\.id\)\)/);
-  assert.match(qaPageSource, /knowledgeSpaceIds:\s*selectedKnowledgeSpaceIds/);
+  assert.match(qaPageSource, /selectedKnowledgeScope/);
+  assert.match(qaPageSource, /setSelectedKnowledgeScope\(\{\s*mode:\s*'none'\s*\}\)/);
+  assert.match(qaPageSource, /knowledgeScope:\s*selectedKnowledgeScope/);
+  assert.match(qaPageSource, /QAKnowledgeTreePicker/);
   assert.doesNotMatch(qaPageSource, /请至少选择一个知识库/);
-  assert.match(qaPageSource, /space\.spaceLevel === 'personal'/);
-  assert.match(qaPageSource, /space\.spaceLevel === 'team'/);
-  assert.match(qaPageSource, /space\.spaceLevel === 'department'/);
-  assert.match(qaPageSource, /space\.spaceLevel === 'public'/);
+  assert.doesNotMatch(qaPageSource, /selectAllKnowledgeSpaces/);
+  assert.doesNotMatch(qaPageSource, />全选</);
+  assert.doesNotMatch(qaPageSource, /selectedKnowledgeSpaceIds/);
   assert.doesNotMatch(qaPageSource, /const KNOWLEDGE_SCOPES/);
-  assert.doesNotMatch(qaPageSource, /展开目录/);
+  assert.match(qaPageSource, /fetchQaKnowledgeTreeChildren/);
 });
 
 test('qa workspace lets anonymous users chat with public spaces only', () => {
   assert.match(qaPageSource, /useAuth\(\)/);
-  assert.match(qaPageSource, /getAnonymousPublicKnowledgeSpaces/);
-  assert.match(qaPageSource, /space\.enabled/);
-  assert.match(qaPageSource, /space\.space_level\s*===\s*'public'/);
-  assert.match(qaPageSource, /if\s*\(!user\)\s*\{[\s\S]*const spaces = getAnonymousPublicKnowledgeSpaces\(config\)[\s\S]*setAvailableSpaces\(spaces\)/);
+  assert.match(qaPageSource, /fetchQaKnowledgeTreeSpaces/);
+  assert.match(qaPageSource, /当前暂无可用公共知识库。/);
   assert.match(qaPageSource, /if\s*\(!user\)\s*\{[\s\S]*setLoadingSessions\(false\)/);
   assert.doesNotMatch(qaPageSource, /请先登录后再使用智能问答/);
 });

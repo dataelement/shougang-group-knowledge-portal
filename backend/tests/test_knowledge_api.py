@@ -82,6 +82,7 @@ class FakeBishengClient:
         self.chat_payload = None
         self.preview_asset_requests = []
         self.post_calls = []
+        self.telemetry_events = []
         self.multipart_payload = None
 
     def resolve_url(self, path_or_url: str) -> str:
@@ -109,7 +110,7 @@ class FakeBishengClient:
         self.preview_asset_requests.append({"path": path, "params": params})
         return await self.get(path, params=params)
 
-    async def get_json(self, path: str, params=None):
+    async def get_json(self, path: str, params=None, headers=None):
         params = params or {}
         if path == "/api/v1/knowledge/space/12/search":
             keyword = params.get("keyword")
@@ -199,6 +200,7 @@ class FakeBishengClient:
                 }
             }
         if path == "/api/v1/knowledge/space/12/files/1580/preview":
+            assert headers == {"X-Portal-Telemetry-Source": "shougang_portal_bff"}
             return {
                 "data": {
                     "original_url": "https://example.com/original/1580.pdf",
@@ -352,6 +354,15 @@ class FakeBishengClient:
                     "total": 1,
                 },
             }
+        if path == "/api/v1/knowledge/shougang-portal/home/stats":
+            return {
+                "status_code": 200,
+                "data": {
+                    "read_count": 17,
+                    "favorite_count": 5,
+                    "qa_count": 9,
+                },
+            }
         if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580":
             return {
                 "status_code": 200,
@@ -368,7 +379,10 @@ class FakeBishengClient:
             }
         raise AssertionError(f"Unexpected path: {path}")
 
-    async def post_json(self, path: str, json=None):
+    async def post_json(self, path: str, json=None, headers=None):
+        if path == "/api/v1/knowledge/shougang-portal/telemetry/events":
+            self.telemetry_events.append(json)
+            return {"status_code": 200, "data": {"accepted": True}}
         self.post_calls.append((path, json))
         if path == "/api/v1/knowledge/shougang-portal/files/search":
             if json == {
@@ -380,6 +394,7 @@ class FakeBishengClient:
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 10,
+                "rerank_model_id": "",
             }:
                 return {
                     "data": {
@@ -425,6 +440,7 @@ class FakeBishengClient:
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 20,
+                "rerank_model_id": "",
             }
             return {
                 "data": {
@@ -494,7 +510,9 @@ class FakeBishengClient:
             }
         raise AssertionError(f"Unexpected post path: {path}")
 
-    async def stream_post(self, path: str, json=None):
+    async def stream_post(self, path: str, json=None, headers=None):
+        if path == "/api/v1/knowledge/space/12/chat/file/1580":
+            assert headers == {"X-Portal-Telemetry-Source": "shougang_portal_bff"}
         self.chat_payload = {"path": path, "json": json}
         yield b"event: message\n"
         yield b"data: {\"ok\":true}\n\n"
@@ -554,7 +572,7 @@ class NoSessionPortalAuthService(FakePortalAuthService):
 
 def test_list_visible_spaces_uses_grouped_bisheng_endpoint(tmp_path: Path):
     class GroupedOnlyBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path in {
                 "/api/v1/knowledge/space/mine",
                 "/api/v1/knowledge/space/joined",
@@ -689,11 +707,24 @@ def test_create_favorite_uses_current_user_bisheng_session(tmp_path: Path):
             "target_space_id": 7201,
         },
     )
+    assert fake_bisheng.telemetry_events[-1] == {
+        "event_type": "portal_favorite",
+        "source_app": "shougang_portal",
+        "scene": "search_result_favorite",
+        "entry_point": "search_result_favorite",
+        "resource_type": "document",
+        "status": "success",
+        "space_id": 12,
+        "file_id": 1580,
+        "target_space_id": 7201,
+        "source_space_id": 12,
+        "source_file_id": 1580,
+    }
 
 
 def test_create_favorite_maps_duplicate_to_conflict(tmp_path: Path):
     class DuplicateFavoriteBishengClient(FakeBishengClient):
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
             if path == "/api/v1/knowledge/shougang-portal/favorites":
                 return {
                     "status_code": 18021,
@@ -800,7 +831,7 @@ def test_share_access_session_controls_detail_and_preview_download(tmp_path: Pat
 
 def test_department_share_access_requires_portal_login_session(tmp_path: Path):
     class DepartmentShareBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580":
                 return {
                     "status_code": 200,
@@ -817,7 +848,7 @@ def test_department_share_access_requires_portal_login_session(tmp_path: Path):
                 }
             return await super().get_json(path, params=params)
 
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
             if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580/verify":
                 raise AssertionError("department share must not be verified with the portal backend token")
             return await super().post_json(path, json=json)
@@ -858,7 +889,7 @@ def test_list_space_files_maps_bisheng_results(tmp_path: Path):
 
 
 def test_get_file_detail_and_preview(tmp_path: Path):
-    for client, _, _ in make_client(tmp_path):
+    for client, _, fake_bisheng in make_client(tmp_path):
         detail_response = client.get("/api/v1/knowledge/space/12/files/1580")
         preview_response = client.get("/api/v1/knowledge/space/12/files/1580/preview")
 
@@ -875,6 +906,115 @@ def test_get_file_detail_and_preview(tmp_path: Path):
     assert preview["source_kind"] == "preview_url"
     assert preview["download_url"] == "https://example.com/original/1580.pdf"
     assert preview["viewer_url"].endswith("source_kind=preview_url")
+    assert fake_bisheng.telemetry_events[-1] == {
+        "event_type": "portal_document_read",
+        "source_app": "shougang_portal",
+        "scene": "document_preview",
+        "entry_point": "search_result_preview",
+        "resource_type": "document",
+        "status": "success",
+        "space_id": 12,
+        "file_id": 1580,
+    }
+
+
+def test_home_stats_returns_document_and_telemetry_counts(tmp_path: Path):
+    for client, _, _ in make_client(tmp_path):
+        response = client.get("/api/v1/knowledge/home/stats")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "total_documents": 0,
+        "read_count": 17,
+        "favorite_count": 5,
+        "qa_count": 9,
+    }
+
+
+def test_home_stats_returns_error_when_bisheng_stats_fails(tmp_path: Path):
+    class FailingHomeStatsBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/home/stats":
+                return {
+                    "status_code": 500,
+                    "status_message": "telemetry query failed",
+                    "data": {},
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = FailingHomeStatsBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/home/stats")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "telemetry query failed"
+
+
+def test_home_stats_returns_error_when_bisheng_stats_payload_is_incomplete(tmp_path: Path):
+    class IncompleteHomeStatsBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/home/stats":
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "read_count": 17,
+                        "favorite_count": 5,
+                    },
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = IncompleteHomeStatsBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/home/stats")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Invalid home stats response from BiSheng"
+
+
+def test_home_stats_returns_error_when_bisheng_stats_request_fails(tmp_path: Path):
+    class RequestFailingHomeStatsBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/home/stats":
+                raise httpx.ConnectError("stats upstream unavailable")
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = RequestFailingHomeStatsBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/home/stats")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Failed to fetch home stats"
+
+
+def test_home_stats_returns_error_when_bisheng_stats_status_code_is_invalid(tmp_path: Path):
+    class InvalidStatusHomeStatsBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/home/stats":
+                return {
+                    "status_code": "ERROR",
+                    "status_message": "telemetry status invalid",
+                    "data": {},
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = InvalidStatusHomeStatsBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/home/stats")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "telemetry status invalid"
 
 
 def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_assets(tmp_path: Path):
@@ -883,7 +1023,7 @@ def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_asse
             super().__init__()
             self.asset_resolution_requests = []
 
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/knowledge/space/12/files/1580/preview":
                 return {
                     "data": {
@@ -919,7 +1059,7 @@ def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_asse
 
 def test_get_file_preview_uses_preview_task_when_direct_urls_missing(tmp_path: Path):
     class PreviewTaskBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/knowledge/space/12/files/1580/preview":
                 return {"data": {"original_url": "", "preview_url": ""}}
             if path == "/api/v1/knowledge/preview/status":
@@ -932,7 +1072,9 @@ def test_get_file_preview_uses_preview_task_when_direct_urls_missing(tmp_path: P
                 }
             return await super().get_json(path, params=params)
 
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/telemetry/events":
+                return await super().post_json(path, json=json, headers=headers)
             assert path == "/api/v1/knowledge/preview"
             assert json == {"knowledge_id": 12, "file_id": 1580}
             return {"data": {"task_id": "task-1580"}}
@@ -994,7 +1136,7 @@ def test_get_file_preview_content_uses_preview_asset_fetcher_for_original_urls(t
                 content=b"markdown body",
             )
 
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/knowledge/space/12/files/1580/preview":
                 return {
                     "data": {
@@ -1165,12 +1307,21 @@ def test_chat_proxy_falls_back_to_general_qa_model(tmp_path: Path):
                 client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
+    assert b'"ok":true' in response.content
     assert fake_bisheng.chat_payload is not None
     assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
     assert fake_bisheng.chat_payload["json"]["model"] == "10"
     assert fake_bisheng.chat_payload["json"]["text"] == "振动纹如何排查？"
     assert fake_bisheng.chat_payload["json"]["system_prompt"] == "普通提示词"
     assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [7101, 7102]
+    assert fake_bisheng.telemetry_events[-1] == {
+        "event_type": "portal_qa",
+        "source_app": "shougang_portal",
+        "scene": "smart_qa",
+        "entry_point": "qa_page",
+        "resource_type": "knowledge_space",
+        "status": "success",
+    }
 
 
 def test_chat_proxy_expert_mode_uses_reasoning_model_and_prompt(tmp_path: Path):
@@ -1543,7 +1694,7 @@ def test_chat_proxy_uses_current_user_bisheng_session(tmp_path: Path):
 
 def test_chat_proxy_lists_current_user_daily_conversations(tmp_path: Path):
     class ChatListBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/chat/list":
                 assert params == {"page": 1, "limit": 20}
                 return {
@@ -1581,7 +1732,7 @@ def test_chat_proxy_lists_current_user_daily_conversations(tmp_path: Path):
 
 def test_chat_proxy_loads_current_user_conversation_messages(tmp_path: Path):
     class ChatHistoryBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/workstation/messages/chat-001/agent":
                 return {
                     "status_code": 200,
@@ -1641,6 +1792,16 @@ def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path)
             "modelId": 1,
         },
     }
+    assert fake_bisheng.telemetry_events[-1] == {
+        "event_type": "portal_qa",
+        "source_app": "shougang_portal",
+        "scene": "search_result_document_qa",
+        "entry_point": "search_result_document_qa",
+        "resource_type": "document",
+        "status": "success",
+        "space_id": 12,
+        "file_id": 1580,
+    }
 
 
 def test_get_tags_aggregates_enabled_spaces(tmp_path: Path):
@@ -1653,12 +1814,12 @@ def test_get_tags_aggregates_enabled_spaces(tmp_path: Path):
 
 def test_get_tags_uses_shougang_portal_batch_endpoint(tmp_path: Path):
     class BatchOnlyBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path.endswith("/tag"):
                 raise AssertionError("tags should use shougang portal batch endpoint")
             return await super().get_json(path, params=params)
 
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/tags/search":
                 assert json == {"space_ids": [12, 18], "space_level": None}
@@ -1682,12 +1843,12 @@ def test_get_tags_uses_shougang_portal_batch_endpoint(tmp_path: Path):
 
 def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tmp_path: Path):
     class BatchOnlyBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path.endswith("/search"):
                 raise AssertionError("multi-space file search should use shougang portal batch endpoint")
             return await super().get_json(path, params=params)
 
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
                 assert json == {
@@ -1699,6 +1860,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
                     "sort": "updated_at",
                     "page": 1,
                     "page_size": 10,
+                    "rerank_model_id": "",
                 }
                 return {
                     "data": {
@@ -1749,6 +1911,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 10,
+                "rerank_model_id": "",
             },
         )
     ]
@@ -1756,12 +1919,12 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
 
 def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(tmp_path: Path):
     class SemanticOnlyBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path.endswith("/search"):
                 raise AssertionError("keyword file search should use shougang portal semantic endpoint")
             return await super().get_json(path, params=params)
 
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
                 assert json == {
@@ -1773,6 +1936,7 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                     "sort": "relevance",
                     "page": 1,
                     "page_size": 20,
+                    "rerank_model_id": "",
                 }
                 return {
                     "data": {
@@ -1834,6 +1998,80 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                 "sort": "relevance",
                 "page": 1,
                 "page_size": 20,
+                "rerank_model_id": "",
+            },
+        )
+    ]
+
+
+def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path: Path):
+    class RerankConfigBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path.endswith("/search"):
+                raise AssertionError("keyword file search should use shougang portal semantic endpoint")
+            return await super().get_json(path, params=params)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": "振动纹",
+                    "tag": None,
+                    "space_ids": [12],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "relevance",
+                    "page": 1,
+                    "page_size": 20,
+                    "rerank_model_id": "5",
+                }
+                return {
+                    "data": {
+                        "data": [],
+                        "total": 0,
+                        "page": 1,
+                        "page_size": 50,
+                    }
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_spaces(
+        SpacesConfigUpdate(
+            spaces=[
+                {
+                    "id": 12,
+                    "name": "轧线技术案例库",
+                    "file_count": 0,
+                    "tag_count": 0,
+                    "space_level": "department",
+                    "enabled": True,
+                }
+            ]
+        )
+    )
+    config_service.update_search(config_service.get_config().search.model_copy(update={"rerank_model_id": "5"}))
+    fake_bisheng = RerankConfigBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["total"] == 0
+    assert fake_bisheng.post_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/files/search",
+            {
+                "q": "振动纹",
+                "tag": None,
+                "space_ids": [12],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "relevance",
+                "page": 1,
+                "page_size": 20,
+                "rerank_model_id": "5",
             },
         )
     ]
@@ -1841,7 +2079,7 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
 
 def test_search_files_logs_shougang_portal_fallback(tmp_path: Path, caplog):
     class FailingPortalBishengClient(FakeBishengClient):
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
                 raise httpx.HTTPError("semantic endpoint unavailable")
@@ -1879,7 +2117,7 @@ def test_search_files_logs_shougang_portal_fallback(tmp_path: Path, caplog):
 
 def test_related_files_use_full_space_search_without_portal_top50(tmp_path: Path):
     class RelatedFilesBishengClient(FakeBishengClient):
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
                 raise AssertionError("related files should not use shougang portal Top 50 search endpoint")
@@ -1902,7 +2140,7 @@ def test_related_files_use_full_space_search_without_portal_top50(tmp_path: Path
 
 def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Path):
     class HomeBatchBishengClient(FakeBishengClient):
-        async def post_json(self, path: str, json=None):
+        async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/home":
                 assert json == {
@@ -1992,6 +2230,7 @@ def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path)
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 10,
+                "rerank_model_id": "",
             },
         )
     ]
@@ -2017,6 +2256,7 @@ def test_search_files_passes_space_level_to_shougang_portal_search(tmp_path: Pat
                 "sort": "updated_at",
                 "page": 1,
                 "page_size": 20,
+                "rerank_model_id": "",
             },
         )
     ]
@@ -2024,7 +2264,7 @@ def test_search_files_passes_space_level_to_shougang_portal_search(tmp_path: Pat
 
 def test_search_and_tags_skip_unauthorized_spaces_instead_of_500(tmp_path: Path):
     class PartialUnauthorizedBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None):
+        async def get_json(self, path: str, params=None, headers=None):
             if path in {"/api/v1/knowledge/space/18/tag", "/api/v1/knowledge/space/18/search"}:
                 request = httpx.Request("GET", f"https://example.com{path}")
                 response = httpx.Response(401, request=request)

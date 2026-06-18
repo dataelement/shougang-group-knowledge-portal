@@ -171,6 +171,7 @@ class BishengRuntimeService:
 
             next_token = current.api_token
             last_auth_at = current.last_auth_at
+            next_saved_password = current.saved_password
             if requires_reauth:
                 if not next_username:
                     raise ValueError("请输入 BiSheng 登录账号")
@@ -182,6 +183,7 @@ class BishengRuntimeService:
                     password=password,
                     timeout_seconds=next_timeout,
                 )
+                next_saved_password = password
                 last_auth_at = _utc_now()
 
             updated = BishengRuntimeConfig(
@@ -190,6 +192,7 @@ class BishengRuntimeService:
                 username=next_username,
                 timeout_seconds=next_timeout,
                 api_token=next_token,
+                saved_password=next_saved_password,
                 last_auth_at=last_auth_at,
             )
             self._write_config(updated)
@@ -217,16 +220,17 @@ class BishengRuntimeService:
             if not self._is_token_due_for_refresh(current.api_token):
                 return
             username = current.username.strip() or self._default_username
-            if not username or not self._default_password:
+            password = self._runtime_password(current)
+            if not username or not password:
                 logger.warning(
-                    "BiSheng token 即将过期但未配置 PORTAL_BISHENG_USERNAME / PORTAL_BISHENG_PASSWORD，无法自动续期"
+                    "BiSheng token 即将过期但未配置可用的服务账号或密码，无法自动续期"
                 )
                 return
             try:
                 next_token = await self._login_and_get_token(
                     base_url=str(current.base_url),
                     username=username,
-                    password=self._default_password,
+                    password=password,
                     timeout_seconds=current.timeout_seconds,
                 )
             except ValueError as err:
@@ -239,10 +243,11 @@ class BishengRuntimeService:
                 username=username,
                 timeout_seconds=current.timeout_seconds,
                 api_token=next_token,
+                saved_password=current.saved_password,
                 last_auth_at=_utc_now(),
             )
             self._write_config(updated)
-            await self._replace_client(updated)
+            self._set_current_client_token(next_token)
             logger.info("BiSheng token 已自动续期")
             refreshed = True
         if refreshed:
@@ -258,7 +263,40 @@ class BishengRuntimeService:
         return remaining <= self._refresh_threshold_seconds
 
     def _can_auto_refresh(self) -> bool:
-        return bool(self._default_password)
+        current = self._read_config()
+        return bool(self._default_password or current.saved_password)
+
+    async def refresh_token_after_auth_failure(self, failed_token: str = "") -> str:
+        async with self._lock:
+            current = self._read_config()
+            if failed_token and current.api_token and current.api_token != failed_token:
+                self._set_current_client_token(current.api_token)
+                return current.api_token
+
+            username = current.username.strip() or self._default_username
+            password = self._runtime_password(current)
+            if not username or not password:
+                raise ValueError("BiSheng 数据源登录态失效，且未配置可用的服务账号密码")
+
+            next_token = await self._login_and_get_token(
+                base_url=str(current.base_url),
+                username=username,
+                password=password,
+                timeout_seconds=current.timeout_seconds,
+            )
+            updated = BishengRuntimeConfig(
+                base_url=current.base_url,
+                asset_base_url=current.asset_base_url,
+                username=username,
+                timeout_seconds=current.timeout_seconds,
+                api_token=next_token,
+                saved_password=current.saved_password,
+                last_auth_at=_utc_now(),
+            )
+            self._write_config(updated)
+            self._set_current_client_token(next_token)
+            logger.info("BiSheng token 已在认证失败后自动重登")
+            return next_token
 
     async def _login_and_get_token(
         self,
@@ -315,26 +353,37 @@ class BishengRuntimeService:
                 self._auth_user = None
                 self._auth_message = "BiSheng client is not initialized"
                 return
-            try:
-                response = await self._client.get_json("/api/v1/user/info")
-                data = _unwrap_bisheng_payload(response)
-            except Exception as err:
+            client = self._client
+            token = current.api_token
+
+        try:
+            response = await client.get_json("/api/v1/user/info")
+            data = _unwrap_bisheng_payload(response)
+        except Exception as err:
+            async with self._lock:
+                if self._client is not client:
+                    return
+                current = self._read_config()
                 self._connected = False
                 self._auth_user = None
                 self._auth_message = (
                     f"BiSheng 数据源登录信息获取失败："
-                    f"{self._sanitize_error_message(err, current.api_token)}"
+                    f"{self._sanitize_error_message(err, current.api_token or token)}"
                 )
                 return
 
-            account = self._first_str(data, "user_name", "username", "account", "email") or current.username
-            name = self._first_str(data, "nick_name", "nickname", "name", "real_name", "user_name") or account
-            self._auth_user = BishengRuntimeAuthUser(
-                account=account,
-                name=name,
-                role=self._first_str(data, "role_name", "role", "position", "department_name", "department"),
-                external_id=self._first_str(data, "external_id", "employee_id", "staff_id"),
-            )
+        account = self._first_str(data, "user_name", "username", "account", "email") or current.username
+        name = self._first_str(data, "nick_name", "nickname", "name", "real_name", "user_name") or account
+        auth_user = BishengRuntimeAuthUser(
+            account=account,
+            name=name,
+            role=self._first_str(data, "role_name", "role", "position", "department_name", "department"),
+            external_id=self._first_str(data, "external_id", "employee_id", "staff_id"),
+        )
+        async with self._lock:
+            if self._client is not client:
+                return
+            self._auth_user = auth_user
             self._connected = True
             self._auth_message = "已连接"
 
@@ -353,6 +402,7 @@ class BishengRuntimeService:
             username=self._default_username,
             timeout_seconds=self._default_timeout_seconds,
             api_token=self._default_api_token,
+            saved_password="",
             last_auth_at="",
         )
         self._write_config(seeded)
@@ -371,12 +421,7 @@ class BishengRuntimeService:
         self._store.upsert_document(self._TABLE_NAME, config.model_dump(mode="json"))
 
     async def _replace_client(self, config: BishengRuntimeConfig) -> None:
-        next_client = self._client_factory(
-            str(config.base_url),
-            config.timeout_seconds,
-            config.api_token or None,
-            asset_base_url=config.asset_base_url or None,
-        )
+        next_client = self._create_runtime_client(config)
         previous = self._client
         self._client = next_client
         if previous is not None:
@@ -389,6 +434,7 @@ class BishengRuntimeService:
             username=config.username,
             timeout_seconds=config.timeout_seconds,
             has_token=bool(config.api_token),
+            has_saved_password=bool(config.saved_password),
             last_auth_at=config.last_auth_at,
             connected=self._connected,
             auth_message=self._auth_message,
@@ -409,6 +455,38 @@ class BishengRuntimeService:
         if token:
             message = message.replace(token, "***")
         return message
+
+    def _create_runtime_client(self, config: BishengRuntimeConfig) -> BishengClient:
+        kwargs = {
+            "asset_base_url": config.asset_base_url or None,
+            "auth_refresh_handler": self.refresh_token_after_auth_failure,
+        }
+        try:
+            return self._client_factory(
+                str(config.base_url),
+                config.timeout_seconds,
+                config.api_token or None,
+                **kwargs,
+            )
+        except TypeError as err:
+            if "auth_refresh_handler" not in str(err):
+                raise
+            kwargs.pop("auth_refresh_handler", None)
+            return self._client_factory(
+                str(config.base_url),
+                config.timeout_seconds,
+                config.api_token or None,
+                **kwargs,
+            )
+
+    def _set_current_client_token(self, token: str) -> None:
+        if self._client is not None and hasattr(self._client, "set_api_token"):
+            self._client.set_api_token(token)
+
+    def _runtime_password(self, config: BishengRuntimeConfig) -> str:
+        if config.saved_password:
+            return config.saved_password
+        return self._default_password
 
 
 def _unwrap_bisheng_payload(response: dict) -> dict:

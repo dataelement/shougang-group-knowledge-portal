@@ -42,6 +42,42 @@ export interface KnowledgeSpace {
   sources: string[];
 }
 
+export interface QaKnowledgeTreeNode {
+  id: number;
+  spaceId: number;
+  parentId: number | null;
+  type: 'folder' | 'file';
+  name: string;
+  path: string;
+  fileExt: string;
+  selectable: boolean;
+  disabledReason: string;
+  hasChildren: boolean;
+  resolvedFileCount: number;
+}
+
+export interface QaKnowledgeFileRef {
+  knowledgeSpaceId: number;
+  fileId: number;
+}
+
+export interface QaKnowledgeFolderRef {
+  knowledgeSpaceId: number;
+  folderId: number;
+  resolvedFileCount?: number;
+  fileRefs?: QaKnowledgeFileRef[];
+}
+
+export type QaKnowledgeScope =
+  | { mode: 'none' }
+  | { mode: 'knowledge_space'; knowledgeSpaceId: number }
+  | {
+      mode: 'files';
+      fileRefs: QaKnowledgeFileRef[];
+      folderRefs: QaKnowledgeFolderRef[];
+      resolvedFileCount: number;
+    };
+
 export interface PersonalKnowledgeSpace {
   id: number;
   name: string;
@@ -54,6 +90,13 @@ export interface FavoriteDocumentResult {
   fileId: number;
   spaceId: number;
   title: string;
+}
+
+export interface HomeStats {
+  totalDocuments: number;
+  readCount: number;
+  favoriteCount: number;
+  qaCount: number;
 }
 
 export type ShareDocumentType = 'link' | 'invite_code';
@@ -201,6 +244,27 @@ interface KnowledgeSpaceListDataDto {
   total: number;
 }
 
+interface QaKnowledgeTreeNodeDto {
+  id: number;
+  space_id: number;
+  parent_id?: number | null;
+  type: 'folder' | 'file';
+  name: string;
+  path?: string;
+  file_ext?: string;
+  selectable?: boolean;
+  disabled_reason?: string;
+  has_children?: boolean;
+  resolved_file_count?: number;
+}
+
+interface QaKnowledgeTreeNodeDataDto {
+  data: QaKnowledgeTreeNodeDto[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 interface PersonalKnowledgeSpaceDto {
   id: number;
   name: string;
@@ -255,6 +319,13 @@ interface RelatedKnowledgeFileDataDto {
 interface HomeKnowledgeDataDto {
   sections: Record<string, KnowledgeFileItemDto[]>;
   tags: string[];
+}
+
+interface HomeStatsDataDto {
+  total_documents: number;
+  read_count: number;
+  favorite_count: number;
+  qa_count: number;
 }
 
 interface FilePreviewManifestDto {
@@ -363,6 +434,22 @@ function mapKnowledgeSpace(dto: KnowledgeSpaceDto): KnowledgeSpace {
   };
 }
 
+function mapQaKnowledgeTreeNode(dto: QaKnowledgeTreeNodeDto): QaKnowledgeTreeNode {
+  return {
+    id: dto.id,
+    spaceId: dto.space_id,
+    parentId: dto.parent_id ?? null,
+    type: dto.type,
+    name: dto.name,
+    path: dto.path ?? '',
+    fileExt: dto.file_ext ?? '',
+    selectable: dto.selectable ?? true,
+    disabledReason: dto.disabled_reason ?? '',
+    hasChildren: Boolean(dto.has_children),
+    resolvedFileCount: dto.resolved_file_count ?? (dto.type === 'file' ? 1 : 0),
+  };
+}
+
 function mapPersonalKnowledgeSpace(dto: PersonalKnowledgeSpaceDto): PersonalKnowledgeSpace {
   return {
     id: dto.id,
@@ -374,9 +461,23 @@ function mapPersonalKnowledgeSpace(dto: PersonalKnowledgeSpaceDto): PersonalKnow
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as ApiEnvelope<T>;
+  const text = await response.text();
+  let payload: ApiEnvelope<T> | null = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text) as ApiEnvelope<T>;
+    } catch {
+      if (!response.ok) {
+        throw new ApiRequestError(`请求失败：${response.status}`, response.status);
+      }
+      throw new Error('响应不是有效 JSON');
+    }
+  }
   if (!response.ok) {
-    throw new ApiRequestError(payload?.status_message || payload?.detail || '请求失败', response.status);
+    throw new ApiRequestError(payload?.status_message || payload?.detail || `请求失败：${response.status}`, response.status);
+  }
+  if (!payload) {
+    throw new Error('响应内容为空');
   }
   return payload.data;
 }
@@ -429,6 +530,16 @@ export async function fetchHomeContent(): Promise<{ sections: Record<string, Fil
 export async function fetchDomainFileCounts(): Promise<Record<string, number>> {
   const data = await request<{ counts: Record<string, number> }>('/api/v1/knowledge/domain-file-counts');
   return data.counts ?? {};
+}
+
+export async function fetchHomeStats(): Promise<HomeStats> {
+  const data = await request<HomeStatsDataDto>('/api/v1/knowledge/home/stats');
+  return {
+    totalDocuments: data.total_documents ?? 0,
+    readCount: data.read_count ?? 0,
+    favoriteCount: data.favorite_count ?? 0,
+    qaCount: data.qa_count ?? 0,
+  };
 }
 
 export async function fetchSpaceTags(spaceId: number): Promise<string[]> {
@@ -493,6 +604,50 @@ export async function fetchKnowledgeSpaces(): Promise<{ data: KnowledgeSpace[]; 
   return {
     data: data.data.map(mapKnowledgeSpace),
     total: data.total,
+  };
+}
+
+export async function fetchQaKnowledgeTreeSpaces(): Promise<{ data: KnowledgeSpace[]; total: number }> {
+  const data = await request<KnowledgeSpaceListDataDto>('/api/v1/knowledge/qa/tree/spaces');
+  return {
+    data: data.data.map(mapKnowledgeSpace),
+    total: data.total,
+  };
+}
+
+export async function fetchQaKnowledgeTreeChildren(
+  spaceId: number,
+  parentId?: number,
+): Promise<{ data: QaKnowledgeTreeNode[]; total: number; page: number; pageSize: number }> {
+  const query = new URLSearchParams();
+  if (parentId) query.set('parent_id', String(parentId));
+  const suffix = query.toString();
+  const data = await request<QaKnowledgeTreeNodeDataDto>(
+    `/api/v1/knowledge/qa/tree/spaces/${spaceId}/children${suffix ? `?${suffix}` : ''}`,
+  );
+  return {
+    data: data.data.map(mapQaKnowledgeTreeNode),
+    total: data.total,
+    page: data.page,
+    pageSize: data.page_size,
+  };
+}
+
+export async function searchQaKnowledgeFiles(
+  q: string,
+  page = 1,
+  pageSize = 20,
+): Promise<{ data: FileItem[]; total: number; page: number; pageSize: number }> {
+  const query = new URLSearchParams();
+  query.set('q', q);
+  query.set('page', String(page));
+  query.set('page_size', String(pageSize));
+  const data = await request<PagedKnowledgeFileDataDto>(`/api/v1/knowledge/qa/files/search?${query.toString()}`);
+  return {
+    data: data.data.map(mapKnowledgeFileItem),
+    total: data.total,
+    page: data.page,
+    pageSize: data.page_size,
   };
 }
 
@@ -603,9 +758,18 @@ export async function fetchFileDetail(spaceId: number, fileId: number, shareToke
   return data ? mapKnowledgeFileDetail(data) : null;
 }
 
-export async function fetchFilePreview(spaceId: number, fileId: number, shareToken?: string): Promise<FilePreviewManifest | null> {
+export async function fetchFilePreview(
+  spaceId: number,
+  fileId: number,
+  shareToken?: string,
+  entryPoint?: 'home_result_preview' | 'search_result_preview',
+): Promise<FilePreviewManifest | null> {
+  const path = appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/preview`, shareToken);
+  const previewPath = entryPoint
+    ? `${path}${path.includes('?') ? '&' : '?'}entry_point=${encodeURIComponent(entryPoint)}`
+    : path;
   const data = await request<FilePreviewManifestDto | null>(
-    appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/preview`, shareToken),
+    previewPath,
   );
   if (!data) return null;
   return {
@@ -769,6 +933,53 @@ function getStreamMessageText(payload: BishengStreamPayload): string {
   return payload.message?.content ?? payload.message?.msg ?? payload.message?.text ?? '';
 }
 
+function buildQaKnowledgeScopePayload(scope?: QaKnowledgeScope, fallbackSpaceIds: number[] = []) {
+  if (!scope) {
+    return {
+      knowledge_space_ids: fallbackSpaceIds,
+    };
+  }
+  if (scope.mode === 'knowledge_space') {
+    return {
+      knowledge_space_ids: [scope.knowledgeSpaceId],
+      knowledge_scope: {
+        mode: 'knowledge_space',
+        knowledge_space_id: scope.knowledgeSpaceId,
+        folder_refs: [],
+        file_refs: [],
+      },
+    };
+  }
+  if (scope.mode === 'files') {
+    const spaceIds = Array.from(new Set([
+      ...scope.folderRefs.map((ref) => ref.knowledgeSpaceId),
+      ...scope.fileRefs.map((ref) => ref.knowledgeSpaceId),
+    ])).sort((a, b) => a - b);
+    return {
+      knowledge_space_ids: spaceIds,
+      knowledge_scope: {
+        mode: 'files',
+        folder_refs: scope.folderRefs.map((ref) => ({
+          knowledge_space_id: ref.knowledgeSpaceId,
+          folder_id: ref.folderId,
+        })),
+        file_refs: scope.fileRefs.map((ref) => ({
+          knowledge_space_id: ref.knowledgeSpaceId,
+          file_id: ref.fileId,
+        })),
+      },
+    };
+  }
+  return {
+    knowledge_space_ids: [],
+    knowledge_scope: {
+      mode: 'none',
+      folder_refs: [],
+      file_refs: [],
+    },
+  };
+}
+
 async function consumeChatStream(
   response: Response,
   onUpdate: (text: string) => void,
@@ -864,8 +1075,10 @@ async function consumeChatStream(
 
 export async function streamChatCompletion(params: {
   scene: 'search' | 'qa';
+  entryPoint?: 'home_qa' | 'qa_page';
   text: string;
   knowledgeSpaceIds: number[];
+  knowledgeScope?: QaKnowledgeScope;
   spaceLevel?: string;
   searchResults?: FileItem[];
   files?: ChatAttachment[];
@@ -885,13 +1098,14 @@ export async function streamChatCompletion(params: {
       model: params.model ?? '',
       answer_mode: params.answerMode ?? 'normal',
       scene: params.scene,
+      entry_point: params.entryPoint ?? '',
       space_level: params.spaceLevel,
       text: params.text,
       search_results: params.searchResults?.map(mapSearchResultForSummary) ?? [],
       use_knowledge_base: {
         personal_knowledge_enabled: false,
         organization_knowledge_ids: [],
-        knowledge_space_ids: params.knowledgeSpaceIds,
+        ...buildQaKnowledgeScopePayload(params.knowledgeScope, params.knowledgeSpaceIds),
       },
       files: params.files ?? [],
     }),

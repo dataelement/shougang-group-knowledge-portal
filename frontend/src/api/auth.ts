@@ -9,6 +9,13 @@ export interface PortalUser {
   loginAt?: number;
 }
 
+export interface PortalUnifiedAuthConfig {
+  enabled: boolean;
+  provider: string;
+  label: string;
+  unavailableReason?: string;
+}
+
 interface ApiEnvelope<T> {
   status_code: number;
   status_message: string;
@@ -29,6 +36,13 @@ interface PortalAuthDataDto {
   user: PortalUserDto;
 }
 
+interface PortalUnifiedAuthConfigDto {
+  enabled: boolean;
+  provider: string;
+  label: string;
+  unavailable_reason?: string;
+}
+
 function mapPortalUser(dto: PortalUserDto): PortalUser {
   return {
     account: dto.account,
@@ -40,10 +54,33 @@ function mapPortalUser(dto: PortalUserDto): PortalUser {
   };
 }
 
+function mapUnifiedAuthConfig(dto: PortalUnifiedAuthConfigDto): PortalUnifiedAuthConfig {
+  return {
+    enabled: dto.enabled,
+    provider: dto.provider,
+    label: dto.label,
+    unavailableReason: dto.unavailable_reason,
+  };
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as ApiEnvelope<T>;
+  const text = await response.text();
+  let payload: ApiEnvelope<T> | null = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text) as ApiEnvelope<T>;
+    } catch {
+      if (!response.ok) {
+        throw new ApiRequestError(`请求失败：${response.status}`, response.status);
+      }
+      throw new Error('响应不是有效 JSON');
+    }
+  }
   if (!response.ok) {
-    throw new ApiRequestError(payload?.status_message || payload?.detail || '请求失败', response.status);
+    throw new ApiRequestError(payload?.status_message || payload?.detail || `请求失败：${response.status}`, response.status);
+  }
+  if (!payload) {
+    throw new Error('响应内容为空');
   }
   return payload.data;
 }
@@ -64,6 +101,45 @@ export async function loginPortal(params: {
     }),
   );
   return mapPortalUser(data.user);
+}
+
+export async function fetchUnifiedAuthConfig(): Promise<PortalUnifiedAuthConfig> {
+  const data = await parseResponse<PortalUnifiedAuthConfigDto>(
+    await fetch('/api/v1/auth/unified/config', {
+      credentials: 'include',
+    }),
+  );
+  return mapUnifiedAuthConfig(data);
+}
+
+export function normalizePortalRedirect(target: string | null | undefined): string {
+  const value = (target || '').trim();
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
+  if (/[\u0000-\u001f]/.test(value)) return '/';
+  return value;
+}
+
+export function buildUnifiedAuthStartUrl(redirect: string | null | undefined): string {
+  return `/api/v1/auth/unified/start?redirect=${encodeURIComponent(normalizePortalRedirect(redirect))}`;
+}
+
+export function buildPortalLogoutStartUrl(): string {
+  return '/api/v1/auth/unified/logout/start';
+}
+
+const UNIFIED_AUTH_ERROR_MESSAGES: Record<string, string> = {
+  invalid_callback: '统一认证回调参数缺失，请重新发起登录。',
+  invalid_state: '登录请求已失效，请重新认证。',
+  oauth_token_failed: '统一认证登录失败，请重试或使用账号密码登录。',
+  oauth_userinfo_failed: '未能获取统一认证用户信息，请重试或使用账号密码登录。',
+  identity_missing: '统一认证返回的用户标识不足，请联系管理员。',
+  permission_denied: '账号已认证但暂未开通知库权限，请联系管理员。',
+  oauth_unavailable: '统一认证暂不可用，请使用账号密码登录。',
+};
+
+export function getUnifiedAuthErrorMessage(code: string | null | undefined): string {
+  if (!code) return '';
+  return UNIFIED_AUTH_ERROR_MESSAGES[code] || '统一认证登录失败，请使用账号密码登录。';
 }
 
 export async function fetchPortalMe(): Promise<PortalUser> {

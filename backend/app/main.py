@@ -1,12 +1,16 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
+from app.clients.bisheng import BishengAuthRefreshError
+from app.schemas.common import response_error
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthService
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_unified_auth_service import PortalUnifiedAuthService
+from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 from app.settings import get_settings
 
 
@@ -33,6 +37,17 @@ async def lifespan(app: FastAPI):
         ttl_seconds=settings.portal_session_ttl_seconds,
         cookie_secure=settings.portal_session_cookie_secure,
     )
+    app.state.unified_auth_runtime_service = UnifiedAuthRuntimeService(
+        database_path=settings.portal_database_path,
+        settings=settings,
+    )
+    app.state.portal_unified_auth_service = PortalUnifiedAuthService(
+        settings=settings,
+        runtime_service=app.state.bisheng_runtime_service,
+        auth_service=app.state.portal_auth_service,
+        cookie_secure=settings.portal_session_cookie_secure,
+        config_service=app.state.unified_auth_runtime_service,
+    )
     app.state.portal_config_service = PortalConfigService(
         config_path=settings.portal_config_path,
         database_path=settings.portal_database_path,
@@ -52,6 +67,13 @@ def create_app() -> FastAPI:
     uploads_root.mkdir(parents=True, exist_ok=True)
     app.state.uploads_root = uploads_root
     app.mount("/uploads", StaticFiles(directory=uploads_root), name="uploads")
+
+    @app.exception_handler(BishengAuthRefreshError)
+    async def bisheng_auth_refresh_exception_handler(
+        _request: Request,
+        exc: BishengAuthRefreshError,
+    ):
+        return response_error(str(exc), status_code=502)
 
     app.include_router(api_router)
     return app

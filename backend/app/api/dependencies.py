@@ -4,6 +4,8 @@ from app.clients.bisheng import BishengClient
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService, PortalSession
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_unified_auth_service import PortalUnifiedAuthService
+from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
 
 ADMIN_ROLES = {"管理员", "系统管理员", "admin"}
@@ -20,6 +22,14 @@ def get_bisheng_runtime_service(request: Request) -> BishengRuntimeService:
 
 def get_portal_auth_service(request: Request) -> PortalAuthService:
     return request.app.state.portal_auth_service
+
+
+def get_portal_unified_auth_service(request: Request) -> PortalUnifiedAuthService:
+    return request.app.state.portal_unified_auth_service
+
+
+def get_unified_auth_runtime_service(request: Request) -> UnifiedAuthRuntimeService:
+    return request.app.state.unified_auth_runtime_service
 
 
 def get_bisheng_client(request: Request) -> BishengClient:

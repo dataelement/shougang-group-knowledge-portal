@@ -2,7 +2,7 @@ import json
 from collections.abc import AsyncIterator
 
 from app.clients.bisheng import BishengClient
-from app.schemas.chat import PortalChatCompletionRequest, UseKnowledgeBaseParam
+from app.schemas.chat import KnowledgeScopeParam, PortalChatCompletionRequest, UseKnowledgeBaseParam
 from app.schemas.knowledge import KnowledgeFileItem
 from app.services.portal_config_service import PortalConfigService
 
@@ -45,7 +45,10 @@ class ChatProxyService:
         config = self._config_service.get_config()
         scene = payload.scene if payload.scene in {"search", "qa"} else "qa"
         use_knowledge_base = payload.use_knowledge_base or UseKnowledgeBaseParam()
-        request_body = payload.model_dump(exclude={"scene", "answer_mode", "space_level", "search_results"}, mode="json")
+        request_body = payload.model_dump(
+            exclude={"scene", "entry_point", "answer_mode", "space_level", "search_results"},
+            mode="json",
+        )
 
         if scene == "search":
             docs = payload.search_results[: self._SEARCH_SUMMARY_FILE_LIMIT]
@@ -66,7 +69,7 @@ class ChatProxyService:
             trailing_events = self._build_citation_events(docs, space_name_map)
             return "/api/v1/workstation/chat/completions", request_body, trailing_events
 
-        requested_space_ids = self._normalize_space_ids(use_knowledge_base.knowledge_space_ids)
+        requested_space_ids, normalized_scope = self._normalize_qa_knowledge_scope(use_knowledge_base)
         if requested_space_ids:
             visible_space_ids = (
                 self._get_anonymous_public_space_ids()
@@ -83,6 +86,8 @@ class ChatProxyService:
             "organization_knowledge_ids": [] if self._is_anonymous else use_knowledge_base.organization_knowledge_ids,
             "knowledge_space_ids": requested_space_ids,
         }
+        if normalized_scope is not None:
+            request_body["use_knowledge_base"]["knowledge_scope"] = normalized_scope.model_dump(mode="json")
 
         answer_mode = payload.answer_mode if payload.answer_mode in self._QA_MODE_PROMPT_FIELDS else "normal"
         if answer_mode == "expert":
@@ -198,6 +203,53 @@ class ChatProxyService:
                 continue
             normalized.append(space_id)
             seen.add(space_id)
+        return normalized
+
+    def _normalize_qa_knowledge_scope(
+        self,
+        use_knowledge_base: UseKnowledgeBaseParam,
+    ) -> tuple[list[int], KnowledgeScopeParam | None]:
+        scope = use_knowledge_base.knowledge_scope
+        requested_space_ids = self._normalize_space_ids(use_knowledge_base.knowledge_space_ids)
+        if scope is None:
+            return requested_space_ids, None
+        if scope.mode == "none":
+            return [], scope
+        if scope.mode == "knowledge_space":
+            scope_space_id = int(scope.knowledge_space_id or 0)
+            if scope_space_id <= 0:
+                raise ValueError("一次最多可选择1个库进行问答。")
+            if requested_space_ids and requested_space_ids != [scope_space_id]:
+                raise ValueError("一次最多可选择1个库进行问答。")
+            return [scope_space_id], scope
+        if scope.mode != "files":
+            return requested_space_ids, scope
+
+        folder_refs = self._dedupe_scope_refs(scope.folder_refs, id_field="folder_id")
+        file_refs = self._dedupe_scope_refs(scope.file_refs, id_field="file_id")
+        if len(file_refs) > 20:
+            raise ValueError("一次最多可选择20个文件进行问答。")
+        scoped_space_ids = sorted(
+            {
+                *[ref.knowledge_space_id for ref in folder_refs],
+                *[ref.knowledge_space_id for ref in file_refs],
+            }
+        )
+        normalized_scope = scope.model_copy(update={"folder_refs": folder_refs, "file_refs": file_refs})
+        return scoped_space_ids, normalized_scope
+
+    @staticmethod
+    def _dedupe_scope_refs(refs: list, id_field: str) -> list:
+        normalized = []
+        seen: set[tuple[int, int]] = set()
+        for ref in refs:
+            space_id = int(getattr(ref, "knowledge_space_id", 0) or 0)
+            target_id = int(getattr(ref, id_field, 0) or 0)
+            key = (space_id, target_id)
+            if space_id <= 0 or target_id <= 0 or key in seen:
+                continue
+            normalized.append(ref)
+            seen.add(key)
         return normalized
 
     async def list_conversations(self, page: int = 1, limit: int = 20):

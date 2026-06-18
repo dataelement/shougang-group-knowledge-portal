@@ -48,6 +48,27 @@ test('portal content config shares concurrent requests', async () => {
   }
 });
 
+test('portal content config handles empty error responses without native json parse failure', async () => {
+  invalidatePortalContentConfigCache();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('', { status: 502 })) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      fetchPortalContentConfig(),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, '请求失败：502');
+        assert.equal((err as { status?: number }).status, 502);
+        return true;
+      },
+    );
+  } finally {
+    invalidatePortalContentConfigCache();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('home content maps section file DTOs', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {

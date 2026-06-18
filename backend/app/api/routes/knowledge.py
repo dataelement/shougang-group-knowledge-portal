@@ -11,6 +11,7 @@ from app.schemas.knowledge import (
     DocumentFileChatRequest,
     FavoriteDocumentRequest,
     FilePreviewSourceKind,
+    HomeStatsData,
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
@@ -24,6 +25,7 @@ from app.services.knowledge_service import (
 )
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_telemetry_service import PortalTelemetryService, PortalTelemetryStatsError
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
@@ -182,6 +184,23 @@ async def get_home_content(
     return response_ok(await service.get_home_content())
 
 
+@router.get("/home/stats")
+async def get_home_stats(
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        counts = await PortalTelemetryService(bisheng_client).fetch_home_stats_counts()
+    except PortalTelemetryStatsError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    total_documents = sum(
+        space.file_count
+        for space in portal_config_service.get_config().spaces
+        if space.enabled
+    )
+    return response_ok(HomeStatsData(total_documents=total_documents, **counts))
+
+
 @router.get("/config")
 async def get_portal_config(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
@@ -231,6 +250,125 @@ async def list_visible_spaces(
         await bisheng_client.aclose()
 
 
+@router.get("/qa/tree/spaces")
+async def list_qa_tree_spaces(
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = auth_service.get_session(request)
+    if session is None:
+        service = KnowledgeService(
+            bisheng_client=get_bisheng_client(request),
+            portal_config_service=portal_config_service,
+        )
+        return response_ok(service.list_public_config_spaces())
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        return response_ok(await service.list_visible_spaces())
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.get("/qa/tree/spaces/{space_id}/children")
+async def list_qa_tree_children(
+    space_id: int,
+    request: Request,
+    parent_id: Optional[int] = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=100),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = auth_service.get_session(request)
+    if session is None:
+        service = KnowledgeService(
+            bisheng_client=get_bisheng_client(request),
+            portal_config_service=portal_config_service,
+        )
+        public_space_ids = {space.id for space in service.list_public_config_spaces().data}
+        if space_id not in public_space_ids:
+            raise HTTPException(status_code=403, detail="未登录仅可浏览公共知识库目录")
+        return response_ok(
+            await service.get_qa_tree_children(
+                space_id=space_id,
+                parent_id=parent_id,
+                page=page,
+                page_size=page_size,
+            )
+        )
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        visible_space_ids = {space.id for space in (await service.list_visible_spaces()).data}
+        if space_id not in visible_space_ids:
+            raise HTTPException(status_code=403, detail="包含无权限或不存在的知识库")
+        return response_ok(
+            await service.get_qa_tree_children(
+                space_id=space_id,
+                parent_id=parent_id,
+                page=page,
+                page_size=page_size,
+            )
+        )
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.get("/qa/files/search")
+async def search_qa_files_by_name(
+    request: Request,
+    q: str = Query(..., min_length=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = auth_service.get_session(request)
+    if session is None:
+        service = KnowledgeService(
+            bisheng_client=get_bisheng_client(request),
+            portal_config_service=portal_config_service,
+        )
+        space_ids = [space.id for space in service.list_public_config_spaces().data]
+        return response_ok(
+            await service.search_qa_files_by_name(
+                q=q,
+                space_ids=space_ids,
+                page=page,
+                page_size=page_size,
+            )
+        )
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        visible_spaces = await service.list_visible_spaces()
+        space_ids = [space.id for space in visible_spaces.data]
+        return response_ok(
+            await service.search_qa_files_by_name(
+                q=q,
+                space_ids=space_ids,
+                page=page,
+                page_size=page_size,
+            )
+        )
+    finally:
+        await bisheng_client.aclose()
+
+
 @router.get("/personal-spaces")
 async def list_personal_spaces(
     request: Request,
@@ -271,7 +409,20 @@ async def create_favorite(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        return response_ok(await service.create_favorite(req))
+        result = await service.create_favorite(req)
+        await PortalTelemetryService(bisheng_client).record_event(
+            event_type="portal_favorite",
+            source_app="shougang_portal",
+            scene="search_result_favorite",
+            entry_point="search_result_favorite",
+            resource_type="document",
+            source_space_id=req.source_space_id,
+            source_file_id=req.source_file_id,
+            target_space_id=req.target_space_id,
+            space_id=req.source_space_id,
+            file_id=req.source_file_id,
+        )
+        return response_ok(result)
     except BishengBusinessError as err:
         if err.status_code == _BISHENG_DUPLICATE_FAVORITE_CODE:
             raise HTTPException(status_code=409, detail="该文档已收藏到所选个人知识库") from err
@@ -412,10 +563,21 @@ async def get_file_preview(
     file_id: int,
     request: Request,
     share_token: Optional[str] = None,
+    entry_point: Optional[str] = Query(default=None),
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
     share_session = _require_share_access(request, share_token, space_id, file_id) if share_token else None
     preview = await service.get_file_preview(space_id=space_id, file_id=file_id)
+    if preview is not None:
+        await PortalTelemetryService(service._bisheng).record_event(
+            event_type="portal_document_read",
+            source_app="shougang_portal",
+            scene="document_preview",
+            entry_point=entry_point or "search_result_preview",
+            resource_type="document",
+            space_id=space_id,
+            file_id=file_id,
+        )
     if preview and share_session and not share_session.allow_download:
         preview.download_url = ""
     if (
@@ -489,10 +651,27 @@ async def chat_document_file(
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
     try:
-        stream = service.stream_document_file_chat(space_id=space_id, file_id=file_id, req=req)
+        upstream = service.stream_document_file_chat(space_id=space_id, file_id=file_id, req=req)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
-    return StreamingResponse(stream, media_type="text/event-stream")
+
+    async def stream():
+        telemetry_recorded = False
+        async for chunk in upstream:
+            if not telemetry_recorded:
+                await PortalTelemetryService(service._bisheng).record_event(
+                    event_type="portal_qa",
+                    source_app="shougang_portal",
+                    scene="search_result_document_qa",
+                    entry_point="search_result_document_qa",
+                    resource_type="document",
+                    space_id=space_id,
+                    file_id=file_id,
+                )
+                telemetry_recorded = True
+            yield chunk
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @router.get("/space/{space_id}/files/{file_id}/related")

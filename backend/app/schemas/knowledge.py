@@ -49,6 +49,13 @@ class HomeKnowledgeData(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class HomeStatsData(BaseModel):
+    total_documents: int = 0
+    read_count: int = 0
+    favorite_count: int = 0
+    qa_count: int = 0
+
+
 class KnowledgeSpaceItem(BaseModel):
     id: int
     name: str
@@ -68,6 +75,27 @@ class KnowledgeSpaceItem(BaseModel):
 class KnowledgeSpaceListData(BaseModel):
     data: list[KnowledgeSpaceItem] = Field(default_factory=list)
     total: int = 0
+
+
+class QaKnowledgeTreeNode(BaseModel):
+    id: int
+    space_id: int
+    parent_id: int | None = None
+    type: Literal["folder", "file"]
+    name: str
+    path: str = ""
+    file_ext: str = ""
+    selectable: bool = True
+    disabled_reason: str = ""
+    has_children: bool = False
+    resolved_file_count: int = 0
+
+
+class QaKnowledgeTreeNodeData(BaseModel):
+    data: list[QaKnowledgeTreeNode] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 100
 
 
 class PersonalKnowledgeSpaceItem(BaseModel):

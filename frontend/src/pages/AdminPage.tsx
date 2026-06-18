@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText,
+  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import Header from '../components/Header';
@@ -11,8 +11,11 @@ import {
   type BishengRuntimeConfig,
   type DisplayConfig,
   type DomainConfig,
+  type UnifiedAuthRuntimeConfig,
   fetchAdminConfig,
   fetchBishengRuntimeConfig,
+  fetchSearchRerankModelOptions,
+  fetchUnifiedAuthRuntimeConfig,
   fetchQaModelOptions,
   fetchSpaceOptions,
   exportAdminConfig,
@@ -23,6 +26,7 @@ import {
   type QATemplateConfig,
   type QAModelOption,
   type RecommendationConfig,
+  type SearchConfig,
   type SectionConfig,
   type SiteConfig,
   type SpaceOption,
@@ -34,6 +38,8 @@ import {
   updateDisplayConfig,
   updateDomainsConfig,
   updateIntegrationsConfig,
+  updateSearchConfig,
+  updateUnifiedAuthRuntimeConfig,
   updateQaConfig,
   updateRecommendationConfig,
   updateSectionsConfig,
@@ -95,10 +101,12 @@ const NAV_ITEMS = [
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
   { key: 'qa', label: '问答配置', icon: Bot },
   { key: 'qaTemplates', label: '问答模板', icon: FileText },
+  { key: 'search', label: '搜索配置', icon: SearchIcon },
   { key: 'recommend', label: '推荐策略', icon: Star },
   { key: 'display', label: '展示配置', icon: SlidersHorizontal },
   { key: 'apps', label: '应用市场', icon: LayoutGrid },
   { key: 'bisheng', label: '数据源配置', icon: Server },
+  { key: 'unifiedAuth', label: '统一认证', icon: KeyRound },
   { key: 'integrations', label: '集成配置', icon: Plug },
   { key: 'site', label: '站点配置', icon: Settings },
 ];
@@ -159,6 +167,27 @@ interface BishengDraft {
   timeout_seconds: string;
 }
 
+interface UnifiedAuthDraft {
+  enabled: boolean;
+  provider: 'group' | 'stock' | 'custom';
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+  authorize_url: string;
+  token_url: string;
+  userinfo_url: string;
+  token_param_style: 'query' | 'form';
+  state_secret: string;
+  state_ttl_seconds: string;
+  http_timeout_seconds: string;
+  login_sync_hmac_secret: string;
+  login_sync_signature_header: string;
+  glo_url: string;
+  glo_entity_id: string;
+  glo_redirect_to_url: string;
+  glo_redirect_to_login: boolean;
+}
+
 interface IntegrationsDraft {
   bisheng_admin_entry_url: string;
   bisheng_knowledge_entry_url: string;
@@ -200,6 +229,10 @@ export default function AdminPage() {
   const [bishengEditorOpen, setBishengEditorOpen] = useState(false);
   const [bishengDraft, setBishengDraft] = useState<BishengDraft>(createBishengDraft());
   const [bishengFormError, setBishengFormError] = useState('');
+  const [unifiedAuthConfig, setUnifiedAuthConfig] = useState<UnifiedAuthRuntimeConfig | null>(null);
+  const [unifiedAuthEditorOpen, setUnifiedAuthEditorOpen] = useState(false);
+  const [unifiedAuthDraft, setUnifiedAuthDraft] = useState<UnifiedAuthDraft>(createUnifiedAuthDraft());
+  const [unifiedAuthFormError, setUnifiedAuthFormError] = useState('');
   const [qaDialogMode, setQaDialogMode] = useState<QaDialogMode>(null);
   const [qaTextDraft, setQaTextDraft] = useState('');
   const [qaSpacesDraft, setQaSpacesDraft] = useState<number[]>([]);
@@ -209,6 +242,11 @@ export default function AdminPage() {
   const [qaModelDraft, setQaModelDraft] = useState<QaModelDraft>({ general_model: '', reasoning_model: '' });
   const [qaModelLoading, setQaModelLoading] = useState(false);
   const [qaModelError, setQaModelError] = useState('');
+  const [searchRerankModelDialogOpen, setSearchRerankModelDialogOpen] = useState(false);
+  const [searchRerankModelOptions, setSearchRerankModelOptions] = useState<QAModelOption[]>([]);
+  const [searchRerankModelDraft, setSearchRerankModelDraft] = useState('');
+  const [searchRerankModelLoading, setSearchRerankModelLoading] = useState(false);
+  const [searchRerankModelError, setSearchRerankModelError] = useState('');
   const [qaCategoryEditorOpen, setQaCategoryEditorOpen] = useState(false);
   const [qaCategoryEditorIndex, setQaCategoryEditorIndex] = useState<number | null>(null);
   const [qaCategoryDraft, setQaCategoryDraft] = useState<QaTemplateCategoryDraft>(createQaTemplateCategoryDraft());
@@ -247,9 +285,10 @@ export default function AdminPage() {
     setLoading(true);
     setError('');
     try {
-      const [portalResult, bishengResult] = await Promise.allSettled([
+      const [portalResult, bishengResult, unifiedAuthResult] = await Promise.allSettled([
         fetchAdminConfig(),
         fetchBishengRuntimeConfig(),
+        fetchUnifiedAuthRuntimeConfig(),
       ]);
 
       const errors: string[] = [];
@@ -263,6 +302,12 @@ export default function AdminPage() {
         setBishengConfig(bishengResult.value);
       } else {
         errors.push(bishengResult.reason instanceof Error ? bishengResult.reason.message : '大模型应用平台配置加载失败');
+      }
+
+      if (unifiedAuthResult.status === 'fulfilled') {
+        setUnifiedAuthConfig(unifiedAuthResult.value);
+      } else {
+        errors.push(unifiedAuthResult.reason instanceof Error ? unifiedAuthResult.reason.message : '统一认证配置加载失败');
       }
 
       if (errors.length) {
@@ -340,6 +385,12 @@ export default function AdminPage() {
     setBishengFormError('');
   }
 
+  function openUnifiedAuthDialog(current?: UnifiedAuthRuntimeConfig | null) {
+    setUnifiedAuthEditorOpen(true);
+    setUnifiedAuthDraft(createUnifiedAuthDraft(current ?? undefined));
+    setUnifiedAuthFormError('');
+  }
+
   function openQaSpacesDialog(qa: QAConfig) {
     setQaDialogMode('spaces');
     setQaSpacesDraft(qa.knowledge_space_ids);
@@ -368,6 +419,22 @@ export default function AdminPage() {
     }
   }
 
+  async function openSearchRerankModelDialog(search: SearchConfig) {
+    setSearchRerankModelDialogOpen(true);
+    setSearchRerankModelDraft(search.rerank_model_id || '');
+    setSearchRerankModelLoading(true);
+    setSearchRerankModelError('');
+    try {
+      const data = await fetchSearchRerankModelOptions();
+      setSearchRerankModelOptions(data.models);
+      setSearchRerankModelDraft(search.rerank_model_id || data.rerank_model_id || '');
+    } catch (err) {
+      setSearchRerankModelError(err instanceof Error ? err.message : '重排模型列表加载失败');
+    } finally {
+      setSearchRerankModelLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (active !== 'qa' || !config || qaModelOptions.length) return;
     let cancelled = false;
@@ -390,6 +457,29 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [active, config, qaModelOptions.length]);
+
+  useEffect(() => {
+    if (active !== 'search' || !config || searchRerankModelOptions.length) return;
+    let cancelled = false;
+    setSearchRerankModelLoading(true);
+    setSearchRerankModelError('');
+    void (async () => {
+      try {
+        const data = await fetchSearchRerankModelOptions();
+        if (cancelled) return;
+        setSearchRerankModelOptions(data.models);
+      } catch (err) {
+        if (cancelled) return;
+        setSearchRerankModelError(err instanceof Error ? err.message : '重排模型列表加载失败');
+      } finally {
+        if (!cancelled) setSearchRerankModelLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active, config, searchRerankModelOptions.length]);
 
   function openQaTextDialog(mode: Exclude<QaDialogMode, 'spaces' | null>, value: string) {
     setQaDialogMode(mode);
@@ -654,11 +744,28 @@ export default function AdminPage() {
               }}
             />
           )}
+          {config && active === 'search' && (
+            <SearchConfigTable
+              search={config.search}
+              modelOptions={searchRerankModelOptions}
+              modelLoading={searchRerankModelLoading}
+              modelError={searchRerankModelError}
+              saving={saving}
+              onEditRerankModel={() => void openSearchRerankModelDialog(config.search)}
+            />
+          )}
           {active === 'bisheng' && (
             <BishengConfigTable
               config={bishengConfig}
               saving={saving}
               onEdit={() => openBishengDialog(bishengConfig)}
+            />
+          )}
+          {active === 'unifiedAuth' && (
+            <UnifiedAuthConfigTable
+              config={unifiedAuthConfig}
+              saving={saving}
+              onEdit={() => openUnifiedAuthDialog(unifiedAuthConfig)}
             />
           )}
           {config && active === 'recommend' && (
@@ -887,6 +994,40 @@ export default function AdminPage() {
           }}
         />
       ) : null}
+      {unifiedAuthEditorOpen ? (
+        <UnifiedAuthEditorDialog
+          open
+          draft={unifiedAuthDraft}
+          saving={saving}
+          error={unifiedAuthFormError}
+          config={unifiedAuthConfig}
+          onClose={() => setUnifiedAuthEditorOpen(false)}
+          onChange={(patch) => {
+            setUnifiedAuthDraft((current) => ({ ...current, ...patch }));
+            setUnifiedAuthFormError('');
+          }}
+          onSubmit={() => {
+            const result = validateUnifiedAuthDraft(unifiedAuthDraft);
+            if (!result.payload) {
+              setUnifiedAuthFormError(result.error || '统一认证配置无效');
+              return;
+            }
+            setSaving(true);
+            setError('');
+            void updateUnifiedAuthRuntimeConfig(result.payload)
+              .then((updated) => {
+                setUnifiedAuthConfig(updated);
+                setUnifiedAuthEditorOpen(false);
+              })
+              .catch((err) => {
+                const message = err instanceof Error ? err.message : '保存失败';
+                setError(message);
+                setUnifiedAuthFormError(message);
+              })
+              .finally(() => setSaving(false));
+          }}
+        />
+      ) : null}
       {config && qaDialogMode === 'spaces' ? (
         <QaSpacesDialog
           open
@@ -975,6 +1116,27 @@ export default function AdminPage() {
                 reasoning_model: qaModelDraft.reasoning_model,
               }, setConfig);
               setQaModelDialogOpen(false);
+            });
+          }}
+        />
+      ) : null}
+      {config && searchRerankModelDialogOpen ? (
+        <SearchRerankModelDialog
+          open
+          models={searchRerankModelOptions}
+          selectedModel={searchRerankModelDraft}
+          loading={searchRerankModelLoading}
+          saving={saving}
+          error={searchRerankModelError}
+          onClose={() => setSearchRerankModelDialogOpen(false)}
+          onSelect={setSearchRerankModelDraft}
+          onSubmit={() => {
+            void runSave(async () => {
+              await persistSearch({
+                ...config.search,
+                rerank_model_id: searchRerankModelDraft,
+              }, setConfig);
+              setSearchRerankModelDialogOpen(false);
             });
           }}
         />
@@ -2177,6 +2339,217 @@ function BishengEditorDialog({
   );
 }
 
+function UnifiedAuthConfigTable({
+  config,
+  saving,
+  onEdit,
+}: {
+  config: UnifiedAuthRuntimeConfig | null;
+  saving: boolean;
+  onEdit: () => void;
+}) {
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>统一认证配置</h2>
+      </div>
+      <p className={s.pageNote}>
+        这里维护门户后端调用统一身份认证平台的 OAuth 参数。client_secret、state_secret 和 login_sync_hmac_secret 不会回显；response_type=code 固定写入后端，state 由后端动态生成。
+      </p>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>配置项</th>
+            <th>当前值</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>启用状态</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{config?.enabled ? '已启用' : '未启用'}</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+          <tr>
+            <td>认证入口</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{formatUnifiedAuthProvider(config?.provider)}</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+          <tr>
+            <td>client_id</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{config?.client_id || '未配置'}</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+          <tr>
+            <td>redirect_uri</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{config?.redirect_uri || '未配置'}</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+          <tr>
+            <td>GLO 退出</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{config?.glo_entity_id ? `entityId ${config.glo_entity_id}` : '未配置 entityId'}</span>
+                <span className={s.valueMeta}>redirctToUrl：{config?.glo_redirect_to_url || '未配置'}</span>
+              </div>
+            </td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+          <tr>
+            <td>getToken 参数位置</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{config?.token_param_style === 'form' ? 'form body' : 'URL query'}</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+          <tr>
+            <td>密钥状态</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>
+                  client_secret {config?.has_client_secret ? '已配置' : '未配置'} · state_secret {config?.has_state_secret ? '已配置' : '未配置'} · login_sync_hmac_secret {config?.has_login_sync_hmac_secret ? '已配置' : '未配置'}
+                </span>
+                <span className={s.valueMeta}>admin 保存时留空会沿用当前密钥。</span>
+              </div>
+            </td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function UnifiedAuthEditorDialog({
+  open,
+  draft,
+  saving,
+  error,
+  config,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  draft: UnifiedAuthDraft;
+  saving: boolean;
+  error: string;
+  config: UnifiedAuthRuntimeConfig | null;
+  onClose: () => void;
+  onChange: (patch: Partial<UnifiedAuthDraft>) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>编辑统一认证配置</h3>
+            <p className={s.modalNote}>client_id 和 redirect_uri 来自统一认证平台应用登记；response_type=code 固定由后端发送；state 由后端动态生成。密钥输入框留空会沿用当前值。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={`${s.modalScrollBody} ${s.qaTemplateScrollBody}`}>
+          <div className={`${s.formGrid} ${s.qaTemplateFormGrid}`}>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>启用统一认证</span>
+              <select className={s.formInput} value={draft.enabled ? 'true' : 'false'} onChange={(event) => onChange({ enabled: event.target.value === 'true' })}>
+                <option value="false">未启用</option>
+                <option value="true">启用</option>
+              </select>
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>认证入口</span>
+              <select className={s.formInput} value={draft.provider} onChange={(event) => onChange({ provider: event.target.value as UnifiedAuthDraft['provider'] })}>
+                <option value="group">集团统一认证</option>
+                <option value="stock">股份统一认证</option>
+                <option value="custom">自定义端点</option>
+              </select>
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>client_id</span>
+              <input className={s.formInput} value={draft.client_id} onChange={(event) => onChange({ client_id: event.target.value })} placeholder="统一认证平台分配的客户端 ID" />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>getToken 参数位置</span>
+              <select className={s.formInput} value={draft.token_param_style} onChange={(event) => onChange({ token_param_style: event.target.value as UnifiedAuthDraft['token_param_style'] })}>
+                <option value="query">URL query</option>
+                <option value="form">form body</option>
+              </select>
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>redirect_uri</span>
+              <input className={s.formInput} value={draft.redirect_uri} onChange={(event) => onChange({ redirect_uri: event.target.value })} placeholder="例如：https://portal.example.com/api/v1/auth/unified/callback" />
+              <span className={s.fieldHint}>必须与统一认证平台登记的回调地址完全一致。</span>
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>authorize_url（自定义时填写）</span>
+              <input className={s.formInput} value={draft.authorize_url} onChange={(event) => onChange({ authorize_url: event.target.value })} placeholder="例如：https://iam.example.com/idp/oauth2/authorize" />
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>token_url（自定义时填写）</span>
+              <input className={s.formInput} value={draft.token_url} onChange={(event) => onChange({ token_url: event.target.value })} placeholder="例如：https://iam.example.com/idp/oauth2/getToken" />
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>userinfo_url（自定义时填写）</span>
+              <input className={s.formInput} value={draft.userinfo_url} onChange={(event) => onChange({ userinfo_url: event.target.value })} placeholder="例如：https://iam.example.com/idp/oauth2/getUserInfo" />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>state TTL（秒）</span>
+              <input className={s.formInput} value={draft.state_ttl_seconds} onChange={(event) => onChange({ state_ttl_seconds: event.target.value })} placeholder="例如：300" />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>HTTP 超时（秒）</span>
+              <input className={s.formInput} value={draft.http_timeout_seconds} onChange={(event) => onChange({ http_timeout_seconds: event.target.value })} placeholder="例如：10" />
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>client_secret</span>
+              <input type="password" className={s.formInput} value={draft.client_secret} onChange={(event) => onChange({ client_secret: event.target.value })} placeholder={config?.has_client_secret ? '已配置，留空则沿用当前值' : '首次启用前建议填写'} />
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>state_secret</span>
+              <input type="password" className={s.formInput} value={draft.state_secret} onChange={(event) => onChange({ state_secret: event.target.value })} placeholder={config?.has_state_secret ? '已配置，留空则沿用当前值' : '留空则由后端自动生成'} />
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>login_sync_hmac_secret</span>
+              <input type="password" className={s.formInput} value={draft.login_sync_hmac_secret} onChange={(event) => onChange({ login_sync_hmac_secret: event.target.value })} placeholder={config?.has_login_sync_hmac_secret ? '已配置，留空则沿用当前值' : '需与 BiSheng sso_sync.gateway_hmac_secret 一致'} />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>签名请求头</span>
+              <input className={s.formInput} value={draft.login_sync_signature_header} onChange={(event) => onChange({ login_sync_signature_header: event.target.value })} placeholder="X-Signature" />
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>glo_url</span>
+              <input className={s.formInput} value={draft.glo_url} onChange={(event) => onChange({ glo_url: event.target.value })} placeholder="留空使用集团/股份默认 GLO 地址；自定义端点时填写完整 URL" />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>GLO entityId</span>
+              <input className={s.formInput} value={draft.glo_entity_id} onChange={(event) => onChange({ glo_entity_id: event.target.value })} placeholder="统一认证平台分配的 entityId" />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>redirectToLogin</span>
+              <select className={s.formInput} value={draft.glo_redirect_to_login ? 'true' : 'false'} onChange={(event) => onChange({ glo_redirect_to_login: event.target.value === 'true' })}>
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>redirctToUrl（门户本地退出回调）</span>
+              <input className={s.formInput} value={draft.glo_redirect_to_url} onChange={(event) => onChange({ glo_redirect_to_url: event.target.value })} placeholder="例如：https://portal.example.com/api/v1/auth/unified/logout/callback" />
+              <span className={s.fieldHint}>这里对应统一认证文档参数 redirctToUrl，参数名保留原文拼写。</span>
+            </label>
+          </div>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存配置</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QAConfigTable({
   qa,
   spaces,
@@ -2329,6 +2702,70 @@ function QAConfigTable({
               </div>
             </td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditQaPrompt} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function SearchConfigTable({
+  search,
+  modelOptions,
+  modelLoading,
+  modelError,
+  saving,
+  onEditRerankModel,
+}: {
+  search: SearchConfig;
+  modelOptions: QAModelOption[];
+  modelLoading: boolean;
+  modelError: string;
+  saving: boolean;
+  onEditRerankModel: () => void;
+}) {
+  const rerankModelLabel = formatQaModelLabel(modelOptions, search.rerank_model_id) || '未配置';
+
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>搜索配置</h2>
+      </div>
+      <p className={s.pageNote}>
+        这里维护门户首页检索的重排模型配置。未配置时搜索结果只使用 ES 与向量召回融合排序。
+      </p>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>配置项</th>
+            <th>当前值</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>搜索重排模型</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{rerankModelLabel}</span>
+                <span className={s.valueMeta}>
+                  {modelLoading
+                    ? '正在从大模型应用平台模型管理加载 rerank 模型列表...'
+                    : modelError
+                      ? '重排模型列表加载失败，当前显示的是已保存配置。'
+                      : search.rerank_model_id
+                        ? '门户首页检索会使用该模型对融合候选做重排。'
+                        : '未配置时不启用 rerank，搜索仍会正常返回融合排序结果。'}
+                </span>
+              </div>
+            </td>
+            <td>
+              <div className={s.actionGroup}>
+                <button className={s.inlineBtn} onClick={onEditRerankModel} disabled={saving}>
+                  {saving ? '保存中...' : '编辑'}
+                </button>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -3360,6 +3797,63 @@ function QaModelDialog({
   );
 }
 
+function SearchRerankModelDialog({
+  open,
+  models,
+  selectedModel,
+  loading,
+  saving,
+  error,
+  onClose,
+  onSelect,
+  onSubmit,
+}: {
+  open: boolean;
+  models: QAModelOption[];
+  selectedModel: string;
+  loading: boolean;
+  saving: boolean;
+  error?: string;
+  onClose: () => void;
+  onSelect: (modelId: string) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>编辑搜索重排模型</h3>
+            <p className={s.modalNote}>候选项来自大模型应用平台模型管理列表，仅展示 rerank 类型模型。可不配置，不配置时搜索只使用融合排序。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.modalHint}>当前候选数：{models.length}</div>
+        <div className={s.optionList}>
+          {loading ? <div className={s.emptyState}>正在加载重排模型列表...</div> : null}
+          {!loading && !models.length ? <div className={s.emptyState}>暂未获取到 rerank 模型候选项</div> : null}
+          {!loading ? (
+            <QaModelCascaderSelect
+              title="搜索重排模型"
+              allowEmpty
+              models={models}
+              selectedModel={selectedModel}
+              onSelect={onSelect}
+            />
+          ) : null}
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving || loading}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface QaModelProviderGroup {
   provider_name: string;
   models: QAModelOption[];
@@ -3818,6 +4312,11 @@ async function persistQa(qa: QAConfig, setConfig: Dispatch<SetStateAction<Portal
   setConfig((current) => (current ? { ...current, qa: data } : current));
 }
 
+async function persistSearch(search: SearchConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
+  const data = await updateSearchConfig(search);
+  setConfig((current) => (current ? { ...current, search: data } : current));
+}
+
 async function persistRecommendation(recommendation: RecommendationConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
   const data = await updateRecommendationConfig(recommendation);
   setConfig((current) => (current ? { ...current, recommendation: data } : current));
@@ -4068,6 +4567,35 @@ function createBishengDraft(current?: BishengRuntimeConfig): BishengDraft {
   };
 }
 
+function createUnifiedAuthDraft(current?: UnifiedAuthRuntimeConfig): UnifiedAuthDraft {
+  return {
+    enabled: current?.enabled ?? false,
+    provider: current?.provider ?? 'group',
+    client_id: current?.client_id ?? '',
+    client_secret: '',
+    redirect_uri: current?.redirect_uri ?? '',
+    authorize_url: current?.authorize_url ?? '',
+    token_url: current?.token_url ?? '',
+    userinfo_url: current?.userinfo_url ?? '',
+    token_param_style: current?.token_param_style ?? 'query',
+    state_secret: '',
+    state_ttl_seconds: String(current?.state_ttl_seconds ?? 300),
+    http_timeout_seconds: String(current?.http_timeout_seconds ?? 10),
+    login_sync_hmac_secret: '',
+    login_sync_signature_header: current?.login_sync_signature_header || 'X-Signature',
+    glo_url: current?.glo_url ?? '',
+    glo_entity_id: current?.glo_entity_id ?? '',
+    glo_redirect_to_url: current?.glo_redirect_to_url ?? '',
+    glo_redirect_to_login: current?.glo_redirect_to_login ?? true,
+  };
+}
+
+function formatUnifiedAuthProvider(provider?: UnifiedAuthRuntimeConfig['provider']) {
+  if (provider === 'stock') return '股份统一认证';
+  if (provider === 'custom') return '自定义端点';
+  return '集团统一认证';
+}
+
 function createIntegrationsDraft(current?: IntegrationsConfig): IntegrationsDraft {
   return {
     bisheng_admin_entry_url: current?.bisheng_admin_entry_url ?? '',
@@ -4155,6 +4683,74 @@ function validateBishengDraft(draft: BishengDraft): {
       username: draft.username.trim(),
       password: draft.password,
       timeout_seconds,
+    },
+  };
+}
+
+function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
+  payload?: Parameters<typeof updateUnifiedAuthRuntimeConfig>[0];
+  error?: string;
+} {
+  const client_id = draft.client_id.trim();
+  const redirect_uri = draft.redirect_uri.trim();
+  const authorize_url = draft.authorize_url.trim();
+  const token_url = draft.token_url.trim();
+  const userinfo_url = draft.userinfo_url.trim();
+  const glo_url = draft.glo_url.trim();
+  const glo_entity_id = draft.glo_entity_id.trim();
+  const glo_redirect_to_url = draft.glo_redirect_to_url.trim();
+  const login_sync_signature_header = draft.login_sync_signature_header.trim() || 'X-Signature';
+
+  if (draft.enabled && !client_id) return { error: '启用统一认证前需要填写 client_id' };
+  if (draft.enabled && !redirect_uri) return { error: '启用统一认证前需要填写 redirect_uri' };
+  if (redirect_uri && !/^https?:\/\//i.test(redirect_uri)) return { error: 'redirect_uri 必须以 http:// 或 https:// 开头' };
+
+  for (const [label, value] of [
+    ['authorize_url', authorize_url],
+    ['token_url', token_url],
+    ['userinfo_url', userinfo_url],
+    ['glo_url', glo_url],
+    ['redirctToUrl', glo_redirect_to_url],
+  ] as const) {
+    if (value && !/^https?:\/\//i.test(value)) {
+      return { error: `${label} 必须以 http:// 或 https:// 开头` };
+    }
+  }
+
+  if (draft.enabled && draft.provider === 'custom' && (!authorize_url || !token_url || !userinfo_url)) {
+    return { error: '自定义端点需要填写 authorize_url、token_url 和 userinfo_url' };
+  }
+
+  const state_ttl_seconds = Number(draft.state_ttl_seconds.trim());
+  if (!Number.isInteger(state_ttl_seconds) || state_ttl_seconds <= 0) {
+    return { error: 'state TTL 需为大于 0 的整数秒' };
+  }
+
+  const http_timeout_seconds = Number(draft.http_timeout_seconds.trim());
+  if (!Number.isFinite(http_timeout_seconds) || http_timeout_seconds <= 0) {
+    return { error: 'HTTP 超时需为大于 0 的数字秒' };
+  }
+
+  return {
+    payload: {
+      enabled: draft.enabled,
+      provider: draft.provider,
+      client_id,
+      client_secret: draft.client_secret.trim(),
+      redirect_uri,
+      authorize_url,
+      token_url,
+      userinfo_url,
+      token_param_style: draft.token_param_style,
+      state_secret: draft.state_secret.trim(),
+      state_ttl_seconds,
+      http_timeout_seconds,
+      login_sync_hmac_secret: draft.login_sync_hmac_secret.trim(),
+      login_sync_signature_header,
+      glo_url,
+      glo_entity_id,
+      glo_redirect_to_url,
+      glo_redirect_to_login: draft.glo_redirect_to_login,
     },
   };
 }

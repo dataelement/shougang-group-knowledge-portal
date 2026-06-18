@@ -12,12 +12,19 @@ import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
-import { fetchHomeContent, fetchDomainFileCounts, streamChatCompletion, type FileItem } from '../api/content';
+import {
+  fetchHomeContent,
+  fetchDomainFileCounts,
+  fetchHomeStats,
+  streamChatCompletion,
+  type FileItem,
+  type HomeStats,
+} from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
-import { getEnabledDomains, getEnabledSections, getEnabledSpaces, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
+import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildSpaceSearchPath } from '../utils/searchParams';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
@@ -345,6 +352,8 @@ export default function HomePage() {
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
+  const [homeStats, setHomeStats] = useState<HomeStats | null>(null);
+  const [homeStatsFailed, setHomeStatsFailed] = useState(false);
   const [welcomeToast, setWelcomeToast] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     try {
@@ -405,6 +414,26 @@ export default function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setHomeStatsFailed(false);
+    void (async () => {
+      try {
+        const stats = await fetchHomeStats();
+        if (!active) return;
+        setHomeStats(stats);
+        setHomeStatsFailed(false);
+      } catch {
+        if (!active) return;
+        setHomeStats(null);
+        setHomeStatsFailed(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleSearch = useCallback(() => {
     if (query.trim()) navigate(`/search?q=${encodeURIComponent(query.trim())}`);
   }, [query, navigate]);
@@ -419,6 +448,7 @@ export default function HomePage() {
 
     void streamChatCompletion({
       scene: 'qa',
+      entryPoint: 'home_qa',
       text,
       knowledgeSpaceIds: config?.qa.knowledge_space_ids ?? [],
       onUpdate(currentText) {
@@ -451,7 +481,6 @@ export default function HomePage() {
     if (e.key === 'Enter') handleSearch();
   };
 
-  const enabledSpaces = useMemo(() => (config ? getEnabledSpaces(config.spaces) : []), [config]);
   const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains, config.spaces) : []), [config]);
   const enabledSections = useMemo(() => (config ? getEnabledSections(config.sections) : []), [config]);
 
@@ -482,7 +511,6 @@ export default function HomePage() {
   }, [config]);
 
   /* Stats */
-  const totalFiles = enabledSpaces.reduce((total, space) => total + space.file_count, 0);
   const activeBanner = homeBanners[safeBannerIdx] ?? homeBanners[0];
   const configuredHomeDomains = enabledDomains.slice(0, displayConfig.home.domainCount);
   const useMockShellContent = !config && !configLoading;
@@ -521,11 +549,16 @@ export default function HomePage() {
   const expertHotQuestions = [...qaHotQuestions, ...expertQuestionFallbacks].slice(0, 7);
 
   const appEntryItems = (config?.qa.templates || []).filter((template) => template.enabled && template.show_on_home);
+  const formatHomeStat = (value: number | undefined): string => {
+    if (homeStatsFailed) return '--';
+    if (!homeStats) return '加载中';
+    return formatCount(value ?? 0);
+  };
   const heroStats = [
-    { value: formatCount(totalFiles), label: '篇文档' },
-    { value: '1.17亿', label: '次阅读' },
-    { value: '163万', label: '次点赞' },
-    { value: '1101万', label: '条评论' },
+    { value: formatHomeStat(homeStats?.totalDocuments), label: '篇文档' },
+    { value: formatHomeStat(homeStats?.readCount), label: '次阅读' },
+    { value: formatHomeStat(homeStats?.favoriteCount), label: '次收藏' },
+    { value: formatHomeStat(homeStats?.qaCount), label: '次问答' },
   ];
 
   return (

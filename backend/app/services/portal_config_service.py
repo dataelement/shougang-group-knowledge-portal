@@ -16,6 +16,8 @@ from app.schemas.portal_config import (
     QAModelOptionsResponse,
     QAConfig,
     RecommendationConfig,
+    SearchConfig,
+    SearchRerankModelOptionsResponse,
     SectionsConfigUpdate,
     SpaceFileItem,
     SpaceFilesResponse,
@@ -47,6 +49,21 @@ class PortalConfigService:
         qa_templates_changed = self._ensure_qa_templates_compat(data)
         if qa_model_changed or qa_templates_changed:
             self._write_data(data)
+        if "search" not in data or not isinstance(data.get("search"), dict):
+            data["search"] = dict(DEFAULT_PORTAL_CONFIG.get("search") or {"rerank_model_id": ""})
+            self._write_data(data)
+        else:
+            default_search = DEFAULT_PORTAL_CONFIG.get("search") or {"rerank_model_id": ""}
+            missing_search_keys = [
+                key for key in default_search
+                if key not in data["search"]
+            ]
+            if missing_search_keys:
+                data["search"] = {
+                    **default_search,
+                    **data["search"],
+                }
+                self._write_data(data)
         if not data.get("banners"):
             data["banners"] = list(DEFAULT_PORTAL_CONFIG.get("banners") or [])
             if data["banners"]:
@@ -138,6 +155,11 @@ class PortalConfigService:
         data["qa"] = qa_data
         return self._write_config(PortalConfig.model_validate(data))
 
+    def update_search(self, payload: SearchConfig) -> PortalConfig:
+        data = self.get_config().model_dump()
+        data["search"] = payload.model_dump()
+        return self._write_config(PortalConfig.model_validate(data))
+
     def build_qa_model_options(self, raw_models: list[dict[str, Any]]) -> QAModelOptionsResponse:
         qa_config = self.get_config().qa
         models: list[QAModelOption] = []
@@ -182,6 +204,51 @@ class PortalConfigService:
             selected_model=qa_config.selected_model,
             general_model=qa_config.general_model,
             reasoning_model=qa_config.reasoning_model,
+            models=models,
+        )
+
+    def build_search_rerank_model_options(self, raw_models: list[dict[str, Any]]) -> SearchRerankModelOptionsResponse:
+        search_config = self.get_config().search
+        models: list[QAModelOption] = []
+        seen_ids: set[str] = set()
+        for server in raw_models:
+            if not isinstance(server, dict):
+                continue
+            provider_name = str(server.get("name") or "")
+            server_models = server.get("models")
+            if not isinstance(server_models, list):
+                continue
+            for item in server_models:
+                if not isinstance(item, dict) or item.get("id") is None:
+                    continue
+                if str(item.get("model_type") or "").lower() != "rerank":
+                    continue
+                if item.get("online") is False:
+                    continue
+                model_id = str(item["id"])
+                if model_id in seen_ids:
+                    continue
+                seen_ids.add(model_id)
+                display_name = str(
+                    item.get("displayName")
+                    or item.get("display_name")
+                    or item.get("name")
+                    or item.get("model_name")
+                    or model_id
+                )
+                models.append(
+                    QAModelOption(
+                        key=str(item.get("key") or model_id),
+                        id=model_id,
+                        name=str(item.get("model_name") or item.get("name") or ""),
+                        display_name=display_name,
+                        visual=bool(item.get("visual") or False),
+                        provider_name=provider_name,
+                        status=int(item.get("status") or 0),
+                    )
+                )
+        return SearchRerankModelOptionsResponse(
+            rerank_model_id=search_config.rerank_model_id,
             models=models,
         )
 

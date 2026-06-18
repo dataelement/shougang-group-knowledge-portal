@@ -32,10 +32,13 @@ class PortalSession:
     base_url: str
     timeout_seconds: float
     expires_at: float
+    auth_source: str = ""
+    auth_trace_id: str = ""
 
 
 class PortalAuthService:
     _bisheng_cookie_name = "access_token_cookie"
+    _auth_source_cookie_name = "sg_portal_auth_source"
 
     def __init__(
         self,
@@ -98,6 +101,42 @@ class PortalAuthService:
             session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
         return session
 
+    async def create_session_from_access_token(
+        self,
+        *,
+        access_token: str,
+        remember: bool,
+        fallback_account: str = "",
+        auth_source: str = "",
+        auth_trace_id: str = "",
+    ) -> PortalSession:
+        base_url, timeout_seconds = self._runtime_service.get_connection_settings()
+        user = await self._fetch_user(
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            access_token=access_token,
+            fallback_account=fallback_account,
+            strict=True,
+        )
+        expires_at = self._resolve_expiry(access_token)
+        if expires_at <= time.time():
+            raise PortalAuthError("登录态已失效，请重新登录", status_code=401)
+        session = PortalSession(
+            session_id=secrets.token_urlsafe(32),
+            access_token=access_token,
+            user=user,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            expires_at=expires_at,
+            auth_source=auth_source,
+            auth_trace_id=auth_trace_id,
+        )
+        self._cleanup_expired()
+        self._sessions[session.session_id] = session
+        if not remember:
+            session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
+        return session
+
     def attach_session_cookie(self, response: Response, session: PortalSession, remember: bool) -> None:
         max_age = max(0, int(session.expires_at - time.time())) if remember else None
         response.set_cookie(
@@ -118,6 +157,24 @@ class PortalAuthService:
             max_age=max_age,
             path="/",
         )
+        if session.auth_source:
+            response.set_cookie(
+                key=self._auth_source_cookie_name,
+                value=session.auth_source,
+                httponly=True,
+                secure=self._cookie_secure,
+                samesite="lax",
+                max_age=max_age,
+                path="/",
+            )
+        else:
+            response.delete_cookie(
+                key=self._auth_source_cookie_name,
+                httponly=True,
+                secure=self._cookie_secure,
+                samesite="lax",
+                path="/",
+            )
 
     def clear_session_cookie(self, response: Response) -> None:
         response.delete_cookie(
@@ -129,6 +186,13 @@ class PortalAuthService:
         )
         response.delete_cookie(
             key=self._bisheng_cookie_name,
+            httponly=True,
+            secure=self._cookie_secure,
+            samesite="lax",
+            path="/",
+        )
+        response.delete_cookie(
+            key=self._auth_source_cookie_name,
             httponly=True,
             secure=self._cookie_secure,
             samesite="lax",
@@ -152,6 +216,15 @@ class PortalAuthService:
         if session is None:
             raise PortalAuthError("请先登录", status_code=401)
         return session
+
+    def get_auth_source(self, request: Request) -> str:
+        session = self.get_session(request)
+        if session is not None:
+            return session.auth_source
+        return request.cookies.get(self._auth_source_cookie_name, "").strip()
+
+    def is_unified_auth_request(self, request: Request) -> bool:
+        return self.get_auth_source(request) == "unified_auth"
 
     async def require_session_or_bisheng_cookie(self, request: Request) -> tuple[PortalSession, bool]:
         session = self.get_session(request)
@@ -181,6 +254,7 @@ class PortalAuthService:
             base_url=base_url,
             timeout_seconds=timeout_seconds,
             expires_at=expires_at,
+            auth_source=request.cookies.get(self._auth_source_cookie_name, "").strip(),
         )
         self._cleanup_expired()
         self._sessions[session.session_id] = session

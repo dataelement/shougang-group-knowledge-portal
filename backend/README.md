@@ -39,6 +39,8 @@ The current workspace has been verified with Python 3.13. Running tests with the
 - `PORTAL_BISHENG_BASE_URL`
 - `PORTAL_BISHENG_TIMEOUT_SECONDS`
 - `PORTAL_BISHENG_API_TOKEN`
+- `PORTAL_BISHENG_USERNAME`
+- `PORTAL_BISHENG_PASSWORD`
 - `PORTAL_BISHENG_DEFAULT_MODEL`
 - `PORTAL_BISHENG_PAGE_SIZE_LIMIT`
 
@@ -50,17 +52,23 @@ Portal-side runtime data is stored in:
 
 - `app/config/data/portal_config.json`
 - `app/config/data/bisheng_runtime.json`
+- `app/config/data/portal.sqlite3`
 
 ## BiSheng Auth
 
-The portal backend currently does not log in to BiSheng with username/password.
+The portal backend can use a runtime BiSheng service account for system data
+source requests.
 
-For the current stage, configure `PORTAL_BISHENG_API_TOKEN` with a valid BiSheng
-`access_token_cookie` value from an administrator session. The client will send
-it as both:
+Configure `PORTAL_BISHENG_USERNAME` and `PORTAL_BISHENG_PASSWORD` to allow token
+refresh before expiry and one automatic relogin after a BiSheng 401 / login
+expired response. `PORTAL_BISHENG_API_TOKEN` can still seed an initial token.
+The client sends the active token as both:
 
 - `Authorization: Bearer <token>`
 - Cookie `access_token_cookie=<token>`
 
-This keeps BiSheng unchanged while allowing the portal backend to call the
-existing knowledge and workstation APIs.
+When the admin page saves a service account password, the backend stores it in
+plain text inside `app/config/data/portal.sqlite3` so later token refresh and
+automatic relogin can run without extra environment configuration. Restrict file
+permissions for the runtime data directory and do not commit runtime database
+files.
