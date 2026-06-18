@@ -1,0 +1,367 @@
+.modalMask {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.34);
+}
+
+.modal {
+  width: min(980px, 100%);
+  height: min(78vh, 680px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.modalHead,
+.modalFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--neutral-100);
+}
+
+.modalFoot {
+  border-top: 1px solid var(--neutral-100);
+  border-bottom: 0;
+}
+
+.modalTitle {
+  color: var(--neutral-900);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.modalSub {
+  margin-top: 4px;
+  color: var(--neutral-500);
+  font-size: 0.8rem;
+}
+
+.iconButton,
+.refreshButton {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--neutral-600);
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+}
+
+.iconButton:hover,
+.refreshButton:hover:not(:disabled) {
+  color: var(--neutral-900);
+  background: var(--neutral-50);
+}
+
+.refreshButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.modalBody {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: #fff;
+}
+
+.spacePane,
+.filePane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.spacePane {
+  border-right: 1px solid var(--neutral-100);
+  background: var(--neutral-50);
+}
+
+.paneHead {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 14px;
+  color: var(--neutral-900);
+  font-size: 0.88rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--neutral-100);
+}
+
+.spaceList,
+.fileList {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+.spaceItem {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  color: var(--neutral-700);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.spaceItem:hover,
+.spaceItemActive {
+  color: var(--primary-700);
+  background: #fff;
+}
+
+.spaceName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spaceCount {
+  min-width: 24px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: var(--neutral-500);
+  font-size: 0.72rem;
+  background: var(--neutral-100);
+  border-radius: 999px;
+}
+
+.spaceItemActive .spaceCount {
+  color: var(--primary-700);
+  background: var(--primary-50);
+}
+
+.fileList {
+  padding: 10px 12px;
+}
+
+.fileItem {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 22px 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  color: var(--neutral-700);
+  text-align: left;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.fileItem:hover,
+.fileItemActive {
+  color: var(--primary-700);
+  background: var(--primary-50);
+  border-color: var(--primary-100);
+}
+
+.folderItem {
+  font-weight: 600;
+}
+
+.fileItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.fileItem:disabled:hover {
+  color: var(--neutral-700);
+  background: #fff;
+  border-color: transparent;
+}
+
+.fileCheck {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-600);
+}
+
+.fileIcon {
+  color: var(--primary-600);
+}
+
+.folderIcon {
+  color: #d08a1d;
+}
+
+.fileInfo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fileInfo strong {
+  overflow: hidden;
+  color: var(--neutral-900);
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileInfo span {
+  color: var(--neutral-500);
+  font-size: 0.76rem;
+}
+
+.emptyState,
+.errorState {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px;
+  color: var(--neutral-500);
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.errorState {
+  color: var(--red-500);
+}
+
+.folderState {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  color: var(--neutral-500);
+  font-size: 0.8rem;
+}
+
+.folderStateError {
+  color: var(--red-500);
+}
+
+.selectionText {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--neutral-600);
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.primaryActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btnGhost,
+.btnPrimary {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  font-size: 0.84rem;
+  line-height: 1;
+  border-radius: 6px;
+}
+
+.btnGhost {
+  color: var(--neutral-700);
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+}
+
+.btnGhost:hover {
+  color: var(--neutral-900);
+  background: var(--neutral-50);
+}
+
+.btnPrimary {
+  color: #fff;
+  background: var(--primary-600);
+  border: 1px solid var(--primary-600);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--primary-700);
+  border-color: var(--primary-700);
+}
+
+.btnPrimary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@media (max-width: 760px) {
+  .modal {
+    height: min(90vh, 760px);
+  }
+
+  .modalBody {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(180px, 34%) minmax(0, 1fr);
+  }
+
+  .spacePane {
+    border-right: 0;
+    border-bottom: 1px solid var(--neutral-100);
+  }
+
+  .modalFoot {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .primaryActions {
+    width: 100%;
+  }
+
+  .btnGhost,
+  .btnPrimary {
+    flex: 1;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

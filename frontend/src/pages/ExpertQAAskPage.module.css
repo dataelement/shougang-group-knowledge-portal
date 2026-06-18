@@ -653,3 +653,410 @@
   align-items: center;
   color: var(--primary-600);
 }
+
+
+/* ExpertQAAskPage.module.css 新增 */
+.pickerPanel {
+  margin-top: 8px;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-background-primary);
+  overflow: hidden;
+}
+.pickerSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+}
+.pickerSearchIco { color: var(--color-text-tertiary); flex-shrink: 0; }
+.pickerSearchInput {
+  flex: 1;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  outline: none;
+}
+.pickerList { max-height: 240px; overflow-y: auto; }
+.pickerRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+.pickerRow:hover:not(:disabled) { background: var(--color-background-secondary); }
+.pickerRow:disabled { opacity: 0.4; cursor: not-allowed; }
+.pickerRowSel { background: var(--color-background-info); }
+.pickerRowSel:hover { background: var(--color-background-info); }
+.pickerInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pickerName { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.pickerDept { font-size: 12px; color: var(--color-text-tertiary); }
+.pickerCheck { font-size: 13px; color: var(--color-text-info); font-weight: 500; }
+.pickerEmpty { padding: 24px; text-align: center; font-size: 13px; color: var(--color-text-tertiary); }
+.pickerFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-top: 0.5px solid var(--color-border-tertiary);
+}
+.pickerCount { font-size: 12px; color: var(--color-text-tertiary); }
+.btnSecondary {
+  padding: 5px 14px;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  background: none;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.btnSecondary:hover { background: var(--color-background-secondary); }
+/* === Upload preview === */
+.uploadPreview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  background: var(--neutral-50);
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+}
+
+.previewGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.imagePreviewItem {
+  position: relative;
+  min-height: 92px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.uploadingBox {
+  flex-direction: column;
+  gap: 8px;
+  color: var(--neutral-500);
+  background: var(--neutral-50);
+}
+
+.previewImg {
+  width: 100%;
+  height: 100%;
+  max-height: 160px;
+  object-fit: cover;
+}
+
+.attachLabel {
+  font-size: 0.84rem;
+  color: var(--neutral-700);
+}
+
+.attachmentList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.attachmentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 999px;
+  background: var(--neutral-50);
+  color: var(--neutral-700);
+}
+
+.attachmentName {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.84rem;
+}
+
+.attachmentRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: var(--neutral-200);
+  color: var(--neutral-600);
+  line-height: 1;
+}
+
+.attachmentRemove:hover {
+  background: var(--red-100);
+  color: var(--red-600);
+}
+
+.removeImg {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: var(--neutral-200);
+  color: var(--neutral-600);
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s ease;
+}
+
+.removeImg:hover {
+  background: var(--red-100);
+  color: var(--red-600);
+}
+
+.modalMask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 30;
+}
+
+.knowledgeModal {
+  width: min(900px, 100%);
+  max-height: min(82vh, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.modalHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.modalTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--neutral-900);
+}
+
+.modalSub {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--neutral-500);
+}
+
+.modalClose {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--neutral-200);
+  background: #fff;
+  color: var(--neutral-600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.knowledgeFilters {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .knowledgeFilters {
+    grid-template-columns: 1fr;
+  }
+}
+
+.knowledgeSearch,
+.knowledgeSelect {
+  height: 40px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.knowledgeSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.knowledgeSearch input {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 0.88rem;
+  background: transparent;
+}
+
+.knowledgeSelect {
+  padding: 0 10px;
+  font-size: 0.88rem;
+  color: var(--neutral-700);
+}
+
+.knowledgeList {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--neutral-100);
+  border-radius: 10px;
+  background: var(--neutral-50);
+  padding: 6px;
+  min-height: 260px;
+}
+
+.knowledgeFile {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.knowledgeFile:hover {
+  background: #fff;
+}
+
+.knowledgeFileActive {
+  background: var(--primary-50);
+}
+
+.knowledgeCheck {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--neutral-300);
+  color: var(--primary-600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.knowledgeFileIcon {
+  color: var(--primary-600);
+  flex-shrink: 0;
+}
+
+.knowledgeFileText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.knowledgeFileText strong {
+  font-size: 0.88rem;
+  color: var(--neutral-900);
+}
+
+.knowledgeFileText span {
+  font-size: 0.76rem;
+  color: var(--neutral-500);
+}
+
+.knowledgeEmpty {
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--neutral-500);
+  font-size: 0.86rem;
+}
+
+.modalFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.similarItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--neutral-100);
+  font-size: 0.86rem;
+  color: var(--neutral-700);
+  line-height: 1.55;
+}
+
+.similarItem small {
+  color: var(--neutral-500);
+  font-size: 0.75rem;
+}
+
+.similarEmpty {
+  min-height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--neutral-500);
+  font-size: 0.86rem;
+}
+
+/* === Picker scroll loading === */
+.pickerLoading {
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.pickerScrollHint {
+  padding: 8px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-text-quaternary);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

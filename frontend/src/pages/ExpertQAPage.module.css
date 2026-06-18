@@ -764,3 +764,13 @@
   color: #fff;
   border-color: var(--primary-600);
 }
+
+
+.expDept {
+  font-size: 12px;      
+  color: #999999;      
+  margin-top: 4px;       
+  white-space: nowrap;  
+  overflow: hidden;
+  text-overflow: ellipsis; 
+}
