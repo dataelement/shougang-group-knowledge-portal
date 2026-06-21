@@ -50,18 +50,9 @@
   font-size: 0.86rem;
 }
 
-.searchResults,
 .spaceList {
   min-height: 0;
   overflow-y: auto;
-}
-
-.searchResults {
-  max-height: 220px;
-  padding: 8px;
-  border: 1px solid #eef2f7;
-  border-radius: 8px;
-  background: #fbfdff;
 }
 
 .sectionTitle {
@@ -71,26 +62,30 @@
   font-weight: 800;
 }
 
-.searchItem {
+.searchFileRow {
   width: 100%;
   padding: 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
   display: flex;
+  align-items: center;
   gap: 9px;
   color: #1e293b;
   text-align: left;
 }
 
-.searchItem:hover,
-.searchItemActive {
+.searchFileRow + .searchFileRow {
+  border-top-color: #f1f5f9;
+}
+
+.searchFileRow:hover,
+.searchFileRowActive {
   border-color: #bfdbfe;
   background: #eff6ff;
 }
 
 .searchMeta,
 .nodeText,
-.spaceText {
+.spaceContent {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -102,7 +97,8 @@
 
 .searchMeta strong,
 .nodeText strong,
-.spaceText strong {
+.spaceTitleButton strong {
+  display: block;
   min-width: 0;
   color: #0f172a;
   font-size: 0.86rem;
@@ -112,8 +108,7 @@
 }
 
 .searchMeta span,
-.nodeText span,
-.spaceText span {
+.nodeText span {
   min-width: 0;
   color: #64748b;
   font-size: 0.74rem;
@@ -136,15 +131,21 @@
   margin-top: 8px;
 }
 
+.searchSpaceBlock {
+  overflow: hidden;
+}
+
 .spaceRow,
-.nodeRow {
+.nodeRow,
+.searchSpaceHeader {
   min-height: 44px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.spaceRow {
+.spaceRow,
+.searchSpaceHeader {
   padding: 9px 10px;
 }
 
@@ -158,13 +159,78 @@
   flex: 0 0 auto;
 }
 
-.spaceText {
+.spaceContent {
   flex: 1;
+  gap: 5px;
+}
+
+.spaceTitleButton {
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
   text-align: left;
 }
 
+.spaceTitleButton:hover strong {
+  color: #1d4ed8;
+}
+
+.searchSpaceHeader .spaceContent {
+  gap: 3px;
+}
+
+.searchSpaceHeader strong {
+  min-width: 0;
+  color: #0f172a;
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchSpaceHeader span span {
+  min-width: 0;
+  color: #64748b;
+  font-size: 0.74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spaceAction {
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.74rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.spaceActionText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spaceAction:hover,
+.spaceActionActive {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .rootChildren,
-.nodeChildren {
+.nodeChildren,
+.searchFileList {
   border-top: 1px solid #eef2f7;
 }
 
