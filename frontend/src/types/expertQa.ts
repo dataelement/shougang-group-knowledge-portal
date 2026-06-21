@@ -12,7 +12,7 @@ export type ExpertDomainKey =
 
 export type QuestionStatus = 'solved' | 'unsolved'  | 'pending';
 
-export type StatusFilterKey = 'all' | 'unsolved' | 'solved' | 'mine' | 'invited';
+export type StatusFilterKey = 'all' | 'unsolved' | 'solved' | 'my_question' | 'invited';
 
 export type RawExpertData = {
   experts: {
