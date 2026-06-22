@@ -1,3 +1,5 @@
+import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../utils/userFacingErrors';
+
 export interface SpaceConfig {
   id: number;
   name: string;
@@ -249,29 +251,33 @@ interface ApiEnvelope<T> {
 async function parseResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) {
-    throw new Error(response.ok ? '响应内容为空' : `请求失败：${response.status}`);
+    throw new Error(response.ok ? '响应内容为空' : normalizeUserFacingMessage('', '请求失败，请稍后重试。', response.status));
   }
   let payload: ApiEnvelope<T>;
   try {
     payload = JSON.parse(text) as ApiEnvelope<T>;
   } catch {
-    throw new Error(response.ok ? '响应不是有效 JSON' : `请求失败：${response.status}`);
+    throw new Error(response.ok ? '响应不是有效 JSON' : normalizeUserFacingMessage('', '请求失败，请稍后重试。', response.status));
   }
   if (!response.ok) {
-    throw new Error(payload?.status_message || '请求失败');
+    throw new Error(normalizeUserFacingMessage(payload?.status_message, '请求失败，请稍后重试。', response.status));
   }
   return payload.data;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-    ...init,
-  });
-  return parseResponse<T>(response);
+  try {
+    const response = await fetch(path, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+      ...init,
+    });
+    return await parseResponse<T>(response);
+  } catch (error) {
+    throw new Error(normalizeUserFacingErrorMessage(error, '请求失败，请稍后重试。'));
+  }
 }
 
 export function fetchAdminConfig() {
@@ -281,11 +287,11 @@ export function fetchAdminConfig() {
 async function getErrorMessage(response: Response): Promise<string> {
   try {
     const text = await response.text();
-    if (!text) return `请求失败：${response.status}`;
+    if (!text) return normalizeUserFacingMessage('', '请求失败，请稍后重试。', response.status);
     const payload = JSON.parse(text) as Partial<ApiEnvelope<unknown>>;
-    return payload.status_message || `请求失败：${response.status}`;
+    return normalizeUserFacingMessage(payload.status_message, '请求失败，请稍后重试。', response.status);
   } catch {
-    return `请求失败：${response.status}`;
+    return normalizeUserFacingMessage('', '请求失败，请稍后重试。', response.status);
   }
 }
 
@@ -295,29 +301,37 @@ function getDownloadFilename(disposition: string | null): string {
 }
 
 export async function exportAdminConfig(): Promise<void> {
-  const response = await fetch('/api/v1/admin/config/export');
-  if (!response.ok) {
-    throw new Error(await getErrorMessage(response));
+  try {
+    const response = await fetch('/api/v1/admin/config/export');
+    if (!response.ok) {
+      throw new Error(await getErrorMessage(response));
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = getDownloadFilename(response.headers.get('content-disposition'));
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    throw new Error(normalizeUserFacingErrorMessage(error, '导出配置失败，请稍后重试。'));
   }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = getDownloadFilename(response.headers.get('content-disposition'));
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
 }
 
 export async function importAdminConfig(file: File): Promise<AdminConfigImportResult> {
   const form = new FormData();
   form.append('file', file);
-  const response = await fetch('/api/v1/admin/config/import', {
-    method: 'POST',
-    body: form,
-  });
-  return parseResponse<AdminConfigImportResult>(response);
+  try {
+    const response = await fetch('/api/v1/admin/config/import', {
+      method: 'POST',
+      body: form,
+    });
+    return await parseResponse<AdminConfigImportResult>(response);
+  } catch (error) {
+    throw new Error(normalizeUserFacingErrorMessage(error, '导入配置失败，请稍后重试。'));
+  }
 }
 
 export function updateSpacesConfig(spaces: SpaceConfig[]) {
@@ -467,9 +481,13 @@ export function updateSiteConfig(site: SiteConfig) {
 export async function uploadBannerImage(file: File): Promise<{ image_url: string }> {
   const form = new FormData();
   form.append('file', file);
-  const response = await fetch('/api/v1/admin/upload/banner', {
-    method: 'POST',
-    body: form,
-  });
-  return parseResponse<{ image_url: string }>(response);
+  try {
+    const response = await fetch('/api/v1/admin/upload/banner', {
+      method: 'POST',
+      body: form,
+    });
+    return await parseResponse<{ image_url: string }>(response);
+  } catch (error) {
+    throw new Error(normalizeUserFacingErrorMessage(error, '图片上传失败，请稍后重试。'));
+  }
 }

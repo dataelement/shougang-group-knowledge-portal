@@ -4,6 +4,7 @@ from app.api.dependencies import get_bisheng_runtime_service
 from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
 from app.schemas.common import response_error, response_ok
 from app.services.bisheng_runtime_service import BishengRuntimeService
+from app.services.error_messages import normalize_user_facing_message
 
 router = APIRouter(prefix="/api/v1/bootstrap/bisheng", tags=["bootstrap"])
 
@@ -39,5 +40,5 @@ async def bootstrap_bisheng_runtime_config(
     try:
         config = await service.update_config(payload)
     except ValueError as err:
-        return response_error(str(err), status_code=400)
+        return response_error(normalize_user_facing_message(err, status_code=400), status_code=400)
     return response_ok(config)

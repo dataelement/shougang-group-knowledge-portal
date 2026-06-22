@@ -15,6 +15,7 @@ from app.schemas.chat import PortalChatCompletionRequest
 from app.schemas.common import response_ok
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.chat_proxy_service import ChatProxyService
+from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_telemetry_service import PortalTelemetryService
@@ -44,7 +45,15 @@ def _require_portal_session(request: Request, auth_service: PortalAuthService):
 
 def _normalize_upload_payload(payload: dict, fallback_file_id: str, fallback_filename: str) -> dict:
     if payload.get("status_code") not in (None, 200):
-        raise HTTPException(status_code=502, detail=payload.get("status_message") or "附件上传失败")
+        status_code = payload.get("status_code")
+        raise HTTPException(
+            status_code=502,
+            detail=normalize_user_facing_message(
+                payload.get("status_message"),
+                fallback="附件上传失败",
+                status_code=int(status_code) if isinstance(status_code, int) else None,
+            ),
+        )
     data = payload.get("data", payload)
     if not isinstance(data, dict):
         raise HTTPException(status_code=502, detail="附件上传失败")
@@ -76,6 +85,8 @@ async def list_conversations(
             default_model=get_settings().bisheng_default_model,
         )
         return response_ok(await service.list_conversations(page=page, limit=limit))
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
     finally:
         await bisheng_client.aclose()
 
@@ -96,6 +107,8 @@ async def get_conversation_messages(
             default_model=get_settings().bisheng_default_model,
         )
         return response_ok(await service.get_conversation_messages(conversation_id))
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
     finally:
         await bisheng_client.aclose()
 

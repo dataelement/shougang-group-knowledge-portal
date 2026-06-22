@@ -15,6 +15,7 @@ from app.services.bisheng_runtime_service import (
     _unwrap_bisheng_payload,
     encrypt_bisheng_password,
 )
+from app.services.error_messages import normalize_user_facing_message
 
 
 class PortalAuthError(Exception):
@@ -309,11 +310,24 @@ class PortalAuthService:
         except PortalAuthError:
             raise
         except ValueError as err:
-            raise PortalAuthError(str(err), status_code=401) from err
+            raise PortalAuthError(
+                normalize_user_facing_message(err, fallback="登录失败，请重试"),
+                status_code=401,
+            ) from err
         except httpx.HTTPStatusError as err:
-            raise PortalAuthError(f"BiSheng 登录失败：HTTP {err.response.status_code}", status_code=502) from err
+            raise PortalAuthError(
+                normalize_user_facing_message(
+                    "",
+                    fallback="BiSheng 登录失败，请稍后重试",
+                    status_code=err.response.status_code,
+                ),
+                status_code=502,
+            ) from err
         except httpx.HTTPError as err:
-            raise PortalAuthError(f"连接 BiSheng 失败：{err}", status_code=502) from err
+            raise PortalAuthError(
+                normalize_user_facing_message(err, fallback="连接 BiSheng 失败，请稍后重试", status_code=502),
+                status_code=502,
+            ) from err
         finally:
             await client.aclose()
 

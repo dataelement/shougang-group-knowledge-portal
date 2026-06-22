@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.clients.bisheng import BishengAuthRefreshError
 from app.schemas.common import response_error
+from app.services.error_messages import normalize_user_facing_message
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthService
 from app.services.portal_config_service import PortalConfigService
@@ -73,7 +74,7 @@ def create_app() -> FastAPI:
         _request: Request,
         exc: BishengAuthRefreshError,
     ):
-        return response_error(str(exc), status_code=502)
+        return response_error(normalize_user_facing_message(exc, status_code=502), status_code=502)
 
     app.include_router(api_router)
     return app

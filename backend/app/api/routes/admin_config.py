@@ -21,6 +21,7 @@ from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfigUpdate
 from app.schemas.portal_config import (
     AppsConfigUpdate,
     BannersConfigUpdate,
+    DisplayConfig,
     DomainsConfigUpdate,
     IntegrationsConfig,
     PortalConfig,
@@ -30,10 +31,10 @@ from app.schemas.portal_config import (
     SectionsConfigUpdate,
     SiteConfig,
     SpacesConfigUpdate,
-    DisplayConfig,
 )
-from app.services.portal_config_service import PortalConfigService
 from app.services.bisheng_runtime_service import BishengRuntimeService
+from app.services.error_messages import normalize_user_facing_message
+from app.services.portal_config_service import PortalConfigService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
 router = APIRouter(
@@ -459,7 +460,7 @@ async def update_bisheng_runtime_config(
     try:
         config = await service.update_config(payload)
     except ValueError as err:
-        return response_error(str(err), status_code=400)
+        return response_error(normalize_user_facing_message(err, status_code=400), status_code=400)
     return response_ok(config)
 
 
@@ -478,5 +479,5 @@ async def update_unified_auth_runtime_config(
     try:
         config = service.update_config(payload)
     except ValueError as err:
-        return response_error(str(err), status_code=400)
+        return response_error(normalize_user_facing_message(err, status_code=400), status_code=400)
     return response_ok(config)

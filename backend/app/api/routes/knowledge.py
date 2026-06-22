@@ -614,7 +614,7 @@ async def get_file_preview_content(
         requested_source_kind=source_kind,
     )
     if source is None or not source.url:
-        raise HTTPException(status_code=404, detail="PREVIEW_CONTENT_NOT_FOUND")
+        raise HTTPException(status_code=404, detail="未找到可预览内容")
 
     upstream = await bisheng_client.get_preview_asset(source.url)
     headers = {"Cache-Control": "no-store"}

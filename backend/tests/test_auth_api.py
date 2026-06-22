@@ -50,6 +50,17 @@ class FakeAuthBishengClient:
         return None
 
 
+class FakeAuthFailureBishengClient(FakeAuthBishengClient):
+    async def post_json(self, path: str, json=None):
+        if path == "/api/v1/user/login":
+            return {
+                "status_code": 401,
+                "status_message": "Invalid username or password",
+                "data": {},
+            }
+        raise AssertionError(f"Unexpected post path: {path}")
+
+
 def make_auth_service() -> PortalAuthService:
     return PortalAuthService(
         runtime_service=FakeRuntimeService(),
@@ -57,6 +68,17 @@ def make_auth_service() -> PortalAuthService:
         ttl_seconds=7 * 24 * 60 * 60,
         cookie_secure=False,
         client_factory=FakeAuthBishengClient,
+        password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+    )
+
+
+def make_failing_auth_service() -> PortalAuthService:
+    return PortalAuthService(
+        runtime_service=FakeRuntimeService(),
+        cookie_name="test_portal_session",
+        ttl_seconds=7 * 24 * 60 * 60,
+        cookie_secure=False,
+        client_factory=FakeAuthFailureBishengClient,
         password_encryptor=lambda _public_key, password: f"encrypted-{password}",
     )
 
@@ -111,3 +133,20 @@ def test_me_recovers_portal_session_from_bisheng_cookie():
     user = me_response.json()["data"]["user"]
     assert user["account"] == "bisheng-user"
     assert user["name"] == "王工"
+
+
+def test_login_failure_maps_upstream_english_message_to_chinese():
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = make_failing_auth_service()
+        try:
+            response = client.post(
+                "/api/v1/auth/login",
+                json={"account": "bisheng-user", "password": "bad", "remember": True},
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "账号或密码错误，请检查后重试"

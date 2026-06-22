@@ -58,7 +58,7 @@ test('portal content config handles empty error responses without native json pa
       fetchPortalContentConfig(),
       (err: unknown) => {
         assert.ok(err instanceof Error);
-        assert.equal(err.message, '请求失败：502');
+        assert.equal(err.message, '服务连接异常，请稍后重试。');
         assert.equal((err as { status?: number }).status, 502);
         return true;
       },

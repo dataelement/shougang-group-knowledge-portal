@@ -18,6 +18,7 @@ from app.schemas.bisheng_runtime import (
     BishengRuntimeConfigView,
 )
 from app.services.config_store import SQLiteConfigStore
+from app.services.error_messages import normalize_user_facing_message
 
 ClientFactory = Callable[..., BishengClient]
 
@@ -334,9 +335,17 @@ class BishengRuntimeService:
                 raise ValueError("BiSheng 登录成功，但未返回 access_token")
             return access_token
         except httpx.HTTPStatusError as err:
-            raise ValueError(f"BiSheng 登录失败：HTTP {err.response.status_code}") from err
+            raise ValueError(
+                normalize_user_facing_message(
+                    f"BiSheng 登录失败：HTTP {err.response.status_code}",
+                    fallback="BiSheng 登录失败，请稍后重试",
+                    status_code=err.response.status_code,
+                )
+            ) from err
         except httpx.HTTPError as err:
-            raise ValueError(f"连接 BiSheng 失败：{err}") from err
+            raise ValueError(
+                normalize_user_facing_message(err, fallback="连接 BiSheng 失败，请稍后重试", status_code=502)
+            ) from err
         finally:
             await client.aclose()
 
@@ -493,7 +502,14 @@ def _unwrap_bisheng_payload(response: dict) -> dict:
     if response.get("status_code") == 200:
         data = response.get("data")
         return data if isinstance(data, dict) else {}
-    raise ValueError(str(response.get("status_message") or "BiSheng 请求失败"))
+    status = response.get("status_code")
+    raise ValueError(
+        normalize_user_facing_message(
+            response.get("status_message"),
+            fallback="BiSheng 请求失败",
+            status_code=int(status) if isinstance(status, int) else None,
+        )
+    )
 
 
 def _utc_now() -> str:
@@ -550,7 +566,7 @@ def _encrypt_pkcs1_v1_5(modulus: int, exponent: int, message: bytes) -> str:
 
 def _read_tlv(data: bytes, offset: int, expected_tag: int) -> tuple[bytes, int]:
     if data[offset] != expected_tag:
-        raise ValueError("Unexpected RSA public key format")
+        raise ValueError("登录加密配置异常，请联系管理员")
     length, cursor = _read_length(data, offset + 1)
     end = cursor + length
     return data[cursor:end], end

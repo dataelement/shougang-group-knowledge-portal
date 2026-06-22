@@ -4,6 +4,7 @@ from typing import Any, Literal
 import httpx
 
 from app.clients.bisheng import BishengClient
+from app.services.error_messages import normalize_user_facing_message
 
 logger = logging.getLogger(__name__)
 
@@ -72,24 +73,48 @@ class PortalTelemetryService:
         try:
             response = await self._bisheng.get_json("/api/v1/knowledge/shougang-portal/home/stats")
         except httpx.HTTPError as exc:
-            raise PortalTelemetryStatsError("Failed to fetch home stats") from exc
+            raise PortalTelemetryStatsError(
+                normalize_user_facing_message("Failed to fetch home stats", fallback="首页统计数据加载失败，请稍后重试")
+            ) from exc
 
         if not isinstance(response, dict):
-            raise PortalTelemetryStatsError("Invalid home stats response from BiSheng")
+            raise PortalTelemetryStatsError(
+                normalize_user_facing_message(
+                    "Invalid home stats response from BiSheng",
+                    fallback="首页统计数据加载失败，请稍后重试",
+                )
+            )
 
         status_code = response.get("status_code")
         if status_code not in (None, 200):
             status_message = str(response.get("status_message") or "BiSheng home stats query failed")
             numeric_status_code = int(status_code) if isinstance(status_code, int) else None
-            raise PortalTelemetryStatsError(status_message, status_code=numeric_status_code)
+            raise PortalTelemetryStatsError(
+                normalize_user_facing_message(
+                    status_message,
+                    fallback="首页统计数据加载失败，请稍后重试",
+                    status_code=numeric_status_code,
+                ),
+                status_code=numeric_status_code,
+            )
 
         data = response.get("data")
         if not isinstance(data, dict):
-            raise PortalTelemetryStatsError("Invalid home stats response from BiSheng")
+            raise PortalTelemetryStatsError(
+                normalize_user_facing_message(
+                    "Invalid home stats response from BiSheng",
+                    fallback="首页统计数据加载失败，请稍后重试",
+                )
+            )
 
         required_fields = ("read_count", "favorite_count", "qa_count")
         if any(field not in data for field in required_fields):
-            raise PortalTelemetryStatsError("Invalid home stats response from BiSheng")
+            raise PortalTelemetryStatsError(
+                normalize_user_facing_message(
+                    "Invalid home stats response from BiSheng",
+                    fallback="首页统计数据加载失败，请稍后重试",
+                )
+            )
 
         try:
             return {
@@ -98,4 +123,9 @@ class PortalTelemetryService:
                 "qa_count": int(data["qa_count"]),
             }
         except (TypeError, ValueError) as exc:
-            raise PortalTelemetryStatsError("Invalid home stats response from BiSheng") from exc
+            raise PortalTelemetryStatsError(
+                normalize_user_facing_message(
+                    "Invalid home stats response from BiSheng",
+                    fallback="首页统计数据加载失败，请稍后重试",
+                )
+            ) from exc
