@@ -153,6 +153,12 @@ class KnowledgeService:
         config = self._config_service.get_config()
         return [space.id for space in config.spaces if space.enabled]
 
+    def _allowed_detail_space_ids(self, extra_space_ids: Optional[list[int]] = None) -> set[int]:
+        allowed = set(self.get_enabled_space_ids())
+        if extra_space_ids:
+            allowed |= set(extra_space_ids)
+        return allowed
+
     def get_enabled_space_ids_by_level(self, space_level: Optional[str]) -> list[int]:
         config = self._config_service.get_config()
         normalized_level = (space_level or "").strip()
@@ -392,8 +398,12 @@ class KnowledgeService:
             return None
         return session
 
-    async def get_space_tags(self, space_id: int) -> list[str]:
-        if space_id not in self.get_enabled_space_ids():
+    async def get_space_tags(
+        self,
+        space_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[str]:
+        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
             return []
         tag_lookup = await self._get_space_tag_lookup(space_id)
         return sorted(tag_lookup.keys())
@@ -450,8 +460,9 @@ class KnowledgeService:
         tag: Optional[str],
         page: int,
         page_size: int,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> PagedKnowledgeFileData:
-        if space_id not in self.get_enabled_space_ids():
+        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
         search_result = await self._fetch_space_files(space_id=space_id, keyword=None, tag_name=tag)
@@ -658,8 +669,13 @@ class KnowledgeService:
             if isinstance(item, dict)
         ]
 
-    async def get_file_detail(self, space_id: int, file_id: int) -> Optional[KnowledgeFileDetail]:
-        if space_id not in self.get_enabled_space_ids():
+    async def get_file_detail(
+        self,
+        space_id: int,
+        file_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> Optional[KnowledgeFileDetail]:
+        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
             return None
 
         file_info_resp = await self._bisheng.get_json(f"/api/v1/knowledge/file/info/{file_id}")
@@ -688,13 +704,22 @@ class KnowledgeService:
             space=KnowledgeFileSpace(id=space_id, name=source),
         )
 
-    async def get_file_preview(self, space_id: int, file_id: int) -> Optional[FilePreviewManifest]:
-        detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
+    async def get_file_preview(
+        self,
+        space_id: int,
+        file_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> Optional[FilePreviewManifest]:
+        detail = await self.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if detail is None:
             return None
 
         normalized_ext = self._normalize_ext(detail.file_ext)
-        raw_preview = await self._get_raw_file_preview(space_id=space_id, file_id=file_id)
+        raw_preview = await self._get_raw_file_preview(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         download_url = raw_preview.original_url if raw_preview else ""
 
         if normalized_ext in UNSUPPORTED_PREVIEW_EXTENSIONS:
@@ -710,6 +735,7 @@ class KnowledgeService:
             file_id=file_id,
             raw_preview=raw_preview,
             file_ext=normalized_ext,
+            extra_space_ids=extra_space_ids,
         )
         if source is None:
             return FilePreviewManifest(
@@ -743,12 +769,15 @@ class KnowledgeService:
         requested_source_kind: Optional[FilePreviewSourceKind] = None,
         raw_preview: Optional[FilePreviewData] = None,
         file_ext: Optional[str] = None,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> Optional[ResolvedPreviewSource]:
         normalized_ext = self._normalize_ext(file_ext or "")
         if normalized_ext in UNSUPPORTED_PREVIEW_EXTENSIONS:
             return None
 
-        preview_data = raw_preview or await self._get_raw_file_preview(space_id=space_id, file_id=file_id)
+        preview_data = raw_preview or await self._get_raw_file_preview(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if requested_source_kind:
             url = await self._get_preview_source_url(
                 source_kind=requested_source_kind,
@@ -771,8 +800,15 @@ class KnowledgeService:
                 return ResolvedPreviewSource(source_kind=source_kind, url=url)
         return None
 
-    async def _get_raw_file_preview(self, space_id: int, file_id: int) -> Optional[FilePreviewData]:
-        detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
+    async def _get_raw_file_preview(
+        self,
+        space_id: int,
+        file_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> Optional[FilePreviewData]:
+        detail = await self.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if detail is None:
             return None
         preview_resp = await self._bisheng.get_json(
@@ -958,8 +994,15 @@ class KnowledgeService:
     def _normalize_ext(self, ext: str) -> str:
         return ext.strip().lower()
 
-    async def get_file_chunks(self, space_id: int, file_id: int) -> list[FileChunkItem]:
-        detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
+    async def get_file_chunks(
+        self,
+        space_id: int,
+        file_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[FileChunkItem]:
+        detail = await self.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if detail is None:
             return []
 
@@ -1001,8 +1044,11 @@ class KnowledgeService:
         space_id: int,
         file_id: int,
         limit: int,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> RelatedKnowledgeFileData:
-        detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
+        detail = await self.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if detail is None or not detail.tags:
             return RelatedKnowledgeFileData(data=[], total=0)
 

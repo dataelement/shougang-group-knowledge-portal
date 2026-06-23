@@ -2371,3 +2371,116 @@ def test_search_and_tags_skip_unauthorized_spaces_instead_of_500(tmp_path: Path)
     search_data = search_response.json()["data"]
     assert search_data["total"] == 2
     assert all(item["space_id"] == 12 for item in search_data["data"])
+
+
+class _VisibleNonEnabledSpaceBishengClient(FakeBishengClient):
+    """Fake where space 120 is personally visible but NOT a backend-enabled library."""
+
+    async def get_json(self, path: str, params=None, headers=None):
+        if path == "/api/v1/knowledge/space/grouped":
+            return {
+                "status_code": 200,
+                "data": {
+                    "personal_spaces": [
+                        {
+                            "id": 120,
+                            "name": "个人可见但未启用库",
+                            "auth_type": "private",
+                            "space_level": "personal",
+                            "file_num": 1,
+                            "update_time": "2026-05-01T09:20:00",
+                        }
+                    ],
+                    "team_spaces": [],
+                    "department_spaces": [],
+                    "public_spaces": [],
+                },
+            }
+        if path == "/api/v1/knowledge/file/info/2580":
+            return {
+                "data": {
+                    "id": 2580,
+                    "knowledge_id": 120,
+                    "file_name": "个人库内文档.pdf",
+                    "abstract": "个人可见库文档摘要",
+                    "update_time": "2026-05-01T09:20:00",
+                }
+            }
+        if path == "/api/v1/knowledge/space/120/search":
+            return {
+                "data": {
+                    "data": [
+                        {
+                            "id": 2580,
+                            "knowledge_id": 120,
+                            "file_name": "个人库内文档.pdf",
+                            "abstract": "个人可见库文档摘要",
+                            "file_type": 1,
+                            "status": 2,
+                            "file_size": "100KB",
+                            "update_time": "2026-05-01T09:20:00",
+                            "tags": [],
+                        }
+                    ],
+                    "total": 1,
+                }
+            }
+        return await super().get_json(path, params=params, headers=headers)
+
+
+def test_get_file_detail_succeeds_for_logged_in_user_in_visible_non_enabled_space(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)  # enables 12/18/25 — 120 is NOT enabled
+    fake_bisheng = _VisibleNonEnabledSpaceBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.get("/api/v1/knowledge/space/120/files/2580")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    detail = response.json()["data"]
+    assert detail is not None
+    assert detail["id"] == 2580
+    assert detail["space"]["id"] == 120
+
+
+def test_get_file_detail_returns_null_for_non_enabled_space_when_anonymous(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)  # 120 is neither enabled nor visible (no session)
+    fake_bisheng = _VisibleNonEnabledSpaceBishengClient()
+    with TestClient(app) as client:
+        # No portal_auth_service override: the real service returns None (no cookie),
+        # so the route takes the anonymous, enabled-only path.
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/space/120/files/2580")
+
+    assert response.status_code == 200
+    assert response.json()["data"] is None
+
+
+def test_service_get_file_detail_honors_extra_space_ids(tmp_path: Path):
+    import asyncio
+
+    from app.services.knowledge_service import KnowledgeService
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)  # 120 not enabled
+    fake_bisheng = _VisibleNonEnabledSpaceBishengClient()
+    service = KnowledgeService(bisheng_client=fake_bisheng, portal_config_service=config_service)
+
+    # Without extra_space_ids the non-enabled space short-circuits to None.
+    assert asyncio.run(service.get_file_detail(space_id=120, file_id=2580)) is None
+    # With the space allowed as a visible extra, detail is returned.
+    detail = asyncio.run(
+        service.get_file_detail(space_id=120, file_id=2580, extra_space_ids=[120])
+    )
+    assert detail is not None
+    assert detail.id == 2580
+    assert detail.space_id == 120
