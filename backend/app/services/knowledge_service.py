@@ -19,6 +19,7 @@ from app.schemas.knowledge import (
     FilePreviewManifest,
     FilePreviewMode,
     FilePreviewSourceKind,
+    FileTag,
     HomeKnowledgeData,
     KnowledgeFileDetail,
     KnowledgeFileItem,
@@ -671,7 +672,7 @@ class KnowledgeService:
             file_id=file_id,
             file_name=file_info.get("file_name", ""),
         )
-        tags = self._extract_tag_names(search_item or {})
+        tags = self._extract_file_tags(search_item or {})
         source = self.get_space_name_map().get(space_id, str(space_id))
         return KnowledgeFileDetail(
             id=file_id,
@@ -1144,7 +1145,7 @@ class KnowledgeService:
                     summary=item.get("abstract") or "",
                     source=space_name_map.get(space_id, str(space_id)),
                     updated_at=self._serialize_datetime(item.get("update_time")),
-                    tags=self._extract_tag_names(item),
+                    tags=self._extract_file_tags(item),
                     file_ext=self._get_file_ext(file_name),
                     file_size=self._extract_file_size_label(item),
                     file_encoding=self._extract_file_encoding(item),
@@ -1211,6 +1212,19 @@ class KnowledgeService:
             if isinstance(tag, dict) and tag.get("name"):
                 names.append(tag["name"])
         return names
+
+    @staticmethod
+    def _extract_file_tags(item: dict[str, Any]) -> list[FileTag]:
+        tags = item.get("tags") or []
+        result: list[FileTag] = []
+        for tag in tags:
+            if not isinstance(tag, dict):
+                continue
+            name = tag.get("tag_name") or tag.get("name")
+            if not name:
+                continue
+            result.append(FileTag(tag_name=str(name), resource_type=str(tag.get("resource_type") or "")))
+        return result
 
     @staticmethod
     def _extract_file_size_label(*items: dict[str, Any] | None) -> str:

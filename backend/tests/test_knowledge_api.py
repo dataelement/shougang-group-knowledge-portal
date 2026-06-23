@@ -896,7 +896,10 @@ def test_get_file_detail_and_preview(tmp_path: Path):
     assert detail_response.status_code == 200
     detail = detail_response.json()["data"]
     assert detail["space"]["id"] == 12
-    assert detail["tags"] == ["热轧", "振动纹"]
+    assert detail["tags"] == [
+        {"tag_name": "热轧", "resource_type": ""},
+        {"tag_name": "振动纹", "resource_type": ""},
+    ]
     assert detail["file_size"] == "949.33KB"
     assert detail["file_encoding"] == "GF-ZD-SC-202604-01201"
 
@@ -1274,7 +1277,10 @@ def test_search_ai_summary_reuses_supplied_search_results_without_second_search(
                                 "summary": "振动纹治理实践摘要",
                                 "source": "轧线技术案例库",
                                 "updated_at": "2026-04-13T10:30:00",
-                                "tags": ["热轧", "振动纹"],
+                                "tags": [
+                                    {"tag_name": "热轧", "resource_type": ""},
+                                    {"tag_name": "振动纹", "resource_type": ""},
+                                ],
                                 "file_ext": "pdf",
                                 "file_size": "949.33KB",
                                 "file_encoding": "GF-ZD-SC-202604-01201",
