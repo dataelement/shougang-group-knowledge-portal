@@ -109,14 +109,18 @@ async def _scoped_service_and_extra_ids(
         return service, None, None
 
     scoped_client = auth_service.create_bisheng_client(session)
-    service = KnowledgeService(
-        bisheng_client=scoped_client,
-        portal_config_service=portal_config_service,
-        default_model=get_settings().bisheng_default_model,
-    )
-    visible_spaces = await service.list_visible_spaces()
-    extra_space_ids = [space.id for space in visible_spaces.data]
-    return service, extra_space_ids, scoped_client
+    try:
+        service = KnowledgeService(
+            bisheng_client=scoped_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        visible_spaces = await service.list_visible_spaces()
+        extra_space_ids = [space.id for space in visible_spaces.data]
+        return service, extra_space_ids, scoped_client
+    except Exception:
+        await scoped_client.aclose()
+        raise
 
 
 def _require_share_access(

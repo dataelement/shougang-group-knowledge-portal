@@ -2484,3 +2484,43 @@ def test_service_get_file_detail_honors_extra_space_ids(tmp_path: Path):
     assert detail is not None
     assert detail.id == 2580
     assert detail.space_id == 120
+
+
+def test_list_space_files_closes_per_user_client_when_visible_spaces_fetch_fails(
+    tmp_path: Path,
+):
+    """If the visible-spaces fetch raises, the per-user bisheng client must be
+    closed exactly once and the system singleton must never be closed."""
+
+    class _ClosableBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.aclose_calls = 0
+
+        async def aclose(self):
+            self.aclose_calls += 1
+
+    class _RaisingVisibleSpacesClient(_ClosableBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            raise RuntimeError("visible spaces fetch failed")
+
+    system_client = _ClosableBishengClient()
+    user_client = _RaisingVisibleSpacesClient()
+    assert user_client is not system_client
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = system_client
+        client.app.state.portal_auth_service = FakePortalAuthService(user_client)
+        try:
+            response = client.get("/api/v1/knowledge/space/12/files")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 500
+    assert user_client.aclose_calls == 1
+    assert system_client.aclose_calls == 0
