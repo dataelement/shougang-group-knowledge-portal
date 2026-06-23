@@ -202,7 +202,12 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
                       <TagPill key={`${group.label}-${tag}`} name={tag} neutral />
                     ))}
                     {group.hiddenCount > 0 ? (
-                      <span className={s.moreTag}>+{group.hiddenCount}</span>
+                      <span className={s.moreTag}>
+                        +{group.hiddenCount}
+                        <span className={s.moreTagTooltip}>
+                          {group.hiddenTags.join('、')}
+                        </span>
+                      </span>
                     ) : null}
                   </div>
                 </div>
