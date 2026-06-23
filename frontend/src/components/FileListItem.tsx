@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { FileItem } from '../api/content';
 import TagPill from './TagPill';
 import {
@@ -8,6 +8,7 @@ import {
   Download,
   FileText,
   FolderTree,
+  Loader2,
   MessageCircle,
   Network,
   PencilLine,
@@ -40,6 +41,7 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
   const summaryRef = useRef<HTMLDivElement>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflowing, setSummaryOverflowing] = useState(false);
+  const [downloadPending, setDownloadPending] = useState(false);
 
   // Detect whether the clamped (2-line) summary actually overflows so the
   // expand toggle only shows when there is hidden text. Skip measuring while
@@ -55,6 +57,15 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
     observer.observe(el);
     return () => observer.disconnect();
   }, [view.summaryText, summaryExpanded]);
+
+  const handleDownloadClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!onDownload || downloadPending) return;
+    setDownloadPending(true);
+    void Promise.resolve()
+      .then(() => onDownload(file))
+      .finally(() => setDownloadPending(false));
+  };
 
   return (
     <article className={s.item}>
@@ -115,14 +126,13 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
                 <button
                   type="button"
                   className={`${s.actionButton} ${s.downloadButton}`}
-                  title="下载文档"
-                  aria-label="下载文档"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void onDownload?.(file);
-                  }}
+                  title={downloadPending ? '正在获取下载链接' : '下载文档'}
+                  aria-label={downloadPending ? '正在获取下载链接' : '下载文档'}
+                  aria-busy={downloadPending}
+                  disabled={downloadPending}
+                  onClick={handleDownloadClick}
                 >
-                  <Download size={19} />
+                  {downloadPending ? <Loader2 size={19} className={s.spinner} /> : <Download size={19} />}
                 </button>
               ) : null}
               {view.actions.includes('share') ? (

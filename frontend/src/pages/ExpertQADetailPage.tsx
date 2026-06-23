@@ -1,42 +1,571 @@
-import { useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import type { MouseEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  AlertTriangle,
-  Award,
   BadgeCheck,
   BarChart3,
-  Bookmark,
+
   Check,
   CheckCircle,
   ChevronDown,
   ChevronUp,
   FileText,
-  Flag,
+  Image as ImageIcon,
   Link2,
+  Loader2,
   MessageCircle,
   MessageSquare,
   Send,
-  Share2,
+
   ThumbsUp,
   User,
   UserCheck,
+  X,
 } from 'lucide-react';
+import CommonFileUploadModal, {
+  type CommonUploadedFile,
+} from '../components/CommonFileUploadModal';
 import PageShell from '../components/PageShell';
-import { QUESTION_DETAIL } from '../data/expertQaMock';
-import type { AnswerEntry, QuestionStatus } from '../data/expertQaMock';
+import {
+  acceptAnswer,
+  createAnswer,
+  createComment,
+  fetchAnswersPaged,
+  fetchCommentsPaged,
+  fetchExpertAnswerDetail,
+  fetchExpertInfoDetail,
+  fetchExpertQuestionDetail,
+  fetchSimilarExpertQuestions,
+  likeAnswer,
+  markAnswerUseful,
+  uploadQaImage,
+  voteQuestion,
+  type ApiAnswer,
+  type ApiComment,
+  type ApiQuestion,
+  type CreateAnswerPayload,
+  type PagedAnswerResponse,
+  type SimilarQuestionItem,
+} from '../api/expertQa';
+import {
+  type AnswerEntry,
+  type ExpertProfile,
+  type QuestionDetail,
+  type QuestionStatus,
+} from '../types/expertQa';
 import s from './ExpertQADetailPage.module.css';
+
+const ANSWERS_PAGE_SIZE = 10;
+const COMMENTS_PAGE_SIZE = 20;
+const QUESTION_FOLLOWUP_ANSWER_ID = 0;
+const QUESTION_FOLLOWUP_THREAD_ID = String(QUESTION_FOLLOWUP_ANSWER_ID);
+const MAX_ANSWER_IMAGE_COUNT = 3;
+const MAX_ANSWER_DOCUMENT_COUNT = 3;
+const EMPTY_TEXT = '未知';
+const ATTACHMENT_FALLBACK_PREFIX = '附件';
+const DOCUMENT_FALLBACK_PREFIX = '知识库文档';
+const ASSET_LIST_SEPARATOR = ';';
+const ASSET_PART_SEPARATOR = '|';
+const LINK_LIST_SPLIT_PATTERN = /[;；,\n\r]+/;
+const INVITED_NAME_SPLIT_PATTERN = /[;；,，\n\r]+/;
+const TECH_TOKEN_PATTERN = /[A-Za-z0-9]+(?:mm|MM)?|[\u4e00-\u9fa5]{2,}/g;
+const IGNORED_TAGS = new Set([
+  '可能原因',
+  '如何处理',
+  '为什么',
+  '问题',
+  '出现',
+  '进行',
+  '根据',
+  '当前',
+]);
+const NUMERIC_ATTACHMENT_PATTERN = /^\d+$/;
+const SOLVED_QUESTION_STATUS = 1;
+const DEFAULT_AVATAR_COLORS = [
+  '#0EA5E9',
+  '#10B981',
+  '#6366F1',
+  '#F97316',
+  '#EF4444',
+  '#14B8A6',
+  '#8B5CF6',
+];
+const BOUNTY_FIELD_KEYS = [
+  'bounty',
+  'reward_points',
+  'rewardPoints',
+  'points',
+  'score',
+  'bounty_points',
+];
+const FOLLOWER_FIELD_KEYS = [
+  'followers',
+  'follower_count',
+  'follow_count',
+  'watch_count',
+];
+
+interface DetailAttachment {
+  label: string;
+  href: string;
+}
+
+type KnowledgeAttachment = CommonUploadedFile;
+
+type DetailAnswerEntry = AnswerEntry & {
+  createdAtMs: number;
+};
+
+type DetailQuestion = QuestionDetail & {
+  imageUrls: string[];
+  attachments: DetailAttachment[];
+  relatedDocs: DetailAttachment[];
+  bounty: number;
+};
+
+type SortMode = 'top' | 'latest';
+
+interface CommentState {
+  items: ApiComment[];
+  total: number;
+  page: number;
+  loading: boolean;
+  draft: string;
+  submitting: boolean;
+  error: string | null;
+}
+
+interface CommentThreadProps {
+  answerId: number;
+  questionId: number;
+  initialCount: number;
+  onCommentCreated?: () => void;
+  onTotalChange?: (total: number) => void;
+}
+
+interface AnswerCardProps {
+  answer: DetailAnswerEntry;
+  questionId: number;
+  showComments: boolean;
+  onToggleComments: (event?: MouseEvent<HTMLButtonElement>) => void;
+  onVote: () => void;
+  onUseful: () => void;
+  onAccept: () => void;
+}
+
+function getAvatarInitial(name?: string | null): string {
+  const value = name?.trim();
+  return value ? value.charAt(0).toUpperCase() : '?';
+}
+
+function getAvatarColor(name?: string | null): string {
+  const value = name?.trim();
+  if (!value) return DEFAULT_AVATAR_COLORS[0];
+  const index =
+    [...value].reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+    DEFAULT_AVATAR_COLORS.length;
+  return DEFAULT_AVATAR_COLORS[index];
+}
+
+function formatDateOnly(value?: string | null): string {
+  if (!value) return EMPTY_TEXT;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return EMPTY_TEXT;
+  return date.toLocaleDateString('zh-CN');
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return EMPTY_TEXT;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return EMPTY_TEXT;
+  return date.toLocaleString('zh-CN');
+}
+
+function formatQuestionStatus(
+  status: number,
+  answerCount: number,
+  adoptedAnswerId?: number | null,
+): QuestionStatus {
+  if (status === SOLVED_QUESTION_STATUS || adoptedAnswerId) return 'solved';
+  if (answerCount > 0) return 'unsolved';
+  return 'pending';
+}
+
+function splitStoredList(value?: string | null): string[] {
+  if (!value?.trim()) return [];
+  return value
+    .split(LINK_LIST_SPLIT_PATTERN)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function splitInvitedNames(value?: string | null): string[] {
+  if (!value?.trim()) return [];
+  return value
+    .split(INVITED_NAME_SPLIT_PATTERN)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+
+function serializeKnowledgeDocumentIds(
+  items: KnowledgeAttachment[],
+): string | undefined {
+  const validItems = items.filter(
+    (item) => item.id.trim(),
+  );
+
+  return validItems.length
+    ? validItems
+        .map(
+          (item) =>
+            `${item.id.trim()}`,
+        )
+        .join(ASSET_LIST_SEPARATOR)
+    : undefined;
+}
+
+
+function serializeKnowledgeDocumentNames(items: KnowledgeAttachment[]): string | null {
+  const documentNames = items
+    .slice(0, MAX_ANSWER_DOCUMENT_COUNT)
+    .map((item) => item.title.trim())
+    .filter(Boolean);
+
+  return documentNames.length ? documentNames.join(ASSET_LIST_SEPARATOR) : null;
+}
+
+function parseUnknownLinks(value: string | null): string[] {
+  // const rawValue = stringifyAssetValue(value);
+  return splitStoredList(value);
+}
+
+function parseUnknownAttachments(value?: string | null, 
+  relatedDocs?: string | null): DetailAttachment[] {
+  // const rawValue = stringifyAssetValue(value);
+  return parseAttachments(value, relatedDocs);
+}
+
+
+
+async  function mapQuestionDetail(
+  question: ApiQuestion,
+  relatedQuestions: SimilarQuestionItem[] = [],
+): Promise<DetailQuestion> {
+  const relatedDocs = parseAttachments(question.attachments,question.related_docs);
+  const bodyParagraphs = splitParagraphs(question.description);
+  const invitedNames = splitInvitedNames(
+    question.experts_names || question.invited_experts,
+  );
+  const invitedExperts = await Promise.all(
+    invitedNames.map(async (name, index) => ({
+      expert: await buildInvitedExpert(name, index, question.created_at),
+      status: await fetchExpertAnswerDetail(question.id, name).then((res) => 
+        res ? ('answered' as const) : ('pending' as const)
+      )
+    }))
+  );
+  return {
+    id: String(question.id),
+    title: question.title,
+    excerpt: bodyParagraphs[0] ?? '',
+    domain: question.business_domain || EMPTY_TEXT,
+    domainKey: 'all',
+    status: formatQuestionStatus(
+      question.status,
+      question.answer_count,
+      question.adopted_answer_id,
+    ),
+    invitedSummary: formatInvitedSummary(invitedNames),
+    votes: question.vote_count,
+    answers: question.answer_count,
+    acceptedAnswers: question.adopted_answer_id ? 1 : 0,
+    views: question.view_count,
+    asker: {
+      initial: getAvatarInitial(question.created_by || `U${question.user_id}`),
+      name: question.created_by || `用户${question.user_id}`,
+    },
+    askedAt: formatDateOnly(question.created_at),
+    tags: extractQuestionTags(question.title, question.business_domain),
+    bodyParagraphs,
+    checkedItems: [],
+    followups: '',
+    relatedDoc: relatedDocs[0]
+      ? { label: relatedDocs[0].label }
+      : undefined,
+    followers: readNumberField(question, FOLLOWER_FIELD_KEYS) ?? 0,
+    invitedExperts,
+    fullAnswers: [],
+    related: relatedQuestions
+      .filter((item) => item.id !== question.id)
+      .map((item) => ({
+        id: String(item.id),
+        title: item.title,
+        meta: `${item.answer_count ?? 0} 个回答 · ${item.view_count ?? 0} 次浏览`,
+      })),
+    imageUrls: splitStoredList(question.image_url),
+    attachments: parseAttachments(question.attachments, question.related_docs),
+    relatedDocs,
+    bounty: readNumberField(question, BOUNTY_FIELD_KEYS) ?? 0,
+  };
+}
+
+function buildAnswerEntry(answer: ApiAnswer): DetailAnswerEntry {
+  const relatedDocs = parseUnknownAttachments(answer.attachments,answer.related_docs);
+  const createdAtMs = toTimestamp(answer.created_at);
+
+  return {
+    id: String(answer.id),
+    author: buildExpertProfile(answer),
+    adopted: answer.adopted ?? false,
+    isExpert: Boolean(answer.expert_id || answer.expert || answer.isExpert),
+    votes: answer.vote_count ?? 0,
+    ts: formatDateTime(answer.created_at),
+    createdAtMs,
+    bodyHtml: formatAnswerBody(answer.content),
+    helpful: answer.vote_count ?? 0,
+    commentCount: answer.comment_count ?? 0,
+    relatedDoc: relatedDocs[0],
+    imageUrls: parseUnknownLinks(answer.images_url),
+    attachments: parseUnknownAttachments(answer.attachments,answer.related_docs),
+    relatedDocs,
+  };
+}
+
+function markAnsweredInvitedExperts(
+  question: DetailQuestion,
+  answers: DetailAnswerEntry[],
+): DetailQuestion {
+  if (question.invitedExperts.length === 0) return question;
+  const answeredNames = new Set(
+    answers.map((answer) => answer.author.expert_name.trim()).filter(Boolean),
+  );
+
+  return {
+    ...question,
+    invitedExperts: question.invitedExperts.map((item) => ({
+      ...item,
+      status: answeredNames.has(item.expert.expert_name) ? 'answered' : item.status,
+    })),
+  };
+}
+
+function buildExpertProfile(answer: ApiAnswer): ExpertProfile {
+  const name = answer.expert_name || answer.expert?.expert_name || '匿名用户';
+
+  return {
+    id: answer.expert?.id ?? answer.expert_id ?? 0,
+    user_id: answer.expert?.user_id ?? 0,
+    expert_name: name,
+    depart_ment: answer.expert?.depart_ment ?? EMPTY_TEXT,
+    adoption_count: answer.expert?.adoption_count ?? 0,
+    answer_count: answer.expert?.answer_count ?? 0,
+    vote_count: answer.expert?.vote_count ?? answer.vote_count ?? 0,
+    introduction: answer.expert?.introduction ?? '',
+    created_at: answer.expert?.created_at ?? answer.created_at,
+    updated_at: answer.expert?.updated_at ?? answer.updated_at,
+  };
+}
+
+async function buildInvitedExpert(
+  name: string,
+  index: number,
+  createdAt: string,
+): Promise<ExpertProfile> {
+  try {
+    // 等待异步数据获取完成
+    const rawValue = await fetchExpertInfoDetail(name);
+
+    return {
+      id: index + 1,
+      user_id: rawValue.user_id || 0,
+      expert_name: name,
+      depart_ment: rawValue.depart_ment || '受邀专家',
+      adoption_count: 0,
+      answer_count: 0,
+      vote_count: 0,
+      introduction: '',
+      created_at: createdAt,
+      updated_at: createdAt,
+    };
+  } catch (error) {
+    console.warn(`Failed to fetch expert info for ${name}:`, error);
+    // 失败时返回默认结构，防止程序崩溃
+    return {
+      id: index + 1,
+      user_id: 0,
+      expert_name: name,
+      depart_ment: '受邀专家',
+      adoption_count: 0,
+      answer_count: 0,
+      vote_count: 0,
+      introduction: '',
+      created_at: createdAt,
+      updated_at: createdAt,
+    };
+  }
+}
+
+function formatInvitedSummary(invitedNames: string[]): string | undefined {
+  if (invitedNames.length === 0) return undefined;
+  const visibleNames = invitedNames.slice(0, 2).join('、');
+  return `邀请：${visibleNames}${invitedNames.length > 2 ? ` 等 ${invitedNames.length} 人` : ''}`;
+}
+
+function formatAnswerBody(content: string): string {
+  return escapeHtml(content || '')
+    .split(/\r?\n/)
+    .map((line) => `<p>${line || '&nbsp;'}</p>`)
+    .join('');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function splitParagraphs(value?: string | null): string[] {
+  if (!value?.trim()) return [];
+  return value
+    .split(/\r?\n\s*\r?\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+function extractQuestionTags(title: string, domain: string): string[] {
+  const tags = new Set<string>();
+  if (domain?.trim()) tags.add(domain.trim());
+
+  const matches = title.match(TECH_TOKEN_PATTERN) ?? [];
+  for (const token of matches) {
+    const normalizedToken = token.trim();
+    if (
+      normalizedToken.length < 2 ||
+      IGNORED_TAGS.has(normalizedToken) ||
+      tags.has(normalizedToken)
+    ) {
+      continue;
+    }
+    tags.add(normalizedToken);
+    if (tags.size >= 4) break;
+  }
+
+  return Array.from(tags).slice(0, 4);
+}
+
+function parseAttachments(
+  value?: string | null, 
+  relatedDocs?: string | null 
+): DetailAttachment[] {
+  const names = splitStoredList(value);
+  // 👇 将 attachments(value) 也传入，用于提取文件名和后缀
+  const hrefs = parseRelatedDocs(relatedDocs, value); 
+
+  return names.map((raw, index) => {
+    const [maybeLabel] = raw.split(ASSET_PART_SEPARATOR).map((part) => part.trim());
+    const href = hrefs[index] || maybeLabel; 
+
+    return {
+      label: getAttachmentLabel(maybeLabel, hrefs[index], index),
+      href,
+    };
+  });
+}
+/**
+ * 将 related_docs 和 attachments 解析为完整的下载链接数组
+ */
+function parseRelatedDocs(relatedDocs?: string | null, attachments?: string | null): string[] {
+  if (!relatedDocs || typeof relatedDocs !== 'string') return [];
+
+  const API_BASE_PATH = '/workspace/knowledge/file';
+  const pairs = relatedDocs.replace(/;/g, '；').split('；').map(str => str.trim());
+  const fileNames = attachments ? attachments.replace(/;/g, '；').split('；').map(str => str.trim()) : [];
+
+  return pairs.reduce<string[]>((acc, pair, index) => {
+    if (!pair || !pair.includes('-')) return acc;
+    const [docId, fileId] = pair.split('-');
+    
+    if (docId && fileId) {
+      // 获取对应的文件名，如果没有则默认为 'file'
+      const fileName = fileNames[index] || 'file'; 
+      
+      const ext = fileName.includes('.') ? fileName.split('.').pop() : '';
+      
+      const encodedName = encodeURIComponent(fileName);
+      
+      // 拼接目标格式的 URL
+      acc.push(`${API_BASE_PATH}/${fileId}?name=${encodedName}&type=${ext}&spaceId=${docId}`);
+    }
+    return acc;
+  }, []);
+}
+
+function getAttachmentLabel(
+  maybeLabel: string,
+  maybeHref: string | undefined,
+  index: number,
+): string {
+  if (maybeHref && maybeLabel) return maybeLabel;
+
+  const decodedName = decodeURIComponent(
+    maybeLabel.split('?')[0].split('/').filter(Boolean).pop() || '',
+  );
+
+  if (NUMERIC_ATTACHMENT_PATTERN.test(decodedName)) {
+    return `${DOCUMENT_FALLBACK_PREFIX}${decodedName}`;
+  }
+
+  return decodedName || `${ATTACHMENT_FALLBACK_PREFIX} ${index + 1}`;
+}
+
+
+
+
+function readNumberField(source: object, keys: string[]): number | undefined {
+  const record = source as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const parsedValue = Number(value);
+      if (Number.isFinite(parsedValue)) return parsedValue;
+    }
+  }
+
+  return undefined;
+}
+
+function toTimestamp(value?: string | null): number {
+  if (!value) return 0;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
 
 const STATUS_LABEL: Record<QuestionStatus, { text: string; cls: string }> = {
   solved: { text: '已解决', cls: s.solved },
   unsolved: { text: '待采纳', cls: s.unsolved },
-  urgent: { text: '紧急', cls: s.urgent },
-  bounty: { text: '悬赏中', cls: s.bounty },
-  pending: { text: '未回答', cls: s.unsolved },
+  pending: { text: '未回答', cls: s.urgent },
 };
+
+const QUESTION_FALLBACK_TEXT = '暂无问题描述';
+const ANSWER_PLACEHOLDER =
+  '结合你的经验给出排查思路、判断依据或处理建议，发布后将展示在回答列表中。';
 
 function StatusPill({ status }: { status: QuestionStatus }) {
   const meta = STATUS_LABEL[status];
-  const Icon = status === 'solved' ? CheckCircle : status === 'urgent' ? AlertTriangle : null;
+  const Icon = status === 'solved' ? CheckCircle : null;
+
   return (
     <span className={`${s.statusPill} ${meta.cls}`}>
       {Icon ? <Icon size={11} /> : null}
@@ -45,46 +574,305 @@ function StatusPill({ status }: { status: QuestionStatus }) {
   );
 }
 
-function AnswerCard({ answer }: { answer: AnswerEntry }) {
+function isCommentVisibleInThread(
+  comment: ApiComment,
+  answerId: number,
+): boolean {
+  if (answerId === QUESTION_FOLLOWUP_ANSWER_ID) {
+    return comment.is_follow_up || comment.answer_id === QUESTION_FOLLOWUP_ANSWER_ID;
+  }
+
+  return comment.answer_id === answerId;
+}
+
+function CommentThread({
+  answerId,
+  questionId,
+  initialCount,
+  onCommentCreated,
+  onTotalChange,
+}: CommentThreadProps) {
+  const [state, setState] = useState<CommentState>({
+    items: [],
+    total: initialCount,
+    page: 0,
+    loading: false,
+    draft: '',
+    submitting: false,
+    error: null,
+  });
+
+  const isFollowUpThread = answerId === QUESTION_FOLLOWUP_ANSWER_ID;
+  const threadItemLabel = isFollowUpThread ? '追问' : '评论';
+  const threadTitle = isFollowUpThread ? '问题追问' : '回答评论';
+  const visibleComments = useMemo(
+    () => state.items.filter((item) => isCommentVisibleInThread(item, answerId)),
+    [answerId, state.items],
+  );
+  const totalCount = Math.max(state.total, visibleComments.length);
+  const hasMore = visibleComments.length < totalCount;
+  const notLoaded = state.page === 0;
+  const hasDraftContent = Boolean(state.draft.trim());
+
+  const loadMore = useCallback(async () => {
+    if (state.loading) return;
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const nextPage = state.page + 1;
+      const res = await fetchCommentsPaged(
+        answerId,
+        questionId,
+        nextPage,
+        COMMENTS_PAGE_SIZE,
+      );
+     
+      const nextItems = Array.isArray(res.data) ? res.data : [];
+      const nextTotal =
+        typeof res.total === 'number'
+          ? res.total
+          : Math.max(state.total, state.items.length + nextItems.length);
+
+      setState((prev) => ({
+        ...prev,
+        items: [...prev.items, ...nextItems],
+        total: nextTotal,
+        page: nextPage,
+        loading: false,
+      }));
+      onTotalChange?.(nextTotal);
+    } catch (err) {
+      console.error('评论加载失败:', err);
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: '评论加载失败，请稍后重试',
+      }));
+    }
+  }, [
+    answerId,
+    onTotalChange,
+    questionId,
+    state.items.length,
+    state.loading,
+    state.page,
+    state.total,
+  ]);
+
+  useEffect(() => {
+    if (!notLoaded || (!isFollowUpThread && initialCount === 0)) return;
+    void loadMore();
+  }, [initialCount, isFollowUpThread, loadMore, notLoaded]);
+
+  async function handleSubmit() {
+    const content = state.draft.trim();
+    if (!content || state.submitting) return;
+
+    setState((prev) => ({ ...prev, submitting: true, error: null }));
+
+    try {
+      await createComment({
+        answer_id: answerId,
+        question_id: questionId,
+        content,
+        is_follow_up: isFollowUpThread,
+      });
+
+      const newComment: ApiComment = {
+        id: Date.now(),
+        answer_id: answerId,
+        user_id: 0,
+        user_name: '我',
+        content,
+        is_follow_up: isFollowUpThread,
+        vote_count: 0,
+        created_at: new Date().toISOString(),
+      };
+      const nextTotal = totalCount + 1;
+
+      setState((prev) => ({
+        ...prev,
+        items: [...prev.items, newComment],
+        total: nextTotal,
+        draft: '',
+        submitting: false,
+      }));
+      onCommentCreated?.();
+      onTotalChange?.(nextTotal);
+    } catch (err) {
+      console.error('评论发布失败:', err);
+      setState((prev) => ({
+        ...prev,
+        submitting: false,
+        error: '评论发布失败，请稍后重试',
+      }));
+    }
+  }
+
+  // function handleCommentUseful(commentId: number) {
+  //   setState((prev) => ({
+  //     ...prev,
+  //     items: prev.items.map((item) =>
+  //       item.id === commentId
+  //         ? { ...item, vote_count: item.vote_count + 1 }
+  //         : item,
+  //     ),
+  //   }));
+  //   void likeComment({ target_id: commentId, target_type: 'answer' });
+  // }
+
+  return (
+    <div className={s.commentSection}>
+      <div className={s.commentSectionTitle}>
+        <span>{threadTitle}</span>
+        <span>{totalCount} 条{threadItemLabel}</span>
+      </div>
+
+      {visibleComments.map((comment) => (
+        <div key={comment.id} className={s.comment}>
+          <span
+            className={s.commentAv}
+            style={{ backgroundColor: getAvatarColor(comment.user_name) }}
+          >
+            {getAvatarInitial(comment.user_name)}
+          </span>
+          <div className={s.commentText}>
+            <div>
+              <span className={s.commentName}>{comment.user_name}</span>
+              {comment.content}
+              <span className={s.commentTs}>
+                {formatDateTime(comment.created_at)}
+              </span>
+            </div>
+          </div>
+          {/* <button
+            type="button"
+            className={s.commentUseful}
+            onClick={() => handleCommentUseful(comment.id)}
+          >
+            有用 {comment.vote_count ? `(${comment.vote_count})` : ''}
+          </button> */}
+        </div>
+      ))}
+
+      {(notLoaded && initialCount > 0) || (!notLoaded && hasMore) ? (
+        <button
+          type="button"
+          className={s.loadMoreComments}
+          onClick={() => void loadMore()}
+          disabled={state.loading}
+        >
+          {state.loading ? (
+            <>
+              <Loader2 size={12} className={s.spin} />
+              加载中...
+            </>
+          ) : notLoaded ? (
+            `查看 ${totalCount} 条${threadItemLabel}`
+          ) : (
+            `加载更多${threadItemLabel}`
+          )}
+        </button>
+      ) : null}
+
+      {state.error ? <p className={s.commentError}>{state.error}</p> : null}
+
+      <div className={s.commentComposer}>
+        <textarea
+          placeholder={isFollowUpThread ? '发起追问...' : '添加评论...'}
+          value={state.draft}
+          onChange={(event) =>
+            setState((prev) => ({ ...prev, draft: event.target.value }))
+          }
+          disabled={state.submitting}
+        />
+        <div className={s.commentComposerFoot}>
+          <span />
+          <button
+            type="button"
+            className={s.commentSubmit}
+            onClick={() => void handleSubmit()}
+            disabled={state.submitting || !hasDraftContent}
+          >
+            {state.submitting ? (
+              <Loader2 size={12} className={s.spin} />
+            ) : (
+              '发布'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AnswerCard({
+  answer,
+  questionId,
+  showComments,
+  onToggleComments,
+  onVote,
+  onUseful,
+  onAccept,
+}: AnswerCardProps) {
+  const commentThreadRef = useRef<HTMLDivElement>(null);
   const wrapClass = [
     s.answer,
     answer.isExpert ? s.answerExpert : '',
-    answer.isAccepted ? s.answerAccepted : '',
+    answer.adopted ? s.answerAccepted : '',
   ]
     .filter(Boolean)
     .join(' ');
+  const answerRate =
+    answer.author.answer_count > 0
+      ? Math.round(
+          (answer.author.adoption_count / answer.author.answer_count) * 100,
+        )
+      : 0;
+
+  useEffect(() => {
+    if (!showComments) return;
+    commentThreadRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    });
+  }, [showComments]);
 
   return (
     <article className={wrapClass}>
       <div className={s.voteCol}>
-        <button type="button" className={`${s.voteBtn} ${answer.isAccepted ? s.voteUpAct : ''}`}>
+        <button
+          type="button"
+          className={`${s.voteBtn} ${answer.adopted ? s.voteUpAct : ''}`}
+          onClick={onVote}
+          aria-label="赞同回答"
+        >
           <ChevronUp size={15} />
         </button>
         <span className={s.voteCount}>{answer.votes}</span>
-        <button type="button" className={s.voteBtn}>
-          <ChevronDown size={15} />
-        </button>
-        <button type="button" className={s.bookmarkBtn} aria-label="收藏">
-          <Bookmark size={15} />
-        </button>
+
       </div>
+
       <div className={s.answerMain}>
-        {answer.isAccepted ? (
+        {answer.adopted ? (
           <div className={s.acceptedBanner}>
             <Check size={13} />
             已采纳为最佳回答
           </div>
         ) : null}
+
         <div className={s.answerHead}>
           <div
-            className={`${s.avatar} ${s.avatarLg} ${answer.isExpert ? s.avatarExpert : ''}`}
-            style={{ backgroundColor: answer.author.avatarColor }}
+            className={`${s.avatar} ${s.avatarLg} ${
+              answer.isExpert ? s.avatarExpert : ''
+            }`}
+            style={{ backgroundColor: getAvatarColor(answer.author.expert_name) }}
           >
-            {answer.author.initial}
+            {getAvatarInitial(answer.author.expert_name)}
           </div>
           <div className={s.answerAuthor}>
             <div className={s.answerName}>
-              {answer.author.name}
+              {answer.author.expert_name}
               {answer.isExpert ? (
                 <span className={s.expBadge}>
                   <BadgeCheck size={12} />
@@ -92,12 +880,18 @@ function AnswerCard({ answer }: { answer: AnswerEntry }) {
               ) : null}
             </div>
             <div className={s.answerRole}>
-              {[answer.author.role, answer.author.experience, answer.author.resolveRate ? `解决率 ${answer.author.resolveRate}%` : null]
+              {[
+                answer.author.depart_ment,
+                answer.author.answer_count
+                  ? `回答 ${answer.author.answer_count}`
+                  : null,
+                answer.author.answer_count ? `解决率 ${answerRate}%` : null,
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             </div>
           </div>
-          <span className={s.answerTs}>{answer.ts}</span>
+          <span className={s.answerTs}>回答于 {answer.ts}</span>
         </div>
 
         <div
@@ -105,17 +899,38 @@ function AnswerCard({ answer }: { answer: AnswerEntry }) {
           dangerouslySetInnerHTML={{ __html: answer.bodyHtml }}
         />
 
-        {answer.relatedDoc ? (
-          <div className={s.relatedDocWrap}>
-            <span className={s.relatedDoc}>
-              <FileText size={13} />
-              {answer.relatedDoc.label}
-            </span>
+        {answer.imageUrls?.length ? (
+          <div className={s.questionImages}>
+            {answer.imageUrls.map((url) => (
+              <a key={url} href={url} target="_blank" rel="noopener noreferrer">
+                <img src={url} alt="回答图片" />
+              </a>
+            ))}
           </div>
         ) : null}
 
-        {answer.showAcceptCta ? (
-          <button type="button" className={s.acceptCta}>
+        {answer.relatedDocs?.length ? (
+          <div className={s.attachmentPanel}>
+            <div className={s.attachmentTitle}>关联文档</div>
+            <div className={s.attachmentList}>
+              {answer.relatedDocs.map((item) => (
+                <a
+                  key={`${item.label}-${item.href}`}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={s.attachmentItem}
+                >
+                  <FileText size={14} />
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!answer.adopted ? (
+          <button type="button" className={s.acceptCta} onClick={onAccept}>
             <Check size={13} />
             采纳为最佳回答
           </button>
@@ -123,37 +938,24 @@ function AnswerCard({ answer }: { answer: AnswerEntry }) {
 
         <div className={s.answerFoot}>
           <div className={s.answerActions}>
-            <button type="button">
+            <button type="button" onClick={onUseful}>
               <ThumbsUp size={13} />
               有用 ({answer.helpful})
             </button>
-            <button type="button">
+            <button type="button" onClick={onToggleComments}>
               <MessageCircle size={13} />
               评论 {answer.commentCount > 0 ? `(${answer.commentCount})` : ''}
-            </button>
-            <button type="button">
-              <Share2 size={13} />
-              分享
             </button>
           </div>
         </div>
 
-        {answer.comments && answer.comments.length > 0 ? (
-          <div className={s.commentSection}>
-            {answer.comments.map((c) => (
-              <div key={c.id} className={s.comment}>
-                <span className={s.commentAv}>{c.initial}</span>
-                <span className={s.commentText}>
-                  <span className={s.commentName}>{c.name}</span>
-                  {c.text}
-                  <span className={s.commentTs}>{c.ts}</span>
-                </span>
-              </div>
-            ))}
-            <div className={s.commentInput}>
-              <input placeholder="添加评论..." />
-              <button type="button">发布</button>
-            </div>
+        {showComments ? (
+          <div ref={commentThreadRef}>
+            <CommentThread
+              answerId={Number(answer.id)}
+              questionId={questionId}
+              initialCount={answer.commentCount}
+            />
           </div>
         ) : null}
       </div>
@@ -162,12 +964,350 @@ function AnswerCard({ answer }: { answer: AnswerEntry }) {
 }
 
 export default function ExpertQADetailPage() {
-  const params = useParams();
-  const q = QUESTION_DETAIL;
-  const [sortMode, setSortMode] = useState<'top' | 'latest'>('top');
-  const [draft, setDraft] = useState('');
+  const params = useParams<{ questionId?: string }>();
+  const routeQuestionId = params.questionId;
+  const [question, setQuestion] = useState<DetailQuestion | null>(null);
+  const [qLoading, setQLoading] = useState(true);
+  const [qError, setQError] = useState<string | null>(null);
 
-  void params; // demo: route param is informational only
+  const [answers, setAnswers] = useState<DetailAnswerEntry[]>([]);
+  const [answerTotal, setAnswerTotal] = useState(0);
+  const [answerPage, setAnswerPage] = useState(0);
+  const [answerLoading, setAnswerLoading] = useState(false);
+  const [answerError, setAnswerError] = useState<string | null>(null);
+
+  const [sortMode, setSortMode] = useState<SortMode>('top');
+  const [openComments, setOpenComments] = useState<Set<string>>(new Set());
+  const [followupCount, setFollowupCount] = useState(0);
+
+  const [draft, setDraft] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [answerImageUrls, setAnswerImageUrls] = useState<string[]>([]);
+  const [answerUploadingImages, setAnswerUploadingImages] = useState(false);
+  const [answerRelatedDocs, setAnswerRelatedDocs] = useState<KnowledgeAttachment[]>([]);
+  const [answerUploadError, setAnswerUploadError] = useState<string | null>(null);
+  const [answerKnowledgeDialogOpen, setAnswerKnowledgeDialogOpen] = useState(false);
+  const [questionVoteSubmitting, setQuestionVoteSubmitting] = useState(false);
+  const answerImageInputRef = useRef<HTMLInputElement>(null);
+  const answerLoadingRef = useRef(false);
+  const activeQuestionIdRef = useRef<number | null>(null);
+  const followupThreadRef = useRef<HTMLDivElement>(null);
+
+  const questionNumericId = question ? Number(question.id) : null;
+  const answerHasMore = answers.length < answerTotal;
+  const answeredInvitedCount = question
+    ? question.invitedExperts.filter((item) => item.status === 'answered').length
+    : 0;
+  const sortedAnswers = useMemo(
+    () =>
+      [...answers].sort((a, b) =>
+        sortMode === 'top'
+          ? b.votes - a.votes || b.createdAtMs - a.createdAtMs
+          : b.createdAtMs - a.createdAtMs,
+      ),
+    [answers, sortMode],
+  );
+  const followupsOpen = openComments.has(QUESTION_FOLLOWUP_THREAD_ID);
+
+  const loadAnswers = useCallback(
+    async (targetQuestionId: number, page: number, replace = false) => {
+      if (answerLoadingRef.current) return;
+      answerLoadingRef.current = true;
+      setAnswerLoading(true);
+      setAnswerError(null);
+
+      try {
+        const res: PagedAnswerResponse = await fetchAnswersPaged(
+          targetQuestionId,
+          page,
+          ANSWERS_PAGE_SIZE,
+        );
+        const entries = (res.answers ?? []).map(buildAnswerEntry);
+        if (activeQuestionIdRef.current !== targetQuestionId) return;
+
+        setAnswers((prev) => {
+          if (replace) return entries;
+
+          const existingIds = new Set(prev.map((item) => item.id));
+          const newEntries = entries.filter((item) => !existingIds.has(item.id));
+          return [...prev, ...newEntries];
+        });
+         
+        setAnswerTotal(typeof res.total === 'number' ? res.total : entries.length);
+        setAnswerPage(page);
+      } catch (err) {
+        console.error('回答列表加载失败:', err);
+        setAnswerError(err instanceof Error ? err.message : '回答列表加载失败');
+      } finally {
+        answerLoadingRef.current = false;
+        setAnswerLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    if (!routeQuestionId) {
+      setQError('问题ID不存在');
+      setQLoading(false);
+      return;
+    }
+
+    setQLoading(true);
+    setQError(null);
+    setAnswers([]);
+    setAnswerTotal(0);
+    setAnswerPage(0);
+    setOpenComments(new Set());
+  
+    activeQuestionIdRef.current = null;
+
+    void (async () => {
+      try {
+        const detail = await fetchExpertQuestionDetail(routeQuestionId);
+        const related = await fetchSimilarExpertQuestions(detail.title, 5).catch(
+          (err) => {
+            console.error('相关问答加载失败:', err);
+            return [];
+          },
+        );
+
+        if (!active) return;
+
+        const mappedQuestion = await mapQuestionDetail(detail, related);
+        activeQuestionIdRef.current = detail.id;
+        setQuestion(mappedQuestion);
+        setAnswerTotal(detail.answer_count ?? 0);
+        setQLoading(false);
+        setFollowupCount(detail.comment_count ?? 0);
+        await loadAnswers(detail.id, 1, true);
+
+      } catch (err) {
+        if (!active) return;
+        setQError(err instanceof Error ? err.message : '加载问题详情失败');
+        setQLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [loadAnswers, routeQuestionId]);
+
+  useEffect(() => {
+    if (!question) return;
+    setQuestion((prev) =>
+      prev ? markAnsweredInvitedExperts(prev, answers) : prev,
+    );
+  }, [answers, question?.id]);
+
+  useEffect(() => {
+    if (!openComments.has(QUESTION_FOLLOWUP_THREAD_ID)) return;
+    followupThreadRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    });
+  }, [openComments]);
+
+  async function handleAnswerImageUpload(files: File[]) {
+    const availableSlots = MAX_ANSWER_IMAGE_COUNT - answerImageUrls.length;
+    if (availableSlots <= 0) {
+      setAnswerUploadError(`图片最多上传 ${MAX_ANSWER_IMAGE_COUNT} 张`);
+      return;
+    }
+
+    const selectedFiles = files.slice(0, availableSlots);
+    setAnswerUploadError(
+      selectedFiles.length < files.length
+        ? `图片最多上传 ${MAX_ANSWER_IMAGE_COUNT} 张，已保留前 ${availableSlots} 张`
+        : null,
+    );
+    setAnswerUploadingImages(true);
+
+    try {
+      const uploaded = await Promise.all(
+        selectedFiles.map((file) => uploadQaImage(file)),
+      );
+      const urls = uploaded.map((item) => item.image_url).filter(Boolean);
+      if (!urls.length) throw new Error('上传响应缺少图片地址');
+      setAnswerImageUrls((current) =>
+        [...current, ...urls].slice(0, MAX_ANSWER_IMAGE_COUNT),
+      );
+    } catch (err) {
+      console.error('回答图片上传失败:', err);
+      setAnswerUploadError('图片上传失败，请重试');
+    } finally {
+      setAnswerUploadingImages(false);
+    }
+  }
+
+  async function handleSubmitAnswer() {
+    const content = draft.trim();
+    if (!content || !questionNumericId || submitting) return;
+
+    setSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const payload: CreateAnswerPayload = {
+        question_id: questionNumericId,
+        content,
+        images_url: answerImageUrls.length ? answerImageUrls.join(';') : null,
+        attachments: serializeKnowledgeDocumentNames(answerRelatedDocs),
+        related_docs: serializeKnowledgeDocumentIds(answerRelatedDocs),
+      };
+      const newAnswer = await createAnswer(payload);
+      const newEntry = buildAnswerEntry(newAnswer);
+
+      setAnswers((prev) => [newEntry, ...prev]);
+      setAnswerTotal((prev) => prev + 1);
+      setQuestion((prev) =>
+        prev
+          ? {
+              ...prev,
+              answers: prev.answers + 1,
+              status: prev.status === 'pending' ? 'unsolved' : prev.status,
+            }
+          : prev,
+      );
+      setDraft('');
+      setAnswerImageUrls([]);
+      setAnswerRelatedDocs([]);
+      setAnswerUploadError(null);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : '发布失败，请重试');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function toggleComments(id: string, event?: MouseEvent<HTMLButtonElement>) {
+    event?.preventDefault();
+    event?.stopPropagation();
+
+    setOpenComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+
+
+  async function castVote(
+    targetId: string,
+    event?: MouseEvent<HTMLButtonElement>,
+  ) {
+    event?.preventDefault();
+    event?.stopPropagation();
+
+    if (targetId !== '0' || !questionNumericId || questionVoteSubmitting) {
+      return;
+    }
+
+    setQuestionVoteSubmitting(true);
+    setAnswerError(null);
+    setQuestion((prev) => (prev ? { ...prev, votes: prev.votes + 1 } : prev));
+
+    try {
+      await voteQuestion({ target_id: questionNumericId, target_type: 'question' });
+    } catch (err) {
+      console.error('问题投票失败:', err);
+      setQuestion((prev) =>
+        prev ? { ...prev, votes: Math.max(prev.votes - 1, 0) } : prev,
+      );
+      setAnswerError(err instanceof Error ? err.message : '投票失败，请稍后重试');
+    } finally {
+      setQuestionVoteSubmitting(false);
+    }
+  }
+
+  function handleAnswerVote(answerId: string) {
+    setAnswers((prev) =>
+      prev.map((answer) =>
+        answer.id === answerId ? { ...answer, votes: answer.votes + 1 } : answer,
+      ),
+    );
+    void likeAnswer(Number(answerId));
+  }
+
+  function handleAnswerUseful(answerId: string) {
+    setAnswers((prev) =>
+      prev.map((answer) =>
+        answer.id === answerId
+          ? { ...answer, helpful: answer.helpful + 1 }
+          : answer,
+      ),
+    );
+    void markAnswerUseful({ target_id: Number(answerId), target_type: 'helpful' });
+  }
+
+  function handleAcceptAnswer(answerId: string) {
+    if (!questionNumericId) return;
+
+    setAnswers((prev) =>
+      prev.map((answer) => ({
+        ...answer,
+        adopted: answer.id === answerId,
+      })),
+    );
+    setQuestion((prev) =>
+      prev ? { ...prev, status: 'solved', acceptedAnswers: 1 } : prev,
+    );
+    void acceptAnswer(questionNumericId, Number(answerId));
+  }
+
+  function removeAnswerImage(url: string) {
+    setAnswerImageUrls((current) => current.filter((item) => item !== url));
+  }
+
+  function openAnswerKnowledgeDialog() {
+    setAnswerKnowledgeDialogOpen(true);
+  }
+
+  function closeAnswerKnowledgeDialog() {
+    setAnswerKnowledgeDialogOpen(false);
+  }
+
+  function handleSelectAnswerKnowledgeFiles(files: CommonUploadedFile[]) {
+    setAnswerRelatedDocs(files.slice(0, MAX_ANSWER_DOCUMENT_COUNT));
+  }
+
+  function removeAnswerRelatedDoc(target: KnowledgeAttachment) {
+    setAnswerRelatedDocs((current) =>
+      current.filter(
+        (item) =>
+          !(item.spaceId === target.spaceId && item.fileId === target.fileId),
+      ),
+    );
+  }
+
+  if (qLoading) {
+    return (
+      <PageShell>
+        <div className={s.container}>
+          <p className={s.pageState}>
+            <Loader2 size={16} className={s.spin} />
+            正在加载问题详情...
+          </p>
+        </div>
+      </PageShell>
+    );
+  }
+
+  if (qError || !question || !questionNumericId) {
+    return (
+      <PageShell>
+        <div className={s.container}>
+          <p className={s.pageState}>{qError || '问题不存在'}</p>
+        </div>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
@@ -177,7 +1317,7 @@ export default function ExpertQADetailPage() {
           <span> · </span>
           <Link to="/expert-qa">专家问答</Link>
           <span> · </span>
-          <span>{q.domain}</span>
+          <span>{question.domain}</span>
           <span> · </span>
           <span>问题详情</span>
         </div>
@@ -186,96 +1326,132 @@ export default function ExpertQADetailPage() {
           <main>
             <div className={s.qHeader}>
               <div className={s.qHeaderMeta}>
-                <span className={s.domainPill}>{q.domain}</span>
-                <StatusPill status={q.status} />
-                {q.invitedSummary ? (
+                <span className={s.domainPill}>{question.domain}</span>
+                <StatusPill status={question.status} />
+      
+                {question.invitedSummary ? (
                   <span className={s.targetExpert}>
                     <User size={11} />
-                    {q.invitedSummary.replace('邀请：', '邀请：')}
+                    {question.invitedSummary}
                   </span>
                 ) : null}
               </div>
-              <h1 className={s.qHeaderTitle}>{q.title}</h1>
+
+              <h1 className={s.qHeaderTitle}>{question.title}</h1>
               <div className={s.qHeaderRow}>
                 <div className={s.askedInfo}>
-                  <span className={`${s.avatar} ${s.avatarSm}`}>{q.asker.initial}</span>
+                  <span className={`${s.avatar} ${s.avatarSm}`}>
+                    {question.asker.initial}
+                  </span>
                   <span>
-                    <span className={s.askedName}>{q.asker.name}</span>
-                    {q.asker.role ? ` · ${q.asker.role}` : null}
+                    <span className={s.askedName}>{question.asker.name}</span>
+                    {question.asker.role ? ` · ${question.asker.role}` : null}
                     {' · '}
-                    {q.askedAt}
+                    提问于 {question.askedAt}
                   </span>
                   <span className={s.divider}>|</span>
-                  <span>浏览 {q.views} 次</span>
+                  <span>浏览 {question.views} 次</span>
                 </div>
-                <div className={s.actBtns}>
-                  <button type="button" className={s.btnGhost}>
-                    <Bookmark size={14} />
-                    收藏
-                  </button>
-                  <button type="button" className={s.btnGhost}>
-                    <Share2 size={14} />
-                    分享
-                  </button>
-                </div>
+
               </div>
             </div>
 
             <div className={s.qContent}>
               <div className={s.voteCol}>
-                <button type="button" className={`${s.voteBtn} ${s.voteUpAct}`}>
+                <button
+                  type="button"
+                  className={`${s.voteBtn} ${s.voteUpAct}`}      
+                  onClick={(event) => void castVote('0', event)}
+                  aria-label="赞同问题"
+                >
                   <ChevronUp size={15} />
                 </button>
-                <span className={s.voteCount}>{q.votes}</span>
-                <button type="button" className={s.voteBtn}>
+                <span className={s.voteCount}>{question.votes}</span>
+                <button type="button" className={s.voteBtn} aria-label="投票">
                   <ChevronDown size={15} />
                 </button>
-                <button type="button" className={s.bookmarkBtn} aria-label="收藏">
-                  <Bookmark size={15} />
-                </button>
+    
               </div>
+
               <div className={s.qContentMain}>
                 <div className={s.qBodyText}>
-                  {q.bodyParagraphs.map((p, i) => (
-                    <p key={i}>{p}</p>
-                  ))}
-                  <h4>已排查项</h4>
-                  <ol>
-                    {q.checkedItems.map((item, i) => (
-                      <li key={i}>{item}</li>
-                    ))}
-                  </ol>
-                  <p>{q.followups}</p>
-                  {q.relatedDoc ? (
-                    <span className={s.relatedDoc}>
-                      <FileText size={13} />
-                      {q.relatedDoc.label}
-                    </span>
+                  {question.bodyParagraphs.length > 0 ? (
+                    question.bodyParagraphs.map((paragraph) => (
+                      <p key={paragraph}>{paragraph}</p>
+                    ))
+                  ) : (
+                    <p>{QUESTION_FALLBACK_TEXT}</p>
+                  )}
+                  {question.imageUrls.length > 0 ? (
+                    <div className={s.questionImages}>
+                      {question.imageUrls.map((url) => (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <img src={url} alt="问题图片" />
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {question.attachments.length > 0 ? (
+                    <div className={s.attachmentPanel}>
+                      <div className={s.attachmentTitle}>关联文档</div>
+                      <div className={s.attachmentList}>
+                        {question.attachments.map((item) => (
+                          <a
+                            key={`${item.label}-${item.href}`}
+                            href={item.href}       
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={s.attachmentItem}
+                          >
+                            <FileText size={14} />
+                            {item.label}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
                   ) : null}
                 </div>
-                <div className={s.qFooter}>
-                  <div className={s.tagWrap}>
-                    {q.tags.map((tag) => (
-                      <span key={tag} className={s.tagPill}>{tag}</span>
-                    ))}
-                    <span className={s.tagPill}>液面控制</span>
+
+                <div className={s.questionFollowupCard} ref={followupThreadRef}>
+                  <div className={s.followupHead}>
+                    <div className={s.sideTitle}>
+                      <MessageCircle size={15} className={s.sideTitleIco} />
+                      问题追问
+                    </div>
+                    <span className={s.followupCount}>{followupCount}条追问</span>
                   </div>
-                  <div className={s.answerActions}>
-                    <button type="button">
-                      <MessageCircle size={13} />
-                      追问 (4)
-                    </button>
-                    <button type="button">
-                      <Flag size={13} />
-                      举报
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className={`${s.followupToggle} ${
+                      followupsOpen ? s.followupToggleActive : ''
+                    }`}
+                    onClick={(event) =>
+                      toggleComments(QUESTION_FOLLOWUP_THREAD_ID, event)
+                    }
+                  >
+                    <MessageCircle size={13} />
+                    {followupsOpen ? '收起追问' : '展开追问'}
+                  </button>
+                  {followupsOpen ? (
+                    <CommentThread
+                      answerId={QUESTION_FOLLOWUP_ANSWER_ID}
+                      questionId={questionNumericId}
+                      initialCount={followupCount}
+                      onTotalChange={setFollowupCount}
+                    />
+                  ) : null}
                 </div>
               </div>
             </div>
 
             <div className={s.answersHeader}>
-              <h2>{q.fullAnswers.length} 个回答</h2>
+              <h2>{answerTotal} 个回答</h2>
               <div className={s.sortToggle}>
                 <button
                   type="button"
@@ -294,30 +1470,163 @@ export default function ExpertQADetailPage() {
               </div>
             </div>
 
-            {q.fullAnswers.map((answer) => (
-              <AnswerCard key={answer.id} answer={answer} />
+            {answerError ? <p className={s.answerError}>{answerError}</p> : null}
+
+            {sortedAnswers.map((answer) => (
+              <AnswerCard
+                key={answer.id}
+                answer={answer}
+                questionId={questionNumericId}
+                showComments={openComments.has(answer.id)}
+                onToggleComments={(event) => toggleComments(answer.id, event)}
+                onVote={() => handleAnswerVote(answer.id)}
+                onUseful={() => handleAnswerUseful(answer.id)}
+                onAccept={() => handleAcceptAnswer(answer.id)}
+              />
             ))}
+
+            {answerLoading && answers.length === 0 ? (
+              <div className={s.emptyAnswers}>
+                <Loader2 size={16} className={s.spin} />
+                正在加载回答...
+              </div>
+            ) : null}
+
+            {!answerLoading && answerTotal === 0 ? (
+              <div className={s.emptyAnswers}>
+                暂无回答，你可以率先作答，或点击“追问”补充信息。
+              </div>
+            ) : null}
+
+            {answerHasMore ? (
+              <div className={s.loadMoreWrap}>
+                <button
+                  type="button"
+                  className={s.btnGhost}
+                  disabled={answerLoading}
+                  onClick={() => void loadAnswers(questionNumericId, answerPage + 1)}
+                >
+                  {answerLoading ? (
+                    <>
+                      <Loader2 size={14} className={s.spin} />
+                      加载中...
+                    </>
+                  ) : (
+                    `加载更多回答（还剩 ${answerTotal - answers.length} 个）`
+                  )}
+                </button>
+              </div>
+            ) : null}
 
             <div className={s.yourAnswerCard}>
               <h3 className={s.yourAnswerTitle}>
                 <MessageSquare size={15} className={s.yourAnswerIco} />
-                你也来回答
+                发布回答
               </h3>
+              <input
+                ref={answerImageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  if (files.length) void handleAnswerImageUpload(files);
+                  event.target.value = '';
+                }}
+              />
               <textarea
                 className={s.yourAnswerInput}
-                placeholder="基于你的经验帮助提问者，专家身份的回答会被高亮显示..."
+                placeholder={ANSWER_PLACEHOLDER}
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(event) => setDraft(event.target.value)}
+                disabled={submitting}
               />
+
+              {answerImageUrls.length > 0 || answerUploadingImages ? (
+                <div className={s.commentPreviewGrid}>
+                  {answerImageUrls.map((url) => (
+                    <div key={url} className={s.commentImagePreview}>
+                      <img src={url} alt="已上传回答图片" />
+                      <button
+                        type="button"
+                        onClick={() => removeAnswerImage(url)}
+                        aria-label="移除图片"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  {answerUploadingImages ? (
+                    <div className={`${s.commentImagePreview} ${s.commentUploading}`}>
+                      <Loader2 size={16} className={s.spin} />
+                      <span>上传中</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {answerRelatedDocs.length > 0 ? (
+                <div className={s.commentAttachmentList}>
+                  {answerRelatedDocs.map((item) => (
+                    <span
+                      key={`${item.spaceId}-${item.id}`}
+                      className={s.commentAttachmentChip}
+                    >
+                      <FileText size={13} />
+                      <span>{item.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAnswerRelatedDoc(item)}
+                        aria-label="移除关联文档"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {answerUploadError ? (
+                <p className={s.answerError}>{answerUploadError}</p>
+              ) : null}
+              {submitError ? <p className={s.answerError}>{submitError}</p> : null}
+
               <div className={s.yourAnswerFoot}>
                 <span className={s.yourAnswerHint}>
-                  支持 Markdown · 可粘贴图片 · 回答后可被采纳为最佳答案
+                  支持图片和知识库文档，回答可被采纳为最佳答案
                 </span>
                 <div className={s.yourAnswerBtns}>
-                  <button type="button" className={s.btnGhost}>预览</button>
-                  <button type="button" className={s.btnPrimary}>
-                    <Send size={13} />
-                    发布回答
+                  <button
+                    type="button"
+                    className={s.btnGhost}
+                    disabled={submitting || answerUploadingImages}
+                    onClick={() => answerImageInputRef.current?.click()}
+                  >
+                    <ImageIcon size={13} />
+                    图片
+                  </button>
+                  <button
+                    type="button"
+                    className={s.btnGhost}
+                    disabled={submitting}
+                    onClick={openAnswerKnowledgeDialog}
+                  >
+                    <FileText size={13} />
+                    选择文档
+                  </button>
+                  <button
+                    type="button"
+                    className={s.btnPrimary}
+                    disabled={submitting || answerUploadingImages || !draft.trim()}
+                    onClick={() => void handleSubmitAnswer()}
+                  >
+                    {submitting ? (
+                      <Loader2 size={13} className={s.spin} />
+                    ) : (
+                      <Send size={13} />
+                    )}
+                    {submitting ? '发布中...' : '发布回答'}
                   </button>
                 </div>
               </div>
@@ -332,85 +1641,97 @@ export default function ExpertQADetailPage() {
               </div>
               <div className={s.qStat}>
                 <span>状态</span>
-                <span className={s.qStatVal}>已解决</span>
-              </div>
-              <div className={s.qStat}>
-                <span>悬赏积分</span>
-                <span className={s.qStatVal}>200</span>
+                <span className={s.qStatVal}>
+                  {STATUS_LABEL[question.status]?.text ?? '未知'}
+                </span>
               </div>
               <div className={s.qStat}>
                 <span>邀请专家</span>
-                <span className={s.qStatVal}>{q.invitedExperts.length} 人</span>
+                <span className={s.qStatVal}>
+                  {question.invitedExperts.length} 人
+                </span>
               </div>
               <div className={s.qStat}>
                 <span>专家回答</span>
                 <span className={s.qStatVal}>
-                  {q.invitedExperts.filter((e) => e.status === 'answered').length} / {q.invitedExperts.length}
+                  {answeredInvitedCount} / {question.invitedExperts.length}
                 </span>
               </div>
               <div className={s.qStat}>
                 <span>关注者</span>
-                <span className={s.qStatVal}>{q.followers}</span>
+                <span className={s.qStatVal}>{question.followers}</span>
               </div>
             </div>
 
-            <div className={s.sideCard}>
-              <div className={s.sideTitle}>
-                <UserCheck size={15} className={s.sideTitleIco} />
-                受邀专家
-              </div>
-              {q.invitedExperts.map(({ expert, status }) => (
-                <div key={expert.id} className={s.invitedRow}>
-                  <div
-                    className={`${s.avatar} ${s.avatarExpert}`}
-                    style={{ backgroundColor: expert.avatarColor }}
-                  >
-                    {expert.initial}
-                  </div>
-                  <div className={s.invitedInfo}>
-                    <div className={s.invitedName}>
-                      {expert.name}
-                      <span className={s.expBadge}>
-                        <BadgeCheck size={12} />
-                      </span>
-                    </div>
-                    <div className={s.invitedRole}>{expert.role}</div>
-                  </div>
-                  <span className={`${s.invitedStatus} ${status === 'answered' ? s.invitedAnswered : s.invitedPending}`}>
-                    {status === 'answered' ? '已答复' : '待回复'}
-                  </span>
+            {question.invitedExperts.length ? (
+              <div className={s.sideCard}>
+                <div className={s.sideTitle}>
+                  <UserCheck size={15} className={s.sideTitleIco} />
+                  受邀专家
                 </div>
-              ))}
-            </div>
-
-            <div className={s.sideCard}>
-              <div className={s.sideTitle}>
-                <Link2 size={15} className={s.sideTitleIco} />
-                相关问答
+                {question.invitedExperts.map(({ expert, status }) => (
+                  <div key={`${expert.id}-${expert.expert_name}`} className={s.invitedRow}>
+                    <div
+                      className={`${s.avatar} ${s.avatarExpert}`}
+                      style={{ backgroundColor: getAvatarColor(expert.expert_name) }}
+                    >
+                      {getAvatarInitial(expert.expert_name)}
+                    </div>
+                    <div className={s.invitedInfo}>
+                      <div className={s.invitedName}>
+                        {expert.expert_name}
+                        <span className={s.expBadge}>
+                          <BadgeCheck size={12} />
+                        </span>
+                      </div>
+                      <div className={s.invitedRole}>{expert.depart_ment}</div>
+                    </div>
+                    <span
+                      className={`${s.invitedStatus} ${
+                        status === 'answered'
+                          ? s.invitedAnswered
+                          : s.invitedPending
+                      }`}
+                    >
+  
+                      {status === 'answered' ? '已回答' : '待回答'}
+                    </span> 
+                  </div>
+                ))}
               </div>
-              {q.related.map((item) => (
-                <Link
-                  key={item.id}
-                  to={`/expert-qa/${item.id}`}
-                  className={s.relQa}
-                >
-                  {item.title}
-                  <div className={s.relQaMeta}>{item.meta}</div>
-                </Link>
-              ))}
-            </div>
+            ) : null}
 
-            <div className={`${s.sideCard} ${s.bountyCard}`}>
-              <div className={s.sideTitle}>
-                <Award size={15} className={s.sideTitleIco} />
-                悬赏说明
+            {question.related.length ? (
+              <div className={s.sideCard}>
+                <div className={s.sideTitle}>
+                  <Link2 size={15} className={s.sideTitleIco} />
+                  相关问答
+                </div>
+                {question.related.map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/expert-qa/${item.id}`}
+                    className={s.relQa}
+                  >
+                    {item.title}
+                    <div className={s.relQaMeta}>{item.meta}</div>
+                  </Link>
+                ))}
               </div>
-              <p className={s.bountyText}>
-                悬赏积分将在提问者采纳回答后由系统自动发放。如 7 天内未采纳，积分将退还提问者。
-              </p>
-            </div>
+            ) : null}
+
           </aside>
         </div>
+
+        <CommonFileUploadModal
+          visible={answerKnowledgeDialogOpen}
+          selectedFiles={answerRelatedDocs}
+          maxSelectCount={MAX_ANSWER_DOCUMENT_COUNT}
+          title="选择回答文档"
+          description={`从公开知识空间中选择文档，最多 ${MAX_ANSWER_DOCUMENT_COUNT} 个`}
+          onClose={closeAnswerKnowledgeDialog}
+          onSelectFiles={handleSelectAnswerKnowledgeFiles}
+        />
       </div>
     </PageShell>
   );

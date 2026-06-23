@@ -1,4 +1,5 @@
 import type { PortalConfig } from './adminConfig';
+import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../utils/userFacingErrors';
 
 export interface FileTag {
   tag_name: string;
@@ -468,13 +469,18 @@ async function parseResponse<T>(response: Response): Promise<T> {
       payload = JSON.parse(text) as ApiEnvelope<T>;
     } catch {
       if (!response.ok) {
-        throw new ApiRequestError(`请求失败：${response.status}`, response.status);
+        throw new ApiRequestError(normalizeUserFacingMessage('', '请求失败，请稍后重试。', response.status), response.status);
       }
       throw new Error('响应不是有效 JSON');
     }
   }
   if (!response.ok) {
-    throw new ApiRequestError(payload?.status_message || payload?.detail || `请求失败：${response.status}`, response.status);
+    const message = normalizeUserFacingMessage(
+      payload?.status_message || payload?.detail,
+      '请求失败，请稍后重试。',
+      response.status,
+    );
+    throw new ApiRequestError(message, response.status);
   }
   if (!payload) {
     throw new Error('响应内容为空');
@@ -483,8 +489,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { credentials: 'include', ...init });
-  return parseResponse<T>(response);
+  try {
+    const response = await fetch(path, { credentials: 'include', ...init });
+    return await parseResponse<T>(response);
+  } catch (error) {
+    if (error instanceof ApiRequestError) throw error;
+    throw new Error(normalizeUserFacingErrorMessage(error, '请求失败，请稍后重试。'));
+  }
 }
 
 function appendShareToken(path: string, shareToken?: string): string {
@@ -988,7 +999,12 @@ async function consumeChatStream(
 ): Promise<void> {
   if (!response.ok) {
     const payload = await response.clone().json().catch(() => null) as { detail?: string; status_message?: string } | null;
-    throw new ApiRequestError(payload?.status_message || payload?.detail || '问答请求失败', response.status);
+    const message = normalizeUserFacingMessage(
+      payload?.status_message || payload?.detail,
+      '问答请求失败，请稍后重试。',
+      response.status,
+    );
+    throw new ApiRequestError(message, response.status);
   }
   if (!response.body) {
     throw new Error('问答请求失败');
@@ -1089,28 +1105,33 @@ export async function streamChatCompletion(params: {
   onCitations?: (citations: Citation[]) => void;
   onConversationId?: (conversationId: string) => void;
 }): Promise<void> {
-  const response = await fetch('/api/v1/workstation/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      clientTimestamp: new Date().toISOString(),
-      conversationId: params.conversationId,
-      model: params.model ?? '',
-      answer_mode: params.answerMode ?? 'normal',
-      scene: params.scene,
-      entry_point: params.entryPoint ?? '',
-      space_level: params.spaceLevel,
-      text: params.text,
-      search_results: params.searchResults?.map(mapSearchResultForSummary) ?? [],
-      use_knowledge_base: {
-        personal_knowledge_enabled: false,
-        organization_knowledge_ids: [],
-        ...buildQaKnowledgeScopePayload(params.knowledgeScope, params.knowledgeSpaceIds),
-      },
-      files: params.files ?? [],
-    }),
-  });
-  await consumeChatStream(response, params.onUpdate, params.onCitations, params.onConversationId);
+  try {
+    const response = await fetch('/api/v1/workstation/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientTimestamp: new Date().toISOString(),
+        conversationId: params.conversationId,
+        model: params.model ?? '',
+        answer_mode: params.answerMode ?? 'normal',
+        scene: params.scene,
+        entry_point: params.entryPoint ?? '',
+        space_level: params.spaceLevel,
+        text: params.text,
+        search_results: params.searchResults?.map(mapSearchResultForSummary) ?? [],
+        use_knowledge_base: {
+          personal_knowledge_enabled: false,
+          organization_knowledge_ids: [],
+          ...buildQaKnowledgeScopePayload(params.knowledgeScope, params.knowledgeSpaceIds),
+        },
+        files: params.files ?? [],
+      }),
+    });
+    await consumeChatStream(response, params.onUpdate, params.onCitations, params.onConversationId);
+  } catch (error) {
+    if (error instanceof ApiRequestError) throw error;
+    throw new Error(normalizeUserFacingErrorMessage(error, '问答请求失败，请稍后重试。'));
+  }
 }
 
 function createTempFileId(): string {
@@ -1145,14 +1166,19 @@ export async function streamDocumentFileChat(params: {
   onUpdate: (text: string) => void;
   onCitations?: (citations: Citation[]) => void;
 }): Promise<void> {
-  const response = await fetch(`/api/v1/knowledge/space/${params.spaceId}/files/${params.fileId}/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      query: params.text,
-      model: params.model ?? '',
-    }),
-  });
-  await consumeChatStream(response, params.onUpdate, params.onCitations);
+  try {
+    const response = await fetch(`/api/v1/knowledge/space/${params.spaceId}/files/${params.fileId}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        query: params.text,
+        model: params.model ?? '',
+      }),
+    });
+    await consumeChatStream(response, params.onUpdate, params.onCitations);
+  } catch (error) {
+    if (error instanceof ApiRequestError) throw error;
+    throw new Error(normalizeUserFacingErrorMessage(error, '问答请求失败，请稍后重试。'));
+  }
 }

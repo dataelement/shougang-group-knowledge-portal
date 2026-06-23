@@ -16,12 +16,15 @@ import ExpertQAAskPage from './pages/ExpertQAAskPage';
 import ExpertQADetailPage from './pages/ExpertQADetailPage';
 import KnowledgeSpacesPage from './pages/KnowledgeSpacesPage';
 import ApprovalDialogHost from './components/ApprovalDialogHost';
+import FloatingQaButton from './components/FloatingQaButton';
 import WikiPage from './pages/WikiPage';
 import WikiDetailPage from './pages/WikiDetailPage';
 import CoursePage from './pages/CoursePage';
 import { usePortalConfig } from './hooks/usePortalConfig';
 import { useAuth } from './hooks/useAuth';
 import Header from './components/Header';
+
+import ExpertManagePage from './pages/ExpertManagePage';
 import { buildAdminLoginRedirect, getAdminAccessState } from './utils/adminAccess';
 
 function RouteScrollReset() {
@@ -119,6 +122,7 @@ export default function App() {
         <Route path="/portal/qa" element={<QAPage />} />
         <Route path="/expert-qa" element={<ExpertQAPage />} />
         <Route path="/expert-qa/ask" element={<ExpertQAAskPage />} />
+        <Route path="/expert-qa/expertmanage" element={<ExpertManagePage />} />
         <Route path="/expert-qa/:questionId" element={<ExpertQADetailPage />} />
         <Route path="/wiki" element={<WikiPage />} />
         <Route path="/wiki/:wikiId" element={<WikiDetailPage />} />
@@ -129,6 +133,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/bootstrap/bisheng" element={<BootstrapBishengPage />} />
       </Routes>
+      <FloatingQaButton />
       <ApprovalDialogHost />
     </>
   );

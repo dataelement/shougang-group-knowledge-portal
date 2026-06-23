@@ -950,7 +950,7 @@ def test_home_stats_returns_error_when_bisheng_stats_fails(tmp_path: Path):
         response = client.get("/api/v1/knowledge/home/stats")
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "telemetry query failed"
+    assert response.json()["detail"] == "统计数据加载失败，请稍后重试"
 
 
 def test_home_stats_returns_error_when_bisheng_stats_payload_is_incomplete(tmp_path: Path):
@@ -974,7 +974,7 @@ def test_home_stats_returns_error_when_bisheng_stats_payload_is_incomplete(tmp_p
         response = client.get("/api/v1/knowledge/home/stats")
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Invalid home stats response from BiSheng"
+    assert response.json()["detail"] == "首页统计数据加载失败，请稍后重试"
 
 
 def test_home_stats_returns_error_when_bisheng_stats_request_fails(tmp_path: Path):
@@ -992,7 +992,7 @@ def test_home_stats_returns_error_when_bisheng_stats_request_fails(tmp_path: Pat
         response = client.get("/api/v1/knowledge/home/stats")
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Failed to fetch home stats"
+    assert response.json()["detail"] == "首页统计数据加载失败，请稍后重试"
 
 
 def test_home_stats_returns_error_when_bisheng_stats_status_code_is_invalid(tmp_path: Path):
@@ -1014,7 +1014,7 @@ def test_home_stats_returns_error_when_bisheng_stats_status_code_is_invalid(tmp_
         response = client.get("/api/v1/knowledge/home/stats")
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "telemetry status invalid"
+    assert response.json()["detail"] == "统计数据状态异常，请稍后重试"
 
 
 def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_assets(tmp_path: Path):
@@ -1120,6 +1120,27 @@ def test_get_file_preview_content_proxies_selected_source(tmp_path: Path):
     assert fake_bisheng.preview_asset_requests == [
         {"path": "https://example.com/preview/1580.pdf", "params": None}
     ]
+
+
+def test_get_file_preview_content_returns_chinese_message_when_source_missing(tmp_path: Path):
+    class MissingPreviewSourceBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/file/info/1580":
+                return {"data": {}}
+            if path == "/api/v1/knowledge/space/12/files/1580/preview":
+                return {"data": {"original_url": "", "preview_url": ""}}
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = MissingPreviewSourceBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/space/12/files/1580/preview/content?source_kind=preview_url")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "未找到可预览内容"
 
 
 def test_get_file_preview_content_uses_preview_asset_fetcher_for_original_urls(tmp_path: Path):
@@ -1510,6 +1531,36 @@ def test_upload_chat_attachment_forwards_to_current_user_bisheng_session(tmp_pat
     assert data_source_bisheng.multipart_payload is None
 
 
+def test_upload_chat_attachment_maps_upstream_english_error_to_chinese(tmp_path: Path):
+    class UploadFailureBishengClient(FakeBishengClient):
+        async def post_multipart(self, path: str, *, data=None, files=None):
+            self.multipart_payload = {"path": path, "data": data, "files": files}
+            return {
+                "status_code": 500,
+                "status_message": "Internal Server Error",
+                "data": {},
+            }
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = UploadFailureBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/workstation/files",
+                data={"file_id": "temp-001"},
+                files={"file": ("attachment.pdf", b"%PDF attachment", "application/pdf")},
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "服务暂时不可用，请稍后重试"
+
+
 def test_chat_proxy_allows_anonymous_qa_with_public_spaces(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_anonymous_qa_spaces(config_service)
@@ -1728,6 +1779,33 @@ def test_chat_proxy_lists_current_user_daily_conversations(tmp_path: Path):
     body = response.json()["data"]
     assert body[0]["chat_id"] == "chat-001"
     assert body[0]["name"] == "轧线问题分析"
+
+
+def test_chat_proxy_maps_chat_list_upstream_english_error_to_chinese(tmp_path: Path):
+    class ChatListFailureBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/chat/list":
+                return {
+                    "status_code": 401,
+                    "status_message": "Invalid token",
+                    "data": {},
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = ChatListFailureBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/chat/list?page=1&limit=20")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "登录状态已失效，请重新登录"
 
 
 def test_chat_proxy_loads_current_user_conversation_messages(tmp_path: Path):

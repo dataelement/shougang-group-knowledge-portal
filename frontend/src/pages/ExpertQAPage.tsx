@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -7,58 +7,102 @@ import {
   CheckCircle,
   ChevronLeft,
   ChevronRight,
-  MessageCircle,
   PenLine,
   Tag,
   User,
-  UserPlus,
+  Settings, Shield, Leaf, GraduationCap, Network, Zap, Factory,
+  type LucideIcon,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
-import {
-  DOMAINS,
-  EXPERTS,
-  HERO_STATS,
-  QUESTIONS,
-  SORT_TABS,
-  STATUS_FILTERS,
-  TOPIC_CHIPS,
-} from '../data/expertQaMock';
-import type {
-  ExpertDomainKey,
-  QuestionEntry,
-  QuestionStatus,
-  StatusFilterKey,
-} from '../data/expertQaMock';
+import { fetchAnswersPaged, fetchConfigData, fetchExpertProfiles, fetchExpertQuestions, statistics, type ApiAnswer, type ApiQuestion, type ExpertProfileResponse } from '../api/expertQa';
+import { SORT_TABS, STATUS_FILTERS } from '../data/expertQaData';
+import type {  StatusFilterKey, TranslationStatistics } from '../types/expertQa';
 import s from './ExpertQAPage.module.css';
+import type { DomainConfig } from '../api/adminConfig';
+import { useAuth } from '../hooks/useAuth';
+import { getAdminAccessState } from '../utils/adminAccess';
 
-type SortKey = 'latest' | 'hot' | 'unanswered' | 'bounty';
+type SortKey = 'latest' | 'hot' | 'unanswered';
 
-const STATUS_LABEL: Record<QuestionStatus, { text: string; cls: string; icon?: typeof CheckCircle }> = {
-  solved: { text: '已解决', cls: s.solved, icon: CheckCircle },
-  unsolved: { text: '待采纳', cls: s.unsolved },
-  urgent: { text: '紧急', cls: s.urgent, icon: AlertTriangle },
-  bounty: { text: '悬赏', cls: s.bounty, icon: Award },
-  pending: { text: '未回答', cls: s.unsolved },
+
+// 将接口返回的 icon 字符串映射到实际的组件
+const iconMap: Record<string, LucideIcon> = {
+  CheckCircle: CheckCircle,
+  Settings: Settings,
+  Shield: Shield,
+  Leaf: Leaf,
+  GraduationCap: GraduationCap,
+  Network: Network,
+  Zap: Zap,
+  Factory: Factory,
 };
 
-function StatusPill({ status, bounty }: { status: QuestionStatus; bounty?: number }) {
-  if (status === 'bounty' && bounty) {
-    return (
-      <span className={`${s.statusPill} ${s.bounty}`}>
-        <Award size={11} />
-        悬赏 {bounty} 积分
-      </span>
-    );
-  }
-  const meta = STATUS_LABEL[status];
-  const Icon = meta.icon;
-  return (
-    <span className={`${s.statusPill} ${meta.cls}`}>
-      {Icon ? <Icon size={11} /> : null}
-      {meta.text}
-    </span>
-  );
+type QuestionEntry = {
+  id: number;
+  title: string;
+  excerpt: string;
+  votes: number;
+  views: number;
+  answers: number;
+  acceptedAnswers: number;
+  domain: string;
+  statusMeta: { text: string; cls: string };
+  asker: { name: string; initial: string };
+  bounty?: number;
+  invitedSummary?: string;
+  acceptedPreview?: {
+    author: { expert_name: string; depart_ment: string };
+    excerpt: string;
+    accepted: boolean;
+  };
+  askedAt: string;
+};
+
+
+function getStatusFromApi(status: number, answerCount: number): { text: string; cls: string } {
+  if (answerCount === 0) return { text: 'unanswered', cls: s.urgent };
+  if (status === 1) return { text: 'solved', cls: s.solved };
+  return { text: 'unsolved', cls: s.unsolved };
 }
+
+function textExcerpt(text: string | null | undefined, max = 96): string {
+  const value = (text ?? '').trim();
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function buildAnswerPreview(answer: ApiAnswer): QuestionEntry['acceptedPreview'] {
+  const expert = answer.expert;
+  return {
+    author: {
+      expert_name: answer.expert_name || expert?.expert_name || '专家回答',
+      depart_ment: expert?.depart_ment || '',
+    },
+    excerpt: textExcerpt(answer.content, 120),
+    accepted: answer.status === 2 || Boolean(answer.adopted),
+  };
+}
+
+function getInvitedSummary(question: ApiQuestion): string | undefined {
+  const names = question.experts_names || question.invited_experts;
+  if (!names?.trim()) return undefined;
+  const list = names
+    .split(/[;,，；]/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (list.length === 0) return undefined;
+  return `邀请：${list.slice(0, 2).join('、')}${list.length > 2 ? ` 等 ${list.length} 人` : ''}`;
+}
+const stringToColor = (str: string | null | undefined): string => {
+  if (!str) return '#cccccc';
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const color = Math.abs(hash).toString(16).padStart(6, '0');
+  return `#${color}`;
+};
+
+
 
 function QuestionCard({ q }: { q: QuestionEntry }) {
   const accepted = q.acceptedPreview;
@@ -83,13 +127,13 @@ function QuestionCard({ q }: { q: QuestionEntry }) {
       <div className={s.qBody}>
         <div className={s.qMeta}>
           <span className={s.domainPill}>{q.domain}</span>
-          <StatusPill status={q.status} bounty={q.bounty} />
+          <StatusPill status={q.statusMeta.text}  />
           {q.invitedSummary ? (
             <span className={s.targetExpert}>
               <User size={11} />
               {q.invitedSummary}
             </span>
-          ) : q.status === 'urgent' ? (
+          ) : q.statusMeta.text === 'unanswered' ? (
             <span className={`${s.statusPill} ${s.unsolved}`}>未回答</span>
           ) : null}
         </div>
@@ -102,7 +146,8 @@ function QuestionCard({ q }: { q: QuestionEntry }) {
                 <span className={s.expBadge}>
                   <BadgeCheck size={12} />
                 </span>
-                {accepted.author.name} · {accepted.author.role.replace(' · ', '')}
+                {accepted.author.expert_name}
+                {accepted.author.depart_ment ? ` · ${accepted.author.depart_ment}` : ''}
               </span>
               {accepted.accepted ? (
                 <span className={s.acceptedFlag}>
@@ -120,21 +165,210 @@ function QuestionCard({ q }: { q: QuestionEntry }) {
             <span className={s.askedName}>{q.asker.name}</span>
             <span className={s.askedAt}>{q.askedAt}</span>
           </div>
-          <div className={s.tagWrap}>
-            {q.tags.map((t) => (
-              <span key={t} className={s.tagPill}>{t}</span>
-            ))}
-          </div>
+
         </div>
       </div>
     </Link>
   );
 }
 
+// 状态 Pill 组件（根据你的代码调整）
+function StatusPill({ status }: { status: string }) {
+  const meta = STATUS_LABEL[status as keyof typeof STATUS_LABEL] || { text: status, cls: '' };
+  const Icon = meta.icon;
+  return (
+    <span className={`${s.statusPill} ${meta.cls}`}>
+      {Icon ? <Icon size={11} /> : null} {meta.text}
+    </span>
+  );
+}
+
+const STATUS_LABEL: Record<string, { text: string; cls: string; icon?: typeof CheckCircle }> = {
+  solved: { text: '已解决', cls: s.solved, icon: CheckCircle },
+  unsolved: { text: '待采纳', cls: s.unsolved },
+  unanswered: { text: '未回答', cls: s.urgent },
+  urgent: { text: '紧急', cls: s.urgent, icon: AlertTriangle },
+
+};
+const INITIAL_STATS = [
+  { value: '—', label: '问题' },
+  { value: '—', label: '回答' },
+  { value: '—', label: '认证专家' },
+  { value: '—', label: '解决率' },
+];
+
+
 export default function ExpertQAPage() {
-  const [activeDomain, setActiveDomain] = useState<ExpertDomainKey>('all');
+  const [activeDomain, setActiveDomain] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<StatusFilterKey | null>(null);
   const [sort, setSort] = useState<SortKey>('latest');
+  const [questions, setQuestions] = useState<QuestionEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
+
+  // 问题列表自身的加载 / 错误状态
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 侧边栏（业务域 / 专家榜单 / 统计数据）独立的加载 / 错误状态，
+  // 避免与问题列表的 loading/error 相互覆盖
+  const [sidebarLoading, setSidebarLoading] = useState(false);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
+
+  const [experts, setExperts] = useState<ExpertProfileResponse[]>([]);
+  const [domains, setDomains] = useState<DomainConfig[]>([]);
+  const { user } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [heroStats, setHeroStats] = useState(INITIAL_STATS);
+
+  const maxPage = Math.max(1, Math.ceil(total / pageSize));
+
+  // 获取问题列表
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+
+    // 状态映射表
+    const statusMap: Record<string, number> = {
+      unsolved: 0,
+      solved: 1,
+      my_question: 2,
+      invited: 3,
+    };
+
+    fetchExpertQuestions({
+      domain: activeDomain ?? undefined,
+      status: activeStatus ? statusMap[activeStatus] : undefined,
+      sort: sort,
+      page: page,
+      pageSize: pageSize,
+    })
+      .then(async (res) => {
+        if (!active) return;
+        const mappedQuestions: QuestionEntry[] = (res.questions || []).map((q: ApiQuestion) => {
+          return {
+            id: q.id,
+            title: q.title,
+            excerpt: textExcerpt(q.description, 120),
+            votes: q.vote_count,
+            views: q.view_count,
+            answers: q.answer_count,
+            acceptedAnswers: q.adopted_answer_id ? 1 : 0,
+            domain: q.business_domain,
+            statusMeta: getStatusFromApi(q.status, q.answer_count),
+            invitedSummary: getInvitedSummary(q),
+            asker: {
+              name: q.created_by || `用户${q.user_id}`,
+              initial: (q.created_by || `U${q.user_id}`)[0],
+            },
+            askedAt: new Date(q.created_at).toLocaleDateString('zh-CN'),
+          };
+        });
+
+        const questionsWithAnswers = await Promise.all(
+          mappedQuestions.map(async (question) => {
+            try {
+              const answerRes = await fetchAnswersPaged(question.id, 1, 1);
+              const answer = answerRes.answers?.[0];
+              const answerTotal = answerRes.total ?? answerRes.answers?.length ?? question.answers;
+              const acceptedAnswers = question.acceptedAnswers > 0 || answer?.status === 2 || answer?.adopted ? 1 : 0;
+              return {
+                ...question,
+                answers: Math.max(question.answers, answerTotal),
+                acceptedAnswers,
+                statusMeta: getStatusFromApi(acceptedAnswers ? 1 : 0, Math.max(question.answers, answerTotal)),
+                acceptedPreview: answer ? buildAnswerPreview(answer) : undefined,
+              };
+            } catch (err) {
+              console.error(`获取问题 ${question.id} 的专家回答失败:`, err);
+              return question;
+            }
+          })
+        );
+
+        if (!active) return;
+        setQuestions(questionsWithAnswers);
+        setTotal(res.total || questionsWithAnswers.length);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : '加载问题失败');
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeDomain, activeStatus, sort, page, pageSize]);
+
+  // 获取业务域配置 / 专家列表 / 统计数据 + 管理员权限判断
+  useEffect(() => {
+    let active = true;
+    setSidebarLoading(true);
+    setSidebarError(null);
+
+
+    setIsAdmin(getAdminAccessState(user) === 'allowed');
+    const tasks = [
+      fetchConfigData()
+        .then((data) => {
+          if (!active) return;
+          setDomains(data);
+        })
+        .catch((err) => {
+          if (!active) return;
+          setDomains([]);
+          setSidebarError(`获取业务领域配置失败: ${err instanceof Error ? err.message : String(err)}`);
+        }),
+
+      fetchExpertProfiles(1, 8)
+        .then((res) => {
+          if (!active) return;
+          setExperts(res.experts?.slice(0, 12) || []);
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.error('获取专家列表失败:', err);
+          setSidebarError('获取专家列表失败');
+        }),
+
+      statistics()
+        .then((res: TranslationStatistics) => {
+          if (!active) return;
+          setHeroStats([
+            { value: String(res.total_questions), label: '问题' },
+            { value: String(res.total_answers), label: '回答' },
+            { value: String(res.total_experts), label: '认证专家' },
+            { value: `${(res.resolution_rate * 100).toFixed(1)}%`, label: '解决率' },
+          ]);
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.error('获取统计数据失败:', err);
+          setSidebarError('获取统计数据失败');
+        }),
+    ];
+
+    Promise.allSettled(tasks).then(() => {
+      if (active) setSidebarLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  // 如果当前选中的业务域不在最新的 domains 列表里了，重置筛选条件
+  useEffect(() => {
+    if (activeDomain && domains.length > 0 && !domains.some((d) => d.name === activeDomain)) {
+      setActiveDomain(null);
+    }
+  }, [domains, activeDomain]);
 
   return (
     <PageShell>
@@ -146,7 +380,7 @@ export default function ExpertQAPage() {
               提问时可指定业务域或邀请特定专家，专家应答后所有同事可参与讨论与追问
             </p>
             <div className={s.heroStats}>
-              {HERO_STATS.map((stat) => (
+              {heroStats.map((stat) => (
                 <div key={stat.label} className={s.heroStat}>
                   <span className={s.heroStatNum}>{stat.value}</span>
                   <span className={s.heroStatLb}>{stat.label}</span>
@@ -156,8 +390,7 @@ export default function ExpertQAPage() {
           </div>
           <div className={s.heroAction}>
             <Link to="/expert-qa/ask" className={s.askBtn}>
-              <PenLine size={15} />
-              我要提问
+              <PenLine size={15} /> 我要提问
             </Link>
           </div>
         </div>
@@ -165,34 +398,36 @@ export default function ExpertQAPage() {
 
       <div className={s.container}>
         <div className={s.crumbs}>
-          <Link to="/">首页</Link>
-          <span> · </span>
-          <span>专家问答</span>
+          <Link to="/">首页</Link> <span> · </span> <span>专家问答</span>
         </div>
 
         <div className={s.layout}>
           <aside className={s.left}>
             <div className={s.leftCard}>
               <div className={s.leftLabel}>业务域</div>
-              {DOMAINS.map((d) => {
-                const Icon = d.icon;
-                const active = d.key === activeDomain;
-                return (
-                  <button
-                    key={d.key}
-                    type="button"
-                    className={`${s.filterItem} ${active ? s.filterActive : ''}`}
-                    onClick={() => setActiveDomain(d.key)}
-                  >
-                    <span className={s.filterLabel}>
-                      <Icon size={14} className={s.filterIco} />
-                      {d.label}
-                    </span>
-                    <span className={s.filterCt}>{d.count}</span>
-                  </button>
-                );
-              })}
+              {sidebarError && domains.length === 0 ? (
+                <div className={s.errorTip}>{sidebarError}</div>
+              ) : (
+                domains.map((d) => {
+                  const Icon = iconMap[d.icon] || Tag;
+                  const active = d.name === activeDomain;
+                  return (
+                    <button
+                      key={d.name}
+                      type="button"
+                      className={`${s.filterItem} ${active ? s.filterActive : ''}`}
+                      onClick={() => setActiveDomain((prev) => (prev === d.name ? null : d.name))}
+                    >
+                      <span className={s.filterLabel}>
+                        <Icon size={14} className={s.filterIco} />
+                        {d.name}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
             </div>
+
             <div className={s.leftCard}>
               <div className={s.leftLabel}>状态</div>
               {STATUS_FILTERS.map((f) => (
@@ -200,12 +435,9 @@ export default function ExpertQAPage() {
                   key={f.key}
                   type="button"
                   className={`${s.filterItem} ${activeStatus === f.key ? s.filterActive : ''}`}
-                  onClick={() =>
-                    setActiveStatus((prev) => (prev === f.key ? null : f.key))
-                  }
+                  onClick={() => setActiveStatus((prev) => (prev === f.key ? null : f.key))}
                 >
                   <span className={s.filterLabel}>{f.label}</span>
-                  <span className={s.filterCt}>{f.count}</span>
                 </button>
               ))}
             </div>
@@ -226,24 +458,38 @@ export default function ExpertQAPage() {
                 ))}
               </div>
               <div className={s.sortMeta}>
-                共 <strong>1,284</strong> 个问题 · 12 名专家在线
+                共 <strong>{total}</strong> 个问题
               </div>
             </div>
 
-            {QUESTIONS.map((q) => (
-              <QuestionCard key={q.id} q={q} />
-            ))}
+            {loading ? (
+              <div className={s.loading}>问题加载中…</div>
+            ) : error ? (
+              <div className={s.errorTip}>{error}</div>
+            ) : questions.length === 0 ? (
+              <div className={s.loading}>暂无符合条件的问题</div>
+            ) : (
+              questions.map((q) => <QuestionCard key={q.id} q={q} />)
+            )}
 
             <div className={s.pagination}>
-              <button type="button" className={s.pgBtn} aria-label="上一页">
+              <button
+                type="button"
+                className={s.pgBtn}
+                aria-label="上一页"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
                 <ChevronLeft size={14} />
               </button>
-              <button type="button" className={`${s.pgBtn} ${s.pgBtnActive}`}>1</button>
-              <button type="button" className={s.pgBtn}>2</button>
-              <button type="button" className={s.pgBtn}>3</button>
-              <span className={s.pgEllipsis}>···</span>
-              <button type="button" className={s.pgBtn}>26</button>
-              <button type="button" className={s.pgBtn} aria-label="下一页">
+              <span className={s.pgInfo}>第 {page} 页</span>
+              <button
+                type="button"
+                className={s.pgBtn}
+                aria-label="下一页"
+                disabled={page >= maxPage}
+                onClick={() => setPage((p) => Math.min(maxPage, p + 1))}
+              >
                 <ChevronRight size={14} />
               </button>
             </div>
@@ -252,60 +498,57 @@ export default function ExpertQAPage() {
           <aside className={s.right}>
             <div className={s.rightCard}>
               <div className={s.rightTitle}>
-                <Award size={15} className={s.rightTitleIco} />
-                本周活跃专家
-                <span className={s.rightTitleMore}>全部 ›</span>
+                <Award size={15} className={s.rightTitleIco} /> 专家榜单{' '}
+                {isAdmin && (
+                  <Link to="/expert-qa/expertmanage" className={s.rightTitleMore}>
+                    全部 ›
+                  </Link>
+                )}
               </div>
-              {EXPERTS.map((expert) => (
-                <div key={expert.id} className={s.expRow}>
-                  <div
-                    className={`${s.avatar} ${s.avatarExpert}`}
-                    style={{ backgroundColor: expert.avatarColor }}
-                  >
-                    {expert.initial}
-                  </div>
-                  <div className={s.expInfo}>
-                    <div className={s.expName}>
-                      {expert.name}
-                      <span className={s.expBadge}>
-                        <BadgeCheck size={12} />
-                      </span>
+              {sidebarLoading && experts.length === 0 ? (
+                <div className={s.loading}>加载中…</div>
+              ) : sidebarError && experts.length === 0 ? (
+                <div className={s.errorTip}>{sidebarError}</div>
+              ) : (
+                experts.map((expert) => (
+                  <div key={expert.id} className={s.expRow}>
+                    <div
+                      className={`${s.avatar} ${s.avatarExpert}`}
+                      style={{ backgroundColor: stringToColor(expert.expert_name) }}
+                    >
+                      {expert.expert_name?.charAt(0) || '?'}
                     </div>
-                    <div className={s.expRole}>{expert.role}</div>
+
+                    <div className={s.expInfo}>
+                      <div className={s.expName}>
+                        {expert.expert_name}{' '}
+                        <span className={s.expBadge}>
+                          {/* <BadgeCheck size={12} /> */}
+                        </span>
+                      </div>
+
+                      <div className={s.expDept}>
+                        {expert.depart_ment}
+                      </div>
+                    </div>
+
+                    <div className={s.expCt}>回答 {expert.answer_count || 0}</div>
                   </div>
-                  <div className={s.expCt}>回答 {expert.answerCount}</div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
-            <div className={s.rightCard}>
+            {/* <div className={`${s.rightCard} ${s.applyCard}`}>
               <div className={s.rightTitle}>
-                <Tag size={15} className={s.rightTitleIco} />
-                热门话题
-              </div>
-              <div className={s.topicChips}>
-                {TOPIC_CHIPS.map((chip) => (
-                  <button key={chip.label} type="button" className={s.topicChip}>
-                    {chip.label}
-                    <span className={s.topicCount}>{chip.count}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className={`${s.rightCard} ${s.applyCard}`}>
-              <div className={s.rightTitle}>
-                <UserPlus size={15} className={s.rightTitleIco} />
-                成为专家
+                <UserPlus size={15} className={s.rightTitleIco} /> 成为专家
               </div>
               <p className={s.applyDesc}>
                 有十年以上一线经验、希望分享专业知识？联系后台管理员申请专家认证，认证后将出现在专家库与首页推荐位。
               </p>
               <button type="button" className={s.applyBtn}>
-                <MessageCircle size={13} />
-                申请认证
+                <MessageCircle size={13} /> 申请认证
               </button>
-            </div>
+            </div> */}
           </aside>
         </div>
       </div>

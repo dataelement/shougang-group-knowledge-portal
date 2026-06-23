@@ -113,6 +113,12 @@
   transform: translateY(-1px);
 }
 
+.actionButton:disabled {
+  cursor: wait;
+  transform: none;
+  opacity: 0.86;
+}
+
 .favoriteButton {
   background: var(--amber-500);
   box-shadow: 0 8px 16px rgba(245, 158, 11, 0.24);
@@ -129,6 +135,21 @@
 
 .downloadButton:hover {
   background: #15803d;
+}
+
+.downloadButton:disabled,
+.downloadButton:disabled:hover {
+  background: #16a34a;
+}
+
+.spinner {
+  animation: file-list-item-spin 0.8s linear infinite;
+}
+
+@keyframes file-list-item-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .shareButton {

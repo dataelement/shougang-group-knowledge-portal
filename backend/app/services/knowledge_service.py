@@ -38,6 +38,7 @@ from app.schemas.knowledge import (
     ShareDocumentMeta,
     ShareDocumentRequest,
 )
+from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_telemetry_service import PORTAL_BFF_TELEMETRY_HEADERS
 
@@ -1272,9 +1273,17 @@ class KnowledgeService:
     def _extract_success_data(response: dict[str, Any]) -> Any:
         status_code = response.get("status_code")
         if status_code not in (None, 200):
+            try:
+                numeric_status_code = int(status_code)
+            except (TypeError, ValueError):
+                numeric_status_code = None
             raise BishengBusinessError(
-                int(status_code),
-                str(response.get("status_message") or "Bisheng request failed"),
+                numeric_status_code or 502,
+                normalize_user_facing_message(
+                    response.get("status_message"),
+                    fallback="BiSheng 请求失败",
+                    status_code=numeric_status_code,
+                ),
             )
         return response.get("data") or {}
 

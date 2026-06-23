@@ -5,12 +5,13 @@ import {
   ArrowUp, BarChart3, Bot, ChevronLeft, ChevronRight, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
-  Award, MessageSquarePlus, Sparkles,
+  Sparkles,
   BookOpen, Package, Video, Flame, Briefcase, Users, Tag, TrendingUp, FolderOpen, ScrollText,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
+import ExpertQuestions from '../components/ExpertQuestions';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
   fetchHomeContent,
@@ -537,17 +538,6 @@ export default function HomePage() {
       { role: 'bot' as const, text: '建议先核对轧机、卷取机和传动系统的振动趋势，再结合钢卷位置、速度段和设备点检记录定位异常来源。' },
     ];
 
-  const expertQuestionFallbacks = [
-    '振动纹通常如何排查？',
-    '热轧精轧机轴承维护周期是多久？',
-    '冷轧板面缺陷有哪些常见类型？',
-    '振动纹通常如何排查？',
-    '热轧精轧机轴承维护周期是多久？',
-    '冷轧板面缺陷有哪些常见类型？',
-    '振动纹通常如何排查？',
-  ];
-  const expertHotQuestions = [...qaHotQuestions, ...expertQuestionFallbacks].slice(0, 7);
-
   const appEntryItems = (config?.qa.templates || []).filter((template) => template.enabled && template.show_on_home);
   const formatHomeStat = (value: number | undefined): string => {
     if (homeStatsFailed) return '--';
@@ -933,38 +923,8 @@ export default function HomePage() {
             </div>
 
             {/* 专家问答 */}
-            <div className={s.qaPanel}>
-              <div className={s.qaHeader}>
-                <div className={s.qaHeaderLeft}>
-                  <div className={`${s.panelIcon} ${s.panelIconExpert}`}><Award size={14} /></div>
-                  <span className={s.panelTitle}>专家问答</span>
-                </div>
-                <Link to="/expert-qa" className={s.panelMore}>
-                  更多 <ChevronRight size={14} />
-                </Link>
-              </div>
-              <Link to="/expert-qa" className={s.expertCta}>
-                <MessageSquarePlus size={22} />
-                <div className={s.expertCtaBody}>
-                  <div className={s.expertCtaTitle}>向专家提问</div>
-                  <div className={s.expertCtaDesc}>126 位认证专家在线 · 平均 4 小时响应</div>
-                </div>
-                <ChevronRight size={16} className={s.expertCtaCaret} />
-              </Link>
-              {expertHotQuestions.map((question, index) => (
-                <div
-                  key={index}
-                  className={s.expertItem}
-                  onClick={() => navigate('/expert-qa')}
-                >
-                  <span className={s.expertBadge}>Q</span>
-                  <span className={s.expertText}>{question}</span>
-                </div>
-              ))}
-              <div className={s.qaFooter}>本周活跃专家：12人</div>
-            </div>
+            <ExpertQuestions className={s.qaPanel} />
 
-            {/* 股份百科 · 知识产品 */}
             <div className={s.panel}>
               <div className={s.panelHeader}>
                 <div className={s.panelHeaderLeft}>
