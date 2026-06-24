@@ -654,10 +654,11 @@ class KnowledgeService:
                 summary=str(item.get("summary") or item.get("abstract") or ""),
                 source=str(item.get("source") or ""),
                 updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
-                tags=[
-                    {"tag_name": str(tag.get("tag_name")), "resource_type": str(tag.get("resource_type"))}
-                    for tag in (item.get("tags") or [])
-                    if isinstance(tag, dict)
+                tags=[str(tag) for tag in (item.get("tags") or [])],
+                tag_infos=[
+                    {"tag_name": str(tag_info.get("tag_name")), "resource_type": str(tag_info.get("resource_type"))}
+                    for tag_info in (item.get("tag_infos") or [])
+                    if isinstance(tag_info, dict)
                 ],
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
