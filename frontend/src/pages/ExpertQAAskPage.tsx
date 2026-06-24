@@ -151,6 +151,7 @@ function normalizeExpertResult(res: unknown): ExpertProfilesResult {
   return { experts: [], total: 0 };
 }
 
+//主页面
 export default function ExpertQAAskPage() {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
@@ -596,6 +597,7 @@ export default function ExpertQAAskPage() {
                       {getInitial(expert.expert_name)}
                     </span>
                     {expert.expert_name}
+              
                     <span className={s.expChipX} onClick={() => toggleInvite(expert)}>
                       ×
                     </span>
@@ -645,11 +647,15 @@ export default function ExpertQAAskPage() {
                             >
                               {getInitial(expert.expert_name)}
                             </span>
+                            
                             <span className={s.pickerInfo}>
                               <span className={s.pickerName}>{expert.expert_name}</span>
                               {expert.depart_ment && (
                                 <span className={s.pickerDept}>{expert.depart_ment}</span>
                               )}
+                            </span>
+                            <span className={s.expertInfo}>
+                              <span className={s.expertMajor}>{expert.major}</span>
                             </span>
                             {isSelected && <span className={s.pickerCheck}>✓</span>}
                           </button>

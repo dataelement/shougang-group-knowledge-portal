@@ -13,8 +13,8 @@ import {
 
   Check,
   CheckCircle,
-  ChevronDown,
-  ChevronUp,
+  // ChevronUp,
+  // Edit3,
   FileText,
   Image as ImageIcon,
   Link2,
@@ -24,6 +24,7 @@ import {
   Send,
 
   ThumbsUp,
+  // Trash2,
   User,
   UserCheck,
   X,
@@ -36,23 +37,26 @@ import {
   acceptAnswer,
   createAnswer,
   createComment,
+  // deleteExpertQuestion,
   fetchAnswersPaged,
   fetchCommentsPaged,
   fetchExpertAnswerDetail,
   fetchExpertInfoDetail,
   fetchExpertQuestionDetail,
   fetchSimilarExpertQuestions,
-  likeAnswer,
   markAnswerUseful,
+  // updateExpertQuestion,
   uploadQaImage,
   voteQuestion,
   type ApiAnswer,
   type ApiComment,
   type ApiQuestion,
   type CreateAnswerPayload,
+  type ExpertProfileResponse,
   type PagedAnswerResponse,
   type SimilarQuestionItem,
 } from '../api/expertQa';
+import { useAuth } from '../hooks/useAuth';
 import {
   type AnswerEntry,
   type ExpertProfile,
@@ -110,6 +114,7 @@ const FOLLOWER_FIELD_KEYS = [
   'follow_count',
   'watch_count',
 ];
+const VOTED_STORAGE_PREFIX = 'sg_expert_qa_voted';
 
 interface DetailAttachment {
   label: string;
@@ -127,6 +132,8 @@ type DetailQuestion = QuestionDetail & {
   attachments: DetailAttachment[];
   relatedDocs: DetailAttachment[];
   bounty: number;
+  ownerUserId: number;
+  createdBy: string | null;
 };
 
 type SortMode = 'top' | 'latest';
@@ -136,6 +143,7 @@ interface CommentState {
   total: number;
   page: number;
   loading: boolean;
+  hasMore: boolean;
   draft: string;
   submitting: boolean;
   error: string | null;
@@ -154,9 +162,40 @@ interface AnswerCardProps {
   questionId: number;
   showComments: boolean;
   onToggleComments: (event?: MouseEvent<HTMLButtonElement>) => void;
-  onVote: () => void;
   onUseful: () => void;
   onAccept: () => void;
+  onCommentTotalChange?: (total: number) => void;
+  usefulDisabled?: boolean;
+}
+
+function mergeUniqueComments(current: ApiComment[], incoming: ApiComment[]): ApiComment[] {
+  const seen = new Set(current.map((item) => item.id));
+  const merged = [...current];
+  incoming.forEach((item) => {
+    if (seen.has(item.id)) return;
+    seen.add(item.id);
+    merged.push(item);
+  });
+  return merged;
+}
+
+function buildVoteKey(userKey: string, targetType: string, targetId: string | number): string {
+  return `${VOTED_STORAGE_PREFIX}:${userKey}:${targetType}:${targetId}`;
+}
+
+function hasStoredVote(userKey: string, targetType: string, targetId: string | number): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(buildVoteKey(userKey, targetType, targetId)) === '1';
+}
+
+function storeVote(userKey: string, targetType: string, targetId: string | number) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(buildVoteKey(userKey, targetType, targetId), '1');
+}
+
+function removeStoredVote(userKey: string, targetType: string, targetId: string | number) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(buildVoteKey(userKey, targetType, targetId));
 }
 
 function getAvatarInitial(name?: string | null): string {
@@ -283,10 +322,10 @@ async  function mapQuestionDetail(
       question.adopted_answer_id,
     ),
     invitedSummary: formatInvitedSummary(invitedNames),
-    votes: question.vote_count,
-    answers: question.answer_count,
+    votes: question.vote_count ?? 0,
+    answers: question.answer_count ?? 0,
     acceptedAnswers: question.adopted_answer_id ? 1 : 0,
-    views: question.view_count,
+    views: question.view_count ?? 0,
     asker: {
       initial: getAvatarInitial(question.created_by || `U${question.user_id}`),
       name: question.created_by || `用户${question.user_id}`,
@@ -313,18 +352,28 @@ async  function mapQuestionDetail(
     attachments: parseAttachments(question.attachments, question.related_docs),
     relatedDocs,
     bounty: readNumberField(question, BOUNTY_FIELD_KEYS) ?? 0,
+    ownerUserId: question.user_id,
+    createdBy: question.created_by,
   };
 }
 
-function buildAnswerEntry(answer: ApiAnswer): DetailAnswerEntry {
+function buildAnswerEntry(
+  answer: ApiAnswer,
+  fallbackExpert?: ExpertProfileResponse | null,
+): DetailAnswerEntry {
   const relatedDocs = parseUnknownAttachments(answer.attachments,answer.related_docs);
   const createdAtMs = toTimestamp(answer.created_at);
 
   return {
     id: String(answer.id),
-    author: buildExpertProfile(answer),
+    author: buildExpertProfile(answer, fallbackExpert),
     adopted: answer.adopted ?? false,
-    isExpert: Boolean(answer.expert_id || answer.expert || answer.isExpert),
+    isExpert: Boolean(
+      answer.expert_id ||
+        answer.expert ||
+        answer.isExpert ||
+        (fallbackExpert && answer.expert_id === fallbackExpert.id),
+    ),
     votes: answer.vote_count ?? 0,
     ts: formatDateTime(answer.created_at),
     createdAtMs,
@@ -356,20 +405,33 @@ function markAnsweredInvitedExperts(
   };
 }
 
-function buildExpertProfile(answer: ApiAnswer): ExpertProfile {
-  const name = answer.expert_name || answer.expert?.expert_name || '匿名用户';
+function buildExpertProfile(
+  answer: ApiAnswer,
+  fallbackExpert?: ExpertProfileResponse | null,
+): ExpertProfile {
+  const matchedFallback =
+    fallbackExpert &&
+    (answer.expert_id === fallbackExpert.id ||
+      answer.expert_name === fallbackExpert.expert_name)
+      ? fallbackExpert
+      : null;
+  const name =
+    answer.expert_name ||
+    answer.expert?.expert_name ||
+    matchedFallback?.expert_name ||
+    '匿名用户';
 
   return {
-    id: answer.expert?.id ?? answer.expert_id ?? 0,
-    user_id: answer.expert?.user_id ?? 0,
+    id: answer.expert?.id ?? answer.expert_id ?? matchedFallback?.id ?? 0,
+    user_id: answer.expert?.user_id ?? matchedFallback?.user_id ?? 0,
     expert_name: name,
-    depart_ment: answer.expert?.depart_ment ?? EMPTY_TEXT,
-    adoption_count: answer.expert?.adoption_count ?? 0,
-    answer_count: answer.expert?.answer_count ?? 0,
-    vote_count: answer.expert?.vote_count ?? answer.vote_count ?? 0,
-    introduction: answer.expert?.introduction ?? '',
-    created_at: answer.expert?.created_at ?? answer.created_at,
-    updated_at: answer.expert?.updated_at ?? answer.updated_at,
+    depart_ment: answer.expert?.depart_ment ?? matchedFallback?.depart_ment ?? EMPTY_TEXT,
+    adoption_count: answer.expert?.adoption_count ?? matchedFallback?.adoption_count ?? 0,
+    answer_count: answer.expert?.answer_count ?? matchedFallback?.answer_count ?? 0,
+    vote_count: answer.expert?.vote_count ?? matchedFallback?.vote_count ?? answer.vote_count ?? 0,
+    introduction: answer.expert?.introduction ?? matchedFallback?.introduction ?? '',
+    created_at: answer.expert?.created_at ?? matchedFallback?.created_at ?? answer.created_at,
+    updated_at: answer.expert?.updated_at ?? matchedFallback?.updated_at ?? answer.updated_at,
   };
 }
 
@@ -597,6 +659,7 @@ function CommentThread({
     total: initialCount,
     page: 0,
     loading: false,
+    hasMore: initialCount > 0,
     draft: '',
     submitting: false,
     error: null,
@@ -610,7 +673,7 @@ function CommentThread({
     [answerId, state.items],
   );
   const totalCount = Math.max(state.total, visibleComments.length);
-  const hasMore = visibleComments.length < totalCount;
+  const hasMore = state.hasMore && visibleComments.length < totalCount;
   const notLoaded = state.page === 0;
   const hasDraftContent = Boolean(state.draft.trim());
 
@@ -627,18 +690,25 @@ function CommentThread({
         COMMENTS_PAGE_SIZE,
       );
      
-      const nextItems = Array.isArray(res.data) ? res.data : [];
+      const rawItems = Array.isArray(res.data) ? res.data : [];
+      const nextItems = rawItems.filter((item) => isCommentVisibleInThread(item, answerId));
+      const mergedItems = mergeUniqueComments(state.items, nextItems);
+      const nextVisibleCount = mergedItems.filter((item) => isCommentVisibleInThread(item, answerId)).length;
       const nextTotal =
-        typeof res.total === 'number'
+        typeof res.total === 'number' && !isFollowUpThread
           ? res.total
-          : Math.max(state.total, state.items.length + nextItems.length);
+          : Math.max(state.total, nextVisibleCount);
+      const nextHasMore =
+        rawItems.length >= COMMENTS_PAGE_SIZE &&
+        (typeof res.total !== 'number' || nextPage * COMMENTS_PAGE_SIZE < res.total);
 
       setState((prev) => ({
         ...prev,
-        items: [...prev.items, ...nextItems],
+        items: mergeUniqueComments(prev.items, nextItems),
         total: nextTotal,
         page: nextPage,
         loading: false,
+        hasMore: nextHasMore,
       }));
       onTotalChange?.(nextTotal);
     } catch (err) {
@@ -653,7 +723,8 @@ function CommentThread({
     answerId,
     onTotalChange,
     questionId,
-    state.items.length,
+    state.items,
+    isFollowUpThread,
     state.loading,
     state.page,
     state.total,
@@ -661,7 +732,11 @@ function CommentThread({
 
   useEffect(() => {
     if (!notLoaded || (!isFollowUpThread && initialCount === 0)) return;
-    void loadMore();
+    const timer = window.setTimeout(() => {
+      void loadMore();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [initialCount, isFollowUpThread, loadMore, notLoaded]);
 
   async function handleSubmit() {
@@ -671,7 +746,7 @@ function CommentThread({
     setState((prev) => ({ ...prev, submitting: true, error: null }));
 
     try {
-      await createComment({
+      const createdComment = await createComment({
         answer_id: answerId,
         question_id: questionId,
         content,
@@ -679,26 +754,44 @@ function CommentThread({
       });
 
       const newComment: ApiComment = {
-        id: Date.now(),
+        ...createdComment,
+        id: createdComment.id ?? Date.now(),
         answer_id: answerId,
-        user_id: 0,
-        user_name: '我',
-        content,
+        user_id: createdComment.user_id ?? 0,
+        user_name: createdComment.user_name?.trim() || '我',
+        content: createdComment.content || content,
         is_follow_up: isFollowUpThread,
-        vote_count: 0,
-        created_at: new Date().toISOString(),
+        vote_count: createdComment.vote_count ?? 0,
+        created_at: createdComment.created_at || new Date().toISOString(),
       };
       const nextTotal = totalCount + 1;
 
+      const latest = await fetchCommentsPaged(
+        answerId,
+        questionId,
+        1,
+        COMMENTS_PAGE_SIZE,
+      ).catch(() => null);
+      const latestItems = latest && Array.isArray(latest.data)
+        ? latest.data.filter((item) => isCommentVisibleInThread(item, answerId))
+        : [];
+      const nextItems = latestItems.length ? latestItems : [...state.items, newComment];
+      const refreshedTotal =
+        typeof latest?.total === 'number' && !isFollowUpThread
+          ? Math.max(latest.total, nextItems.length, nextTotal)
+          : Math.max(nextItems.length, nextTotal);
+
       setState((prev) => ({
         ...prev,
-        items: [...prev.items, newComment],
-        total: nextTotal,
+        items: nextItems,
+        total: refreshedTotal,
+        page: latestItems.length ? 1 : prev.page,
+        hasMore: Boolean(latestItems.length && latestItems.length >= COMMENTS_PAGE_SIZE),
         draft: '',
         submitting: false,
       }));
       onCommentCreated?.();
-      onTotalChange?.(nextTotal);
+      onTotalChange?.(refreshedTotal);
     } catch (err) {
       console.error('评论发布失败:', err);
       setState((prev) => ({
@@ -811,9 +904,10 @@ function AnswerCard({
   questionId,
   showComments,
   onToggleComments,
-  onVote,
   onUseful,
   onAccept,
+  onCommentTotalChange,
+  usefulDisabled = false,
 }: AnswerCardProps) {
   const commentThreadRef = useRef<HTMLDivElement>(null);
   const wrapClass = [
@@ -840,19 +934,6 @@ function AnswerCard({
 
   return (
     <article className={wrapClass}>
-      <div className={s.voteCol}>
-        <button
-          type="button"
-          className={`${s.voteBtn} ${answer.adopted ? s.voteUpAct : ''}`}
-          onClick={onVote}
-          aria-label="赞同回答"
-        >
-          <ChevronUp size={15} />
-        </button>
-        <span className={s.voteCount}>{answer.votes}</span>
-
-      </div>
-
       <div className={s.answerMain}>
         {answer.adopted ? (
           <div className={s.acceptedBanner}>
@@ -938,7 +1019,7 @@ function AnswerCard({
 
         <div className={s.answerFoot}>
           <div className={s.answerActions}>
-            <button type="button" onClick={onUseful}>
+            <button type="button" onClick={onUseful} disabled={usefulDisabled}>
               <ThumbsUp size={13} />
               有用 ({answer.helpful})
             </button>
@@ -955,6 +1036,7 @@ function AnswerCard({
               answerId={Number(answer.id)}
               questionId={questionId}
               initialCount={answer.commentCount}
+              onTotalChange={onCommentTotalChange}
             />
           </div>
         ) : null}
@@ -965,6 +1047,8 @@ function AnswerCard({
 
 export default function ExpertQADetailPage() {
   const params = useParams<{ questionId?: string }>();
+  // const navigate = useNavigate();
+  const { user } = useAuth();
   const routeQuestionId = params.questionId;
   const [question, setQuestion] = useState<DetailQuestion | null>(null);
   const [qLoading, setQLoading] = useState(true);
@@ -989,12 +1073,23 @@ export default function ExpertQADetailPage() {
   const [answerUploadError, setAnswerUploadError] = useState<string | null>(null);
   const [answerKnowledgeDialogOpen, setAnswerKnowledgeDialogOpen] = useState(false);
   const [questionVoteSubmitting, setQuestionVoteSubmitting] = useState(false);
+  const [votedTargets, setVotedTargets] = useState<Set<string>>(new Set());
+  const [currentExpert, setCurrentExpert] = useState<ExpertProfileResponse | null>(null);
   const answerImageInputRef = useRef<HTMLInputElement>(null);
   const answerLoadingRef = useRef(false);
   const activeQuestionIdRef = useRef<number | null>(null);
   const followupThreadRef = useRef<HTMLDivElement>(null);
 
   const questionNumericId = question ? Number(question.id) : null;
+  const currentUserKey = user?.externalId || user?.account || user?.name || 'anonymous';
+  // const canManageQuestion = Boolean(
+  //   user &&
+  //     question &&
+  //     (question.createdBy === user.name ||
+  //       question.createdBy === user.account ||
+  //       String(question.ownerUserId) === user.externalId ||
+  //       String(question.ownerUserId) === user.account),
+  // );
   const answerHasMore = answers.length < answerTotal;
   const answeredInvitedCount = question
     ? question.invitedExperts.filter((item) => item.status === 'answered').length
@@ -1003,12 +1098,41 @@ export default function ExpertQADetailPage() {
     () =>
       [...answers].sort((a, b) =>
         sortMode === 'top'
-          ? b.votes - a.votes || b.createdAtMs - a.createdAtMs
+          ? b.helpful - a.helpful || b.createdAtMs - a.createdAtMs
           : b.createdAtMs - a.createdAtMs,
       ),
     [answers, sortMode],
   );
   const followupsOpen = openComments.has(QUESTION_FOLLOWUP_THREAD_ID);
+
+  useEffect(() => {
+    let active = true;
+    const candidates = [user?.name, user?.account]
+      .map((item) => item?.trim())
+      .filter((item): item is string => Boolean(item));
+
+    if (!candidates.length) {
+      setCurrentExpert(null);
+      return;
+    }
+
+    void (async () => {
+      for (const name of candidates) {
+        try {
+          const expert = await fetchExpertInfoDetail(name);
+          if (active) setCurrentExpert(expert);
+          return;
+        } catch {
+          // Continue with the next user identifier; some deployments key experts by account.
+        }
+      }
+      if (active) setCurrentExpert(null);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.account, user?.name]);
 
   const loadAnswers = useCallback(
     async (targetQuestionId: number, page: number, replace = false) => {
@@ -1023,7 +1147,9 @@ export default function ExpertQADetailPage() {
           page,
           ANSWERS_PAGE_SIZE,
         );
-        const entries = (res.answers ?? []).map(buildAnswerEntry);
+        const entries = (res.answers ?? []).map((answer) =>
+          buildAnswerEntry(answer, currentExpert),
+        );
         if (activeQuestionIdRef.current !== targetQuestionId) return;
 
         setAnswers((prev) => {
@@ -1034,7 +1160,21 @@ export default function ExpertQADetailPage() {
           return [...prev, ...newEntries];
         });
          
-        setAnswerTotal(typeof res.total === 'number' ? res.total : entries.length);
+        const nextTotal = typeof res.total === 'number' ? res.total : entries.length;
+        setAnswerTotal(nextTotal);
+        setQuestion((prev) =>
+          prev
+            ? {
+                ...prev,
+                answers: nextTotal,
+                status: formatQuestionStatus(
+                  prev.acceptedAnswers > 0 ? SOLVED_QUESTION_STATUS : 0,
+                  nextTotal,
+                  prev.acceptedAnswers > 0 ? 1 : null,
+                ),
+              }
+            : prev,
+        );
         setAnswerPage(page);
       } catch (err) {
         console.error('回答列表加载失败:', err);
@@ -1044,7 +1184,29 @@ export default function ExpertQADetailPage() {
         setAnswerLoading(false);
       }
     },
-    [],
+    [currentExpert],
+  );
+
+  const refreshQuestionAndAnswers = useCallback(
+    async (targetQuestionId: number) => {
+      if (!routeQuestionId) return;
+
+      const detail = await fetchExpertQuestionDetail(routeQuestionId);
+      const related = await fetchSimilarExpertQuestions(detail.title, 5).catch(
+        (err) => {
+          console.error('相关问答加载失败:', err);
+          return [];
+        },
+      );
+      if (activeQuestionIdRef.current !== targetQuestionId) return;
+
+      const mappedQuestion = await mapQuestionDetail(detail, related);
+      setQuestion(mappedQuestion);
+      setAnswerTotal(detail.answer_count ?? 0);
+      setFollowupCount(detail.comment_count ?? 0);
+      await loadAnswers(targetQuestionId, 1, true);
+    },
+    [loadAnswers, routeQuestionId],
   );
 
   useEffect(() => {
@@ -1098,11 +1260,24 @@ export default function ExpertQADetailPage() {
   }, [loadAnswers, routeQuestionId]);
 
   useEffect(() => {
-    if (!question) return;
     setQuestion((prev) =>
       prev ? markAnsweredInvitedExperts(prev, answers) : prev,
     );
   }, [answers, question?.id]);
+
+  useEffect(() => {
+    if (!questionNumericId) return;
+    const next = new Set<string>();
+    if (hasStoredVote(currentUserKey, 'question', questionNumericId)) {
+      next.add(`question:${questionNumericId}`);
+    }
+    answers.forEach((answer) => {
+      if (hasStoredVote(currentUserKey, 'answer-helpful', answer.id)) {
+        next.add(`answer-helpful:${answer.id}`);
+      }
+    });
+    setVotedTargets(next);
+  }, [answers, currentUserKey, questionNumericId]);
 
   useEffect(() => {
     if (!openComments.has(QUESTION_FOLLOWUP_THREAD_ID)) return;
@@ -1155,28 +1330,44 @@ export default function ExpertQADetailPage() {
       const payload: CreateAnswerPayload = {
         question_id: questionNumericId,
         content,
+        expert_id: currentExpert?.id,
         images_url: answerImageUrls.length ? answerImageUrls.join(';') : null,
         attachments: serializeKnowledgeDocumentNames(answerRelatedDocs),
         related_docs: serializeKnowledgeDocumentIds(answerRelatedDocs),
       };
       const newAnswer = await createAnswer(payload);
-      const newEntry = buildAnswerEntry(newAnswer);
+      const answerWithExpert: ApiAnswer = {
+        ...newAnswer,
+        expert_id: newAnswer.expert_id ?? currentExpert?.id ?? null,
+        expert_name: newAnswer.expert_name ?? currentExpert?.expert_name ?? null,
+        expert: newAnswer.expert ?? currentExpert ?? undefined,
+      };
 
-      setAnswers((prev) => [newEntry, ...prev]);
-      setAnswerTotal((prev) => prev + 1);
-      setQuestion((prev) =>
-        prev
-          ? {
-              ...prev,
-              answers: prev.answers + 1,
-              status: prev.status === 'pending' ? 'unsolved' : prev.status,
-            }
-          : prev,
-      );
+      if (typeof answerWithExpert.id === 'number') {
+        const newEntry = buildAnswerEntry(answerWithExpert, currentExpert);
+        setAnswers((prev) => {
+          const withoutDuplicate = prev.filter((item) => item.id !== newEntry.id);
+          return [newEntry, ...withoutDuplicate];
+        });
+        setAnswerTotal((prev) => Math.max(prev + 1, 1));
+        setQuestion((prev) =>
+          prev
+            ? markAnsweredInvitedExperts(
+                {
+                  ...prev,
+                  answers: Math.max(prev.answers + 1, 1),
+                  status: prev.status === 'pending' ? 'unsolved' : prev.status,
+                },
+                [newEntry],
+              )
+            : prev,
+        );
+      }
       setDraft('');
       setAnswerImageUrls([]);
       setAnswerRelatedDocs([]);
       setAnswerUploadError(null);
+      await refreshQuestionAndAnswers(questionNumericId);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : '发布失败，请重试');
     } finally {
@@ -1205,18 +1396,33 @@ export default function ExpertQADetailPage() {
     event?.preventDefault();
     event?.stopPropagation();
 
-    if (targetId !== '0' || !questionNumericId || questionVoteSubmitting) {
+    const voteKey = `question:${questionNumericId}`;
+    if (
+      targetId !== '0' ||
+      !questionNumericId ||
+      questionVoteSubmitting ||
+      votedTargets.has(voteKey)
+    ) {
+      if (votedTargets.has(voteKey)) setAnswerError('你已经投过票了');
       return;
     }
 
     setQuestionVoteSubmitting(true);
     setAnswerError(null);
+    storeVote(currentUserKey, 'question', questionNumericId);
+    setVotedTargets((prev) => new Set(prev).add(voteKey));
     setQuestion((prev) => (prev ? { ...prev, votes: prev.votes + 1 } : prev));
 
     try {
       await voteQuestion({ target_id: questionNumericId, target_type: 'question' });
     } catch (err) {
       console.error('问题投票失败:', err);
+      removeStoredVote(currentUserKey, 'question', questionNumericId);
+      setVotedTargets((prev) => {
+        const next = new Set(prev);
+        next.delete(voteKey);
+        return next;
+      });
       setQuestion((prev) =>
         prev ? { ...prev, votes: Math.max(prev.votes - 1, 0) } : prev,
       );
@@ -1226,16 +1432,15 @@ export default function ExpertQADetailPage() {
     }
   }
 
-  function handleAnswerVote(answerId: string) {
-    setAnswers((prev) =>
-      prev.map((answer) =>
-        answer.id === answerId ? { ...answer, votes: answer.votes + 1 } : answer,
-      ),
-    );
-    void likeAnswer(Number(answerId));
-  }
+  async function handleAnswerUseful(answerId: string) {
+    const voteKey = `answer-helpful:${answerId}`;
+    if (votedTargets.has(voteKey)) {
+      setAnswerError('你已经点过有用了');
+      return;
+    }
 
-  function handleAnswerUseful(answerId: string) {
+    storeVote(currentUserKey, 'answer-helpful', answerId);
+    setVotedTargets((prev) => new Set(prev).add(voteKey));
     setAnswers((prev) =>
       prev.map((answer) =>
         answer.id === answerId
@@ -1243,10 +1448,27 @@ export default function ExpertQADetailPage() {
           : answer,
       ),
     );
-    void markAnswerUseful({ target_id: Number(answerId), target_type: 'helpful' });
+    try {
+      await markAnswerUseful({ target_id: Number(answerId), target_type: 'helpful' });
+    } catch (err) {
+      removeStoredVote(currentUserKey, 'answer-helpful', answerId);
+      setVotedTargets((prev) => {
+        const next = new Set(prev);
+        next.delete(voteKey);
+        return next;
+      });
+      setAnswers((prev) =>
+        prev.map((answer) =>
+          answer.id === answerId
+            ? { ...answer, helpful: Math.max(answer.helpful - 1, 0) }
+            : answer,
+        ),
+      );
+      setAnswerError(err instanceof Error ? err.message : '投票失败，请稍后重试');
+    }
   }
 
-  function handleAcceptAnswer(answerId: string) {
+  async function handleAcceptAnswer(answerId: string) {
     if (!questionNumericId) return;
 
     setAnswers((prev) =>
@@ -1258,7 +1480,13 @@ export default function ExpertQADetailPage() {
     setQuestion((prev) =>
       prev ? { ...prev, status: 'solved', acceptedAnswers: 1 } : prev,
     );
-    void acceptAnswer(questionNumericId, Number(answerId));
+    try {
+      await acceptAnswer(questionNumericId, Number(answerId));
+      await refreshQuestionAndAnswers(questionNumericId);
+    } catch (err) {
+      setAnswerError(err instanceof Error ? err.message : '采纳失败，请稍后重试');
+      await refreshQuestionAndAnswers(questionNumericId);
+    }
   }
 
   function removeAnswerImage(url: string) {
@@ -1285,6 +1513,43 @@ export default function ExpertQADetailPage() {
       ),
     );
   }
+
+  // async function handleEditQuestion() {
+  //   if (!questionNumericId || !question || !canManageQuestion) return;
+
+  //   const nextTitle = window.prompt('编辑问题标题', question.title)?.trim();
+  //   if (!nextTitle) return;
+  //   const nextBody = window.prompt(
+  //     '编辑问题描述',
+  //     question.bodyParagraphs.join('\n\n') || question.excerpt,
+  //   )?.trim();
+  //   if (!nextBody) return;
+
+  //   setAnswerError(null);
+  //   try {
+  //     await updateExpertQuestion(questionNumericId, {
+  //       title: nextTitle,
+  //       body: nextBody,
+  //       domain: question.domain,
+  //     });
+  //     await refreshQuestionAndAnswers(questionNumericId);
+  //   } catch (err) {
+  //     setAnswerError(err instanceof Error ? err.message : '问题保存失败，请稍后重试');
+  //   }
+  // }
+
+  // async function handleDeleteQuestion() {
+  //   if (!questionNumericId || !canManageQuestion) return;
+  //   if (!window.confirm('确定删除该问题吗？删除后不可恢复。')) return;
+
+  //   setAnswerError(null);
+  //   try {
+  //     await deleteExpertQuestion(questionNumericId);
+  //     navigate('/expert-qa');
+  //   } catch (err) {
+  //     setAnswerError(err instanceof Error ? err.message : '问题删除失败，请稍后重试');
+  //   }
+  // }
 
   if (qLoading) {
     return (
@@ -1340,8 +1605,8 @@ export default function ExpertQADetailPage() {
               <h1 className={s.qHeaderTitle}>{question.title}</h1>
               <div className={s.qHeaderRow}>
                 <div className={s.askedInfo}>
-                  <span className={`${s.avatar} ${s.avatarSm}`}>
-                    {question.asker.initial}
+                  <span className={`${s.avatar} ${s.avatarSm}`}>                 
+                     {question.asker?.name.charAt(0) || '?'}
                   </span>
                   <span>
                     <span className={s.askedName}>{question.asker.name}</span>
@@ -1353,6 +1618,19 @@ export default function ExpertQADetailPage() {
                   <span>浏览 {question.views} 次</span>
                 </div>
 
+                {/* {canManageQuestion ? (
+                  <div className={s.ownerActions}>
+                    <button type="button" className={s.btnGhost} onClick={() => void handleEditQuestion()}>
+                      <Edit3 size={13} />
+                      编辑
+                    </button>
+                    <button type="button" className={s.btnGhost} onClick={() => void handleDeleteQuestion()}>
+                      <Trash2 size={13} />
+                      删除
+                    </button>
+                  </div>
+                ) : null} */}
+
               </div>
             </div>
 
@@ -1362,15 +1640,16 @@ export default function ExpertQADetailPage() {
                   type="button"
                   className={`${s.voteBtn} ${s.voteUpAct}`}      
                   onClick={(event) => void castVote('0', event)}
+                  disabled={
+                    questionVoteSubmitting ||
+                    votedTargets.has(`question:${questionNumericId}`)
+                  }
                   aria-label="赞同问题"
                 >
-                  <ChevronUp size={15} />
+                  {/* <ChevronUp size={15} /> */}
+                    <ThumbsUp   className="transition-transform duration-300 group-hover:scale-110"  size={15}/>
                 </button>
                 <span className={s.voteCount}>{question.votes}</span>
-                <button type="button" className={s.voteBtn} aria-label="投票">
-                  <ChevronDown size={15} />
-                </button>
-    
               </div>
 
               <div className={s.qContentMain}>
@@ -1479,9 +1758,16 @@ export default function ExpertQADetailPage() {
                 questionId={questionNumericId}
                 showComments={openComments.has(answer.id)}
                 onToggleComments={(event) => toggleComments(answer.id, event)}
-                onVote={() => handleAnswerVote(answer.id)}
-                onUseful={() => handleAnswerUseful(answer.id)}
-                onAccept={() => handleAcceptAnswer(answer.id)}
+                onUseful={() => void handleAnswerUseful(answer.id)}
+                onAccept={() => void handleAcceptAnswer(answer.id)}
+                onCommentTotalChange={(total) =>
+                  setAnswers((prev) =>
+                    prev.map((item) =>
+                      item.id === answer.id ? { ...item, commentCount: total } : item,
+                    ),
+                  )
+                }
+                usefulDisabled={votedTargets.has(`answer-helpful:${answer.id}`)}
               />
             ))}
 

@@ -1060,3 +1060,14 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+
+
+.expertMajor,
+.pickerMajor {
+  font-size: 12px;
+  color:cadetblue;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

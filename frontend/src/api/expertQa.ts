@@ -230,6 +230,7 @@ export interface ExpertProfileResponse {
   expert_name: string;
   introduction: string | null;
   depart_ment: string | null;
+  major: string | null;
   answer_count: number;
   adoption_count: number;
   vote_count: number;
@@ -251,6 +252,7 @@ export interface ExpertUpsertPayload {
   expert_name: string;
   introduction?: string;
   depart_ment?: string;
+  major?: string;
 }
 
 // ─── 用户相关 ────────────────────────────────────────────────
@@ -327,6 +329,17 @@ export interface CreateQuestionPayload {
   related_docs?: string;
 }
 
+export interface UpdateQuestionPayload {
+  title?: string;
+  body?: string;
+  domain?: string;
+  invited_expert_ids?: string;
+  invited_expert_names?: string;
+  image_url?: string | null;
+  attachments?: string | null;
+  related_docs?: string | null;
+}
+
 export interface SimilarQuestionItem {
   id: number;
   title: string;
@@ -396,12 +409,28 @@ export interface PagedCommentResponse {
 }
 
 export interface CreateCommentPayload {
-  /** 0 = 追问（直接挂在问题下，无对应回答） */
+
   answer_id: number;
   content: string;
   is_follow_up?: boolean;
-  /** answer_id = 0 时传入，用于后端通知等业务逻辑 */
   question_id?: number;
+}
+
+function normalizeSingleResource<T>(raw: unknown, resourceKey: string): T {
+  if (!raw || typeof raw !== 'object') return raw as T;
+
+  const obj = raw as Record<string, unknown>;
+  if (obj[resourceKey] && typeof obj[resourceKey] === 'object') {
+    return obj[resourceKey] as T;
+  }
+  if (obj.data && typeof obj.data === 'object') {
+    const data = obj.data as Record<string, unknown>;
+    if (data[resourceKey] && typeof data[resourceKey] === 'object') {
+      return data[resourceKey] as T;
+    }
+  }
+
+  return raw as T;
 }
 
 // ─── 投票相关 ────────────────────────────────────────────────
@@ -573,6 +602,9 @@ export async function fetchUserList(
 
   const raw = await req<RawUserList>(
     `/workspace/api/v1/user/list${qs({ page_size: pageSize, page_num: pageNum, simple: 'false' })}`,
+    undefined,
+    KNOWLEDGE_TREE_TIMEOUT,
+    
   );
 
   if (Array.isArray(raw)) {
@@ -619,15 +651,23 @@ export async function fetchExpertAnswerDetail(
   questionId: number,
   expertName: string,
 ): Promise<ApiAnswer | null> {
-  const res = await req<ApiAnswer | { answer: null }>(
-    `${BASE}/answers/${encodeURIComponent(questionId)}${qs({ expert_name: expertName })}`,
-  );
+  try {
+    const res = await req<unknown>(
+      `${BASE}/answers/${encodeURIComponent(questionId)}${qs({ expert_name: expertName })}`,
+    );
+    if (Array.isArray(res)) return (res[0] as ApiAnswer | undefined) ?? null;
+    if (!res || typeof res !== 'object') return null;
 
-  if (res && 'answer' in res && res.answer === null) {
+    const obj = res as Record<string, unknown>;
+    if (obj.answer === null) return null;
+    if (obj.answer && typeof obj.answer === 'object') return obj.answer as ApiAnswer;
+    if (Array.isArray(obj.data)) return (obj.data[0] as ApiAnswer | undefined) ?? null;
+    if (Array.isArray(obj.answers)) return (obj.answers[0] as ApiAnswer | undefined) ?? null;
+    if (typeof obj.id === 'number') return obj as unknown as ApiAnswer;
+    return null;
+  } catch {
     return null;
   }
-
-  return res as ApiAnswer;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -742,6 +782,34 @@ export async function createExpertQuestion(
   });
 
   return { id: String(res.id) };
+}
+
+/** 更新问题（PUT /questions/:id） */
+export async function updateExpertQuestion(
+  questionId: number,
+  payload: UpdateQuestionPayload,
+): Promise<ApiQuestion> {
+  const backendPayload = {
+    title: payload.title,
+    description: payload.body,
+    business_domain: payload.domain,
+    invited_experts: payload.invited_expert_ids,
+    experts_names: payload.invited_expert_names,
+    image_url: payload.image_url,
+    attachments: payload.attachments,
+    related_docs: payload.related_docs,
+  };
+
+  return req<ApiQuestion>(`${BASE}/questions/${questionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(backendPayload),
+  });
+}
+
+/** 删除问题（DELETE /questions/:id） */
+export async function deleteExpertQuestion(questionId: number): Promise<void> {
+  await req<unknown>(`${BASE}/questions/${questionId}`, { method: 'DELETE' });
 }
 
 /** 采纳回答（POST /questions/:id/adopt） */
@@ -881,11 +949,12 @@ export async function fetchLatestAnswerExcerpt(params: {
 
 /** 创建回答（POST /answers） */
 export async function createAnswer(payload: CreateAnswerPayload): Promise<ApiAnswer> {
-  return req<ApiAnswer>(`${BASE}/answers`, {
+  const raw = await req<unknown>(`${BASE}/answers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  return normalizeSingleResource<ApiAnswer>(raw, 'answer');
 }
 
 /** 更新回答内容（PUT /answers/:id） */
@@ -967,25 +1036,20 @@ export async function fetchCommentsPaged(
  */
 export async function createComment(payload: CreateCommentPayload): Promise<ApiComment> {
   try {
-    return await req<ApiComment>(`${BASE}/comments`, {
+    const raw = await req<unknown>(`${BASE}/comments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: { 
+        'Content-Type': 'application/json',
+        'accept': 'application/json' // 补充 accept 头，与你的 curl 请求保持一致
+      },
+      body: JSON.stringify(payload), // 直接发送完整的 payload
     });
-  } catch {
-    return {
-      id: Date.now(),
-      answer_id: payload.answer_id,
-      user_id: 0,
-      content: payload.content,
-      is_follow_up: Boolean(payload.is_follow_up),
-      vote_count: 0,
-      created_at: new Date().toISOString(),
-      user_name: '',
-    };
+    return normalizeSingleResource<ApiComment>(raw, 'comment');
+
+  } catch (err) {
+    throw err instanceof Error ? err : new Error('评论发布失败，请稍后重试');
   }
 }
-
 // ─── 评论互动操作 ─────────────────────────────────────────────
 
 /**

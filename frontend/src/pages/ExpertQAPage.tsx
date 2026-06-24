@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import type { KeyboardEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   Award,
@@ -7,25 +8,35 @@ import {
   CheckCircle,
   ChevronLeft,
   ChevronRight,
+  Edit3,
   PenLine,
   Tag,
+  Trash2,
   User,
   Settings, Shield, Leaf, GraduationCap, Network, Zap, Factory,
   type LucideIcon,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
-import { fetchAnswersPaged, fetchConfigData, fetchExpertProfiles, fetchExpertQuestions, statistics, type ApiAnswer, type ApiQuestion, type ExpertProfileResponse } from '../api/expertQa';
+import {
+  deleteExpertQuestion,
+  fetchAnswersPaged,
+  fetchConfigData,
+  fetchExpertProfiles,
+  fetchExpertQuestions,
+  statistics,
+  updateExpertQuestion,
+  type ApiAnswer,
+  type ApiQuestion,
+  type ExpertProfileResponse,
+} from '../api/expertQa';
 import { SORT_TABS, STATUS_FILTERS } from '../data/expertQaData';
-import type {  StatusFilterKey, TranslationStatistics } from '../types/expertQa';
+import type { StatusFilterKey, TranslationStatistics } from '../types/expertQa';
 import s from './ExpertQAPage.module.css';
 import type { DomainConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
-import { getAdminAccessState } from '../utils/adminAccess';
 
 type SortKey = 'latest' | 'hot' | 'unanswered';
 
-
-// 将接口返回的 icon 字符串映射到实际的组件
 const iconMap: Record<string, LucideIcon> = {
   CheckCircle: CheckCircle,
   Settings: Settings,
@@ -40,6 +51,7 @@ const iconMap: Record<string, LucideIcon> = {
 type QuestionEntry = {
   id: number;
   title: string;
+  body: string;
   excerpt: string;
   votes: number;
   views: number;
@@ -57,7 +69,6 @@ type QuestionEntry = {
   };
   askedAt: string;
 };
-
 
 function getStatusFromApi(status: number, answerCount: number): { text: string; cls: string } {
   if (answerCount === 0) return { text: 'unanswered', cls: s.urgent };
@@ -92,6 +103,7 @@ function getInvitedSummary(question: ApiQuestion): string | undefined {
   if (list.length === 0) return undefined;
   return `邀请：${list.slice(0, 2).join('、')}${list.length > 2 ? ` 等 ${list.length} 人` : ''}`;
 }
+
 const stringToColor = (str: string | null | undefined): string => {
   if (!str) return '#cccccc';
   let hash = 0;
@@ -102,12 +114,33 @@ const stringToColor = (str: string | null | undefined): string => {
   return `#${color}`;
 };
 
-
-
-function QuestionCard({ q }: { q: QuestionEntry }) {
+function QuestionCard({
+  q,
+  showOwnerActions,
+  onOpen,
+  onEdit,
+  onDelete,
+}: {
+  q: QuestionEntry;
+  showOwnerActions: boolean;
+  onOpen: (id: number) => void;
+  onEdit: (q: QuestionEntry) => void;
+  onDelete: (q: QuestionEntry) => void;
+}) {
   const accepted = q.acceptedPreview;
+  const handleOpen = () => onOpen(q.id);
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Enter') handleOpen();
+  };
+
   return (
-    <Link to={`/expert-qa/${q.id}`} className={s.qCard}>
+    <article
+      className={s.qCard}
+      role="link"
+      tabIndex={0}
+      onClick={handleOpen}
+      onKeyDown={handleKeyDown}
+    >
       <div className={s.qStatsCol}>
         <div className={s.statBlock}>
           <span className={s.statNum}>{q.votes}</span>
@@ -127,7 +160,7 @@ function QuestionCard({ q }: { q: QuestionEntry }) {
       <div className={s.qBody}>
         <div className={s.qMeta}>
           <span className={s.domainPill}>{q.domain}</span>
-          <StatusPill status={q.statusMeta.text}  />
+          <StatusPill status={q.statusMeta.text} />
           {q.invitedSummary ? (
             <span className={s.targetExpert}>
               <User size={11} />
@@ -165,14 +198,40 @@ function QuestionCard({ q }: { q: QuestionEntry }) {
             <span className={s.askedName}>{q.asker.name}</span>
             <span className={s.askedAt}>{q.askedAt}</span>
           </div>
-
+          {showOwnerActions ? (
+            <div className={s.ownerActions}>
+              <button
+                type="button"
+                className={s.ownerActionBtn}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onEdit(q);
+                }}
+              >
+                <Edit3 size={13} />
+                编辑
+              </button>
+              <button
+                type="button"
+                className={`${s.ownerActionBtn} ${s.ownerDangerBtn}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDelete(q);
+                }}
+              >
+                <Trash2 size={13} />
+                删除
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
-    </Link>
+    </article>
   );
 }
 
-// 状态 Pill 组件（根据你的代码调整）
 function StatusPill({ status }: { status: string }) {
   const meta = STATUS_LABEL[status as keyof typeof STATUS_LABEL] || { text: status, cls: '' };
   const Icon = meta.icon;
@@ -188,8 +247,8 @@ const STATUS_LABEL: Record<string, { text: string; cls: string; icon?: typeof Ch
   unsolved: { text: '待采纳', cls: s.unsolved },
   unanswered: { text: '未回答', cls: s.urgent },
   urgent: { text: '紧急', cls: s.urgent, icon: AlertTriangle },
-
 };
+
 const INITIAL_STATS = [
   { value: '—', label: '问题' },
   { value: '—', label: '回答' },
@@ -197,8 +256,92 @@ const INITIAL_STATS = [
   { value: '—', label: '解决率' },
 ];
 
+// ─── Modal 组件 ───────────────────────────────────────────────────────────────
+
+function EditModal({
+  title,
+  body,
+  onTitleChange,
+  onBodyChange,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  body: string;
+  onTitleChange: (v: string) => void;
+  onBodyChange: (v: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className={s.modalOverlay} onClick={onCancel}>
+      <div className={s.modalBox} onClick={(e) => e.stopPropagation()}>
+        <div className={s.modalTitle}>编辑问题</div>
+        <label className={s.modalLabel}>标题</label>
+        <input
+          className={s.modalInput}
+          value={title}
+          onChange={(e) => onTitleChange(e.target.value)}
+        />
+        <label className={s.modalLabel}>描述</label>
+        <textarea
+          className={s.modalTextarea}
+          value={body}
+          onChange={(e) => onBodyChange(e.target.value)}
+        />
+        <div className={s.modalActions}>
+          <button type="button" className={s.modalBtn} onClick={onCancel}>
+            取消
+          </button>
+          <button
+            type="button"
+            className={`${s.modalBtn} ${s.modalBtnPrimary}`}
+            onClick={onConfirm}
+            disabled={!title.trim() || !body.trim()}
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteModal({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className={s.modalOverlay} onClick={onCancel}>
+      <div className={`${s.modalBox} ${s.modalBoxCenter}`} onClick={(e) => e.stopPropagation()}>
+        <AlertTriangle size={32} className={s.modalWarnIcon} />
+        <div className={s.modalTitle}>确认删除问题？</div>
+        <p className={s.modalWarnText}>删除后不可恢复，该问题下的所有回答也将一并删除。</p>
+        <div className={`${s.modalActions} ${s.modalActionsCenter}`}>
+          <button type="button" className={s.modalBtn} onClick={onCancel}>
+            取消
+          </button>
+          <button
+            type="button"
+            className={`${s.modalBtn} ${s.modalBtnDanger}`}
+            onClick={onConfirm}
+          >
+            <Trash2 size={13} />
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── 主页面 ───────────────────────────────────────────────────────────────────
 
 export default function ExpertQAPage() {
+  const navigate = useNavigate();
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<StatusFilterKey | null>(null);
   const [sort, setSort] = useState<SortKey>('latest');
@@ -207,30 +350,43 @@ export default function ExpertQAPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
 
-  // 问题列表自身的加载 / 错误状态
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 侧边栏（业务域 / 专家榜单 / 统计数据）独立的加载 / 错误状态，
-  // 避免与问题列表的 loading/error 相互覆盖
   const [sidebarLoading, setSidebarLoading] = useState(false);
   const [sidebarError, setSidebarError] = useState<string | null>(null);
 
   const [experts, setExperts] = useState<ExpertProfileResponse[]>([]);
   const [domains, setDomains] = useState<DomainConfig[]>([]);
   const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
   const [heroStats, setHeroStats] = useState(INITIAL_STATS);
+  const showOwnerActions = activeStatus === 'my_question';
 
   const maxPage = Math.max(1, Math.ceil(total / pageSize));
+
+  // 编辑弹窗状态
+  const [editModal, setEditModal] = useState<{
+    open: boolean;
+    q: QuestionEntry | null;
+    title: string;
+    body: string;
+  }>({ open: false, q: null, title: '', body: '' });
+
+  // 删除确认弹窗状态
+  const [deleteModal, setDeleteModal] = useState<{
+    open: boolean;
+    q: QuestionEntry | null;
+  }>({ open: false, q: null });
 
   // 获取问题列表
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
+    window.setTimeout(() => {
+      if (!active) return;
+      setLoading(true);
+      setError(null);
+    }, 0);
 
-    // 状态映射表
     const statusMap: Record<string, number> = {
       unsolved: 0,
       solved: 1,
@@ -247,25 +403,24 @@ export default function ExpertQAPage() {
     })
       .then(async (res) => {
         if (!active) return;
-        const mappedQuestions: QuestionEntry[] = (res.questions || []).map((q: ApiQuestion) => {
-          return {
-            id: q.id,
-            title: q.title,
-            excerpt: textExcerpt(q.description, 120),
-            votes: q.vote_count,
-            views: q.view_count,
-            answers: q.answer_count,
-            acceptedAnswers: q.adopted_answer_id ? 1 : 0,
-            domain: q.business_domain,
-            statusMeta: getStatusFromApi(q.status, q.answer_count),
-            invitedSummary: getInvitedSummary(q),
-            asker: {
-              name: q.created_by || `用户${q.user_id}`,
-              initial: (q.created_by || `U${q.user_id}`)[0],
-            },
-            askedAt: new Date(q.created_at).toLocaleDateString('zh-CN'),
-          };
-        });
+        const mappedQuestions: QuestionEntry[] = (res.questions || []).map((q: ApiQuestion) => ({
+          id: q.id,
+          title: q.title,
+          body: q.description ?? '',
+          excerpt: textExcerpt(q.description, 120),
+          votes: q.vote_count ?? 0,
+          views: q.view_count ?? 0,
+          answers: q.answer_count ?? 0,
+          acceptedAnswers: q.adopted_answer_id ? 1 : 0,
+          domain: q.business_domain,
+          statusMeta: getStatusFromApi(q.status, q.answer_count),
+          invitedSummary: getInvitedSummary(q),
+          asker: {
+            name: q.created_by || `用户${q.user_id}`,
+            initial: (q.created_by || `U${q.user_id}`)[0],
+          },
+          askedAt: new Date(q.created_at).toLocaleDateString('zh-CN'),
+        }));
 
         const questionsWithAnswers = await Promise.all(
           mappedQuestions.map(async (question) => {
@@ -273,19 +428,23 @@ export default function ExpertQAPage() {
               const answerRes = await fetchAnswersPaged(question.id, 1, 1);
               const answer = answerRes.answers?.[0];
               const answerTotal = answerRes.total ?? answerRes.answers?.length ?? question.answers;
-              const acceptedAnswers = question.acceptedAnswers > 0 || answer?.status === 2 || answer?.adopted ? 1 : 0;
+              const acceptedAnswers =
+                question.acceptedAnswers > 0 || answer?.status === 2 || answer?.adopted ? 1 : 0;
               return {
                 ...question,
                 answers: Math.max(question.answers, answerTotal),
                 acceptedAnswers,
-                statusMeta: getStatusFromApi(acceptedAnswers ? 1 : 0, Math.max(question.answers, answerTotal)),
+                statusMeta: getStatusFromApi(
+                  acceptedAnswers ? 1 : 0,
+                  Math.max(question.answers, answerTotal),
+                ),
                 acceptedPreview: answer ? buildAnswerPreview(answer) : undefined,
               };
             } catch (err) {
               console.error(`获取问题 ${question.id} 的专家回答失败:`, err);
               return question;
             }
-          })
+          }),
         );
 
         if (!active) return;
@@ -306,14 +465,15 @@ export default function ExpertQAPage() {
     };
   }, [activeDomain, activeStatus, sort, page, pageSize]);
 
-  // 获取业务域配置 / 专家列表 / 统计数据 + 管理员权限判断
+  // 获取侧边栏数据
   useEffect(() => {
     let active = true;
-    setSidebarLoading(true);
-    setSidebarError(null);
+    window.setTimeout(() => {
+      if (!active) return;
+      setSidebarLoading(true);
+      setSidebarError(null);
+    }, 0);
 
-
-    setIsAdmin(getAdminAccessState(user) === 'allowed');
     const tasks = [
       fetchConfigData()
         .then((data) => {
@@ -323,7 +483,9 @@ export default function ExpertQAPage() {
         .catch((err) => {
           if (!active) return;
           setDomains([]);
-          setSidebarError(`获取业务领域配置失败: ${err instanceof Error ? err.message : String(err)}`);
+          setSidebarError(
+            `获取业务领域配置失败: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }),
 
       fetchExpertProfiles(1, 8)
@@ -363,12 +525,66 @@ export default function ExpertQAPage() {
     };
   }, [user]);
 
-  // 如果当前选中的业务域不在最新的 domains 列表里了，重置筛选条件
   useEffect(() => {
     if (activeDomain && domains.length > 0 && !domains.some((d) => d.name === activeDomain)) {
-      setActiveDomain(null);
+      const timer = window.setTimeout(() => setActiveDomain(null), 0);
+      return () => window.clearTimeout(timer);
     }
   }, [domains, activeDomain]);
+
+  // 打开编辑弹窗
+  function handleEditQuestion(q: QuestionEntry) {
+    setEditModal({ open: true, q, title: q.title, body: q.body || q.excerpt });
+  }
+
+  // 确认编辑保存
+  async function handleConfirmEdit() {
+    const { q, title, body } = editModal;
+    if (!q || !title.trim() || !body.trim()) return;
+    setError(null);
+    try {
+      await updateExpertQuestion(q.id, {
+        title: title.trim(),
+        body: body.trim(),
+        domain: q.domain,
+      });
+      setQuestions((current) =>
+        current.map((item) =>
+          item.id === q.id
+            ? {
+                ...item,
+                title: title.trim(),
+                body: body.trim(),
+                excerpt: textExcerpt(body.trim(), 120),
+              }
+            : item,
+        ),
+      );
+      setEditModal({ open: false, q: null, title: '', body: '' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '问题保存失败，请稍后重试');
+    }
+  }
+
+  // 打开删除确认弹窗
+  function handleDeleteQuestion(q: QuestionEntry) {
+    setDeleteModal({ open: true, q });
+  }
+
+  // 确认删除
+  async function handleConfirmDelete() {
+    const { q } = deleteModal;
+    if (!q) return;
+    setError(null);
+    try {
+      await deleteExpertQuestion(q.id);
+      setQuestions((current) => current.filter((item) => item.id !== q.id));
+      setTotal((current) => Math.max(current - 1, 0));
+      setDeleteModal({ open: false, q: null });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '问题删除失败，请稍后重试');
+    }
+  }
 
   return (
     <PageShell>
@@ -469,7 +685,16 @@ export default function ExpertQAPage() {
             ) : questions.length === 0 ? (
               <div className={s.loading}>暂无符合条件的问题</div>
             ) : (
-              questions.map((q) => <QuestionCard key={q.id} q={q} />)
+              questions.map((q) => (
+                <QuestionCard
+                  key={q.id}
+                  q={q}
+                  showOwnerActions={showOwnerActions}
+                  onOpen={(id) => navigate(`/expert-qa/${id}`)}
+                  onEdit={(item) => handleEditQuestion(item)}
+                  onDelete={(item) => handleDeleteQuestion(item)}
+                />
+              ))
             )}
 
             <div className={s.pagination}>
@@ -499,11 +724,9 @@ export default function ExpertQAPage() {
             <div className={s.rightCard}>
               <div className={s.rightTitle}>
                 <Award size={15} className={s.rightTitleIco} /> 专家榜单{' '}
-                {isAdmin && (
-                  <Link to="/expert-qa/expertmanage" className={s.rightTitleMore}>
-                    全部 ›
-                  </Link>
-                )}
+                <Link to="/expert-qa/expertmanage" className={s.rightTitleMore}>
+                  全部 ›
+                </Link>
               </div>
               {sidebarLoading && experts.length === 0 ? (
                 <div className={s.loading}>加载中…</div>
@@ -518,40 +741,41 @@ export default function ExpertQAPage() {
                     >
                       {expert.expert_name?.charAt(0) || '?'}
                     </div>
-
                     <div className={s.expInfo}>
                       <div className={s.expName}>
                         {expert.expert_name}{' '}
-                        <span className={s.expBadge}>
-                          {/* <BadgeCheck size={12} /> */}
-                        </span>
+                        <span className={s.expBadge} />
                       </div>
-
-                      <div className={s.expDept}>
-                        {expert.depart_ment}
-                      </div>
+                      <div className={s.expDept}>{expert.depart_ment}</div>
                     </div>
-
                     <div className={s.expCt}>回答 {expert.answer_count || 0}</div>
                   </div>
                 ))
               )}
             </div>
-
-            {/* <div className={`${s.rightCard} ${s.applyCard}`}>
-              <div className={s.rightTitle}>
-                <UserPlus size={15} className={s.rightTitleIco} /> 成为专家
-              </div>
-              <p className={s.applyDesc}>
-                有十年以上一线经验、希望分享专业知识？联系后台管理员申请专家认证，认证后将出现在专家库与首页推荐位。
-              </p>
-              <button type="button" className={s.applyBtn}>
-                <MessageCircle size={13} /> 申请认证
-              </button>
-            </div> */}
           </aside>
         </div>
       </div>
+
+      {/* 编辑弹窗 */}
+      {editModal.open && (
+        <EditModal
+          title={editModal.title}
+          body={editModal.body}
+          onTitleChange={(v) => setEditModal((prev) => ({ ...prev, title: v }))}
+          onBodyChange={(v) => setEditModal((prev) => ({ ...prev, body: v }))}
+          onConfirm={() => void handleConfirmEdit()}
+          onCancel={() => setEditModal({ open: false, q: null, title: '', body: '' })}
+        />
+      )}
+
+      {/* 删除确认弹窗 */}
+      {deleteModal.open && (
+        <DeleteModal
+          onConfirm={() => void handleConfirmDelete()}
+          onCancel={() => setDeleteModal({ open: false, q: null })}
+        />
+      )}
     </PageShell>
   );
 }

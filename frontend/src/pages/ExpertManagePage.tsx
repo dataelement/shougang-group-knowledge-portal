@@ -4,7 +4,7 @@
  * 路由：/expert-qa/manage  （需管理员权限）
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UIEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -26,6 +26,8 @@ import {
 } from '../api/expertQa';
 import type { ExpertProfileResponse, ExpertUpsertPayload, UserListItem } from '../api/expertQa';
 import s from './ExpertManagePage.module.css';
+import { getAdminAccessState } from '../utils/adminAccess';
+import { useAuth } from '../hooks/useAuth';
 
 // ─── 工具函数 ─────────────────────────────────────────────────
 
@@ -68,6 +70,7 @@ const EMPTY_FORM: ExpertUpsertPayload = {
   expert_name: '',
   introduction: '',
   depart_ment: '',
+  major: '',
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -91,14 +94,17 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
   const [userPickerOpen, setUserPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isEdit = mode === 'edit';
   const selectedUser = users.find((item) => item.user_id === form.user_id);
   const hasMoreUsers = usersTotal === 0 || users.length < usersTotal;
+  const selectedUserName = selectedUser?.user_name || form.expert_name || '已选用户';
 
   function set(key: keyof ExpertUpsertPayload, value: string | number) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   const loadUsers = useCallback(async (pageNum: number) => {
+    if (isEdit) return;
     if (usersLoadingRef.current) return;
     usersLoadingRef.current = true;
     setUsersLoading(true);
@@ -121,11 +127,12 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
       usersLoadingRef.current = false;
       setUsersLoading(false);
     }
-  }, []);
+  }, [isEdit]);
 
   useEffect(() => {
+    if (isEdit) return;
     loadUsers(1);
-  }, [loadUsers]);
+  }, [isEdit, loadUsers]);
 
   function selectUser(userId: number) {
     const user = users.find((item) => item.user_id === userId);
@@ -143,6 +150,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
   }
 
   function handleUserListScroll(e: UIEvent<HTMLDivElement>) {
+    if (isEdit) return;
     const target = e.currentTarget;
     const reachedBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 12;
     if (reachedBottom && hasMoreUsers && !usersLoading) {
@@ -151,31 +159,46 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
   }
 
   async function handleSubmit() {
-    if (!form.expert_name.trim()) {
+    const expertName = form.expert_name.trim();
+    const userId = Number(form.user_id);
+    if (!expertName) {
       setError('请填写专家姓名');
       return;
     }
-    if (!form.user_id || Number(form.user_id) <= 0) {
+    if (!userId || userId <= 0) {
       setError('请填写有效的用户 ID');
       return;
     }
     setLoading(true);
     setError(null);
     try {
+      const existing = await fetchExpertProfiles(1, 500, expertName);
+      const duplicate = existing.experts.find(
+        (item) =>
+          item.id !== form.id &&
+          (item.user_id === userId || item.expert_name.trim() === expertName),
+      );
+      if (duplicate) {
+        setError('该专家已存在');
+        return;
+      }
+
       let result: ExpertProfileResponse;
       if (mode === 'edit' && form.id != null) {
         result = await updateExpert(form.id, {
-          user_id: Number(form.user_id),
-          expert_name: form.expert_name.trim(),
+          user_id: userId,
+          expert_name: expertName,
           introduction: form.introduction?.trim(),
           depart_ment: form.depart_ment?.trim(),
+          major: form.major?.trim(),
         });
       } else {
         result = await createExpert({
-          user_id: Number(form.user_id),
-          expert_name: form.expert_name.trim(),
+          user_id: userId,
+          expert_name: expertName,
           introduction: form.introduction?.trim(),
           depart_ment: form.depart_ment?.trim(),
+          major: form.major?.trim(),
         });
       }
       onSuccess(result);
@@ -209,6 +232,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
                 value={form.expert_name}
                 onChange={(e) => set('expert_name', e.target.value)}
                 placeholder="请输入真实姓名"
+                readOnly={isEdit}
               />
             </div>
             <div className={s.field}>
@@ -218,21 +242,23 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
               <div className={s.userPicker}>
                 <button
                   type="button"
-                  className={s.userPickerBtn}
+                  className={`${s.userPickerBtn} ${isEdit ? s.userPickerBtnReadonly : ''}`}
                   onClick={() => setUserPickerOpen((open) => !open)}
-                  disabled={usersLoading && users.length === 0}
+                  disabled={isEdit || (usersLoading && users.length === 0)}
                 >
                   <span>
-                    {selectedUser
-                      ? selectedUser.user_name
-                      : form.user_id
-                        ? form.expert_name || '已选用户'
-                        : usersLoading
-                          ? '用户加载中...'
-                          : '请选择用户'}
+                    {isEdit
+                      ? selectedUserName
+                      : selectedUser
+                        ? selectedUser.user_name
+                        : form.user_id
+                          ? form.expert_name || '已选用户'
+                          : usersLoading
+                            ? '用户加载中...'
+                            : '请选择用户'}
                   </span>
                 </button>
-                {userPickerOpen ? (
+                {userPickerOpen && !isEdit ? (
                   <div className={s.userPickerMenu} onScroll={handleUserListScroll}>
                     {users.map((user) => {
                       const department = getUserDepartment(user);
@@ -279,6 +305,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
               value={form.depart_ment ?? ''}
               onChange={(e) => set('depart_ment', e.target.value)}
               placeholder="请输入所属部门"
+              readOnly={isEdit}
             />
           </div>
 
@@ -289,6 +316,15 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
               value={form.introduction ?? ''}
               onChange={(e) => set('introduction', e.target.value)}
               placeholder="专家的主要技能领域、从业经验等（可选）"
+            />
+          </div>
+          <div className={s.field}>
+            <label className={s.fieldLabel}>所属专业</label>
+            <input
+              className={s.input}
+              value={form.major ?? ''}
+              onChange={(e) => set('major', e.target.value)}
+              placeholder="请输入所属专业"
             />
           </div>
         </div>
@@ -383,13 +419,13 @@ export default function ExpertManagePage() {
   const [experts, setExperts] = useState<ExpertProfileResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize,setPageSize] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const { user } = useAuth();
   // 过滤
   const [search, setSearch] = useState('');
-
+  const [isAdmin, setIsAdmin] = useState(false);
   // 弹窗状态
   type ModalState =
     | { type: 'none' }
@@ -406,7 +442,7 @@ export default function ExpertManagePage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetchExpertProfiles(p, pageSize);
+        const res = await fetchExpertProfiles(p, pageSize, search.trim() || undefined);
         if (!active) return;
         setExperts(res.experts);
         setTotal(res.total);
@@ -418,26 +454,14 @@ export default function ExpertManagePage() {
       }
       return () => { active = false; };
     },
-    [pageSize],
+    [pageSize, search],
   );
 
   useEffect(() => {
+    console.log(user)
+    setIsAdmin(getAdminAccessState(user) === 'allowed');
     load(page);
   }, [page, load]);
-
-  // ─── 客户端过滤 ──────────────────────────────────────────────
-  const filtered = useMemo(() => {
-    let list = experts;
-    if (search.trim()) {
-      const kw = search.trim().toLowerCase();
-      list = list.filter(
-        (e) =>
-          e.expert_name.toLowerCase().includes(kw) ||
-          (e.introduction ?? '').toLowerCase().includes(kw),
-      );
-    }
-    return list;
-  }, [experts, search]);
 
   // ─── 分页计算 ────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -456,6 +480,7 @@ export default function ExpertManagePage() {
   function handleCreateSuccess(expert: ExpertProfileResponse) {
     setExperts((prev) => [expert, ...prev]);
     setTotal((t) => t + 1);
+    setPage(1);
     setModal({ type: 'none' });
   }
 
@@ -498,14 +523,18 @@ export default function ExpertManagePage() {
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            className={s.btnPrimary}
-            onClick={() => setModal({ type: 'create' })}
-          >
-            <Plus size={15} />
-            新增专家
-          </button>
+            {isAdmin && (
+              <>
+              <button
+                type="button"
+                className={s.btnPrimary}
+                onClick={() => setModal({ type: 'create' })}
+              >
+                <Plus size={15} />
+                新增专家
+              </button>
+            </>
+          )}
         </div>
       </section>
 
@@ -528,30 +557,27 @@ export default function ExpertManagePage() {
                 className={s.searchInput}
                 placeholder="搜索专家姓名或简介…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setPageSize(500)
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
               />
             </div>
-            {/* <select
-              className={s.filterSelect}
-              value={deptFilter}
-              onChange={(e) => setDeptFilter(e.target.value)}
-            >
-              <option value="">所有部门</option>
-              {DEPT_OPTIONS.map((dept) => (
-                <option key={dept} value={dept}>
-                  {dept}
-                </option>
-              ))}
-            </select> */}
+
           </div>
-          <button
-            type="button"
-            className={s.btnPrimary}
-            onClick={() => setModal({ type: 'create' })}
-          >
-            <Plus size={15} />
-            新增专家
-          </button>
+            {isAdmin && (
+              <>
+            <button
+                        type="button"
+                        className={s.btnPrimary}
+                        onClick={() => setModal({ type: 'create' })}
+                      >
+                        <Plus size={15} />
+                        新增专家
+                      </button>
+                </>
+          )}
         </div>
 
         {/* 错误提示 */}
@@ -565,6 +591,7 @@ export default function ExpertManagePage() {
                 <tr>
                   <th>专家</th>
                   <th>部门</th>
+                  <th>所属专业</th>
                   <th>回答数</th>
                   <th>采纳数</th>
                   <th>获赞数</th>
@@ -575,20 +602,20 @@ export default function ExpertManagePage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className={s.stateRow}>专家数据加载中…</div>
                     </td>
                   </tr>
-                ) : filtered.length === 0 ? (
+                ) : experts.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className={s.stateRow}>
                         {search ? '没有符合条件的专家' : '暂无专家数据'}
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((expert) => (
+                  experts.map((expert) => (
                     <tr key={expert.id}>
                       {/* 专家信息列 */}
                       <td>
@@ -620,6 +647,15 @@ export default function ExpertManagePage() {
                         )}
                       </td>
 
+                      {/* 所属专业 */}
+                      <td>
+                        {expert.major ? (
+                          <span className={s.majorPill}>{expert.major}</span>
+                        ) : (
+                          <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>—</span>
+                        )}
+                      </td>
+
                       {/* 统计 */}
                       <td>
                         <span className={s.statNum}>{expert.answer_count ?? 0}</span>
@@ -639,22 +675,27 @@ export default function ExpertManagePage() {
                       {/* 操作 */}
                       <td>
                         <div className={s.actionBtns}>
-                          <button
-                            type="button"
-                            className={s.btnEdit}
-                            onClick={() => setModal({ type: 'edit', expert })}
-                          >
-                            <Pencil size={12} />
-                            编辑
-                          </button>
-                          <button
-                            type="button"
-                            className={s.btnDelete}
-                            onClick={() => setModal({ type: 'delete', expert })}
-                          >
-                            <Trash2 size={12} />
-                            删除
-                          </button>
+                          {isAdmin && (
+                            <>
+                              <button
+                                type="button"
+                                className={s.btnEdit}
+                                onClick={() => setModal({ type: 'edit', expert })}
+                              >
+                                <Pencil size={12} />
+                                编辑
+                              </button>
+                              <button
+                                type="button"
+                                className={s.btnDelete}
+                                onClick={() => setModal({ type: 'delete', expert })}
+                              >
+                                <Trash2 size={12} />
+                                删除
+                              </button>
+                            </>
+                          )}
+
                         </div>
                       </td>
                     </tr>
@@ -729,6 +770,7 @@ export default function ExpertManagePage() {
             expert_name: modal.expert.expert_name,
             introduction: modal.expert.introduction ?? '',
             depart_ment: modal.expert.depart_ment ?? '',
+            major: modal.expert.major ?? '',
           }}
           onClose={() => setModal({ type: 'none' })}
           onSuccess={handleEditSuccess}
