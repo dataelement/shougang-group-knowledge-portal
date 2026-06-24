@@ -19,6 +19,7 @@ export type RawExpertData = {
     user_id: number;      
     expert_name: string;   
     depart_ment: string;   
+    major?: string | null;
     adoption_count: number;
     created_at: string;   
     id: number;           
@@ -35,6 +36,7 @@ export interface ExpertProfile {
   user_id: number;
   expert_name: string;
   depart_ment: string;
+  major?: string | null;
   adoption_count: number;
   created_at: string;
   id: number;
@@ -48,6 +50,7 @@ export interface ExpertProfileResponse {
   user_id: number;
   expert_name: string;
   depart_ment: string;
+  major?: string | null;
   adoption_count: number;
   created_at: string;
   id: number;

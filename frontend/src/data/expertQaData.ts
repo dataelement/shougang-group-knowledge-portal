@@ -24,7 +24,7 @@ export const DOMAINS: DomainOption[] = [
 export const STATUS_FILTERS: { key: StatusFilterKey; label: string;  }[] = [
   { key: 'unsolved', label: '未解决'},
   { key: 'solved', label: '已解决'},
-  { key: 'my_question', label: '我 提问的' },
+  { key: 'my_question', label: '我提问的' },
   { key: 'invited', label: '邀请我的',},
 ];
 

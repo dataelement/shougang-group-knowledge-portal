@@ -93,6 +93,14 @@
   gap: 8px;
 }
 
+.ownerActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* === pills === */
 .domainPill {
   display: inline-block;
@@ -300,6 +308,11 @@
 .voteBtn:hover {
   background: var(--primary-50);
   color: var(--primary-600);
+}
+
+.voteBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .voteUpAct {
@@ -516,7 +529,7 @@
   padding: 22px 28px;
   margin-bottom: 14px;
   display: grid;
-  grid-template-columns: 48px 1fr;
+  grid-template-columns: 1fr;
   gap: 18px;
   position: relative;
 }
@@ -686,6 +699,11 @@
 .answerActions button:hover {
   background: var(--neutral-50);
   color: var(--primary-600);
+}
+
+.answerActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .answerError {
@@ -1411,4 +1429,61 @@
   font-size: 0.84rem;
   color: var(--neutral-600);
   line-height: 1.7;
+}
+
+
+/* 容器居中 */
+.voteCol {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 按钮样式 */
+.voteBtn {
+  display: flex;
+  flex-direction: column; /* 垂直排列：上图标下数字 */
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  color: #64748b; /* 默认灰色 */
+  transition: all 0.2s ease;
+  border-radius: 8px;
+}
+
+/* 悬停效果 */
+.voteBtn:hover:not(:disabled) {
+  background-color: #f1f5f9; /* 浅灰背景 */
+  color: #3b82f6; /* 蓝色高亮 */
+}
+
+/* 激活状态（已点赞） */
+.voteBtn.active {
+  color: #3b82f6; /* 品牌色 */
+}
+
+.voteBtn.active .icon {
+  fill: currentColor; /* 填充图标颜色 */
+}
+
+/* 禁用状态 */
+.voteBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 图标微调 */
+.icon {
+  margin-bottom: 2px;
+  stroke-width: 2.5px; /* 加粗线条 */
+}
+
+/* 数字样式 */
+.count {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
 }

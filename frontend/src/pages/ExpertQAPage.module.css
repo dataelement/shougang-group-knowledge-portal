@@ -277,6 +277,7 @@
   gap: 14px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .qCard:hover {
@@ -351,6 +352,11 @@
 
 .qCard:hover .qTitle {
   color: var(--primary-600);
+}
+
+.qCard:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
 }
 
 .qExcerpt {
@@ -512,6 +518,37 @@
 
 .askedAt {
   color: var(--neutral-400);
+}
+
+.ownerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ownerActionBtn {
+  border: 1px solid var(--neutral-200);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--neutral-600);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  padding: 4px 9px;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.ownerActionBtn:hover {
+  border-color: var(--primary-200);
+  background: var(--primary-50);
+  color: var(--primary-700);
+}
+
+.ownerDangerBtn:hover {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .tagWrap {
@@ -773,4 +810,145 @@
   white-space: nowrap;  
   overflow: hidden;
   text-overflow: ellipsis; 
+}
+
+
+
+
+
+
+/* ─── Modal ─────────────────────────────────────────── */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalBox {
+  background: #fff;
+  border: 0.5px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 480px;
+  max-width: 90vw;
+}
+
+.modalBoxCenter {
+  text-align: center;
+}
+
+.modalTitle {
+  font-size: 16px;
+  font-weight: 500;
+  color: #111;
+  margin-bottom: 1.25rem;
+}
+
+.modalLabel {
+  display: block;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.modalInput {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 0.5px solid #ccc;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.modalInput:focus {
+  border-color: #888;
+}
+
+.modalTextarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 0.5px solid #ccc;
+  border-radius: 8px;
+  min-height: 100px;
+  resize: vertical;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.modalTextarea:focus {
+  border-color: #888;
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.modalActionsCenter {
+  justify-content: center;
+}
+
+.modalBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 16px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 0.5px solid #ccc;
+  background: transparent;
+  color: #333;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.modalBtn:hover {
+  background: #f5f5f5;
+}
+
+.modalBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modalBtnPrimary {
+  background: #111;
+  color: #fff;
+  border-color: transparent;
+}
+
+.modalBtnPrimary:hover:not(:disabled) {
+  background: #333;
+}
+
+.modalBtnDanger {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.modalBtnDanger:hover {
+  background: #fee2e2;
+}
+
+.modalWarnIcon {
+  color: #ef4444;
+  margin-bottom: 12px;
+}
+
+.modalWarnText {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
 }
