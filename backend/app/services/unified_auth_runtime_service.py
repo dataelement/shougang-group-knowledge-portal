@@ -37,6 +37,20 @@ class UnifiedAuthRuntimeService:
     def get_public_config(self) -> UnifiedAuthRuntimeConfigView:
         return self._to_public_view(self.get_config())
 
+    def export_importable_config(self) -> UnifiedAuthRuntimeConfig:
+        return self.get_config()
+
+    def snapshot_config(self) -> UnifiedAuthRuntimeConfig:
+        return self.get_config()
+
+    def restore_config(self, config: UnifiedAuthRuntimeConfig) -> UnifiedAuthRuntimeConfigView:
+        self._write_config(config)
+        return self._to_public_view(config)
+
+    def replace_importable_config(self, payload: UnifiedAuthRuntimeConfig) -> UnifiedAuthRuntimeConfigView:
+        self._write_config(payload)
+        return self._to_public_view(payload)
+
     def update_config(self, payload: UnifiedAuthRuntimeConfigUpdate) -> UnifiedAuthRuntimeConfigView:
         current = self.get_config()
         updated = UnifiedAuthRuntimeConfig(

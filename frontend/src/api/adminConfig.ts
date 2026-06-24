@@ -239,6 +239,7 @@ export interface PortalConfig {
 export interface AdminConfigImportResult {
   portal: PortalConfig;
   bisheng: BishengRuntimeConfig;
+  unified_auth: UnifiedAuthRuntimeConfig;
   message: string;
 }
 

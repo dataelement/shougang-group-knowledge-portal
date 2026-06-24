@@ -27,12 +27,14 @@ GROUP_GLO_URL = "https://amdev.shougang.com.cn/idp/profile/OAUTH2/Redirect/GLO"
 STOCK_GLO_URL = "https://10.68.27.111/idp/profile/OAUTH2/Redirect/GLO"
 STATE_COOKIE_NAME = "sg_unified_auth_state"
 LOGIN_SYNC_PATH = "/api/v1/internal/sso/login-sync"
+BISHENG_SSO_USER_NOT_FOUND_CODE = 19319
 SAFE_ERROR_MESSAGES = {
     "invalid_callback": "统一认证回调参数缺失",
     "invalid_state": "登录请求已失效，请重新认证",
     "oauth_token_failed": "统一认证登录失败",
     "oauth_userinfo_failed": "未能获取统一认证用户信息",
     "identity_missing": "统一认证返回用户标识不足",
+    "invalid_account": "账号无效，请联系管理员开通账号",
     "permission_denied": "账号已认证但暂未开通知库权限",
     "oauth_unavailable": "统一认证暂不可用",
 }
@@ -1049,10 +1051,11 @@ class PortalUnifiedAuthService:
             raise UnifiedAuthFailure("permission_denied", redirect)
         status_code = payload.get("status_code")
         if status_code not in (None, 200):
+            auth_error = self._map_login_sync_failure(payload)
             logger.warning("BiSheng login-sync 返回业务错误 status_code=%s", status_code)
             log_unified_auth_failure(
                 trace_id,
-                "permission_denied",
+                auth_error,
                 redirect,
                 "login_sync_business_error",
                 {
@@ -1060,7 +1063,7 @@ class PortalUnifiedAuthService:
                     "payload": payload,
                 },
             )
-            raise UnifiedAuthFailure("permission_denied", redirect)
+            raise UnifiedAuthFailure(auth_error, redirect)
         data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
         token = _first_str(data, "token", "access_token")
         if not token:
@@ -1073,6 +1076,16 @@ class PortalUnifiedAuthService:
             )
             raise UnifiedAuthFailure("permission_denied", redirect)
         return token
+
+    @staticmethod
+    def _map_login_sync_failure(payload: dict[str, Any]) -> str:
+        status_code = payload.get("status_code")
+        status_message = _first_str(payload, "status_message", "detail", "message").lower()
+        if str(status_code) == str(BISHENG_SSO_USER_NOT_FOUND_CODE):
+            return "invalid_account"
+        if "account is invalid" in status_message or "does not exist in bisheng" in status_message:
+            return "invalid_account"
+        return "permission_denied"
 
     def _make_http_client(self, timeout_seconds: float, *, verify_tls: bool = True):
         if self._http_client_factory is not None:

@@ -28,6 +28,7 @@ test('unified auth helpers normalize unsafe redirects before start URL build', (
 
 test('unified auth error helper exposes safe Chinese messages only', () => {
   assert.equal(getUnifiedAuthErrorMessage('invalid_state'), '登录请求已失效，请重新认证。');
+  assert.equal(getUnifiedAuthErrorMessage('invalid_account'), '账号无效，请联系管理员开通账号。');
   assert.equal(getUnifiedAuthErrorMessage('permission_denied'), '账号已认证但暂未开通知库权限，请联系管理员。');
   assert.equal(getUnifiedAuthErrorMessage('unexpected'), '统一认证登录失败，请使用账号密码登录。');
   assert.equal(getUnifiedAuthErrorMessage(''), '');

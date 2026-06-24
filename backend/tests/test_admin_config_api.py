@@ -9,9 +9,12 @@ from app.main import app
 from app.schemas.auth import PortalUserView
 from app.schemas.bisheng_runtime import BishengRuntimeConfig
 from app.schemas.portal_config import SpacesConfigUpdate
+from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthError
 from app.services.portal_config_service import PortalConfigService
+from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
+from app.settings import Settings
 
 
 class FakeBishengClient:
@@ -261,9 +264,34 @@ def create_runtime_service(tmp_path: Path) -> BishengRuntimeService:
     )
 
 
+def create_unified_auth_service(tmp_path: Path, **settings_overrides) -> UnifiedAuthRuntimeService:
+    settings_values = {
+        "unified_auth_enabled": True,
+        "unified_auth_provider": "group",
+        "unified_auth_client_id": "seed-client",
+        "unified_auth_client_secret": "seed-secret",
+        "unified_auth_redirect_uri": "https://portal.example.com/api/v1/auth/unified/callback",
+        "unified_auth_state_secret": "seed-state-secret",
+        "unified_auth_login_sync_hmac_secret": "seed-login-sync-secret",
+        "unified_auth_state_ttl_seconds": 300,
+        "unified_auth_http_timeout_seconds": 5,
+        "unified_auth_glo_url": "https://iam.example.com/idp/profile/OAUTH2/Redirect/GLO",
+        "unified_auth_glo_entity_id": "seed-entity",
+        "unified_auth_glo_redirect_to_url": "https://portal.example.com/api/v1/auth/unified/logout/callback",
+        "unified_auth_glo_redirect_to_login": True,
+    }
+    settings_values.update(settings_overrides)
+    return UnifiedAuthRuntimeService(
+        database_path=tmp_path / "portal.sqlite3",
+        settings=Settings(**settings_values),
+        state_secret_factory=lambda: "generated-state-secret",
+    )
+
+
 def test_export_admin_config_includes_non_sensitive_runtime_config(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
+    unified_auth_service = create_unified_auth_service(tmp_path)
     runtime_service._write_config(
         BishengRuntimeConfig(
             base_url="http://bisheng.example.com",
@@ -278,6 +306,7 @@ def test_export_admin_config_includes_non_sensitive_runtime_config(tmp_path: Pat
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.unified_auth_runtime_service = unified_auth_service
         response = client.get("/api/v1/admin/config/export")
 
     assert response.status_code == 200
@@ -293,6 +322,13 @@ def test_export_admin_config_includes_non_sensitive_runtime_config(tmp_path: Pat
         "timeout_seconds": 12.0,
         "last_auth_at": "2026-05-31T10:00:00+00:00",
     }
+    assert body["unified_auth"]["enabled"] is True
+    assert body["unified_auth"]["provider"] == "group"
+    assert body["unified_auth"]["client_id"] == "seed-client"
+    assert body["unified_auth"]["client_secret"] == "seed-secret"
+    assert body["unified_auth"]["state_secret"] == "seed-state-secret"
+    assert body["unified_auth"]["login_sync_hmac_secret"] == "seed-login-sync-secret"
+    assert body["unified_auth"]["glo_entity_id"] == "seed-entity"
     serialized = response.text
     assert "secret-token" not in serialized
     assert "api_token" not in serialized
@@ -302,7 +338,9 @@ def test_export_admin_config_includes_non_sensitive_runtime_config(tmp_path: Pat
 def test_import_admin_config_replaces_portal_and_non_sensitive_runtime_config(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
+    unified_auth_service = create_unified_auth_service(tmp_path)
     current = service.get_config()
+    original_unified_auth = unified_auth_service.get_config()
     payload = {
         "version": 1,
         "portal": {
@@ -328,6 +366,7 @@ def test_import_admin_config_replaces_portal_and_non_sensitive_runtime_config(tm
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.unified_auth_runtime_service = unified_auth_service
         response = client.post(
             "/api/v1/admin/config/import",
             files={"file": ("portal-config.json", __import__("json").dumps(payload), "application/json")},
@@ -342,17 +381,83 @@ def test_import_admin_config_replaces_portal_and_non_sensitive_runtime_config(tm
     assert runtime_service._read_config().asset_base_url == "http://imported-assets.example.com"
     assert runtime_service._read_config().username == "import-admin"
     assert runtime_service._read_config().api_token == ""
+    assert unified_auth_service.get_config() == original_unified_auth
+
+
+def test_import_admin_config_replaces_unified_auth_runtime_config_with_plaintext_secrets(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    unified_auth_service = create_unified_auth_service(tmp_path)
+    current = service.get_config()
+    payload = {
+        "version": 1,
+        "portal": current.model_dump(mode="json"),
+        "bisheng": {
+            "base_url": "http://imported-bisheng.example.com",
+            "asset_base_url": "",
+            "username": "import-admin",
+            "timeout_seconds": 30,
+            "last_auth_at": "",
+        },
+        "unified_auth": {
+            "enabled": True,
+            "provider": "custom",
+            "client_id": "imported-client",
+            "client_secret": "imported-client-secret",
+            "redirect_uri": "https://portal.example.com/api/v1/auth/unified/callback",
+            "authorize_url": "https://iam.example.com/oauth/authorize",
+            "token_url": "https://iam.example.com/oauth/token",
+            "userinfo_url": "https://iam.example.com/oauth/userinfo",
+            "token_param_style": "form",
+            "state_secret": "imported-state-secret",
+            "state_ttl_seconds": 180,
+            "http_timeout_seconds": 7,
+            "login_sync_hmac_secret": "imported-login-sync-secret",
+            "login_sync_signature_header": "X-Imported-Signature",
+            "glo_url": "https://iam.example.com/idp/profile/OAUTH2/Redirect/GLO",
+            "glo_entity_id": "imported-entity",
+            "glo_redirect_to_url": "https://portal.example.com/api/v1/auth/unified/logout/callback",
+            "glo_redirect_to_login": False,
+        },
+    }
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.unified_auth_runtime_service = unified_auth_service
+        response = client.post(
+            "/api/v1/admin/config/import",
+            files={"file": ("portal-config.json", __import__("json").dumps(payload), "application/json")},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["unified_auth"]["client_id"] == "imported-client"
+    assert body["data"]["unified_auth"]["has_client_secret"] is True
+    assert body["data"]["unified_auth"]["has_state_secret"] is True
+    assert body["data"]["unified_auth"]["has_login_sync_hmac_secret"] is True
+    config = unified_auth_service.get_config()
+    assert config.provider == "custom"
+    assert config.client_secret == "imported-client-secret"
+    assert config.state_secret == "imported-state-secret"
+    assert config.login_sync_hmac_secret == "imported-login-sync-secret"
+    assert config.login_sync_signature_header == "X-Imported-Signature"
+    assert config.glo_entity_id == "imported-entity"
+    assert config.glo_redirect_to_login is False
 
 
 def test_import_admin_config_rejects_invalid_payload_without_writing(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
+    unified_auth_service = create_unified_auth_service(tmp_path)
     original_title = service.get_config().site.browser_title
     original_runtime = runtime_service._read_config()
+    original_unified_auth = unified_auth_service.get_config()
 
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.unified_auth_runtime_service = unified_auth_service
         response = client.post(
             "/api/v1/admin/config/import",
             files={"file": ("portal-config.json", '{"version":1,"portal":{"qa":{}}}', "application/json")},
@@ -364,6 +469,7 @@ def test_import_admin_config_rejects_invalid_payload_without_writing(tmp_path: P
     assert "配置文件格式不正确" in body["status_message"]
     assert service.get_config().site.browser_title == original_title
     assert runtime_service._read_config() == original_runtime
+    assert unified_auth_service.get_config() == original_unified_auth
 
 
 def test_import_admin_config_rolls_back_runtime_token_when_runtime_write_fails(tmp_path: Path):
@@ -374,6 +480,7 @@ def test_import_admin_config_rolls_back_runtime_token_when_runtime_write_fails(t
             return await super().replace_importable_config(payload)
 
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    unified_auth_service = create_unified_auth_service(tmp_path)
     runtime_service = FailingRuntimeService(
         config_path=tmp_path / "bisheng_runtime.json",
         default_base_url="http://example.com",
@@ -394,6 +501,7 @@ def test_import_admin_config_rolls_back_runtime_token_when_runtime_write_fails(t
     )
     original_title = service.get_config().site.browser_title
     original_runtime = runtime_service._read_config()
+    original_unified_auth = unified_auth_service.get_config()
     payload = {
         "version": 1,
         "portal": {
@@ -415,6 +523,7 @@ def test_import_admin_config_rolls_back_runtime_token_when_runtime_write_fails(t
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.unified_auth_runtime_service = unified_auth_service
         response = client.post(
             "/api/v1/admin/config/import",
             files={"file": ("portal-config.json", __import__("json").dumps(payload), "application/json")},
@@ -424,6 +533,82 @@ def test_import_admin_config_rolls_back_runtime_token_when_runtime_write_fails(t
     assert service.get_config().site.browser_title == original_title
     assert runtime_service._read_config() == original_runtime
     assert runtime_service._read_config().api_token == "keep-token"
+    assert unified_auth_service.get_config() == original_unified_auth
+
+
+def test_import_admin_config_rolls_back_all_sections_when_unified_auth_write_fails(tmp_path: Path):
+    class FailingUnifiedAuthService(UnifiedAuthRuntimeService):
+        def replace_importable_config(self, payload: UnifiedAuthRuntimeConfig):
+            if payload.client_id == "fail-unified":
+                raise RuntimeError("unified auth write failed")
+            return super().replace_importable_config(payload)
+
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    unified_auth_service = FailingUnifiedAuthService(
+        database_path=tmp_path / "portal.sqlite3",
+        settings=Settings(
+            unified_auth_enabled=True,
+            unified_auth_provider="group",
+            unified_auth_client_id="seed-client",
+            unified_auth_client_secret="seed-secret",
+            unified_auth_redirect_uri="https://portal.example.com/api/v1/auth/unified/callback",
+            unified_auth_state_secret="seed-state-secret",
+            unified_auth_login_sync_hmac_secret="seed-login-sync-secret",
+        ),
+    )
+    runtime_service._write_config(
+        BishengRuntimeConfig(
+            base_url="http://bisheng.example.com",
+            asset_base_url="",
+            username="portal-admin",
+            timeout_seconds=30,
+            api_token="keep-token",
+            last_auth_at="2026-05-31T10:00:00+00:00",
+        )
+    )
+    original_title = service.get_config().site.browser_title
+    original_runtime = runtime_service._read_config()
+    original_unified_auth = unified_auth_service.get_config()
+    payload = {
+        "version": 1,
+        "portal": {
+            **service.get_config().model_dump(mode="json"),
+            "site": {
+                **service.get_config().site.model_dump(mode="json"),
+                "browser_title": "不应写入",
+            },
+        },
+        "bisheng": {
+            "base_url": "http://imported-bisheng.example.com",
+            "asset_base_url": "",
+            "username": "import-admin",
+            "timeout_seconds": 30,
+            "last_auth_at": "",
+        },
+        "unified_auth": {
+            **original_unified_auth.model_dump(mode="json"),
+            "client_id": "fail-unified",
+            "client_secret": "should-not-stick",
+            "state_secret": "should-not-stick",
+            "login_sync_hmac_secret": "should-not-stick",
+        },
+    }
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.unified_auth_runtime_service = unified_auth_service
+        response = client.post(
+            "/api/v1/admin/config/import",
+            files={"file": ("portal-config.json", __import__("json").dumps(payload), "application/json")},
+        )
+
+    assert response.status_code == 500
+    assert service.get_config().site.browser_title == original_title
+    assert runtime_service._read_config() == original_runtime
+    assert runtime_service._read_config().api_token == "keep-token"
+    assert unified_auth_service.get_config() == original_unified_auth
 
 
 def test_admin_config_requires_login(tmp_path: Path):
