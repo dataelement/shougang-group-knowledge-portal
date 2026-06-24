@@ -12,9 +12,11 @@ from app.schemas.knowledge import (
     FavoriteDocumentRequest,
     FilePreviewSourceKind,
     HomeStatsData,
+    PublishPrecheckRequest,
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
+from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
     SHARE_ACCESS_COOKIE_NAME,
@@ -800,3 +802,17 @@ async def get_related_files(
     finally:
         if client_to_close is not None:
             await client_to_close.aclose()
+
+
+@router.post("/publish/precheck")
+async def publish_precheck(
+    payload: PublishPrecheckRequest,
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    config = portal_config_service.get_config()
+    result = DomainConsistencyService().check(
+        payload.file_encoding,
+        payload.target_space_id,
+        config.domains,
+    )
+    return response_ok(result.model_dump())
