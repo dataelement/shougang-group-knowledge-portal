@@ -53,3 +53,37 @@ def test_precheck_blocks_mismatch(tmp_path):
         assert data["reason_code"] == "DOMAIN_MISMATCH"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_precheck_blocks_when_file_code_missing(tmp_path):
+    config_service = _seed_config(tmp_path)
+    app.dependency_overrides[get_portal_config_service] = lambda: config_service
+    try:
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/knowledge/publish/precheck",
+            json={"file_encoding": "SGGF-STD", "target_space_id": 104},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["allowed"] is False
+        assert data["reason_code"] == "FILE_CODE_MISSING"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_precheck_blocks_when_space_unconfigured(tmp_path):
+    config_service = _seed_config(tmp_path)
+    app.dependency_overrides[get_portal_config_service] = lambda: config_service
+    try:
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/knowledge/publish/precheck",
+            json={"file_encoding": "SGGF-STD-PP-001", "target_space_id": 999},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["allowed"] is False
+        assert data["reason_code"] == "SPACE_DOMAIN_UNCONFIGURED"
+    finally:
+        app.dependency_overrides.clear()

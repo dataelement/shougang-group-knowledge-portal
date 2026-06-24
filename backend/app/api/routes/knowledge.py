@@ -815,4 +815,4 @@ async def publish_precheck(
         payload.target_space_id,
         config.domains,
     )
-    return response_ok(result.model_dump())
+    return response_ok(result)
