@@ -95,11 +95,13 @@ async def get_portal_config(
 async def export_admin_config(
     service: PortalConfigService = Depends(get_portal_config_service),
     runtime_service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
+    unified_auth_service: UnifiedAuthRuntimeService = Depends(get_unified_auth_runtime_service),
 ):
     payload = AdminConfigExportPayload(
         exported_at=datetime.now(UTC).isoformat(),
         portal=service.get_config(),
         bisheng=runtime_service.export_importable_config(),
+        unified_auth=unified_auth_service.export_importable_config(),
     )
     filename = f"portal-config-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.json"
     return JSONResponse(
@@ -113,6 +115,7 @@ async def import_admin_config(
     file: UploadFile = File(...),
     service: PortalConfigService = Depends(get_portal_config_service),
     runtime_service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
+    unified_auth_service: UnifiedAuthRuntimeService = Depends(get_unified_auth_runtime_service),
 ):
     if file.content_type and file.content_type not in ALLOWED_CONFIG_IMPORT_MIME:
         return response_error(f"不支持的配置文件类型: {file.content_type}", status_code=415)
@@ -133,18 +136,26 @@ async def import_admin_config(
 
     previous_portal = service.get_config()
     previous_runtime = runtime_service.snapshot_config()
+    previous_unified_auth = unified_auth_service.snapshot_config()
     try:
         updated_portal = service.replace_config(payload.portal)
         updated_runtime = await runtime_service.replace_importable_config(payload.bisheng)
+        updated_unified_auth = (
+            unified_auth_service.replace_importable_config(payload.unified_auth)
+            if payload.unified_auth is not None
+            else unified_auth_service.get_public_config()
+        )
     except Exception as err:
         service.replace_config(previous_portal)
         await runtime_service.restore_config(previous_runtime)
+        unified_auth_service.restore_config(previous_unified_auth)
         return response_error(f"配置导入失败，已回滚：{err}", status_code=500)
 
     return response_ok(
         {
             "portal": updated_portal,
             "bisheng": updated_runtime,
+            "unified_auth": updated_unified_auth,
             "message": "配置导入成功。BiSheng 数据源不包含令牌，必要时请重新输入密码并保存验证。",
         }
     )

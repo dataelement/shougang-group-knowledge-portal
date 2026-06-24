@@ -623,8 +623,16 @@ def test_callback_maps_missing_identity_and_login_sync_failure_to_safe_errors():
         token_payload={"access_token": "unified-token"},
         userinfo_payload={"name": "无主键用户"},
     )
+    invalid_account_client = RecordingUnifiedHttpClient(
+        login_sync_payload={
+            "status_code": 19319,
+            "status_message": "SSO login account does not exist in Bisheng",
+            "data": {},
+        },
+    )
     permission_client = RecordingUnifiedHttpClient(login_sync_payload={"status_code": 200, "data": {"token": ""}})
     missing_identity_service = make_unified_service(auth_service=auth_service, http_client=missing_identity_client)
+    invalid_account_service = make_unified_service(auth_service=auth_service, http_client=invalid_account_client)
     permission_service = make_unified_service(auth_service=auth_service, http_client=permission_client)
 
     with TestClient(app) as client:
@@ -633,6 +641,14 @@ def test_callback_maps_missing_identity_and_login_sync_failure_to_safe_errors():
             start = client.get("/api/v1/auth/unified/start?redirect=/admin", follow_redirects=False)
             state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
             missing_identity = client.get(
+                f"/api/v1/auth/unified/callback?code=oauth-code&state={state}",
+                follow_redirects=False,
+            )
+            client.cookies.clear()
+            client.app.state.portal_unified_auth_service = invalid_account_service
+            start = client.get("/api/v1/auth/unified/start?redirect=/admin", follow_redirects=False)
+            state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+            invalid_account = client.get(
                 f"/api/v1/auth/unified/callback?code=oauth-code&state={state}",
                 follow_redirects=False,
             )
@@ -648,6 +664,7 @@ def test_callback_maps_missing_identity_and_login_sync_failure_to_safe_errors():
             restore_services(client, previous_auth, previous_unified)
 
     assert missing_identity.headers["location"] == "/login?auth_error=identity_missing&redirect=%2Fadmin"
+    assert invalid_account.headers["location"] == "/login?auth_error=invalid_account&redirect=%2Fadmin"
     assert permission_denied.headers["location"] == "/login?auth_error=permission_denied&redirect=%2Fadmin"
 
 

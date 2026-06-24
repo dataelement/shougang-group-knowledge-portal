@@ -4,15 +4,12 @@ import {
   BarChart3,
   BookOpen,
   Bot,
-  CalendarClock,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   ClipboardList,
   Eye,
   FileText,
   Globe,
-  MessageCircle,
   PenLine,
   Search,
   Send,
@@ -137,16 +134,7 @@ export default function AppsPage() {
           </aside>
 
           <section className={s.mainPanel}>
-            <div className={s.topbar}>
-              <button className={s.topButton} type="button">
-                <CalendarClock size={14} strokeWidth={2} />
-                历史记录
-              </button>
-              <button className={s.topButton} type="button">
-                <Server size={14} strokeWidth={2} />
-                设置
-              </button>
-            </div>
+            <div className={s.topbar} />
 
             <div className={s.mainBody}>
               <div className={s.inputWrap}>
@@ -163,9 +151,6 @@ export default function AppsPage() {
                       <button className={s.toolButton} title="上传文件" type="button">
                         <Upload size={16} strokeWidth={2} />
                       </button>
-                      <button className={s.toolButton} title="语音输入" type="button">
-                        <MessageCircle size={16} strokeWidth={2} />
-                      </button>
                       <button className={s.sendButton} title="发送" type="button">
                         <Send size={14} strokeWidth={2} />
                       </button>
@@ -177,10 +162,6 @@ export default function AppsPage() {
                       <Server size={12} strokeWidth={2} />
                       选择知识空间
                     </button>
-                    <button className={s.footerLink} type="button">
-                      <ClipboardList size={12} strokeWidth={2} />
-                      选择问答模式
-                    </button>
                   </div>
                 </div>
               </div>
@@ -191,10 +172,6 @@ export default function AppsPage() {
                     <span className={s.agentTitleBar} />
                     Agent 智能体
                   </div>
-                  <button className={s.moreButton} type="button">
-                    全部
-                    <ChevronRight size={13} strokeWidth={2} />
-                  </button>
                 </div>
 
                 <div className={s.tabs} role="tablist" aria-label="智能体分类">
