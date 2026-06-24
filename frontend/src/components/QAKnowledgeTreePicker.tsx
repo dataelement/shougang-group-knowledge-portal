@@ -303,7 +303,7 @@ export default function QAKnowledgeTreePicker({
         <input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="文件名搜索"
+          placeholder="文件名/编码搜索"
         />
       </label>
 
@@ -338,6 +338,7 @@ export default function QAKnowledgeTreePicker({
                         <FileText size={15} className={s.nodeIcon} />
                         <span className={s.searchMeta}>
                           <strong>{file.title}</strong>
+                          {file.fileEncoding ? <span>文件编码：{file.fileEncoding}</span> : null}
                           <span>所在目录：{file.folderPath || file.sourcePath || '根目录'}</span>
                         </span>
                       </button>
