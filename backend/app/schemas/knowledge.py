@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -199,3 +199,21 @@ class FilePreviewManifest(BaseModel):
 class FileChunkItem(BaseModel):
     chunk_index: int
     text: str
+
+
+class DomainRef(BaseModel):
+    code: str
+    name: str
+
+
+class PublishPrecheckRequest(BaseModel):
+    file_encoding: str = ""
+    target_space_id: int
+
+
+class PublishPrecheckResult(BaseModel):
+    allowed: bool
+    reason_code: str
+    message: str
+    file_domain: Optional[DomainRef] = None
+    space_domains: list[DomainRef] = Field(default_factory=list)
