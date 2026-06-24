@@ -17,7 +17,9 @@ import {
   Tag,
 } from 'lucide-react';
 import { buildFileListItemView } from '../utils/fileListItemView';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './ui/Tooltip';
 import s from './FileListItem.module.css';
+import tooltipS from './ui/Tooltip.module.css';
 
 interface Props {
   file: FileItem;
@@ -196,34 +198,44 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
         ) : null}
 
         {view.tagGroups.length > 0 ? (
-          <div className={s.tagSection}>
-            {view.tagGroups.map((group) => {
-              const Icon =
-                group.label === '系统标签'
-                  ? Network
-                  : group.label === 'AI标签'
-                    ? Tag
-                    : PencilLine;
-              return (
-                <div key={group.label} className={s.tagRow}>
-                  <Icon size={17} className={s.tagRowIcon} />
-                  <div className={s.tagList}>
-                    {group.tags.map((tag) => (
-                      <TagPill key={`${group.label}-${tag}`} name={tag} neutral />
-                    ))}
-                    {group.hiddenCount > 0 ? (
-                      <span className={s.moreTag}>
-                        +{group.hiddenCount}
-                        <span className={s.moreTagTooltip}>
-                          {group.hiddenTags.join('、')}
-                        </span>
-                      </span>
-                    ) : null}
+          <TooltipProvider delayDuration={100}>
+            <div className={s.tagSection}>
+              {view.tagGroups.map((group) => {
+                const Icon =
+                  group.label === '系统标签'
+                    ? Network
+                    : group.label === 'AI标签'
+                      ? Tag
+                      : PencilLine;
+                return (
+                  <div key={group.label} className={s.tagRow}>
+                    <Icon size={17} className={s.tagRowIcon} />
+                    <div className={s.tagList}>
+                      {group.tags.map((tag) => (
+                        <TagPill key={`${group.label}-${tag}`} name={tag} neutral />
+                      ))}
+                      {group.hiddenCount > 0 ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className={s.moreTag}>+{group.hiddenCount}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className={tooltipS.tooltipContent}>
+                            <div className={tooltipS.tooltipInner}>
+                              {group.hiddenTags.map((tag) => (
+                                <span key={tag} className={tooltipS.tooltipTag}>
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         ) : null}
       </div>
     </article>
