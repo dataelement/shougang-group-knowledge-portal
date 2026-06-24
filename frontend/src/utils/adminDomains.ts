@@ -108,3 +108,7 @@ export function isSelectedDomainColor(
 ): boolean {
   return draft.color === option.color && draft.bg === option.bg;
 }
+
+export function getPublicSpaceOptions(spaces: SpaceConfig[]): SpaceConfig[] {
+  return spaces.filter((space) => (space.space_level ?? '').trim().toLowerCase() === 'public');
+}

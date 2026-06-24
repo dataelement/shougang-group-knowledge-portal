@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDomainDraft, isSelectedDomainColor, validateDomainDraft, DOMAIN_CODE_OPTIONS } from '../src/utils/adminDomains';
+import { createDomainDraft, isSelectedDomainColor, validateDomainDraft, getPublicSpaceOptions, DOMAIN_CODE_OPTIONS } from '../src/utils/adminDomains';
 
 test('createDomainDraft maps existing domain values incl. code', () => {
   const draft = createDomainDraft({
@@ -95,4 +95,13 @@ test('DOMAIN_CODE_OPTIONS covers the 14 business-domain codes', () => {
 test('isSelectedDomainColor matches preset color pairs exactly', () => {
   assert.equal(isSelectedDomainColor({ color: '#2563eb', bg: '#eff6ff' }, { color: '#2563eb', bg: '#eff6ff' }), true);
   assert.equal(isSelectedDomainColor({ color: '#2563eb', bg: '#eff6ff' }, { color: '#059669', bg: '#d1fae5' }), false);
+});
+
+test('getPublicSpaceOptions keeps only public spaces', () => {
+  const result = getPublicSpaceOptions([
+    { id: 1, name: '营销', file_count: 0, tag_count: 0, enabled: true, space_level: 'public' },
+    { id: 2, name: '我的库', file_count: 0, tag_count: 0, enabled: true, space_level: 'personal' },
+    { id: 3, name: '部门库', file_count: 0, tag_count: 0, enabled: true, space_level: 'department' },
+  ]);
+  assert.deepEqual(result.map((s) => s.id), [1]);
 });

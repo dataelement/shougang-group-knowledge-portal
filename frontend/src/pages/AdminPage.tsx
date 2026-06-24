@@ -54,6 +54,7 @@ import {
   DOMAIN_ICON_OPTIONS,
   isSelectedDomainColor,
   validateDomainDraft,
+  getPublicSpaceOptions,
   type DomainDraft,
 } from '../utils/adminDomains';
 import {
@@ -1867,7 +1868,7 @@ function DomainEditorDialog({
               onChange={(event) => onChange({ spaceId: event.target.value })}
             >
               <option value="">未绑定（暂不上首页）</option>
-              {spaces.map((space) => (
+              {getPublicSpaceOptions(spaces).map((space) => (
                 <option key={space.id} value={space.id}>
                   {space.name}{space.enabled ? '' : '（已停用）'}
                 </option>
