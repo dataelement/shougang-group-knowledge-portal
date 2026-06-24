@@ -73,7 +73,11 @@ export function validateDomainDraft(draft: DomainDraft, spaces: SpaceConfig[]): 
   if (spaceIdRaw) {
     const spaceId = Number(spaceIdRaw);
     if (!Number.isInteger(spaceId) || spaceId <= 0) return { error: '绑定空间格式有误' };
-    if (!spaces.some((space) => space.id === spaceId)) return { error: '绑定空间不存在' };
+    const boundSpace = spaces.find((space) => space.id === spaceId);
+    if (!boundSpace) return { error: '绑定空间不存在' };
+    if ((boundSpace.space_level ?? '').trim().toLowerCase() !== 'public') {
+      return { error: '绑定空间必须是公共知识空间' };
+    }
     spaceIds = [spaceId];
   }
 

@@ -37,7 +37,7 @@ test('validateDomainDraft returns a domain config incl. uppercased code', () => 
     enabled: true,
     code: 'pp',
   }, [
-    { id: 18, name: '冷轧技术手册', file_count: 10, tag_count: 0, enabled: true },
+    { id: 18, name: '冷轧技术手册', file_count: 10, tag_count: 0, enabled: true, space_level: 'public' },
   ]);
 
   assert.deepEqual(result, {
@@ -52,6 +52,22 @@ test('validateDomainDraft returns a domain config incl. uppercased code', () => 
       code: 'PP',
     },
   });
+});
+
+test('validateDomainDraft rejects binding to a non-public space', () => {
+  const result = validateDomainDraft({
+    name: '能源',
+    spaceId: '20',
+    icon: 'Zap',
+    backgroundImage: '',
+    color: '#d97706',
+    bg: '#fef3c7',
+    enabled: true,
+    code: 'EM',
+  }, [
+    { id: 20, name: '部门库', file_count: 0, tag_count: 0, enabled: true, space_level: 'department' },
+  ]);
+  assert.equal(result.error, '绑定空间必须是公共知识空间');
 });
 
 test('validateDomainDraft allows empty code', () => {
