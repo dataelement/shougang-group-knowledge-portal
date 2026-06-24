@@ -17,6 +17,7 @@
  */
 
 import type { TranslationStatistics } from '../types/expertQa';
+import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../utils/userFacingErrors';
 import type { DomainConfig, PortalConfig } from './adminConfig';
 
 // ═══════════════════════════════════════════════════════════════
@@ -83,7 +84,7 @@ async function fetchWithTimeout(
     if (timedOut) {
       throw new ApiRequestError('请求超时，请稍后重试', 408);
     }
-    throw err;
+    throw new ApiRequestError(normalizeUserFacingErrorMessage(err, '请求失败，请稍后重试。'), 0);
   } finally {
     clearTimeout(tid);
     externalSignal?.removeEventListener('abort', onExternalAbort);
@@ -102,13 +103,21 @@ async function parseResponse<T>(res: Response): Promise<T> {
   try {
     payload = JSON.parse(text);
   } catch {
-    if (!res.ok) throw new ApiRequestError(res.statusText || '请求失败', res.status);
+    if (!res.ok) {
+      throw new ApiRequestError(
+        normalizeUserFacingMessage(res.statusText, '请求失败，请稍后重试。', res.status),
+        res.status,
+      );
+    }
     return text as unknown as T;
   }
 
   if (!res.ok) {
-    const msg =
-      (payload as ApiResponse<unknown>)?.status_message || res.statusText || '请求失败';
+    const msg = normalizeUserFacingMessage(
+      (payload as ApiResponse<unknown>)?.status_message || res.statusText,
+      '请求失败，请稍后重试。',
+      res.status,
+    );
     throw new ApiRequestError(msg, res.status);
   }
 
@@ -684,7 +693,7 @@ export async function fetchConfigData(): Promise<DomainConfig[]> {
   if (!config?.domains) {
     console.warn('获取门户配置失败，domains 字段缺失');
     portalContentConfigPromise = null; // 数据非法也清空缓存，避免一直返回坏数据
-    throw new Error('Invalid response format: domains missing');
+    throw new Error('门户配置格式异常，请联系管理员。');
   }
 
   return config.domains;

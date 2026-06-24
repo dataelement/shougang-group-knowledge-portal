@@ -22,9 +22,8 @@ import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import {
-  closeFileDownloadWindow,
+  buildDownloadFileName,
   openFileDownloadUrl,
-  openFileDownloadWindow,
   resolveFileDownloadUrl,
 } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
@@ -88,18 +87,15 @@ export default function SearchPage() {
   const canDownload = Boolean(user);
 
   const handleDownload = useCallback(async (file: FileItem) => {
-    const downloadWindow = openFileDownloadWindow();
     setError('');
     try {
       const downloadUrl = await resolveFileDownloadUrl(file);
       if (!downloadUrl) {
-        closeFileDownloadWindow(downloadWindow);
         setError('该文档暂不可下载');
         return;
       }
-      openFileDownloadUrl(downloadUrl, downloadWindow);
+      openFileDownloadUrl(downloadUrl, buildDownloadFileName(file));
     } catch (err) {
-      closeFileDownloadWindow(downloadWindow);
       setError(err instanceof Error ? err.message : '下载链接获取失败');
     }
   }, []);

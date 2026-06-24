@@ -32,6 +32,7 @@ export interface TagGroup {
   label: string;
   tags: string[];
   hiddenCount: number;
+  hiddenTags: string[];
 }
 
 export interface FileListItemView {
@@ -83,28 +84,20 @@ export function buildFileListItemView(
   }
 
   const MAX_TAGS_PER_GROUP = 2;
-  const tagGroups: TagGroup[] = [];
-  if (systemTags.length > 0) {
-    tagGroups.push({
-      label: '系统标签',
-      tags: systemTags.slice(0, MAX_TAGS_PER_GROUP),
-      hiddenCount: Math.max(0, systemTags.length - MAX_TAGS_PER_GROUP),
-    });
-  }
-  if (aiTags.length > 0) {
-    tagGroups.push({
-      label: 'AI标签',
-      tags: aiTags.slice(0, MAX_TAGS_PER_GROUP),
-      hiddenCount: Math.max(0, aiTags.length - MAX_TAGS_PER_GROUP),
-    });
-  }
-  if (manualTags.length > 0) {
-    tagGroups.push({
-      label: '手动标签',
-      tags: manualTags.slice(0, MAX_TAGS_PER_GROUP),
-      hiddenCount: Math.max(0, manualTags.length - MAX_TAGS_PER_GROUP),
-    });
-  }
+  const makeGroup = (label: string, allTags: string[]): TagGroup | null => {
+    if (allTags.length === 0) return null;
+    return {
+      label,
+      tags: allTags.slice(0, MAX_TAGS_PER_GROUP),
+      hiddenCount: Math.max(0, allTags.length - MAX_TAGS_PER_GROUP),
+      hiddenTags: allTags.slice(MAX_TAGS_PER_GROUP),
+    };
+  };
+  const tagGroups: TagGroup[] = [
+    makeGroup('系统标签', systemTags),
+    makeGroup('AI标签', aiTags),
+    makeGroup('手动标签', manualTags),
+  ].filter((g): g is TagGroup => g !== null);
 
   const summaryText = file.summary.trim();
   const sourcePath = file.sourcePath?.trim();

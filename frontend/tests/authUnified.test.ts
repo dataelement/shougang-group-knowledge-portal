@@ -6,6 +6,7 @@ import {
   buildUnifiedAuthStartUrl,
   fetchPortalMe,
   getUnifiedAuthErrorMessage,
+  loginPortal,
   normalizePortalRedirect,
 } from '../src/api/auth';
 
@@ -27,6 +28,7 @@ test('unified auth helpers normalize unsafe redirects before start URL build', (
 
 test('unified auth error helper exposes safe Chinese messages only', () => {
   assert.equal(getUnifiedAuthErrorMessage('invalid_state'), '登录请求已失效，请重新认证。');
+  assert.equal(getUnifiedAuthErrorMessage('invalid_account'), '账号无效，请联系管理员开通账号。');
   assert.equal(getUnifiedAuthErrorMessage('permission_denied'), '账号已认证但暂未开通知库权限，请联系管理员。');
   assert.equal(getUnifiedAuthErrorMessage('unexpected'), '统一认证登录失败，请使用账号密码登录。');
   assert.equal(getUnifiedAuthErrorMessage(''), '');
@@ -58,7 +60,29 @@ test('auth client handles empty error responses without native json parse failur
       fetchPortalMe(),
       (err: unknown) => {
         assert.ok(err instanceof Error);
-        assert.equal(err.message, '请求失败：401');
+        assert.equal(err.message, '登录状态已失效，请重新登录。');
+        assert.equal((err as { status?: number }).status, 401);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('password login maps upstream English auth failures to Chinese copy', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    status_code: 401,
+    status_message: 'Invalid username or password',
+    data: {},
+  }), { status: 401 })) as typeof fetch;
+  try {
+    await assert.rejects(
+      loginPortal({ account: 'demo', password: 'bad-password', remember: true }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, '账号或密码错误，请检查后重试。');
         assert.equal((err as { status?: number }).status, 401);
         return true;
       },

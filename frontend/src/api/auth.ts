@@ -1,4 +1,5 @@
 import { ApiRequestError } from './content';
+import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../utils/userFacingErrors';
 
 export interface PortalUser {
   account: string;
@@ -71,13 +72,18 @@ async function parseResponse<T>(response: Response): Promise<T> {
       payload = JSON.parse(text) as ApiEnvelope<T>;
     } catch {
       if (!response.ok) {
-        throw new ApiRequestError(`请求失败：${response.status}`, response.status);
+        throw new ApiRequestError(normalizeUserFacingMessage('', '请求失败，请稍后重试。', response.status), response.status);
       }
       throw new Error('响应不是有效 JSON');
     }
   }
   if (!response.ok) {
-    throw new ApiRequestError(payload?.status_message || payload?.detail || `请求失败：${response.status}`, response.status);
+    const message = normalizeUserFacingMessage(
+      payload?.status_message || payload?.detail,
+      '请求失败，请稍后重试。',
+      response.status,
+    );
+    throw new ApiRequestError(message, response.status);
   }
   if (!payload) {
     throw new Error('响应内容为空');
@@ -90,25 +96,18 @@ export async function loginPortal(params: {
   password: string;
   remember: boolean;
 }): Promise<PortalUser> {
-  const data = await parseResponse<PortalAuthDataDto>(
-    await fetch('/api/v1/auth/login', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
-    }),
-  );
+  const data = await requestPortalApi<PortalAuthDataDto>('/api/v1/auth/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
   return mapPortalUser(data.user);
 }
 
 export async function fetchUnifiedAuthConfig(): Promise<PortalUnifiedAuthConfig> {
-  const data = await parseResponse<PortalUnifiedAuthConfigDto>(
-    await fetch('/api/v1/auth/unified/config', {
-      credentials: 'include',
-    }),
-  );
+  const data = await requestPortalApi<PortalUnifiedAuthConfigDto>('/api/v1/auth/unified/config');
   return mapUnifiedAuthConfig(data);
 }
 
@@ -133,6 +132,7 @@ const UNIFIED_AUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_token_failed: '统一认证登录失败，请重试或使用账号密码登录。',
   oauth_userinfo_failed: '未能获取统一认证用户信息，请重试或使用账号密码登录。',
   identity_missing: '统一认证返回的用户标识不足，请联系管理员。',
+  invalid_account: '账号无效，请联系管理员开通账号。',
   permission_denied: '账号已认证但暂未开通知库权限，请联系管理员。',
   oauth_unavailable: '统一认证暂不可用，请使用账号密码登录。',
 };
@@ -143,19 +143,20 @@ export function getUnifiedAuthErrorMessage(code: string | null | undefined): str
 }
 
 export async function fetchPortalMe(): Promise<PortalUser> {
-  const data = await parseResponse<PortalAuthDataDto>(
-    await fetch('/api/v1/auth/me', {
-      credentials: 'include',
-    }),
-  );
+  const data = await requestPortalApi<PortalAuthDataDto>('/api/v1/auth/me');
   return mapPortalUser(data.user);
 }
 
 export async function logoutPortal(): Promise<void> {
-  await parseResponse<{ ok: boolean }>(
-    await fetch('/api/v1/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-    }),
-  );
+  await requestPortalApi<{ ok: boolean }>('/api/v1/auth/logout', { method: 'POST' });
+}
+
+async function requestPortalApi<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    const response = await fetch(path, { credentials: 'include', ...init });
+    return await parseResponse<T>(response);
+  } catch (error) {
+    if (error instanceof ApiRequestError) throw error;
+    throw new Error(normalizeUserFacingErrorMessage(error, '请求失败，请稍后重试。'));
+  }
 }

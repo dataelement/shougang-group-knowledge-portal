@@ -1,7 +1,10 @@
 import { fetchFilePreview, type FileItem, type FilePreviewManifest } from '../api/content';
 
 export type FilePreviewFetcher = (spaceId: number, fileId: number) => Promise<FilePreviewManifest | null>;
-export type OpenDownloadWindow = (url: string, target: string) => Window | null;
+export interface FileDownloadOptions {
+  document?: Document;
+  assignCurrentLocation?: (url: string) => void;
+}
 
 export async function resolveFileDownloadUrl(
   file: FileItem,
@@ -18,29 +21,25 @@ export function buildDownloadFileName(file: FileItem): string {
   return `${title}.${ext}`;
 }
 
-export function openFileDownloadWindow(openWindow?: OpenDownloadWindow): Window | null {
-  const opener = openWindow ?? (typeof window !== 'undefined' ? window.open.bind(window) : undefined);
-  if (!opener) return null;
-
-  const pendingWindow = opener('about:blank', '_blank');
-  if (pendingWindow) pendingWindow.opener = null;
-  return pendingWindow;
-}
-
-export function closeFileDownloadWindow(downloadWindow: Window | null): void {
-  downloadWindow?.close();
-}
-
 export function openFileDownloadUrl(
   downloadUrl: string,
-  downloadWindow: Window | null,
-  assignCurrentLocation?: (url: string) => void,
+  fileName: string,
+  options: FileDownloadOptions = {},
 ): void {
-  if (downloadWindow) {
-    downloadWindow.location.href = downloadUrl;
+  const doc = options.document ?? (typeof document !== 'undefined' ? document : undefined);
+  if (doc?.body) {
+    const anchor = doc.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = fileName;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    doc.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
     return;
   }
 
-  const assign = assignCurrentLocation ?? (typeof window !== 'undefined' ? window.location.assign.bind(window.location) : undefined);
+  const assign = options.assignCurrentLocation
+    ?? (typeof window !== 'undefined' ? window.location.assign.bind(window.location) : undefined);
   assign?.(downloadUrl);
 }

@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { FileItem, FilePreviewManifest } from '../src/api/content';
 import {
-  closeFileDownloadWindow,
+  buildDownloadFileName,
   openFileDownloadUrl,
-  openFileDownloadWindow,
   resolveFileDownloadUrl,
 } from '../src/utils/fileDownload';
 
@@ -47,54 +46,62 @@ test('returns empty url when preview has no downloadable source', async () => {
   assert.equal(url, '');
 });
 
-test('opens a pending download window synchronously for later navigation', () => {
-  const fakeWindow = {
-    location: { href: '' },
-    opener: {},
-    close() {},
-  } as unknown as Window;
+test('builds download filename from document title and extension', () => {
+  assert.equal(buildDownloadFileName(baseFile), 'PostgreSQL 数据库迁移指南.pdf');
+  assert.equal(buildDownloadFileName({ ...baseFile, title: '工艺说明.docx', ext: 'docx' }), '工艺说明.docx');
+  assert.equal(buildDownloadFileName({ ...baseFile, title: '   ', ext: '' }), 'file-1580');
+});
 
-  const pendingWindow = openFileDownloadWindow((url, target) => {
-    assert.equal(url, 'about:blank');
-    assert.equal(target, '_blank');
-    return fakeWindow;
+test('triggers browser download with a hidden link and document filename', () => {
+  let clicked = false;
+  let removed = false;
+  const appended: unknown[] = [];
+  const fakeAnchor = {
+    href: '',
+    download: '',
+    rel: '',
+    style: { display: '' },
+    click() {
+      clicked = true;
+    },
+    remove() {
+      removed = true;
+    },
+  } as unknown as HTMLAnchorElement;
+  const fakeDocument = {
+    body: {
+      appendChild(node: unknown) {
+        appended.push(node);
+        return node;
+      },
+    },
+    createElement(tagName: string) {
+      assert.equal(tagName, 'a');
+      return fakeAnchor;
+    },
+  } as unknown as Document;
+
+  openFileDownloadUrl('https://example.com/original.pdf', 'PostgreSQL 数据库迁移指南.pdf', {
+    document: fakeDocument,
   });
 
-  assert.equal(pendingWindow, fakeWindow);
-  assert.equal(fakeWindow.opener, null);
+  assert.equal(fakeAnchor.href, 'https://example.com/original.pdf');
+  assert.equal(fakeAnchor.download, 'PostgreSQL 数据库迁移指南.pdf');
+  assert.equal(fakeAnchor.rel, 'noopener');
+  assert.equal(fakeAnchor.style.display, 'none');
+  assert.deepEqual(appended, [fakeAnchor]);
+  assert.equal(clicked, true);
+  assert.equal(removed, true);
 });
 
-test('navigates the pending download window after the async url is available', () => {
-  const fakeWindow = {
-    location: { href: 'about:blank' },
-    close() {},
-  } as unknown as Window;
-
-  openFileDownloadUrl('https://example.com/original.pdf', fakeWindow);
-
-  assert.equal(fakeWindow.location.href, 'https://example.com/original.pdf');
-});
-
-test('falls back to the current window when pending download window is blocked', () => {
+test('falls back to the current window when document is unavailable', () => {
   let assignedUrl = '';
 
-  openFileDownloadUrl('https://example.com/original.pdf', null, (url) => {
-    assignedUrl = url;
+  openFileDownloadUrl('https://example.com/original.pdf', 'original.pdf', {
+    assignCurrentLocation(url) {
+      assignedUrl = url;
+    },
   });
 
   assert.equal(assignedUrl, 'https://example.com/original.pdf');
-});
-
-test('closes the pending download window when no download url is available', () => {
-  let closed = false;
-  const fakeWindow = {
-    location: { href: 'about:blank' },
-    close() {
-      closed = true;
-    },
-  } as unknown as Window;
-
-  closeFileDownloadWindow(fakeWindow);
-
-  assert.equal(closed, true);
 });

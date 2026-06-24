@@ -65,6 +65,7 @@ test('qa workspace reads configured general and reasoning models', () => {
 test('qa workspace sends the selected configured model with chat requests', () => {
   assert.match(qaPageSource, /model:\s*selectedModel/);
   assert.match(qaPageSource, /answerMode/);
+  assert.match(qaPageSource, /const mode: AnswerMode = choice\.typeLabel === '推理模型' \? 'expert' : 'normal'/);
 });
 
 test('qa workspace selects visible knowledge scopes for chat scope', () => {
@@ -126,11 +127,18 @@ test('qa workspace closes model and knowledge popovers on outside pointer down',
   assert.match(qaPageSource, /<div className=\{s\.knowledgePicker\} ref=\{knowledgePickerRef\}>/);
 });
 
-test('qa workspace allows switching quick normal expert answer modes', () => {
-  assert.match(qaPageSource, /const ANSWER_MODES/);
-  assert.match(qaPageSource, /快速模式/);
-  assert.match(qaPageSource, /普通模式/);
-  assert.match(qaPageSource, /专家模式/);
+test('qa workspace uses model selection instead of a separate answer mode picker', () => {
+  assert.match(qaPageSource, /type AnswerMode = 'normal' \| 'expert'/);
+  assert.match(qaPageSource, /createDraftSession\(answerMode: AnswerMode = 'normal'\)/);
+  assert.match(qaPageSource, /answerMode:\s*'normal'/);
+  assert.match(qaPageSource, /chooseModel\(choice\)/);
+  assert.doesNotMatch(qaPageSource, /const ANSWER_MODES/);
+  assert.doesNotMatch(qaPageSource, /modeMenuOpen/);
+  assert.doesNotMatch(qaPageSource, /modePicker/);
+  assert.doesNotMatch(qaPageSource, /选择一种问答模式/);
+  assert.doesNotMatch(qaPageSource, /普通模式/);
+  assert.doesNotMatch(qaPageSource, /专家模式/);
+  assert.doesNotMatch(qaPageSource, /快速模式/);
   assert.doesNotMatch(qaPageSource, /智能体模式/);
   assert.doesNotMatch(qaPageSource, /当前会话已锁定回答模式/);
   assert.match(qaPageSource, /请先在后台配置推理模型/);

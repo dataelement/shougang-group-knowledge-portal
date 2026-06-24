@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from app.clients.bisheng import BishengClient
 from app.schemas.chat import KnowledgeScopeParam, PortalChatCompletionRequest, UseKnowledgeBaseParam
 from app.schemas.knowledge import KnowledgeFileItem
+from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_config_service import PortalConfigService
 
 
@@ -274,7 +275,14 @@ class ChatProxyService:
     @staticmethod
     def _unwrap_bisheng_data(payload):
         if isinstance(payload, dict) and payload.get("status_code") not in (None, 200):
-            raise ValueError(str(payload.get("status_message") or "BiSheng 请求失败"))
+            status_code = payload.get("status_code")
+            raise ValueError(
+                normalize_user_facing_message(
+                    payload.get("status_message"),
+                    fallback="BiSheng 请求失败",
+                    status_code=int(status_code) if isinstance(status_code, int) else None,
+                )
+            )
         if isinstance(payload, dict) and "data" in payload:
             return payload["data"]
         return payload

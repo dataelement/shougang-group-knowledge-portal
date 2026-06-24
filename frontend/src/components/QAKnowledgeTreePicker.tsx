@@ -74,6 +74,30 @@ export default function QAKnowledgeTreePicker({
   }, [scope]);
 
   const spaceNameById = useMemo(() => new Map(spaces.map((space) => [space.id, space.name])), [spaces]);
+  const spaceOrderById = useMemo(() => new Map(spaces.map((space, index) => [space.id, index])), [spaces]);
+  const searchMode = Boolean(searchQuery.trim());
+  const searchGroups = useMemo(() => {
+    const groups = new Map<number, { spaceId: number; spaceName: string; files: FileItem[] }>();
+    for (const file of searchResults) {
+      const spaceId = file.spaceId;
+      const existing = groups.get(spaceId);
+      if (existing) {
+        existing.files.push(file);
+        continue;
+      }
+      groups.set(spaceId, {
+        spaceId,
+        spaceName: file.source || spaceNameById.get(spaceId) || String(spaceId),
+        files: [file],
+      });
+    }
+    return [...groups.values()].sort((left, right) => {
+      const leftOrder = spaceOrderById.get(left.spaceId) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = spaceOrderById.get(right.spaceId) ?? Number.MAX_SAFE_INTEGER;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+      return left.spaceName.localeCompare(right.spaceName, 'zh-CN');
+    });
+  }, [searchResults, spaceNameById, spaceOrderById]);
 
   useEffect(() => {
     const q = searchQuery.trim();
@@ -279,43 +303,56 @@ export default function QAKnowledgeTreePicker({
         <input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="文件名搜索"
+          placeholder="文件名/编码搜索"
         />
       </label>
 
-      {searchQuery.trim() ? (
-        <div className={s.searchResults}>
-          <div className={s.sectionTitle}>文件名搜索</div>
-          {searchLoading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 搜索中</div> : null}
-          {searchError ? <div className={s.stateLine}>{searchError}</div> : null}
-          {!searchLoading && !searchError && searchResults.length === 0 ? <div className={s.stateLine}>搜索无结果</div> : null}
-          {searchResults.map((file) => {
-            const selected = isFileSelected(file.spaceId, file.id);
-            return (
-              <button
-                key={`${file.spaceId}-${file.id}`}
-                type="button"
-                className={`${s.searchItem} ${selected ? s.searchItemActive : ''}`}
-                onClick={() => toggleFileRef({ spaceId: file.spaceId, id: file.id })}
-              >
-                <span className={`${s.checkBox} ${selected ? s.checkBoxActive : ''}`}>
-                  {selected ? <Check size={13} /> : null}
-                </span>
-                <span className={s.searchMeta}>
-                  <strong>{file.title}</strong>
-                  <span>所属知识库：{file.source || spaceNameById.get(file.spaceId) || file.spaceId}</span>
-                  <span>所在目录：{file.folderPath || file.sourcePath || '根目录'}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-
       <div className={s.spaceList}>
-        {loading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 知识库加载中</div> : null}
-        {!loading && spaces.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
-        {spaces.map((space) => {
+        {searchMode ? (
+          <>
+            {searchLoading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 搜索中</div> : null}
+            {searchError ? <div className={s.stateLine}>{searchError}</div> : null}
+            {!searchLoading && !searchError && searchGroups.length === 0 ? <div className={s.stateLine}>搜索无结果</div> : null}
+            {!searchLoading && !searchError ? searchGroups.map((group) => (
+              <section key={`search-${group.spaceId}`} className={`${s.spaceBlock} ${s.searchSpaceBlock}`}>
+                <div className={s.searchSpaceHeader}>
+                  <Database size={16} className={s.spaceIcon} />
+                  <span className={s.spaceContent}>
+                    <strong>{group.spaceName}</strong>
+                    <span>{group.files.length} 个匹配文件</span>
+                  </span>
+                </div>
+                <div className={s.searchFileList}>
+                  {group.files.map((file) => {
+                    const selected = isFileSelected(file.spaceId, file.id);
+                    return (
+                      <button
+                        key={`${file.spaceId}-${file.id}`}
+                        type="button"
+                        className={`${s.searchFileRow} ${selected ? s.searchFileRowActive : ''}`}
+                        onClick={() => toggleFileRef({ spaceId: file.spaceId, id: file.id })}
+                      >
+                        <span className={`${s.checkBox} ${selected ? s.checkBoxActive : ''}`}>
+                          {selected ? <Check size={13} /> : null}
+                        </span>
+                        <FileText size={15} className={s.nodeIcon} />
+                        <span className={s.searchMeta}>
+                          <strong>{file.title}</strong>
+                          {file.fileEncoding ? <span>文件编码：{file.fileEncoding}</span> : null}
+                          <span>所在目录：{file.folderPath || file.sourcePath || '根目录'}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )) : null}
+          </>
+        ) : (
+          <>
+            {loading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 知识库加载中</div> : null}
+            {!loading && spaces.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
+            {spaces.map((space) => {
           const rootKey = nodeChildrenKey(space.id);
           const expanded = expandedKeys.has(rootKey);
           const checked = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === space.id;
@@ -334,10 +371,21 @@ export default function QAKnowledgeTreePicker({
                   {checked ? <Check size={13} /> : null}
                 </button>
                 <Database size={16} className={s.spaceIcon} />
-                <button type="button" className={s.spaceText} onClick={() => toggleWholeSpace(space)}>
-                  <strong>{space.name}</strong>
-                  <span>{space.fileCount ? `${space.fileCount} 个文档` : '知识库'}</span>
-                </button>
+                <div className={s.spaceContent}>
+                  <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
+                    <strong>{space.name}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${s.spaceAction} ${expanded ? s.spaceActionActive : ''}`}
+                    onClick={() => toggleExpand(space.id)}
+                  >
+                    {loadingRoot ? <Loader2 size={13} className={s.spin} /> : expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                    <span className={s.spaceActionText}>
+                      {expanded ? '收起目录（可多选子项）' : '展开目录（可多选子项）'}
+                    </span>
+                  </button>
+                </div>
                 <button
                   type="button"
                   className={s.expandButton}
@@ -357,7 +405,9 @@ export default function QAKnowledgeTreePicker({
               ) : null}
             </section>
           );
-        })}
+            })}
+          </>
+        )}
       </div>
     </div>
   );

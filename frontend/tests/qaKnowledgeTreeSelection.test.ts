@@ -31,6 +31,10 @@ test('qa knowledge tree picker renders lazy tree states and exact limit prompts'
   assert.match(pickerSource, /一次最多可选择1个库进行问答。/);
   assert.match(pickerSource, /一次最多可选择20个文件进行问答。/);
   assert.match(pickerSource, /展开目录/);
+  assert.match(pickerSource, /展开目录（可多选子项）/);
+  assert.match(pickerSource, /收起目录（可多选子项）/);
+  assert.match(pickerSource, /spaceAction/);
+  assert.match(pickerSource, /spaceTitleButton/);
   assert.match(pickerSource, /收起目录/);
   assert.match(pickerSource, /加载失败/);
   assert.match(pickerSource, /暂无可见内容/);
@@ -42,11 +46,15 @@ test('qa knowledge tree picker renders lazy tree states and exact limit prompts'
 test('qa knowledge tree picker supports file-name search metadata and dedupe', () => {
   assert.match(pickerSource, /onSearchFiles/);
   assert.match(pickerSource, /文件名搜索/);
-  assert.match(pickerSource, /所属知识库/);
   assert.match(pickerSource, /所在目录/);
   assert.match(pickerSource, /搜索无结果/);
+  assert.match(pickerSource, /searchGroups/);
+  assert.match(pickerSource, /searchSpaceBlock/);
+  assert.match(pickerSource, /searchFileRow/);
+  assert.match(pickerSource, /个匹配文件/);
   assert.match(pickerSource, /isFileSelected/);
   assert.match(pickerSource, /toggleFileRef/);
+  assert.doesNotMatch(pickerSource, /className=\{s\.searchResults\}/);
 });
 
 test('qa knowledge scope count dedupes known folder files and explicit file refs', () => {

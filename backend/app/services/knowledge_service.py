@@ -19,6 +19,7 @@ from app.schemas.knowledge import (
     FilePreviewManifest,
     FilePreviewMode,
     FilePreviewSourceKind,
+    FileTag,
     HomeKnowledgeData,
     KnowledgeFileDetail,
     KnowledgeFileItem,
@@ -38,6 +39,7 @@ from app.schemas.knowledge import (
     ShareDocumentMeta,
     ShareDocumentRequest,
 )
+from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_telemetry_service import PORTAL_BFF_TELEMETRY_HEADERS
 
@@ -150,6 +152,12 @@ class KnowledgeService:
     def get_enabled_space_ids(self) -> list[int]:
         config = self._config_service.get_config()
         return [space.id for space in config.spaces if space.enabled]
+
+    def _allowed_detail_space_ids(self, extra_space_ids: Optional[list[int]] = None) -> set[int]:
+        allowed = set(self.get_enabled_space_ids())
+        if extra_space_ids:
+            allowed |= set(extra_space_ids)
+        return allowed
 
     def get_enabled_space_ids_by_level(self, space_level: Optional[str]) -> list[int]:
         config = self._config_service.get_config()
@@ -390,8 +398,12 @@ class KnowledgeService:
             return None
         return session
 
-    async def get_space_tags(self, space_id: int) -> list[str]:
-        if space_id not in self.get_enabled_space_ids():
+    async def get_space_tags(
+        self,
+        space_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[str]:
+        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
             return []
         tag_lookup = await self._get_space_tag_lookup(space_id)
         return sorted(tag_lookup.keys())
@@ -448,8 +460,9 @@ class KnowledgeService:
         tag: Optional[str],
         page: int,
         page_size: int,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> PagedKnowledgeFileData:
-        if space_id not in self.get_enabled_space_ids():
+        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
         search_result = await self._fetch_space_files(space_id=space_id, keyword=None, tag_name=tag)
@@ -641,10 +654,11 @@ class KnowledgeService:
                 summary=str(item.get("summary") or item.get("abstract") or ""),
                 source=str(item.get("source") or ""),
                 updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
-                tags=[
-                    {"tag_name": str(tag.get("tag_name")), "resource_type": str(tag.get("resource_type"))}
-                    for tag in (item.get("tags") or [])
-                    if isinstance(tag, dict)
+                tags=[str(tag) for tag in (item.get("tags") or [])],
+                tag_infos=[
+                    {"tag_name": str(tag_info.get("tag_name")), "resource_type": str(tag_info.get("resource_type"))}
+                    for tag_info in (item.get("tag_infos") or [])
+                    if isinstance(tag_info, dict)
                 ],
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
@@ -656,8 +670,13 @@ class KnowledgeService:
             if isinstance(item, dict)
         ]
 
-    async def get_file_detail(self, space_id: int, file_id: int) -> Optional[KnowledgeFileDetail]:
-        if space_id not in self.get_enabled_space_ids():
+    async def get_file_detail(
+        self,
+        space_id: int,
+        file_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> Optional[KnowledgeFileDetail]:
+        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
             return None
 
         file_info_resp = await self._bisheng.get_json(f"/api/v1/knowledge/file/info/{file_id}")
@@ -670,7 +689,7 @@ class KnowledgeService:
             file_id=file_id,
             file_name=file_info.get("file_name", ""),
         )
-        tags = self._extract_tag_names(search_item or {})
+        tags = self._extract_file_tags(search_item or {})
         source = self.get_space_name_map().get(space_id, str(space_id))
         return KnowledgeFileDetail(
             id=file_id,
@@ -686,13 +705,22 @@ class KnowledgeService:
             space=KnowledgeFileSpace(id=space_id, name=source),
         )
 
-    async def get_file_preview(self, space_id: int, file_id: int) -> Optional[FilePreviewManifest]:
-        detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
+    async def get_file_preview(
+        self,
+        space_id: int,
+        file_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> Optional[FilePreviewManifest]:
+        detail = await self.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if detail is None:
             return None
 
         normalized_ext = self._normalize_ext(detail.file_ext)
-        raw_preview = await self._get_raw_file_preview(space_id=space_id, file_id=file_id)
+        raw_preview = await self._get_raw_file_preview(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         download_url = raw_preview.original_url if raw_preview else ""
 
         if normalized_ext in UNSUPPORTED_PREVIEW_EXTENSIONS:
@@ -708,6 +736,7 @@ class KnowledgeService:
             file_id=file_id,
             raw_preview=raw_preview,
             file_ext=normalized_ext,
+            extra_space_ids=extra_space_ids,
         )
         if source is None:
             return FilePreviewManifest(
@@ -741,12 +770,15 @@ class KnowledgeService:
         requested_source_kind: Optional[FilePreviewSourceKind] = None,
         raw_preview: Optional[FilePreviewData] = None,
         file_ext: Optional[str] = None,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> Optional[ResolvedPreviewSource]:
         normalized_ext = self._normalize_ext(file_ext or "")
         if normalized_ext in UNSUPPORTED_PREVIEW_EXTENSIONS:
             return None
 
-        preview_data = raw_preview or await self._get_raw_file_preview(space_id=space_id, file_id=file_id)
+        preview_data = raw_preview or await self._get_raw_file_preview(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if requested_source_kind:
             url = await self._get_preview_source_url(
                 source_kind=requested_source_kind,
@@ -769,8 +801,15 @@ class KnowledgeService:
                 return ResolvedPreviewSource(source_kind=source_kind, url=url)
         return None
 
-    async def _get_raw_file_preview(self, space_id: int, file_id: int) -> Optional[FilePreviewData]:
-        detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
+    async def _get_raw_file_preview(
+        self,
+        space_id: int,
+        file_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> Optional[FilePreviewData]:
+        detail = await self.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if detail is None:
             return None
         preview_resp = await self._bisheng.get_json(
@@ -956,8 +995,15 @@ class KnowledgeService:
     def _normalize_ext(self, ext: str) -> str:
         return ext.strip().lower()
 
-    async def get_file_chunks(self, space_id: int, file_id: int) -> list[FileChunkItem]:
-        detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
+    async def get_file_chunks(
+        self,
+        space_id: int,
+        file_id: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[FileChunkItem]:
+        detail = await self.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if detail is None:
             return []
 
@@ -999,8 +1045,11 @@ class KnowledgeService:
         space_id: int,
         file_id: int,
         limit: int,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> RelatedKnowledgeFileData:
-        detail = await self.get_file_detail(space_id=space_id, file_id=file_id)
+        detail = await self.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
         if detail is None or not detail.tags:
             return RelatedKnowledgeFileData(data=[], total=0)
 
@@ -1143,7 +1192,7 @@ class KnowledgeService:
                     summary=item.get("abstract") or "",
                     source=space_name_map.get(space_id, str(space_id)),
                     updated_at=self._serialize_datetime(item.get("update_time")),
-                    tags=self._extract_tag_names(item),
+                    tags=self._extract_file_tags(item),
                     file_ext=self._get_file_ext(file_name),
                     file_size=self._extract_file_size_label(item),
                     file_encoding=self._extract_file_encoding(item),
@@ -1212,6 +1261,19 @@ class KnowledgeService:
         return names
 
     @staticmethod
+    def _extract_file_tags(item: dict[str, Any]) -> list[FileTag]:
+        tags = item.get("tags") or []
+        result: list[FileTag] = []
+        for tag in tags:
+            if not isinstance(tag, dict):
+                continue
+            name = tag.get("tag_name") or tag.get("name")
+            if not name:
+                continue
+            result.append(FileTag(tag_name=str(name), resource_type=str(tag.get("resource_type") or "")))
+        return result
+
+    @staticmethod
     def _extract_file_size_label(*items: dict[str, Any] | None) -> str:
         value = KnowledgeService._first_value_from_items(items, FILE_SIZE_KEYS)
         if value is None:
@@ -1272,9 +1334,17 @@ class KnowledgeService:
     def _extract_success_data(response: dict[str, Any]) -> Any:
         status_code = response.get("status_code")
         if status_code not in (None, 200):
+            try:
+                numeric_status_code = int(status_code)
+            except (TypeError, ValueError):
+                numeric_status_code = None
             raise BishengBusinessError(
-                int(status_code),
-                str(response.get("status_message") or "Bisheng request failed"),
+                numeric_status_code or 502,
+                normalize_user_facing_message(
+                    response.get("status_message"),
+                    fallback="BiSheng 请求失败",
+                    status_code=numeric_status_code,
+                ),
             )
         return response.get("data") or {}
 

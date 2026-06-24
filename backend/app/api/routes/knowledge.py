@@ -12,9 +12,11 @@ from app.schemas.knowledge import (
     FavoriteDocumentRequest,
     FilePreviewSourceKind,
     HomeStatsData,
+    PublishPrecheckRequest,
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
+from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
     SHARE_ACCESS_COOKIE_NAME,
@@ -84,6 +86,43 @@ async def _fetch_shougang_portal_space_info(
         item_data = item.get("data") or {}
         live_space_data[int(item["id"])] = item_data if isinstance(item_data, dict) else {}
     return live_space_data
+
+
+async def _scoped_service_and_extra_ids(
+    request: Request,
+    auth_service: PortalAuthService,
+    bisheng_client: BishengClient,
+    portal_config_service: PortalConfigService,
+) -> tuple[KnowledgeService, Optional[list[int]], Optional[BishengClient]]:
+    """Build a KnowledgeService scoped to the current user when logged in.
+
+    Returns (service, extra_space_ids, client_to_close).
+    - Not logged in: system client (singleton), enabled-only scope, nothing to close.
+    - Logged in: per-user token client, scope = enabled ∪ personal-visible libraries,
+      and the user client is returned so the caller can aclose() it in a finally.
+    """
+    session = auth_service.get_session(request)
+    if session is None:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        return service, None, None
+
+    scoped_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=scoped_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        visible_spaces = await service.list_visible_spaces()
+        extra_space_ids = [space.id for space in visible_spaces.data]
+        return service, extra_space_ids, scoped_client
+    except Exception:
+        await scoped_client.aclose()
+        raise
 
 
 def _require_share_access(
@@ -518,29 +557,50 @@ async def access_share_link(
 @router.get("/space/{space_id}/files")
 async def list_space_files(
     space_id: int,
+    request: Request,
     file_ext: Optional[str] = None,
     tag: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
-    service: KnowledgeService = Depends(get_knowledge_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok(
-        await service.list_space_files(
-            space_id=space_id,
-            file_ext=file_ext,
-            tag=tag,
-            page=page,
-            page_size=page_size,
-        )
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request, auth_service, bisheng_client, portal_config_service
     )
+    try:
+        return response_ok(
+            await service.list_space_files(
+                space_id=space_id,
+                file_ext=file_ext,
+                tag=tag,
+                page=page,
+                page_size=page_size,
+                extra_space_ids=extra_space_ids,
+            )
+        )
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/space/{space_id}/tags")
 async def get_space_tags(
     space_id: int,
-    service: KnowledgeService = Depends(get_knowledge_service),
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok(await service.get_space_tags(space_id))
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request, auth_service, bisheng_client, portal_config_service
+    )
+    try:
+        return response_ok(await service.get_space_tags(space_id, extra_space_ids=extra_space_ids))
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/space/{space_id}/files/{file_id}")
@@ -549,12 +609,23 @@ async def get_file_detail(
     file_id: int,
     request: Request,
     share_token: Optional[str] = None,
-    service: KnowledgeService = Depends(get_knowledge_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     if share_token:
         _require_share_access(request, share_token, space_id, file_id)
-    detail = await service.get_file_detail(space_id=space_id, file_id=file_id)
-    return response_ok(detail)
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request, auth_service, bisheng_client, portal_config_service
+    )
+    try:
+        detail = await service.get_file_detail(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
+        return response_ok(detail)
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/space/{space_id}/files/{file_id}/preview")
@@ -564,36 +635,47 @@ async def get_file_preview(
     request: Request,
     share_token: Optional[str] = None,
     entry_point: Optional[str] = Query(default=None),
-    service: KnowledgeService = Depends(get_knowledge_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     share_session = _require_share_access(request, share_token, space_id, file_id) if share_token else None
-    preview = await service.get_file_preview(space_id=space_id, file_id=file_id)
-    if preview is not None:
-        await PortalTelemetryService(service._bisheng).record_event(
-            event_type="portal_document_read",
-            source_app="shougang_portal",
-            scene="document_preview",
-            entry_point=entry_point or "search_result_preview",
-            resource_type="document",
-            space_id=space_id,
-            file_id=file_id,
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request, auth_service, bisheng_client, portal_config_service
+    )
+    try:
+        preview = await service.get_file_preview(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
         )
-    if preview and share_session and not share_session.allow_download:
-        preview.download_url = ""
-    if (
-        preview
-        and not preview.viewer_url
-        and preview.source_kind != "none"
-        and preview.mode not in {"unsupported", "chunks"}
-    ):
-        query = f"source_kind={preview.source_kind}"
-        if share_token:
-            query = f"{query}&share_token={quote(share_token)}"
-        preview.viewer_url = (
-            f"/api/v1/knowledge/space/{space_id}/files/{file_id}/preview/content"
-            f"?{query}"
-        )
-    return response_ok(preview)
+        if preview is not None:
+            await PortalTelemetryService(service._bisheng).record_event(
+                event_type="portal_document_read",
+                source_app="shougang_portal",
+                scene="document_preview",
+                entry_point=entry_point or "search_result_preview",
+                resource_type="document",
+                space_id=space_id,
+                file_id=file_id,
+            )
+        if preview and share_session and not share_session.allow_download:
+            preview.download_url = ""
+        if (
+            preview
+            and not preview.viewer_url
+            and preview.source_kind != "none"
+            and preview.mode not in {"unsupported", "chunks"}
+        ):
+            query = f"source_kind={preview.source_kind}"
+            if share_token:
+                query = f"{query}&share_token={quote(share_token)}"
+            preview.viewer_url = (
+                f"/api/v1/knowledge/space/{space_id}/files/{file_id}/preview/content"
+                f"?{query}"
+            )
+        return response_ok(preview)
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/space/{space_id}/files/{file_id}/preview/content")
@@ -603,30 +685,40 @@ async def get_file_preview_content(
     request: Request,
     source_kind: Optional[FilePreviewSourceKind] = Query(default=None),
     share_token: Optional[str] = None,
-    service: KnowledgeService = Depends(get_knowledge_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     if share_token:
         _require_share_access(request, share_token, space_id, file_id)
-    source = await service.resolve_preview_content_source(
-        space_id=space_id,
-        file_id=file_id,
-        requested_source_kind=source_kind,
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request, auth_service, bisheng_client, portal_config_service
     )
-    if source is None or not source.url:
-        raise HTTPException(status_code=404, detail="PREVIEW_CONTENT_NOT_FOUND")
+    try:
+        source = await service.resolve_preview_content_source(
+            space_id=space_id,
+            file_id=file_id,
+            requested_source_kind=source_kind,
+            extra_space_ids=extra_space_ids,
+        )
+        if source is None or not source.url:
+            raise HTTPException(status_code=404, detail="未找到可预览内容")
 
-    upstream = await bisheng_client.get_preview_asset(source.url)
-    headers = {"Cache-Control": "no-store"}
-    content_type = upstream.headers.get("content-type")
-    content_length = upstream.headers.get("content-length")
-    if content_length:
-        headers["Content-Length"] = content_length
-    return Response(
-        content=upstream.content,
-        media_type=content_type,
-        headers=headers,
-    )
+        # Read the asset through the same scoped client so BiSheng authorizes it.
+        upstream = await service._bisheng.get_preview_asset(source.url)
+        headers = {"Cache-Control": "no-store"}
+        content_type = upstream.headers.get("content-type")
+        content_length = upstream.headers.get("content-length")
+        if content_length:
+            headers["Content-Length"] = content_length
+        return Response(
+            content=upstream.content,
+            media_type=content_type,
+            headers=headers,
+        )
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/space/{space_id}/files/{file_id}/chunks")
@@ -635,12 +727,23 @@ async def get_file_chunks(
     file_id: int,
     request: Request,
     share_token: Optional[str] = None,
-    service: KnowledgeService = Depends(get_knowledge_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     if share_token:
         _require_share_access(request, share_token, space_id, file_id)
-    chunks = await service.get_file_chunks(space_id=space_id, file_id=file_id)
-    return response_ok(chunks)
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request, auth_service, bisheng_client, portal_config_service
+    )
+    try:
+        chunks = await service.get_file_chunks(
+            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
+        )
+        return response_ok(chunks)
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.post("/space/{space_id}/files/{file_id}/chat")
@@ -678,13 +781,38 @@ async def chat_document_file(
 async def get_related_files(
     space_id: int,
     file_id: int,
+    request: Request,
     limit: int = 3,
-    service: KnowledgeService = Depends(get_knowledge_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok(
-        await service.get_related_files(
-            space_id=space_id,
-            file_id=file_id,
-            limit=limit,
-        )
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request, auth_service, bisheng_client, portal_config_service
     )
+    try:
+        return response_ok(
+            await service.get_related_files(
+                space_id=space_id,
+                file_id=file_id,
+                limit=limit,
+                extra_space_ids=extra_space_ids,
+            )
+        )
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
+
+
+@router.post("/publish/precheck")
+async def publish_precheck(
+    payload: PublishPrecheckRequest,
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    config = portal_config_service.get_config()
+    result = DomainConsistencyService().check(
+        payload.file_encoding,
+        payload.target_space_id,
+        config.domains,
+    )
+    return response_ok(result)

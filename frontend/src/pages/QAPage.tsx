@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import {
   Bot,
-  BrainCircuit,
   BriefcaseBusiness,
   Check,
   ChevronDown,
@@ -74,13 +73,7 @@ interface ConfiguredQaModelChoice {
   typeLabel: '通用模型' | '推理模型';
 }
 
-type AnswerMode = 'quick' | 'normal' | 'expert';
-
-interface AnswerModeOption {
-  id: AnswerMode;
-  label: string;
-  desc: string;
-}
+type AnswerMode = 'normal' | 'expert';
 
 const ALL_TEMPLATE_CATEGORY_ID = '__all__';
 
@@ -96,11 +89,6 @@ const TEMPLATE_ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> 
   Bot,
 };
 
-const ANSWER_MODES: AnswerModeOption[] = [
-  { id: 'quick', label: '快速模式', desc: '极速、简短生成，关联知识库。' },
-  { id: 'normal', label: '普通模式', desc: '通用模型，可把问题讲清：分段落、列要点、篇幅适中。' },
-  { id: 'expert', label: '专家模式', desc: '基于推理模型，抽丝剥茧解决复杂难题。' },
-];
 const QA_ATTACHMENT_ACCEPT = '.pdf,.txt,.doc,.docx,.ppt,.pptx,.md,.html,.xls,.xlsx,.wps,.dps,.et,.png,.jpg,.jpeg,.bmp';
 const QA_ATTACHMENT_EXTENSIONS = new Set(
   QA_ATTACHMENT_ACCEPT.split(',').map((item) => item.replace('.', '')),
@@ -154,7 +142,7 @@ function resolveSessionGroup(dateText?: string): Session['group'] {
   return '30 天内';
 }
 
-function createDraftSession(answerMode: AnswerMode = 'quick'): Session {
+function createDraftSession(answerMode: AnswerMode = 'normal'): Session {
   return {
     id: `local_${Date.now()}`,
     title: '新会话',
@@ -173,7 +161,7 @@ function mapConversationToSession(conversation: WorkstationConversation): Sessio
     group: resolveSessionGroup(conversation.updateAt || conversation.createAt),
     messages: [],
     loaded: false,
-    answerMode: 'quick',
+    answerMode: 'normal',
     updatedAt: conversation.updateAt || conversation.createAt,
   };
 }
@@ -322,7 +310,6 @@ export default function QAPage() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [modelChoices, setModelChoices] = useState<ConfiguredQaModelChoice[]>([]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false);
   const [composerTip, setComposerTip] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<ChatAttachment[]>([]);
@@ -346,7 +333,6 @@ export default function QAPage() {
     || streaming;
   const activeSessionLoading = loadingSessionId === activeSession.id;
   const answerMode = activeSession.answerMode;
-  const answerModeOption = ANSWER_MODES.find((mode) => mode.id === answerMode) ?? ANSWER_MODES[0];
   const generalModelChoice = modelChoices.find((choice) => choice.typeLabel === '通用模型');
   const reasoningModelChoice = modelChoices.find((choice) => choice.typeLabel === '推理模型');
   const selectedModelChoice = answerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
@@ -549,7 +535,6 @@ export default function QAPage() {
     setAttachedFiles([]);
     setStreaming(true);
     setModelMenuOpen(false);
-    setModeMenuOpen(false);
     setKnowledgePickerOpen(false);
 
     setSessions((prev) =>
@@ -624,15 +609,16 @@ export default function QAPage() {
     applyWritingTemplate(template);
   };
 
-  const chooseAnswerMode = (mode: AnswerMode) => {
-    if (mode === 'expert' && !reasoningModelChoice) {
+  const chooseModel = (choice: ConfiguredQaModelChoice) => {
+    if (choice.typeLabel === '推理模型' && !reasoningModelChoice) {
       setComposerTip('请先在后台配置推理模型。');
       return;
     }
+    const mode: AnswerMode = choice.typeLabel === '推理模型' ? 'expert' : 'normal';
     setSessions((prev) =>
       prev.map((ss) => (ss.id === activeId ? { ...ss, answerMode: mode } : ss)),
     );
-    setModeMenuOpen(false);
+    setModelMenuOpen(false);
   };
 
   const handleAttachmentSelect = (event: ChangeEvent<HTMLInputElement>) => {
@@ -738,14 +724,7 @@ export default function QAPage() {
                       key={`${choice.typeLabel}-${choice.id}`}
                       type="button"
                       className={`${s.modelOption} ${choice.id === selectedModel ? s.modelOptionActive : ''}`}
-                      onClick={() => {
-                        if (choice.typeLabel === '推理模型') {
-                          chooseAnswerMode('expert');
-                        } else if (answerMode === 'expert') {
-                          chooseAnswerMode('normal');
-                        }
-                        setModelMenuOpen(false);
-                      }}
+                      onClick={() => chooseModel(choice)}
                     >
                       <strong>{choice.label}</strong>
                     </button>
@@ -879,40 +858,6 @@ export default function QAPage() {
             ) : null}
             <div className={s.composerTools}>
               <div className={s.toolLeft}>
-                <div className={s.modePicker}>
-                  <button
-                    type="button"
-                    className={s.pillButton}
-                    onClick={() => setModeMenuOpen((value) => !value)}
-                  >
-                    <BrainCircuit size={15} />
-                    {answerModeOption.label}
-                    <ChevronDown size={14} />
-                  </button>
-                  {modeMenuOpen ? (
-                    <div className={s.modePanel}>
-                      <div className={s.modePanelTitle}>选择一种问答模式</div>
-                      <div className={s.modeGrid}>
-                        {ANSWER_MODES.map((mode) => {
-                          const disabled = mode.id === 'expert' && !reasoningModelChoice;
-                          return (
-                            <button
-                              key={mode.id}
-                              type="button"
-                              className={`${s.modeCard} ${answerMode === mode.id ? s.modeCardActive : ''}`}
-                              disabled={disabled}
-                              onClick={() => chooseAnswerMode(mode.id)}
-                              title={disabled ? '请先在后台配置推理模型' : mode.desc}
-                            >
-                              <strong>{mode.label}</strong>
-                              <span>{disabled ? '请先在后台配置推理模型。' : mode.desc}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
                 <div className={s.knowledgePicker} ref={knowledgePickerRef}>
                   <button
                     type="button"
