@@ -13,7 +13,8 @@ export interface FileItem {
   summary: string;
   source: string;
   date: string;
-  tags: FileTag[];
+  tags: string[];
+  tag_infos: FileTag[];
   ext: string;
   sizeLabel: string;
   fileEncoding: string;
@@ -202,7 +203,8 @@ interface KnowledgeFileItemDto {
   summary: string;
   source: string;
   updated_at: string;
-  tags: FileTag[];
+  tags: string[];
+  tag_infos: FileTag[];
   file_ext?: string;
   file_size?: string;
   file_encoding?: string;
@@ -385,6 +387,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     source: dto.source,
     date: dto.updated_at,
     tags: dto.tags ?? [],
+    tag_infos: dto.tag_infos ?? [],
     ext: dto.file_ext ?? '',
     sizeLabel: dto.file_size ?? '',
     fileEncoding: dto.file_encoding ?? '',
@@ -402,6 +405,7 @@ function mapSearchResultForSummary(item: FileItem) {
     source: item.source,
     updated_at: item.date,
     tags: item.tags,
+    tag_infos: item.tag_infos,
     file_ext: item.ext,
     file_size: item.sizeLabel,
     file_encoding: item.fileEncoding,

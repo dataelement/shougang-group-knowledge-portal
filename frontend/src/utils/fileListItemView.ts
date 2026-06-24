@@ -72,7 +72,7 @@ export function buildFileListItemView(
   const aiTags: string[] = [];
   const manualTags: string[] = [];
 
-  for (const tag of file.tags) {
+  for (const tag of file.tag_infos) {
     if (!tag || !tag.tag_name || META_TAGS.has(tag.tag_name)) continue;
     if (tag.resource_type === 'system_tag') {
       systemTags.push(tag.tag_name);

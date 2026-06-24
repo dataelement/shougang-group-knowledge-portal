@@ -192,7 +192,7 @@ export default function SearchPage() {
   const resultTagOptions = useMemo(() => {
     const tagSet = new Set<string>();
     for (const file of files) {
-      for (const item of file.tags) addStringOption(tagSet, item.tag_name);
+      for (const item of file.tag_infos) addStringOption(tagSet, item.tag_name);
     }
     addStringOption(tagSet, tag);
     return [...tagSet].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
