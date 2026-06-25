@@ -54,7 +54,7 @@ export default function FloatingQaButton() {
       className={s.button}
       aria-label="进入智能问答"
       title="智能问答"
-      onClick={() => navigate('/qa')}
+      onClick={() => navigate('/apps?tab=qa')}
     >
       <img className={s.icon} src="/qa-floating-icon.png" alt="" aria-hidden="true" />
     </button>

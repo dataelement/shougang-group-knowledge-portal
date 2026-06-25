@@ -99,7 +99,7 @@ export default function DetailPage() {
   }
 
   const META_TAGS = ['最新精选', '典型案例'];
-  const displayTags = detail.tag_infos.filter((t) => !META_TAGS.includes(t.tag_name));
+  const displayTags = (detail.tag_infos ?? []).filter((t) => !META_TAGS.includes(t.tag_name));
   const formattedUpdatedAt = formatDisplayDateTime(detail.date) || '—';
   const resolvedPreview = resolveFilePreview(preview);
   const effectivePreview = clientFallbackActive
@@ -204,7 +204,7 @@ export default function DetailPage() {
             <SectionHeader icon={Star} title="相关推荐" />
             <div className={s.relatedGrid}>
               {related.map((f) => {
-                const rTags = f.tag_infos.filter((t) => !META_TAGS.includes(t.tag_name));
+                const rTags = (f.tag_infos ?? []).filter((t) => !META_TAGS.includes(t.tag_name));
                 return (
                   <div
                     key={f.id}

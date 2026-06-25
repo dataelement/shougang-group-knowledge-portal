@@ -215,7 +215,7 @@
 }
 
 .templatePanel {
-  max-width: 1120px;
+  max-width: 1040px;
   margin: 0 auto;
 }
 
@@ -360,8 +360,132 @@
   background: #eef2f7;
 }
 
+.smartAppContentArea {
+  padding: 0;
+}
+
+.contentArea.smartAppContentArea {
+  padding: 0;
+}
+
+.smartAppTemplatePanel {
+  width: 100%;
+  max-width: 1040px;
+  min-width: 0;
+  padding: 0 36px 32px;
+}
+
+.smartAppTemplateTabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #e2e8f2;
+  overflow-x: auto;
+}
+
+.smartAppTemplateTab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: auto;
+  padding: 6px 14px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: #7080a0;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+
+.smartAppTemplateTab:hover:not(.templateTabActive) {
+  color: #1a3fa8;
+  background: #f8faff;
+}
+
+.smartAppTemplateTab.templateTabActive {
+  color: #2d6ef5;
+  border-bottom-color: #2d6ef5;
+  font-weight: 500;
+}
+
+.smartAppTemplateTab.templateTabActive::after {
+  display: none;
+}
+
+.smartAppTemplateGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.templateGrid.smartAppTemplateGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.smartAppTemplateCard {
+  position: relative;
+  min-width: 0;
+  min-height: 104px;
+  padding: 12px;
+  border: 1px solid #e2e8f2;
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(26, 63, 168, 0.04);
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.smartAppTemplateCard:hover {
+  border-color: #2d6ef5;
+  box-shadow: 0 4px 14px rgba(45, 110, 245, 0.12);
+  transform: translateY(-1px);
+}
+
+.smartAppTemplateIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.smartAppTemplateText {
+  gap: 7px;
+}
+
+.smartAppTemplateText strong {
+  color: #1a2a4a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.smartAppTemplateText span {
+  color: #8090b0;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.smartAppTemplateLines {
+  display: none;
+}
+
 .messages {
-  max-width: 980px;
+  max-width: 1040px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -1016,6 +1140,209 @@
   text-overflow: ellipsis;
 }
 
+.smartAppComposer {
+  width: 100%;
+  max-width: 690px;
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.smartAppComposerTop {
+  padding: 20px 0 6px;
+}
+
+.smartAppComposerBottom {
+  padding: 10px 0 18px;
+}
+
+.smartAppInputBox {
+  border: 1px solid #c8d8f0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(26, 63, 168, 0.06);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.smartAppInputBox:focus-within {
+  border-color: #2d6ef5;
+  box-shadow: 0 0 0 3px rgba(45, 110, 245, 0.1), 0 2px 8px rgba(26, 63, 168, 0.06);
+}
+
+.smartAppInputRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 12px 8px 16px;
+}
+
+.smartAppInputRow textarea {
+  flex: 1;
+  height: 42px;
+  min-width: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: #1a2a4a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.smartAppInputRow textarea::placeholder {
+  color: #b0bcd0;
+}
+
+.smartAppInputActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.smartAppModelWrap {
+  display: inline-flex;
+}
+
+.smartAppModelButton {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 172px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #c8d8f0;
+  border-radius: 5px;
+  background: #f4f6fb;
+  color: #3a5080;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.smartAppModelButton span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smartAppModelButton svg {
+  color: #2d6ef5;
+  flex: 0 0 auto;
+}
+
+.smartAppModelButton:hover:not(:disabled) {
+  border-color: #2d6ef5;
+  background: #eef2fc;
+  color: #1a3fa8;
+}
+
+.smartAppModelButton:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+  background: #f8fafc;
+}
+
+.smartAppToolButton,
+.smartAppSendButton {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.smartAppToolButton {
+  color: #8a9ab8;
+}
+
+.smartAppToolButton:hover:not(:disabled) {
+  background: #eef2fc;
+  color: #2d6ef5;
+}
+
+.smartAppToolButton:disabled,
+.smartAppSendButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.smartAppSendButton {
+  background: linear-gradient(135deg, #1a3fa8, #2d6ef5);
+  color: #fff;
+}
+
+.smartAppSendButton:hover:not(:disabled) {
+  opacity: 0.86;
+}
+
+.smartAppAttachments {
+  padding: 0 16px 8px;
+}
+
+.smartAppFooter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 12px 10px 16px;
+}
+
+.smartAppFooterHint {
+  flex: 1;
+  min-width: 0;
+  color: #b0bcd0;
+  font-size: 11px;
+}
+
+.smartAppKnowledgePicker {
+  flex-shrink: 0;
+}
+
+.smartAppFooterLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: #6a80a8;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+
+.smartAppFooterLink:hover:not(:disabled) {
+  color: #2d6ef5;
+  background: #eef2fc;
+}
+
+.smartAppFooterLink:disabled {
+  cursor: not-allowed;
+  color: #b8c4d8;
+}
+
+.smartAppComposerTip {
+  padding: 0 16px 10px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.smartAppPopoverDown .knowledgePanel {
+  top: calc(100% + 8px);
+  bottom: auto;
+  right: 0;
+  left: auto;
+}
+
+.smartAppPopoverUp .modelMenu {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 220px minmax(0, 1fr);
@@ -1025,10 +1352,18 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .templateGrid.smartAppTemplateGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .workspaceHeader,
   .contentArea {
     padding-left: 22px;
     padding-right: 22px;
+  }
+
+  .contentArea.smartAppContentArea {
+    padding: 0;
   }
 
   .composerShell {
@@ -1082,6 +1417,10 @@
     grid-template-columns: 1fr;
   }
 
+  .templateGrid.smartAppTemplateGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .composerTools {
     align-items: stretch;
     flex-direction: column;
@@ -1111,12 +1450,34 @@
     grid-template-columns: 34px minmax(0, 1fr);
   }
 
+  .smartAppTemplatePanel {
+    padding: 0 16px 24px;
+  }
+
+  .templateGrid.smartAppTemplateGrid {
+    grid-template-columns: 1fr;
+  }
+
   .templateLines {
     display: none;
   }
 
   .pillButton,
   .toggleButton {
+    max-width: 100%;
+  }
+
+  .smartAppInputRow {
+    flex-direction: column;
+  }
+
+  .smartAppInputActions,
+  .smartAppFooter {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .smartAppModelButton {
     max-width: 100%;
   }
 }

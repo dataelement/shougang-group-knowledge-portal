@@ -46,6 +46,7 @@ const baseFile: FileItem = {
 test('does not render document encoding or file size in the list card metadata', async () => {
   ensureCompiledCssStub('src/components/FileListItem.module.css');
   ensureCompiledCssStub('src/components/TagPill.module.css');
+  ensureCompiledCssStub('src/components/ui/Tooltip.module.css');
 
   const { default: FileListItem } = await import('../src/components/FileListItem');
 

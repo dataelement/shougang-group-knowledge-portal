@@ -14,7 +14,7 @@ export interface FileItem {
   source: string;
   date: string;
   tags: string[];
-  tag_infos: FileTag[];
+  tag_infos?: FileTag[];
   ext: string;
   sizeLabel: string;
   fileEncoding: string;
@@ -203,13 +203,46 @@ interface KnowledgeFileItemDto {
   summary: string;
   source: string;
   updated_at: string;
-  tags: string[];
-  tag_infos: FileTag[];
+  tags: Array<string | FileTag>;
+  tag_infos?: FileTag[];
   file_ext?: string;
   file_size?: string;
   file_encoding?: string;
   folder_path?: string;
   source_path?: string;
+}
+
+function normalizeFileTagInfos(tags: Array<string | FileTag> = [], tagInfos: FileTag[] = []): FileTag[] {
+  const normalized: FileTag[] = [];
+  const seen = new Set<string>();
+
+  const append = (tagName: string, resourceType = '') => {
+    const name = tagName.trim();
+    if (!name) return;
+    const key = `${name}\u0000${resourceType}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push({ tag_name: name, resource_type: resourceType });
+  };
+
+  for (const tag of tagInfos) append(tag.tag_name, tag.resource_type);
+  for (const tag of tags) {
+    if (typeof tag === 'string') {
+      append(tag);
+    } else {
+      append(tag.tag_name, tag.resource_type);
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeFileTagNames(tags: Array<string | FileTag> = [], tagInfos: FileTag[] = []): string[] {
+  const names: string[] = [];
+  for (const tag of normalizeFileTagInfos(tags, tagInfos)) {
+    if (!names.includes(tag.tag_name)) names.push(tag.tag_name);
+  }
+  return names;
 }
 
 interface KnowledgeFileDetailDto extends KnowledgeFileItemDto {
@@ -379,6 +412,7 @@ interface WorkstationMessageDto {
 }
 
 export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
+  const tagInfos = normalizeFileTagInfos(dto.tags, dto.tag_infos);
   return {
     id: dto.id,
     spaceId: dto.space_id,
@@ -386,8 +420,8 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     summary: dto.summary,
     source: dto.source,
     date: dto.updated_at,
-    tags: dto.tags ?? [],
-    tag_infos: dto.tag_infos ?? [],
+    tags: normalizeFileTagNames(dto.tags, tagInfos),
+    tag_infos: tagInfos,
     ext: dto.file_ext ?? '',
     sizeLabel: dto.file_size ?? '',
     fileEncoding: dto.file_encoding ?? '',
@@ -405,7 +439,7 @@ function mapSearchResultForSummary(item: FileItem) {
     source: item.source,
     updated_at: item.date,
     tags: item.tags,
-    tag_infos: item.tag_infos,
+    tag_infos: item.tag_infos ?? [],
     file_ext: item.ext,
     file_size: item.sizeLabel,
     file_encoding: item.fileEncoding,
@@ -1182,7 +1216,7 @@ export async function streamDocumentFileChat(params: {
     });
     await consumeChatStream(response, params.onUpdate, params.onCitations);
   } catch (error) {
-    if (error instanceof ApiRequestError) throw error;
+    if (error instanceof ApiRequestError) throw new Error('问答请求失败，请稍后重试。');
     throw new Error(normalizeUserFacingErrorMessage(error, '问答请求失败，请稍后重试。'));
   }
 }

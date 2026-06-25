@@ -326,7 +326,7 @@ export default function QAKnowledgeTreePicker({
         <input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="文件名/编码搜索"
+          placeholder="文件名搜索/编码搜索"
         />
       </label>
 

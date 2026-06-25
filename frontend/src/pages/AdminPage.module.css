@@ -637,6 +637,13 @@
   color: var(--neutral-500);
 }
 
+.tableFooter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -6px 0 18px;
+}
+
 .stateEnabled,
 .stateDisabled {
   display: inline-flex;
@@ -845,6 +852,25 @@
 .formTextarea:focus {
   outline: none;
   border-color: var(--primary-500);
+}
+
+.checkRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--neutral-700);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.checkRow input {
+  width: 16px;
+  height: 16px;
+}
+
+.errorText {
+  color: #b91c1c;
+  font-size: 0.78rem;
 }
 
 .qaTemplateDescInput {

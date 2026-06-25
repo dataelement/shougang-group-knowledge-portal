@@ -4,6 +4,9 @@ from typing import Any
 
 from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.portal_config import (
+    AgentConfig,
+    AgentWorkflowOption,
+    AgentWorkflowOptionsResponse,
     AppsConfigUpdate,
     BannersConfigUpdate,
     DomainsConfigUpdate,
@@ -47,7 +50,8 @@ class PortalConfigService:
         data = self._read_data()
         qa_model_changed = self._ensure_qa_model_compat(data)
         qa_templates_changed = self._ensure_qa_templates_compat(data)
-        if qa_model_changed or qa_templates_changed:
+        agent_config_changed = self._ensure_agent_config_compat(data)
+        if qa_model_changed or qa_templates_changed or agent_config_changed:
             self._write_data(data)
         if "search" not in data or not isinstance(data.get("search"), dict):
             data["search"] = dict(DEFAULT_PORTAL_CONFIG.get("search") or {"rerank_model_id": ""})
@@ -160,6 +164,11 @@ class PortalConfigService:
         data["search"] = payload.model_dump()
         return self._write_config(PortalConfig.model_validate(data))
 
+    def update_agent_config(self, payload: AgentConfig) -> PortalConfig:
+        data = self.get_config().model_dump()
+        data["agent_config"] = payload.model_dump()
+        return self._write_config(PortalConfig.model_validate(data))
+
     def build_qa_model_options(self, raw_models: list[dict[str, Any]]) -> QAModelOptionsResponse:
         qa_config = self.get_config().qa
         models: list[QAModelOption] = []
@@ -253,6 +262,37 @@ class PortalConfigService:
         )
 
     @staticmethod
+    def build_agent_workflow_options(raw_payload: Any) -> AgentWorkflowOptionsResponse:
+        data = raw_payload.get("data") if isinstance(raw_payload, dict) else raw_payload
+        raw_workflows = data.get("data") if isinstance(data, dict) else data
+        if not isinstance(raw_workflows, list):
+            raw_workflows = []
+        workflows: list[AgentWorkflowOption] = []
+        seen_ids: set[str] = set()
+        for item in raw_workflows:
+            if not isinstance(item, dict):
+                continue
+            workflow_id = str(item.get("id") or item.get("workflow_id") or "").strip()
+            name = str(item.get("name") or item.get("flow_name") or item.get("title") or "").strip()
+            if not workflow_id or not name or workflow_id in seen_ids:
+                continue
+            seen_ids.add(workflow_id)
+            workflows.append(
+                AgentWorkflowOption(
+                    workflow_id=workflow_id,
+                    name=name,
+                    desc=str(item.get("description") or item.get("desc") or ""),
+                    flow_type=int(item.get("flow_type") or 10),
+                    status=int(item.get("status") or 2),
+                )
+            )
+        return AgentWorkflowOptionsResponse(
+            workflows=workflows,
+            has_more=bool(data.get("has_more")) if isinstance(data, dict) else False,
+            next_cursor=str(data.get("next_cursor") or data.get("cursor") or "") if isinstance(data, dict) else "",
+        )
+
+    @staticmethod
     def _ensure_qa_model_compat(data: dict[str, Any]) -> bool:
         qa_data = data.get("qa")
         if not isinstance(qa_data, dict):
@@ -295,6 +335,20 @@ class PortalConfigService:
         if "templates" not in qa_data or not isinstance(qa_data.get("templates"), list):
             qa_data["templates"] = list(default_qa.get("templates") or [])
             changed = True
+        return changed
+
+    @staticmethod
+    def _ensure_agent_config_compat(data: dict[str, Any]) -> bool:
+        default_agent_config = DEFAULT_PORTAL_CONFIG.get("agent_config") or {"categories": [], "agents": []}
+        agent_config = data.get("agent_config")
+        if not isinstance(agent_config, dict):
+            data["agent_config"] = dict(default_agent_config)
+            return True
+        changed = False
+        for key in ("categories", "agents"):
+            if key not in agent_config or not isinstance(agent_config.get(key), list):
+                agent_config[key] = list(default_agent_config.get(key) or [])
+                changed = True
         return changed
 
     @staticmethod

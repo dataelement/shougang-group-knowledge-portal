@@ -13,9 +13,10 @@ function cssBlock(selector: string): string {
   return match?.[1] ?? '';
 }
 
-test('qa workspace exposes both canonical and portal-compatible routes', () => {
-  assert.match(appSource, /<Route\s+path="\/qa"\s+element={<QAPage\s*\/>}\s*\/>/);
-  assert.match(appSource, /<Route\s+path="\/portal\/qa"\s+element={<QAPage\s*\/>}\s*\/>/);
+test('legacy qa workspace routes redirect into smart apps qa tab', () => {
+  assert.match(appSource, /<Route\s+path="\/qa"\s+element={<RedirectToSmartQa\s*\/>}\s*\/>/);
+  assert.match(appSource, /<Route\s+path="\/portal\/qa"\s+element={<RedirectToSmartQa\s*\/>}\s*\/>/);
+  assert.match(appSource, /params\.set\('tab', 'qa'\)/);
 });
 
 test('qa workspace renders writing templates and keeps chat on the existing qa scene', () => {
@@ -150,12 +151,12 @@ test('home quick app shortcuts open qa workspace templates without auto sending'
   assert.match(homePageSource, /template\.id/);
   assert.doesNotMatch(homePageSource, /HOME_QA_SHORTCUTS/);
   assert.doesNotMatch(homePageSource, /总结汇报/);
-  assert.match(homePageSource, /navigate\(`\/portal\/qa\?templateId=\$\{encodeURIComponent\(template\.id\)\}`\)/);
+  assert.match(homePageSource, /navigate\(`\/apps\?tab=qa&templateId=\$\{encodeURIComponent\(template\.id\)\}`\)/);
   assert.doesNotMatch(homePageSource, /app\.url/);
 
-  assert.match(qaPageSource, /new URLSearchParams\(window\.location\.search\)/);
+  assert.match(qaPageSource, /new URLSearchParams\(location\.search\)/);
   assert.match(qaPageSource, /templateId/);
   assert.match(qaPageSource, /findWritingTemplateById/);
-  assert.match(qaPageSource, /window\.history\.replaceState/);
+  assert.match(qaPageSource, /navigate\(nextUrl, \{ replace: true \}\)/);
   assert.doesNotMatch(qaPageSource, /streamChatCompletion\(\{\s*scene:\s*'qa',\s*text:\s*template\.prompt/);
 });

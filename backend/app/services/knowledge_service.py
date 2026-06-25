@@ -654,12 +654,8 @@ class KnowledgeService:
                 summary=str(item.get("summary") or item.get("abstract") or ""),
                 source=str(item.get("source") or ""),
                 updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
-                tags=[str(tag) for tag in (item.get("tags") or [])],
-                tag_infos=[
-                    {"tag_name": str(tag_info.get("tag_name")), "resource_type": str(tag_info.get("resource_type"))}
-                    for tag_info in (item.get("tag_infos") or [])
-                    if isinstance(tag_info, dict)
-                ],
+                tags=KnowledgeService._extract_file_tag_infos(item),
+                tag_infos=KnowledgeService._extract_file_tag_infos(item),
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
                 file_encoding=str(item.get("file_encoding") or ""),
@@ -689,7 +685,8 @@ class KnowledgeService:
             file_id=file_id,
             file_name=file_info.get("file_name", ""),
         )
-        tags = self._extract_file_tags(search_item or {})
+        tags = self._extract_file_tag_infos(search_item or {})
+        tag_infos = self._extract_file_tag_infos(search_item or {})
         source = self.get_space_name_map().get(space_id, str(space_id))
         return KnowledgeFileDetail(
             id=file_id,
@@ -699,6 +696,7 @@ class KnowledgeService:
             source=source,
             updated_at=self._serialize_datetime(file_info.get("update_time")),
             tags=tags,
+            tag_infos=tag_infos,
             file_ext=self._get_file_ext(file_info.get("file_name", "")),
             file_size=self._extract_file_size_label(file_info, search_item),
             file_encoding=self._extract_file_encoding(file_info, search_item),
@@ -1192,7 +1190,8 @@ class KnowledgeService:
                     summary=item.get("abstract") or "",
                     source=space_name_map.get(space_id, str(space_id)),
                     updated_at=self._serialize_datetime(item.get("update_time")),
-                    tags=self._extract_file_tags(item),
+                    tags=self._extract_file_tag_infos(item),
+                    tag_infos=self._extract_file_tag_infos(item),
                     file_ext=self._get_file_ext(file_name),
                     file_size=self._extract_file_size_label(item),
                     file_encoding=self._extract_file_encoding(item),
@@ -1261,16 +1260,33 @@ class KnowledgeService:
         return names
 
     @staticmethod
-    def _extract_file_tags(item: dict[str, Any]) -> list[FileTag]:
-        tags = item.get("tags") or []
+    def _extract_file_tag_infos(item: dict[str, Any]) -> list[FileTag]:
         result: list[FileTag] = []
-        for tag in tags:
+        seen: set[tuple[str, str]] = set()
+
+        def append_tag(name: Any, resource_type: Any = "") -> None:
+            tag_name = str(name or "").strip()
+            if not tag_name:
+                return
+            tag_resource_type = str(resource_type or "")
+            key = (tag_name, tag_resource_type)
+            if key in seen:
+                return
+            seen.add(key)
+            result.append(FileTag(tag_name=tag_name, resource_type=tag_resource_type))
+
+        for tag in item.get("tag_infos") or []:
+            if isinstance(tag, dict):
+                append_tag(tag.get("tag_name") or tag.get("name"), tag.get("resource_type"))
+            elif isinstance(tag, FileTag):
+                append_tag(tag.tag_name, tag.resource_type)
+
+        for tag in item.get("tags") or []:
             if not isinstance(tag, dict):
+                append_tag(tag)
                 continue
             name = tag.get("tag_name") or tag.get("name")
-            if not name:
-                continue
-            result.append(FileTag(tag_name=str(name), resource_type=str(tag.get("resource_type") or "")))
+            append_tag(name, tag.get("resource_type"))
         return result
 
     @staticmethod

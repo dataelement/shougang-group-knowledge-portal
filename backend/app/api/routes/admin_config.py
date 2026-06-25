@@ -19,6 +19,7 @@ from app.schemas.admin_config_transfer import AdminConfigExportPayload, AdminCon
 from app.schemas.common import response_error, response_ok
 from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfigUpdate
 from app.schemas.portal_config import (
+    AgentConfig,
     AppsConfigUpdate,
     BannersConfigUpdate,
     DisplayConfig,
@@ -334,6 +335,46 @@ async def get_qa_model_options(
     if not isinstance(raw_servers, list):
         raw_servers = []
     return response_ok(service.build_qa_model_options(raw_servers))
+
+
+@router.get("/agent-config")
+async def get_agent_config(
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok(service.get_config().agent_config)
+
+
+@router.post("/agent-config")
+async def update_agent_config(
+    payload: AgentConfig,
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok(service.update_agent_config(payload).agent_config)
+
+
+@router.get("/agent-config/workflow-options")
+async def get_agent_workflow_options(
+    keyword: str = "",
+    cursor: str = "",
+    page_size: int = 50,
+    service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    params = {
+        "page_size": max(1, min(page_size, 100)),
+        "flow_type": 10,
+        "status": 2,
+        "permission_id": "use_app",
+    }
+    if keyword.strip():
+        params["name"] = keyword.strip()
+    if cursor.strip():
+        params["cursor"] = cursor.strip()
+    try:
+        response = await bisheng_client.get_json("/api/v1/workflow/list", params=params)
+    except Exception:
+        return response_error("Bisheng workflow 候选项加载失败，请检查数据源配置或稍后重试。", status_code=502)
+    return response_ok(service.build_agent_workflow_options(response))
 
 
 @router.get("/search")

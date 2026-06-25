@@ -333,7 +333,7 @@ function buildBannerBackground(imageUrl: string): string {
 }
 
 function getPrimaryTag(file: FileItem) {
-  return file.tag_infos.find((t) => t.tag_name !== '最新精选' && t.tag_name !== '典型案例')?.tag_name;
+  return file.tag_infos?.find((t) => t.tag_name !== '最新精选' && t.tag_name !== '典型案例')?.tag_name;
 }
 
 function getWelcomeMessage(welcomeMessage?: string) {
@@ -671,7 +671,7 @@ export default function HomePage() {
                     className={s.appShortcut}
                     onClick={(event) => {
                       event.stopPropagation();
-                      navigate(`/portal/qa?templateId=${encodeURIComponent(template.id)}`);
+                      navigate(`/apps?tab=qa&templateId=${encodeURIComponent(template.id)}`);
                     }}
                   >
                     <span className={s.appShortcutIcon}>
@@ -869,7 +869,7 @@ export default function HomePage() {
                   <div className={s.panelIcon}><Bot size={14} /></div>
                   <span className={s.panelTitle}>智能问答</span>
                 </div>
-                <Link to="/qa" className={s.panelMore}>
+                <Link to="/apps?tab=qa" className={s.panelMore}>
                   进入 <ChevronRight size={14} />
                 </Link>
               </div>
