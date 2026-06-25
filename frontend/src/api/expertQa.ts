@@ -759,6 +759,14 @@ export async function fetchExpertQuestionDetail(questionId: string): Promise<Api
   return req<ApiQuestion>(`${BASE}/questions/${encodeURIComponent(questionId)}`);
 }
 
+export async function handleCheckQuestion(text: string): Promise<void> {
+  await req<unknown>(`${BASE}/check_questions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ check_text: text }),
+  });
+}
+
 /** 创建问题（POST /questions） */
 export async function createExpertQuestion(
   payload: CreateQuestionPayload,
