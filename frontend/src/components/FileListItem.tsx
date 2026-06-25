@@ -9,7 +9,7 @@ import {
   FileText,
   FolderTree,
   Loader2,
-  MessageCircle,
+  // MessageCircle,
   Network,
   PencilLine,
   Share2,
@@ -162,7 +162,8 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
                     onAsk?.(file);
                   }}
                 >
-                  <MessageCircle size={19} />
+                    <img className={s.icon} src="/qa-floating-icon.png" alt="" aria-hidden="true" />
+                  {/* <MessageCircle size={19} /> */}
                 </button>
               ) : null}
             </div>

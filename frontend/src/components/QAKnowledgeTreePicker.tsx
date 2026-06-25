@@ -8,6 +8,7 @@ import {
   Folder,
   Loader2,
   Search,
+  X
 } from 'lucide-react';
 import type {
   FileItem,
@@ -45,6 +46,7 @@ export default function QAKnowledgeTreePicker({
   onLoadChildren,
   onSearchFiles,
   onTip,
+  onClose
 }: {
   spaces: KnowledgeSpace[];
   scope: QaKnowledgeScope;
@@ -53,6 +55,7 @@ export default function QAKnowledgeTreePicker({
   onLoadChildren: (spaceId: number, parentId?: number) => Promise<{ data: QaKnowledgeTreeNode[] }>;
   onSearchFiles: (q: string, page?: number, pageSize?: number) => Promise<{ data: FileItem[]; total: number }>;
   onTip?: (message: string) => void;
+  onClose?: () => void;
 }) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
   const [childrenByKey, setChildrenByKey] = useState<Record<string, QaKnowledgeTreeNode[]>>({});
@@ -290,13 +293,33 @@ export default function QAKnowledgeTreePicker({
 
   return (
     <div className={s.panel}>
-      <div className={s.header}>
-        <div>
-          <strong>知识库范围</strong>
-          <span>整库限选 1 个，文件最多 20 个</span>
-        </div>
-        <span>{scope.mode === 'knowledge_space' ? '整库' : scope.mode === 'files' ? `${getScopeFileCount(scope)} 文件` : '未选择'}</span>
+    <div className={s.header}>
+      <div>
+        <strong>知识库范围</strong>
+        <span>整库限选 1 个，文件最多 20 个</span>
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span>
+          {scope.mode === 'knowledge_space' ? '整库' : scope.mode === 'files' ? `${getScopeFileCount(scope)} 文件` : '未选择'}
+        </span>
+        <button
+          type="button"
+          onClick={() => onClose?.()}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '2px 0',
+            display: 'flex',
+            alignItems: 'center',
+            color: '#999',
+          }}
+          title="关闭"
+        >
+          <X size={15} />
+        </button>
+      </div>
+    </div>
 
       <label className={s.searchBox}>
         <Search size={15} />

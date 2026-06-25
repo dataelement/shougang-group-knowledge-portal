@@ -879,6 +879,7 @@ export default function QAPage() {
                         onLoadChildren={fetchQaKnowledgeTreeChildren}
                         onSearchFiles={searchQaKnowledgeFiles}
                         onTip={setComposerTip}
+                        onClose={() => setKnowledgePickerOpen(false)} 
                       />
                     </div>
                   ) : null}
