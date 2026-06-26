@@ -88,6 +88,7 @@ test('resolvePreviewModalFrameUrl uses embedded detail page instead of direct as
       source: '团队知识库',
       date: '2026-05-31T12:00:00',
       tags: [],
+      tag_infos: [],
       ext: 'pdf',
       sizeLabel: '',
       fileEncoding: '',

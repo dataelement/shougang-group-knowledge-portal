@@ -38,6 +38,7 @@ const baseFile: FileItem = {
   source: '财务',
   date: '2026-05-15T11:30:00',
   tags: ['PDF'],
+  tag_infos: [],
   ext: 'pdf',
   sizeLabel: '575382',
   fileEncoding: 'SGGF-STD-IT-20260500000001',
@@ -46,6 +47,7 @@ const baseFile: FileItem = {
 test('does not render document encoding or file size in the list card metadata', async () => {
   ensureCompiledCssStub('src/components/FileListItem.module.css');
   ensureCompiledCssStub('src/components/TagPill.module.css');
+  ensureCompiledCssStub('src/components/ui/Tooltip.module.css');
 
   const { default: FileListItem } = await import('../src/components/FileListItem');
 

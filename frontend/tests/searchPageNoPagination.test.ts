@@ -54,7 +54,7 @@ test('search page derives filter options from current search results', () => {
   assert.match(activeSource, /spaceById\.get\(file\.spaceId\)\?\.spaceLevel/);
   assert.match(activeSource, /addSpaceId\(file\.spaceId\)/);
   assert.match(activeSource, /normalizeFileExt\(file\.ext\)/);
-  assert.match(activeSource, /for \(const item of file\.tags\)/);
+  assert.match(activeSource, /for \(const item of file\.tag_infos\)/);
   assert.match(activeSource, /addStringOption\(levelSet, spaceLevel\)/);
   assert.match(activeSource, /addSpaceId\(selectedSpaceId\)/);
   assert.match(activeSource, /addStringOption\(extSet, normalizeFileExt\(fileExt\)\)/);

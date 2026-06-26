@@ -11,6 +11,16 @@ const baseFile: FileItem = {
   source: '团队知识库',
   date: '2024-12-08T09:30:00',
   tags: ['最新精选', '数据库', 'PostgreSQL', '迁移', '运维'],
+  tag_infos: [
+    // META 标签会被过滤，不进入任何分组。
+    { tag_name: '最新精选', resource_type: 'system_tag' },
+    // 系统标签：3 个 -> 可见 2，隐藏 1。
+    { tag_name: '数据库', resource_type: 'system_tag' },
+    { tag_name: 'PostgreSQL', resource_type: 'system_tag' },
+    { tag_name: '迁移', resource_type: 'system_tag' },
+    // AI 标签：1 个 -> 可见 1，隐藏 0。
+    { tag_name: '运维', resource_type: 'ai_auto_tag' },
+  ],
   ext: 'pdf',
   sizeLabel: '949.33KB',
   fileEncoding: 'GF-ZD-SC-202604-01201',
@@ -25,8 +35,21 @@ test('builds rich list card fields from existing file data', () => {
   assert.equal(view.sourcePath, '团队知识库');
   assert.equal(view.summaryText, baseFile.summary);
   assert.equal(Object.hasOwn(view, 'snippetText'), false);
-  assert.deepEqual(view.visibleTags, ['数据库', 'PostgreSQL', '迁移']);
-  assert.equal(view.hiddenTagCount, 1);
+  // META 标签 '最新精选' 被过滤；按 resource_type 分组，每组最多可见 2 个。
+  assert.deepEqual(view.tagGroups, [
+    {
+      label: '系统标签',
+      tags: ['数据库', 'PostgreSQL'],
+      hiddenCount: 1,
+      hiddenTags: ['迁移'],
+    },
+    {
+      label: 'AI标签',
+      tags: ['运维'],
+      hiddenCount: 0,
+      hiddenTags: [],
+    },
+  ]);
   assert.deepEqual(view.actions, []);
 });
 
@@ -48,13 +71,20 @@ test('sourcePath uses the full document source path when supplied', () => {
 });
 
 test('does not fabricate unsupported confidence or actions', () => {
-  const view = buildFileListItemView({ ...baseFile, summary: '', ext: '', tags: ['典型案例'] });
+  const view = buildFileListItemView({
+    ...baseFile,
+    summary: '',
+    ext: '',
+    tags: ['典型案例'],
+    tag_infos: [{ tag_name: '典型案例', resource_type: 'system_tag' }],
+  });
 
   assert.equal(view.documentTypeLabel, '文档');
   assert.equal(view.summaryText, '');
   assert.equal(Object.hasOwn(view, 'snippetText'), false);
   assert.equal(view.confidenceLabel, '');
-  assert.deepEqual(view.visibleTags, []);
+  // 仅含 META 标签 '典型案例'，被过滤后无任何分组。
+  assert.deepEqual(view.tagGroups, []);
   assert.deepEqual(view.actions, []);
 });
 

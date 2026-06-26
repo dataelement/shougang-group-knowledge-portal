@@ -15,6 +15,7 @@ const baseFile: FileItem = {
   source: '团队知识库',
   date: '2024-12-08T09:30:00',
   tags: [],
+  tag_infos: [],
   ext: 'pdf',
   sizeLabel: '',
   fileEncoding: '',
