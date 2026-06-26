@@ -6,7 +6,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.schemas.portal_config import SpacesConfigUpdate
+from app.schemas.portal_config import AgentConfig, SpacesConfigUpdate
 from app.services.portal_config_service import PortalConfigService
 
 
@@ -1806,6 +1806,126 @@ def test_chat_proxy_maps_chat_list_upstream_english_error_to_chinese(tmp_path: P
         client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
         try:
             response = client.get("/api/v1/workstation/chat/list?page=1&limit=20")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "登录状态已失效，请重新登录"
+
+
+def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path):
+    class WorkflowConversationBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/workstation/app/conversations":
+                self.calls.append(params)
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "list": [
+                            {
+                                "chat_id": f"chat-{params['flow_id']}",
+                                "name": f"{params['flow_id']} 历史会话",
+                                "flow_id": params["flow_id"],
+                                "flow_name": f"{params['flow_id']} 工作流",
+                                "flow_type": 10,
+                                "create_time": "2026-06-25T09:00:00",
+                                "update_time": "2026-06-25T10:00:00",
+                                "latest_message": {"message": "workflow 已运行"},
+                            }
+                        ],
+                        "total": 1,
+                    },
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_agent_config(
+        AgentConfig(
+            categories=[{"id": "general", "name": "通用"}],
+            agents=[
+                {
+                    "id": "agent-a",
+                    "workflow_id": "wf-a",
+                    "name": "智能体 A",
+                    "category_id": "general",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                },
+                {
+                    "id": "agent-disabled",
+                    "workflow_id": "wf-disabled",
+                    "name": "停用智能体",
+                    "category_id": "general",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": False,
+                },
+            ],
+        )
+    )
+    user_bisheng = WorkflowConversationBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/workflow/conversations?page=1&limit=20")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert user_bisheng.calls == [{"flow_id": "wf-a", "page": 1, "limit": 20}]
+    body = response.json()["data"]
+    assert body[0]["chat_id"] == "chat-wf-a"
+    assert body[0]["agent_id"] == "agent-a"
+    assert body[0]["workflow_id"] == "wf-a"
+
+
+def test_chat_proxy_maps_workflow_conversation_upstream_error_to_chinese(tmp_path: Path):
+    class WorkflowConversationFailureBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/workstation/app/conversations":
+                return {
+                    "status_code": 401,
+                    "status_message": "Invalid token",
+                    "data": {},
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_agent_config(
+        AgentConfig(
+            categories=[{"id": "general", "name": "通用"}],
+            agents=[
+                {
+                    "id": "agent-a",
+                    "workflow_id": "wf-a",
+                    "name": "智能体 A",
+                    "category_id": "general",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                }
+            ],
+        )
+    )
+    user_bisheng = WorkflowConversationFailureBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/workflow/conversations?page=1&limit=20")
         finally:
             if previous_auth is not None:
                 client.app.state.portal_auth_service = previous_auth

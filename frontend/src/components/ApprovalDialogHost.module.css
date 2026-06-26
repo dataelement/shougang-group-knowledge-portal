@@ -27,3 +27,48 @@
   border: 0;
   background: transparent;
 }
+
+.statusPanel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: min(360px, calc(100vw - 48px));
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
+  color: #1f2937;
+  padding: 18px 20px;
+  text-align: center;
+}
+
+.statusTitle {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.statusText {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.statusButton {
+  margin-top: 14px;
+  height: 32px;
+  min-width: 72px;
+  border: 0;
+  border-radius: 6px;
+  background: #1f2937;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.statusButton:hover {
+  background: #111827;
+}

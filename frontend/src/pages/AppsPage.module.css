@@ -129,14 +129,13 @@
 
 .historyItem {
   width: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 8px;
   border-radius: 5px;
   font-size: 12px;
   color: #7080a0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   line-height: 1.4;
   text-align: left;
   transition: color 0.15s, background 0.15s;
@@ -153,6 +152,34 @@
   border-left: 2px solid #2d6ef5;
   padding-left: 6px;
   font-weight: 500;
+}
+
+.historyIcon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.historyIconQa {
+  color: #2563eb;
+  background: #eaf1ff;
+}
+
+.historyIconAgent {
+  color: #0f766e;
+  background: #d8fbf2;
+}
+
+.historyTitle {
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mainPanel {

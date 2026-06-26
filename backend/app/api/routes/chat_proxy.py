@@ -91,6 +91,29 @@ async def list_conversations(
         await bisheng_client.aclose()
 
 
+@router.get("/workflow/conversations")
+async def list_workflow_conversations(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = ChatProxyService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        return response_ok(await service.list_agent_workflow_conversations(page=page, limit=limit))
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    finally:
+        await bisheng_client.aclose()
+
+
 @router.get("/messages/{conversation_id}")
 async def get_conversation_messages(
     conversation_id: str,
