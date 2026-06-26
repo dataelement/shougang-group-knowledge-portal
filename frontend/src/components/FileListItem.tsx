@@ -24,6 +24,8 @@ import tooltipS from './ui/Tooltip.module.css';
 interface Props {
   file: FileItem;
   onFavorite?: (file: FileItem) => void;
+  favorited?: boolean;
+  favoritePending?: boolean;
   onDownload?: (file: FileItem) => void | Promise<void>;
   onShare?: (file: FileItem) => void;
   onAsk?: (file: FileItem) => void;
@@ -31,7 +33,7 @@ interface Props {
   visibleTagCount?: number;
 }
 
-export default function FileListItem({ file, onFavorite, onDownload, onShare, onAsk, onOpen, visibleTagCount = 2 }: Props) {
+export default function FileListItem({ file, onFavorite, favorited, favoritePending, onDownload, onShare, onAsk, onOpen, visibleTagCount = 2 }: Props) {
   const view = buildFileListItemView(file, {
     visibleTagCount,
     canFavorite: Boolean(onFavorite),
@@ -113,15 +115,17 @@ export default function FileListItem({ file, onFavorite, onDownload, onShare, on
               {view.actions.includes('favorite') ? (
                 <button
                   type="button"
-                  className={`${s.actionButton} ${s.favoriteButton}`}
-                  title="收藏文档"
-                  aria-label="收藏文档"
+                  className={`${s.actionButton} ${s.favoriteButton}${favorited ? ` ${s.favoriteButtonActive}` : ''}`}
+                  title={favorited ? '取消收藏' : '收藏文档'}
+                  aria-label={favorited ? '已收藏' : '收藏文档'}
+                  aria-pressed={favorited}
+                  disabled={favoritePending}
                   onClick={(event) => {
                     event.stopPropagation();
                     onFavorite?.(file);
                   }}
                 >
-                  <Star size={19} />
+                  <Star size={19} fill={favorited ? 'currentColor' : 'none'} />
                 </button>
               ) : null}
               {view.actions.includes('download') ? (

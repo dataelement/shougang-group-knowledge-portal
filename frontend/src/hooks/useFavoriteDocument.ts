@@ -1,94 +1,37 @@
-import { useCallback, useMemo, useState } from 'react';
-import {
-  ApiRequestError,
-  favoriteDocument,
-  fetchPersonalKnowledgeSpaces,
-  type FileItem,
-  type PersonalKnowledgeSpace,
-} from '../api/content';
+import { useCallback, useRef, useState } from 'react';
+import { favoriteDocument, removeFavorite, fetchFavoriteStatus, favoriteKey, type FileItem } from '../api/content';
+import { mergeFavoriteStatuses, withFavoriteStatus, readFavoriteStatus, type FavoriteStatusMap } from '../utils/favoriteStatus';
 
 export function useFavoriteDocument() {
-  const [open, setOpen] = useState(false);
-  const [file, setFile] = useState<FileItem | null>(null);
-  const [spaces, setSpaces] = useState<PersonalKnowledgeSpace[]>([]);
-  const [selectedSpaceId, setSelectedSpaceId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [statusMap, setStatusMap] = useState<FavoriteStatusMap>(new Map());
+  const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
+  const mapRef = useRef(statusMap);
+  mapRef.current = statusMap;
 
-  const loadPersonalSpaces = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadStatuses = useCallback(async (files: Array<Pick<FileItem, 'id' | 'spaceId'>>) => {
+    if (!files.length) return;
+    const incoming = await fetchFavoriteStatus(files.map((f) => ({ spaceId: f.spaceId, fileId: f.id })));
+    setStatusMap((prev) => mergeFavoriteStatuses(prev, incoming));
+  }, []);
+
+  const isFavorited = useCallback((spaceId: number, fileId: number) => readFavoriteStatus(mapRef.current, spaceId, fileId), []);
+  const pending = useCallback((spaceId: number, fileId: number) => pendingKeys.has(favoriteKey(spaceId, fileId)), [pendingKeys]);
+
+  const toggleFavorite = useCallback(async (file: Pick<FileItem, 'id' | 'spaceId'>) => {
+    const key = favoriteKey(file.spaceId, file.id);
+    const wasFav = readFavoriteStatus(mapRef.current, file.spaceId, file.id);
+    setPendingKeys((p) => new Set(p).add(key));
+    setStatusMap((prev) => withFavoriteStatus(prev, file.spaceId, file.id, !wasFav)); // 乐观
     try {
-      const result = await fetchPersonalKnowledgeSpaces();
-      setSpaces(result.data);
-      setSelectedSpaceId(result.data[0]?.id ?? null);
+      if (wasFav) await removeFavorite({ sourceSpaceId: file.spaceId, sourceFileId: file.id });
+      else await favoriteDocument({ sourceSpaceId: file.spaceId, sourceFileId: file.id });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '个人知识库加载失败');
-      setSpaces([]);
-      setSelectedSpaceId(null);
+      setStatusMap((prev) => withFavoriteStatus(prev, file.spaceId, file.id, wasFav)); // 回滚
+      throw err;
     } finally {
-      setLoading(false);
+      setPendingKeys((p) => { const n = new Set(p); n.delete(key); return n; });
     }
   }, []);
 
-  const openFavorite = useCallback((nextFile: FileItem) => {
-    setFile(nextFile);
-    setOpen(true);
-    setSuccess('');
-    setError('');
-    void loadPersonalSpaces();
-  }, [loadPersonalSpaces]);
-
-  const closeFavorite = useCallback(() => {
-    if (saving) return;
-    setOpen(false);
-    setFile(null);
-    setSuccess('');
-    setError('');
-  }, [saving]);
-
-  const confirmFavorite = useCallback(async () => {
-    if (!file || !selectedSpaceId || saving) return;
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      await favoriteDocument({
-        sourceSpaceId: file.spaceId,
-        sourceFileId: file.id,
-      });
-      setSuccess('收藏成功');
-      setOpen(false);
-      setFile(null);
-    } catch (err) {
-      if (err instanceof ApiRequestError && err.status === 409) {
-        setError('该文档已收藏到所选个人知识库');
-      } else {
-        setError(err instanceof Error ? err.message : '收藏失败');
-      }
-    } finally {
-      setSaving(false);
-    }
-  }, [file, saving, selectedSpaceId]);
-
-  const modalProps = useMemo(() => ({
-    open,
-    file,
-    spaces,
-    selectedSpaceId,
-    loading,
-    saving,
-    error,
-    success,
-    onSelectSpace: setSelectedSpaceId,
-    onClose: closeFavorite,
-    onConfirm: confirmFavorite,
-  }), [closeFavorite, confirmFavorite, error, file, loading, open, saving, selectedSpaceId, spaces, success]);
-
-  return {
-    openFavorite,
-    favoriteModalProps: modalProps,
-  };
+  return { loadStatuses, isFavorited, toggleFavorite, pending };
 }
