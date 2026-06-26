@@ -105,6 +105,7 @@ class PersonalKnowledgeSpaceItem(BaseModel):
     description: str = ""
     file_count: int = 0
     updated_at: str = ""
+    is_favorite: bool = False
 
 
 class PersonalKnowledgeSpaceListData(BaseModel):
@@ -115,13 +116,59 @@ class PersonalKnowledgeSpaceListData(BaseModel):
 class FavoriteDocumentRequest(BaseModel):
     source_space_id: int = Field(..., gt=0)
     source_file_id: int = Field(..., gt=0)
-    target_space_id: int = Field(..., gt=0)
 
 
 class FavoriteDocumentData(BaseModel):
-    file_id: int
-    space_id: int
+    favorite_file_id: int = 0
+    space_id: int = 0
+    source_space_id: int = 0
+    source_file_id: int = 0
     title: str = ""
+
+
+class FavoriteRemoveRequest(BaseModel):
+    source_space_id: int = Field(..., gt=0)
+    source_file_id: int = Field(..., gt=0)
+
+
+class FavoriteRemoveData(BaseModel):
+    removed: bool = False
+
+
+class FavoriteStatusItem(BaseModel):
+    space_id: int = Field(..., gt=0)
+    file_id: int = Field(..., gt=0)
+
+
+class FavoriteStatusRequest(BaseModel):
+    items: list[FavoriteStatusItem] = Field(default_factory=list)
+
+
+class FavoriteStatusResultItem(BaseModel):
+    space_id: int
+    file_id: int
+    favorited: bool = False
+
+
+class FavoriteStatusData(BaseModel):
+    data: list[FavoriteStatusResultItem] = Field(default_factory=list)
+
+
+class FavoriteFileItem(BaseModel):
+    favorite_file_id: int
+    source_space_id: int
+    source_file_id: int
+    title: str = ""
+    file_name: str = ""
+    status: Literal["valid", "invalid"] = "valid"
+    updated_at: str = ""
+
+
+class FavoriteFilesData(BaseModel):
+    data: list[FavoriteFileItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 20
 
 
 ShareDocumentType = Literal["link", "invite_code"]
