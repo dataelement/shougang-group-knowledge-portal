@@ -29,6 +29,7 @@ const FRAME_READY_TIMEOUT_MS = 8000;
 export default function ApprovalDialogHost() {
   const { user } = useAuth();
   const { config } = usePortalConfig();
+  const userKey = user ? `${user.account}:${user.externalId || ''}:${user.loginAt || ''}` : '';
   const [runtimeAssetBaseUrl, setRuntimeAssetBaseUrl] = useState('');
   const [open, setOpen] = useState(false);
   const [frameReady, setFrameReady] = useState(false);
@@ -138,6 +139,12 @@ export default function ApprovalDialogHost() {
     setFrameReady(false);
   }, [embedUrl]);
 
+  useEffect(() => {
+    setOpen(false);
+    setFrameReady(false);
+    finishPendingAction();
+  }, [finishPendingAction, userKey]);
+
   useEffect(() => clearReadyTimeout, [clearReadyTimeout]);
 
   // Logged-out users have no trigger and no BiSheng session; render nothing.
@@ -147,6 +154,7 @@ export default function ApprovalDialogHost() {
   return (
     <div className={open ? s.overlayOpen : s.overlayHidden} aria-hidden={!open}>
       <iframe
+        key={userKey}
         ref={frameRef}
         className={s.frame}
         src={embedUrl}
