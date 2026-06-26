@@ -14,6 +14,8 @@ const portalWorkflowChatSource = readFileSync('../../bisheng/src/frontend/platfo
 const portalWorkflowChatClientSource = readFileSync('../../bisheng/src/frontend/client/src/pages/portalWorkflowChat/PortalWorkflowChatPage.tsx', 'utf8');
 const standaloneChatPageSource = readFileSync('../../bisheng/src/frontend/client/src/pages/standaloneChat/StandaloneChatPage.tsx', 'utf8');
 const standaloneSidebarHookSource = readFileSync('../../bisheng/src/frontend/client/src/pages/standaloneChat/hooks/useStandaloneSidebar.ts', 'utf8');
+const appChatSource = readFileSync('../../bisheng/src/frontend/client/src/pages/appChat/index.tsx', 'utf8');
+const appChatViewSource = readFileSync('../../bisheng/src/frontend/client/src/pages/appChat/ChatView.tsx', 'utf8');
 
 const portalLocation = {
   protocol: 'http:',
@@ -88,6 +90,7 @@ test('bisheng portal workflow chat route is independent from original chat route
 
 test('portal workflow chat embed hides Bisheng sidebar and starts a fresh workflow session', () => {
   assert.match(standaloneChatPageSource, /hideSidebar\?: boolean/);
+  assert.match(standaloneChatPageSource, /hideShare\?: boolean/);
   assert.match(standaloneChatPageSource, /forceNewChatOnLoad\?: boolean/);
   assert.match(standaloneChatPageSource, /initialChatId\?: string/);
   assert.match(standaloneChatPageSource, /const showSidebarControls = !hideSidebar/);
@@ -105,8 +108,15 @@ test('portal workflow chat embed hides Bisheng sidebar and starts a fresh workfl
     /if \(forceNewChatOnLoad\) \{[\s\S]*createNewChat\(\);[\s\S]*setHistoryLoaded\(true\);[\s\S]*return;/,
   );
   assert.match(portalWorkflowChatClientSource, /searchParams\.get\('chat_id'\)/);
+  assert.match(portalWorkflowChatClientSource, /hideShare/);
   assert.match(portalWorkflowChatClientSource, /forceNewChatOnLoad=\{!chatId\}/);
   assert.match(portalWorkflowChatClientSource, /initialChatId=\{chatId\}/);
+  assert.match(standaloneChatPageSource, /hideShare=\{hideShare\}/);
+  assert.match(appChatSource, /hideShare = false/);
+  assert.match(appChatSource, /const hideShareForMobile = hideShare \|\| flow\?\.can_share !== true/);
+  assert.match(appChatSource, /hideShare=\{hideShare\}/);
+  assert.match(appChatViewSource, /hideShare: forceHideShare = false/);
+  assert.match(appChatViewSource, /const hideShare = forceHideShare \|\| data\?\.can_share !== true/);
   assert.match(appsPageSource, /agentLaunchKey/);
   assert.match(appsPageSource, /setAgentLaunchKey\(\(current\) => current \+ 1\)/);
   assert.match(appsPageSource, /key=\{`\$\{selectedAgent\.id\}-\$\{agentLaunchKey\}`\}/);

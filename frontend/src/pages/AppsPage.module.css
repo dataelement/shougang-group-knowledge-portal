@@ -89,6 +89,57 @@
   background: #eef2fc;
 }
 
+.searchInputWrap {
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid #d8e0f0;
+  border-radius: 6px;
+  color: #5a6a88;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(26, 63, 168, 0.04);
+}
+
+.searchInputWrap:focus-within {
+  border-color: #2d6ef5;
+  box-shadow: 0 0 0 2px rgba(45, 110, 245, 0.1);
+}
+
+.searchInput {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #1d2b4f;
+  font-size: 12px;
+}
+
+.searchInput::placeholder {
+  color: #9aaac0;
+}
+
+.searchClearButton {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: #7c8ca8;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.searchClearButton:hover {
+  color: #1a3fa8;
+  background: #eef2fc;
+}
+
 .sidebarSection {
   padding: 14px 10px 4px;
   font-size: 10px;
@@ -125,6 +176,13 @@
   color: #b0bcd0;
   padding: 3px 6px;
   letter-spacing: 0.04em;
+}
+
+.historyEmpty {
+  padding: 14px 6px;
+  color: #8b9ab5;
+  font-size: 12px;
+  text-align: center;
 }
 
 .historyItem {

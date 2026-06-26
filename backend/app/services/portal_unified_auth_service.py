@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 GROUP_OAUTH_BASE_URL = "https://amdev.shougang.com.cn/idp/oauth2"
 STOCK_OAUTH_BASE_URL = "https://10.68.27.111/idp/oauth2"
-GROUP_GLO_URL = "https://amdev.shougang.com.cn/idp/profile/OAUTH2/Redirect/GLO"
-STOCK_GLO_URL = "https://10.68.27.111/idp/profile/OAUTH2/Redirect/GLO"
 STATE_COOKIE_NAME = "sg_unified_auth_state"
 LOGIN_SYNC_PATH = "/api/v1/internal/sso/login-sync"
 BISHENG_SSO_USER_NOT_FOUND_CODE = 19319
@@ -75,10 +73,6 @@ class UnifiedAuthInternalConfig:
     http_timeout_seconds: float
     login_sync_hmac_secret: str
     login_sync_signature_header: str
-    glo_url: str
-    glo_entity_id: str
-    glo_redirect_to_url: str
-    glo_redirect_to_login: bool
 
 
 @dataclass(frozen=True)
@@ -86,12 +80,6 @@ class UnifiedAuthStart:
     authorize_url: str
     state: str
     max_age: int
-    trace_id: str
-
-
-@dataclass(frozen=True)
-class UnifiedAuthLogoutStart:
-    logout_url: str
     trace_id: str
 
 
@@ -366,50 +354,6 @@ class PortalUnifiedAuthService:
             trace_id=trace_id,
         )
 
-    def build_logout_start(self) -> UnifiedAuthLogoutStart:
-        config = self._resolve_config()
-        trace_id = self._nonce_factory(16)
-        required = {
-            "glo_url": config.glo_url,
-            "glo_entity_id": config.glo_entity_id,
-            "glo_redirect_to_url": config.glo_redirect_to_url,
-        }
-        if any(not value for value in required.values()):
-            log_unified_auth_trace(
-                trace_id,
-                "logout",
-                "glo_config_missing",
-                {
-                    "provider": config.provider,
-                    "glo_url": config.glo_url,
-                    "glo_entity_id": config.glo_entity_id,
-                    "glo_redirect_to_url": config.glo_redirect_to_url,
-                    "glo_redirect_to_login": config.glo_redirect_to_login,
-                },
-            )
-            raise UnifiedAuthUnavailable("missing_glo_config")
-
-        params = {
-            "redirctToUrl": config.glo_redirect_to_url,
-            "redirectToLogin": "true" if config.glo_redirect_to_login else "false",
-            "entityId": config.glo_entity_id,
-        }
-        separator = "&" if "?" in config.glo_url else "?"
-        logout_url = f"{config.glo_url}{separator}{urlencode(params)}"
-        log_unified_auth_trace(
-            trace_id,
-            "logout",
-            "glo_redirect_built",
-            {
-                "provider": config.provider,
-                "label": config.label,
-                "glo_url": config.glo_url,
-                "params": params,
-                "logout_url": logout_url,
-            },
-        )
-        return UnifiedAuthLogoutStart(logout_url=logout_url, trace_id=trace_id)
-
     async def complete_callback(self, *, code: str | None, state: str | None, cookie_state: str | None) -> UnifiedAuthResult:
         if not code or not state:
             log_unified_auth_failure(
@@ -627,10 +571,6 @@ class PortalUnifiedAuthService:
             http_timeout_seconds=self._settings.unified_auth_http_timeout_seconds,
             login_sync_hmac_secret=login_sync_secret,
             login_sync_signature_header=login_sync_header,
-            glo_url=self._settings.unified_auth_glo_url,
-            glo_entity_id=self._settings.unified_auth_glo_entity_id,
-            glo_redirect_to_url=self._settings.unified_auth_glo_redirect_to_url,
-            glo_redirect_to_login=self._settings.unified_auth_glo_redirect_to_login,
         )
 
     def _resolve_config(self) -> UnifiedAuthInternalConfig:
@@ -647,7 +587,6 @@ class PortalUnifiedAuthService:
         client_secret = self._secret_value(runtime_config.client_secret)
         state_secret = self._secret_value(runtime_config.state_secret)
         login_sync_hmac_secret = self._secret_value(runtime_config.login_sync_hmac_secret)
-        glo_url = runtime_config.glo_url.strip() or self._default_glo_url(provider)
         required = {
             "client_id": runtime_config.client_id.strip(),
             "client_secret": client_secret,
@@ -676,10 +615,6 @@ class PortalUnifiedAuthService:
             login_sync_hmac_secret=login_sync_hmac_secret,
             login_sync_signature_header=(runtime_config.login_sync_signature_header or "X-Signature").strip()
             or "X-Signature",
-            glo_url=glo_url,
-            glo_entity_id=runtime_config.glo_entity_id.strip(),
-            glo_redirect_to_url=runtime_config.glo_redirect_to_url.strip(),
-            glo_redirect_to_login=bool(runtime_config.glo_redirect_to_login),
         )
 
     def _resolve_endpoints(self, provider: str, runtime_config: UnifiedAuthRuntimeConfig) -> UnifiedAuthEndpoints:
@@ -708,16 +643,6 @@ class PortalUnifiedAuthService:
             token_url=f"{base}/getToken" if base else "",
             userinfo_url=f"{base}/getUserInfo" if base else "",
         )
-
-    @staticmethod
-    def _default_glo_url(provider: str) -> str:
-        if provider == "group":
-            return GROUP_GLO_URL
-        if provider == "stock":
-            return STOCK_GLO_URL
-        if provider == "custom":
-            return ""
-        raise UnifiedAuthUnavailable("invalid_provider")
 
     @staticmethod
     def _normalize_provider(provider: str | None) -> str:

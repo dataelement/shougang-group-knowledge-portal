@@ -233,10 +233,6 @@ interface UnifiedAuthDraft {
   http_timeout_seconds: string;
   login_sync_hmac_secret: string;
   login_sync_signature_header: string;
-  glo_url: string;
-  glo_entity_id: string;
-  glo_redirect_to_url: string;
-  glo_redirect_to_login: boolean;
 }
 
 interface IntegrationsDraft {
@@ -2706,16 +2702,6 @@ function UnifiedAuthConfigTable({
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
           </tr>
           <tr>
-            <td>GLO 退出</td>
-            <td>
-              <div className={s.valueStack}>
-                <span className={s.valueTitle}>{config?.glo_entity_id ? `entityId ${config.glo_entity_id}` : '未配置 entityId'}</span>
-                <span className={s.valueMeta}>redirctToUrl：{config?.glo_redirect_to_url || '未配置'}</span>
-              </div>
-            </td>
-            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
-          </tr>
-          <tr>
             <td>getToken 参数位置</td>
             <td><div className={s.valueStack}><span className={s.valueTitle}>{config?.token_param_style === 'form' ? 'form body' : 'URL query'}</span></div></td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
@@ -2838,26 +2824,6 @@ function UnifiedAuthEditorDialog({
             <label className={s.formField}>
               <span className={s.fieldLabel}>签名请求头</span>
               <input className={s.formInput} value={draft.login_sync_signature_header} onChange={(event) => onChange({ login_sync_signature_header: event.target.value })} placeholder="X-Signature" />
-            </label>
-            <label className={`${s.formField} ${s.formFieldWide}`}>
-              <span className={s.fieldLabel}>glo_url</span>
-              <input className={s.formInput} value={draft.glo_url} onChange={(event) => onChange({ glo_url: event.target.value })} placeholder="留空使用集团/股份默认 GLO 地址；自定义端点时填写完整 URL" />
-            </label>
-            <label className={s.formField}>
-              <span className={s.fieldLabel}>GLO entityId</span>
-              <input className={s.formInput} value={draft.glo_entity_id} onChange={(event) => onChange({ glo_entity_id: event.target.value })} placeholder="统一认证平台分配的 entityId" />
-            </label>
-            <label className={s.formField}>
-              <span className={s.fieldLabel}>redirectToLogin</span>
-              <select className={s.formInput} value={draft.glo_redirect_to_login ? 'true' : 'false'} onChange={(event) => onChange({ glo_redirect_to_login: event.target.value === 'true' })}>
-                <option value="true">true</option>
-                <option value="false">false</option>
-              </select>
-            </label>
-            <label className={`${s.formField} ${s.formFieldWide}`}>
-              <span className={s.fieldLabel}>redirctToUrl（门户本地退出回调）</span>
-              <input className={s.formInput} value={draft.glo_redirect_to_url} onChange={(event) => onChange({ glo_redirect_to_url: event.target.value })} placeholder="例如：https://portal.example.com/api/v1/auth/unified/logout/callback" />
-              <span className={s.fieldHint}>这里对应统一认证文档参数 redirctToUrl，参数名保留原文拼写。</span>
             </label>
           </div>
         </div>
@@ -5320,10 +5286,6 @@ function createUnifiedAuthDraft(current?: UnifiedAuthRuntimeConfig): UnifiedAuth
     http_timeout_seconds: String(current?.http_timeout_seconds ?? 10),
     login_sync_hmac_secret: '',
     login_sync_signature_header: current?.login_sync_signature_header || 'X-Signature',
-    glo_url: current?.glo_url ?? '',
-    glo_entity_id: current?.glo_entity_id ?? '',
-    glo_redirect_to_url: current?.glo_redirect_to_url ?? '',
-    glo_redirect_to_login: current?.glo_redirect_to_login ?? true,
   };
 }
 
@@ -5433,9 +5395,6 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
   const authorize_url = draft.authorize_url.trim();
   const token_url = draft.token_url.trim();
   const userinfo_url = draft.userinfo_url.trim();
-  const glo_url = draft.glo_url.trim();
-  const glo_entity_id = draft.glo_entity_id.trim();
-  const glo_redirect_to_url = draft.glo_redirect_to_url.trim();
   const login_sync_signature_header = draft.login_sync_signature_header.trim() || 'X-Signature';
 
   if (draft.enabled && !client_id) return { error: '启用统一认证前需要填写 client_id' };
@@ -5446,8 +5405,6 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
     ['authorize_url', authorize_url],
     ['token_url', token_url],
     ['userinfo_url', userinfo_url],
-    ['glo_url', glo_url],
-    ['redirctToUrl', glo_redirect_to_url],
   ] as const) {
     if (value && !/^https?:\/\//i.test(value)) {
       return { error: `${label} 必须以 http:// 或 https:// 开头` };
@@ -5484,10 +5441,6 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
       http_timeout_seconds,
       login_sync_hmac_secret: draft.login_sync_hmac_secret.trim(),
       login_sync_signature_header,
-      glo_url,
-      glo_entity_id,
-      glo_redirect_to_url,
-      glo_redirect_to_login: draft.glo_redirect_to_login,
     },
   };
 }

@@ -168,6 +168,23 @@ test('apps sidebar merges qa and workflow history records with source icons', ()
   assert.match(appsPageStyles, /\.historyIconQa/);
 });
 
+test('apps sidebar search filters loaded qa and workflow records by visible title only', () => {
+  assert.match(appsPageSource, /searchOpen/);
+  assert.match(appsPageSource, /searchQuery/);
+  assert.match(appsPageSource, /normalizedSearchQuery/);
+  assert.match(appsPageSource, /const visibleRecords = useMemo/);
+  assert.match(appsPageSource, /record\.title\.toLowerCase\(\)\.includes\(normalizedSearchQuery\)/);
+  assert.doesNotMatch(appsPageSource, /record\.latestMessage/);
+  assert.doesNotMatch(appsPageSource, /getSessionLatestMessage/);
+  assert.doesNotMatch(appsPageSource, /latestMessage: conversation\.latestMessage/);
+  assert.match(appsPageSource, /setSearchOpen\(true\)/);
+  assert.match(appsPageSource, /setSearchQuery\(''\)/);
+  assert.match(appsPageSource, /未找到匹配会话/);
+  assert.match(appsPageStyles, /\.searchInputWrap/);
+  assert.match(appsPageStyles, /\.searchClearButton/);
+  assert.match(appsPageStyles, /\.historyEmpty/);
+});
+
 test('legacy qa routes and user entries move to /apps smart qa', () => {
   assert.match(appSource, /path="\/qa"[\s\S]*<RedirectToSmartQa/);
   assert.match(appSource, /path="\/portal\/qa"[\s\S]*<RedirectToSmartQa/);

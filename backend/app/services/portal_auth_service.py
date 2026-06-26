@@ -218,15 +218,6 @@ class PortalAuthService:
             raise PortalAuthError("请先登录", status_code=401)
         return session
 
-    def get_auth_source(self, request: Request) -> str:
-        session = self.get_session(request)
-        if session is not None:
-            return session.auth_source
-        return request.cookies.get(self._auth_source_cookie_name, "").strip()
-
-    def is_unified_auth_request(self, request: Request) -> bool:
-        return self.get_auth_source(request) == "unified_auth"
-
     async def require_session_or_bisheng_cookie(self, request: Request) -> tuple[PortalSession, bool]:
         session = self.get_session(request)
         if session is not None:

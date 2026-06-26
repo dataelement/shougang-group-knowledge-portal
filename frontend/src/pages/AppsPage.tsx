@@ -16,6 +16,7 @@ import {
   Search,
   Send,
   Star,
+  X,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import type { AgentItemConfig, PortalConfig } from '../api/adminConfig';
@@ -129,6 +130,21 @@ function SmartAppsSidebar({
   onSelectRecord: (record: SmartAppsRecord) => void;
 }) {
   const groups: Session['group'][] = ['今天', '昨天', '7 天内', '30 天内'];
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const visibleRecords = useMemo(() => {
+    if (!normalizedSearchQuery) return records;
+    return records.filter((record) => record.title.toLowerCase().includes(normalizedSearchQuery));
+  }, [normalizedSearchQuery, records]);
+
+  useEffect(() => {
+    if (!searchOpen) return undefined;
+    const focusTimer = window.setTimeout(() => searchInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [searchOpen]);
+
   return (
     <aside className={s.sidebar} aria-label="智能应用会话列表">
       <div className={s.logoRow}>
@@ -141,16 +157,46 @@ function SmartAppsSidebar({
           <PenLine size={14} strokeWidth={2} />
           发起新对话
         </button>
-        <button className={s.searchButton} type="button">
-          <Search size={14} strokeWidth={2} />
-          搜索对话内容
-        </button>
+        {searchOpen ? (
+          <div className={s.searchInputWrap}>
+            <Search size={14} strokeWidth={2} />
+            <input
+              ref={searchInputRef}
+              aria-label="搜索会话"
+              className={s.searchInput}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  setSearchQuery('');
+                  setSearchOpen(false);
+                }
+              }}
+              placeholder="搜索会话"
+            />
+            {searchQuery ? (
+              <button
+                aria-label="清空搜索"
+                className={s.searchClearButton}
+                onClick={() => setSearchQuery('')}
+                type="button"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <button className={s.searchButton} type="button" onClick={() => setSearchOpen(true)}>
+            <Search size={14} strokeWidth={2} />
+            搜索会话
+          </button>
+        )}
       </div>
       <div className={s.sidebarSection}>最近</div>
       <div className={s.historyList}>
         {loading ? <div className={s.historyGroupLabel}>会话加载中...</div> : null}
         {groups.map((group) => {
-          const groupRecords = records.filter((record) => record.group === group);
+          const groupRecords = visibleRecords.filter((record) => record.group === group);
           if (!groupRecords.length) return null;
           return (
             <div className={s.historyGroup} key={group}>
@@ -172,6 +218,9 @@ function SmartAppsSidebar({
             </div>
           );
         })}
+        {!loading && normalizedSearchQuery && !visibleRecords.length ? (
+          <div className={s.historyEmpty}>未找到匹配会话</div>
+        ) : null}
       </div>
     </aside>
   );

@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.services.portal_auth_service import PortalAuthService
 from app.services.portal_unified_auth_service import (
-    GROUP_GLO_URL,
     GROUP_OAUTH_BASE_URL,
     LOGIN_SYNC_PATH,
     STOCK_OAUTH_BASE_URL,
@@ -121,8 +120,6 @@ def make_settings(**overrides) -> Settings:
         "unified_auth_login_sync_hmac_secret": "hmac-secret",
         "unified_auth_state_ttl_seconds": 300,
         "unified_auth_http_timeout_seconds": 5,
-        "unified_auth_glo_entity_id": "entity-123",
-        "unified_auth_glo_redirect_to_url": "https://portal.example.com/api/v1/auth/unified/logout/callback",
     }
     defaults.update(overrides)
     return Settings(**defaults)
@@ -333,7 +330,7 @@ def test_callback_success_exchanges_token_userinfo_login_sync_sets_cookies(capsy
     assert "[portal unified auth getUserInfo raw]" in capsys.readouterr().out
 
 
-def test_unified_auth_logout_start_redirects_to_glo_and_clears_local_cookies():
+def test_unified_auth_logout_start_clears_local_cookies_without_glo_redirect():
     auth_service = make_auth_service()
     http_client = RecordingUnifiedHttpClient()
     unified_service = make_unified_service(auth_service=auth_service, http_client=http_client)
@@ -354,12 +351,7 @@ def test_unified_auth_logout_start_redirects_to_glo_and_clears_local_cookies():
             restore_services(client, previous_auth, previous_unified)
 
     assert response.status_code == 307
-    parsed = urlparse(response.headers["location"])
-    query = parse_qs(parsed.query)
-    assert response.headers["location"].startswith(f"{GROUP_GLO_URL}?")
-    assert query["redirctToUrl"] == ["https://portal.example.com/api/v1/auth/unified/logout/callback"]
-    assert query["redirectToLogin"] == ["true"]
-    assert query["entityId"] == ["entity-123"]
+    assert response.headers["location"] == "/login"
     set_cookie = response.headers["set-cookie"].lower()
     assert "test_portal_session=" in set_cookie
     assert "access_token_cookie=" in set_cookie
@@ -414,7 +406,6 @@ def test_local_auth_logout_start_does_not_redirect_to_glo():
 
     assert response.status_code == 307
     assert response.headers["location"] == "/login"
-    assert GROUP_GLO_URL not in response.headers["location"]
     assert after_logout.status_code == 401
 
 
