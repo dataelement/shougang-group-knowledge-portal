@@ -15,6 +15,13 @@ from app.schemas.knowledge import (
     FileChunkItem,
     FavoriteDocumentData,
     FavoriteDocumentRequest,
+    FavoriteRemoveRequest,
+    FavoriteRemoveData,
+    FavoriteStatusRequest,
+    FavoriteStatusData,
+    FavoriteStatusResultItem,
+    FavoriteFilesData,
+    FavoriteFileItem,
     FilePreviewData,
     FilePreviewManifest,
     FilePreviewMode,
@@ -290,6 +297,7 @@ class KnowledgeService:
                 description=str(item.get("description") or ""),
                 file_count=int(item.get("file_count") or item.get("file_num") or 0),
                 updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
+                is_favorite=bool(item.get("is_favorite")),
             )
             for item in raw_items
             if isinstance(item, dict)
@@ -298,15 +306,45 @@ class KnowledgeService:
 
     async def create_favorite(self, req: FavoriteDocumentRequest) -> FavoriteDocumentData:
         response = await self._bisheng.post_json(
-            "/api/v1/knowledge/shougang-portal/favorites",
-            json=req.model_dump(),
-        )
+            "/api/v1/knowledge/shougang-portal/favorites", json=req.model_dump())
         data = self._extract_success_data(response)
         return FavoriteDocumentData(
-            file_id=int(data.get("file_id") or 0),
-            space_id=int(data.get("space_id") or req.target_space_id),
-            title=str(data.get("title") or ""),
-        )
+            favorite_file_id=int(data.get("favorite_file_id") or 0),
+            space_id=int(data.get("space_id") or 0),
+            source_space_id=int(data.get("source_space_id") or req.source_space_id),
+            source_file_id=int(data.get("source_file_id") or req.source_file_id),
+            title=str(data.get("title") or ""))
+
+    async def remove_favorite(self, req: FavoriteRemoveRequest) -> FavoriteRemoveData:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/favorites/remove", json=req.model_dump())
+        data = self._extract_success_data(response)
+        return FavoriteRemoveData(removed=bool(data.get("removed")))
+
+    async def favorite_status(self, req: FavoriteStatusRequest) -> FavoriteStatusData:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/favorites/status", json=req.model_dump())
+        data = self._extract_success_data(response)
+        raw = data.get("data") if isinstance(data, dict) else []
+        items = [FavoriteStatusResultItem(
+            space_id=int(it.get("space_id") or 0), file_id=int(it.get("file_id") or 0),
+            favorited=bool(it.get("favorited"))) for it in (raw or []) if isinstance(it, dict)]
+        return FavoriteStatusData(data=items)
+
+    async def list_favorites(self, page: int = 1, page_size: int = 20) -> FavoriteFilesData:
+        response = await self._bisheng.get_json(
+            f"/api/v1/knowledge/shougang-portal/favorites/files?page={page}&page_size={page_size}")
+        data = self._extract_success_data(response)
+        raw = data.get("data") if isinstance(data, dict) else []
+        items = [FavoriteFileItem(
+            favorite_file_id=int(it.get("favorite_file_id") or 0),
+            source_space_id=int(it.get("source_space_id") or 0),
+            source_file_id=int(it.get("source_file_id") or 0),
+            title=str(it.get("title") or ""), file_name=str(it.get("file_name") or ""),
+            status=str(it.get("status") or "valid"),
+            updated_at=str(it.get("updated_at") or "")) for it in (raw or []) if isinstance(it, dict)]
+        return FavoriteFilesData(data=items, total=int(data.get("total") or len(items)),
+                                 page=int(data.get("page") or page), page_size=int(data.get("page_size") or page_size))
 
     async def create_share_link(self, req: ShareDocumentRequest) -> ShareDocumentData:
         response = await self._bisheng.post_json(
