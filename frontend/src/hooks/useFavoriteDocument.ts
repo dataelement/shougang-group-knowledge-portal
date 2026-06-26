@@ -58,7 +58,6 @@ export function useFavoriteDocument() {
       await favoriteDocument({
         sourceSpaceId: file.spaceId,
         sourceFileId: file.id,
-        targetSpaceId: selectedSpaceId,
       });
       setSuccess('收藏成功');
       setOpen(false);

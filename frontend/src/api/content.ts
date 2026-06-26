@@ -86,12 +86,25 @@ export interface PersonalKnowledgeSpace {
   description: string;
   fileCount: number;
   updatedAt: string;
+  isFavorite: boolean;
 }
 
 export interface FavoriteDocumentResult {
-  fileId: number;
+  favoriteFileId: number;
   spaceId: number;
+  sourceSpaceId: number;
+  sourceFileId: number;
   title: string;
+}
+
+export interface FavoriteFile {
+  favoriteFileId: number;
+  sourceSpaceId: number;
+  sourceFileId: number;
+  title: string;
+  fileName: string;
+  status: 'valid' | 'invalid';
+  updatedAt: string;
 }
 
 export interface HomeStats {
@@ -276,6 +289,7 @@ interface PersonalKnowledgeSpaceDto {
   file_num?: number;
   updated_at?: string;
   update_time?: string;
+  is_favorite?: boolean;
 }
 
 interface PersonalKnowledgeSpaceListDataDto {
@@ -284,9 +298,38 @@ interface PersonalKnowledgeSpaceListDataDto {
 }
 
 interface FavoriteDocumentDataDto {
-  file_id: number;
-  space_id: number;
+  favorite_file_id?: number;
+  space_id?: number;
+  source_space_id?: number;
+  source_file_id?: number;
   title?: string;
+}
+
+interface FavoriteStatusItemDto {
+  space_id: number;
+  file_id: number;
+  favorited?: boolean;
+}
+
+interface FavoriteStatusDataDto {
+  data: FavoriteStatusItemDto[];
+}
+
+interface FavoriteFileDto {
+  favorite_file_id?: number;
+  source_space_id?: number;
+  source_file_id?: number;
+  title?: string;
+  file_name?: string;
+  status?: string;
+  updated_at?: string;
+}
+
+interface FavoriteFilesDataDto {
+  data: FavoriteFileDto[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 interface ShareDocumentDataDto {
@@ -462,6 +505,7 @@ function mapPersonalKnowledgeSpace(dto: PersonalKnowledgeSpaceDto): PersonalKnow
     description: dto.description ?? '',
     fileCount: dto.file_count ?? dto.file_num ?? 0,
     updatedAt: dto.updated_at ?? dto.update_time ?? '',
+    isFavorite: Boolean(dto.is_favorite),
   };
 }
 
@@ -674,10 +718,13 @@ export async function fetchPersonalKnowledgeSpaces(): Promise<{ data: PersonalKn
   };
 }
 
+export function favoriteKey(spaceId: number, fileId: number): string {
+  return `${spaceId}:${fileId}`;
+}
+
 export async function favoriteDocument(params: {
   sourceSpaceId: number;
   sourceFileId: number;
-  targetSpaceId: number;
 }): Promise<FavoriteDocumentResult> {
   const data = await request<FavoriteDocumentDataDto>('/api/v1/knowledge/favorites', {
     method: 'POST',
@@ -685,13 +732,77 @@ export async function favoriteDocument(params: {
     body: JSON.stringify({
       source_space_id: params.sourceSpaceId,
       source_file_id: params.sourceFileId,
-      target_space_id: params.targetSpaceId,
     }),
   });
   return {
-    fileId: data.file_id,
-    spaceId: data.space_id,
+    favoriteFileId: data.favorite_file_id ?? 0,
+    spaceId: data.space_id ?? 0,
+    sourceSpaceId: data.source_space_id ?? 0,
+    sourceFileId: data.source_file_id ?? 0,
     title: data.title ?? '',
+  };
+}
+
+export async function removeFavorite(params: {
+  sourceSpaceId: number;
+  sourceFileId: number;
+}): Promise<{ removed: boolean }> {
+  const data = await request<{ removed?: boolean }>('/api/v1/knowledge/favorites/remove', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source_space_id: params.sourceSpaceId,
+      source_file_id: params.sourceFileId,
+    }),
+  });
+  return { removed: Boolean(data.removed) };
+}
+
+export async function fetchFavoriteStatus(
+  items: { spaceId: number; fileId: number }[],
+): Promise<Map<string, boolean>> {
+  if (items.length === 0) return new Map();
+  const data = await request<FavoriteStatusDataDto>('/api/v1/knowledge/favorites/status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      items: items.map((it) => ({ space_id: it.spaceId, file_id: it.fileId })),
+    }),
+  });
+  const map = new Map<string, boolean>();
+  for (const it of data.data) {
+    map.set(favoriteKey(it.space_id, it.file_id), Boolean(it.favorited));
+  }
+  return map;
+}
+
+function mapFavoriteFile(dto: FavoriteFileDto): FavoriteFile {
+  return {
+    favoriteFileId: dto.favorite_file_id ?? 0,
+    sourceSpaceId: dto.source_space_id ?? 0,
+    sourceFileId: dto.source_file_id ?? 0,
+    title: dto.title ?? '',
+    fileName: dto.file_name ?? '',
+    status: dto.status === 'invalid' ? 'invalid' : 'valid',
+    updatedAt: dto.updated_at ?? '',
+  };
+}
+
+export async function fetchFavoriteFiles(params?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<{ data: FavoriteFile[]; total: number; page: number; pageSize: number }> {
+  const query = new URLSearchParams();
+  query.set('page', String(params?.page ?? 1));
+  query.set('page_size', String(params?.pageSize ?? 20));
+  const data = await request<FavoriteFilesDataDto>(
+    `/api/v1/knowledge/favorites/files?${query.toString()}`,
+  );
+  return {
+    data: data.data.map(mapFavoriteFile),
+    total: data.total,
+    page: data.page,
+    pageSize: data.page_size,
   };
 }
 
