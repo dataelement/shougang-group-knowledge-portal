@@ -298,22 +298,14 @@ export default function QAKnowledgeTreePicker({
         <strong>知识库范围</strong>
         <span>整库限选 1 个，文件最多 20 个</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span>
+      <div className={s.headerActions}>
+        <span className={s.headerStatus}>
           {scope.mode === 'knowledge_space' ? '整库' : scope.mode === 'files' ? `${getScopeFileCount(scope)} 文件` : '未选择'}
         </span>
         <button
           type="button"
           onClick={() => onClose?.()}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '2px 0',
-            display: 'flex',
-            alignItems: 'center',
-            color: '#999',
-          }}
+          className={s.closeButton}
           title="关闭"
         >
           <X size={15} />

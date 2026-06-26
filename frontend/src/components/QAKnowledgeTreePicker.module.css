@@ -31,6 +31,32 @@
   white-space: nowrap;
 }
 
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: row;
+}
+
+.headerStatus {
+  flex: 0 0 auto;
+}
+
+.closeButton {
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.closeButton:hover {
+  color: #64748b;
+}
+
 .searchBox {
   height: 34px;
   padding: 0 10px;

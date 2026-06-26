@@ -40,6 +40,13 @@ const APP_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
   PenLine, Search, MessageSquare, Globe, BarChart3, Network, FileText, Bot, BriefcaseBusiness, Layers3, ScrollText,
 };
 
+const APP_SHORTCUT_IMAGES: Record<string, string> = {
+  'thought-report': '/app-shortcuts/office-writing.png',
+  'work-push-plan': '/app-shortcuts/hero-semantic-search.png',
+  'office-writing': '/app-shortcuts/hero-open-qa.png',
+  'hero-doc-translate': '/app-shortcuts/hero-doc-translate.png',
+};
+
 const SECTION_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
   Star, AlertTriangle, Tag, TrendingUp, FolderOpen, LayoutGrid, BarChart3,
 };
@@ -663,7 +670,9 @@ export default function HomePage() {
           <div className={s.heroBottomRow} onClick={(event) => event.stopPropagation()}>
             <div className={s.appShortcutList}>
               {appEntryItems.map((template) => {
+                const iconImage = APP_SHORTCUT_IMAGES[template.id];
                 const AppIcon = APP_ICONS[template.icon] || Bot;
+       
                 return (
                   <button
                     key={template.id}
@@ -674,10 +683,14 @@ export default function HomePage() {
                       navigate(`/apps?tab=qa&templateId=${encodeURIComponent(template.id)}`);
                     }}
                   >
-                    <span className={s.appShortcutIcon}>
-                      <AppIcon size={13} />
+                  <span className={s.appShortcutIcon}>
+                      {iconImage ? (
+                        <img src={iconImage} alt="" className={s.appShortcutImage} />
+                      ) : (
+                        <AppIcon size={13} />
+                      )}
                     </span>
-                    <span className={s.appShortcutText}>{template.name}</span>
+                  <span className={s.appShortcutText}>{template.name}</span>
                   </button>
                 );
               })}
