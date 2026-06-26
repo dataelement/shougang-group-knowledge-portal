@@ -628,6 +628,7 @@ export async function searchFiles(params: {
   spaceIds?: number[];
   spaceLevel?: string;
   fileExt?: string;
+  documentType?: string;
   sort?: string;
   page?: number;
   pageSize?: number;
@@ -637,6 +638,7 @@ export async function searchFiles(params: {
   if (params.tag) query.set('tag', params.tag);
   if (params.spaceLevel) query.set('space_level', params.spaceLevel);
   if (params.fileExt) query.set('file_ext', params.fileExt);
+  if (params.documentType) query.set('document_type', params.documentType);
   if (params.sort) query.set('sort', params.sort);
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('page_size', String(params.pageSize));
@@ -655,12 +657,14 @@ export async function fetchSpaceFiles(params: {
   spaceId: number;
   tag?: string;
   fileExt?: string;
+  documentType?: string;
   page?: number;
   pageSize?: number;
 }): Promise<{ data: FileItem[]; total: number; page: number; pageSize: number }> {
   const query = new URLSearchParams();
   if (params.tag) query.set('tag', params.tag);
   if (params.fileExt) query.set('file_ext', params.fileExt);
+  if (params.documentType) query.set('document_type', params.documentType);
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('page_size', String(params.pageSize));
 

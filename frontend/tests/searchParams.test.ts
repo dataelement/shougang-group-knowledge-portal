@@ -9,10 +9,10 @@ import {
   hasSearchContext,
 } from '../src/utils/searchParams';
 
-test('domain navigation uses prefill without creating a keyword query', () => {
+test('domain navigation opens the domain list page', () => {
   assert.equal(
     buildDomainSearchPath('生产'),
-    '/search?domain=%E7%94%9F%E4%BA%A7&prefill=%E7%94%9F%E4%BA%A7',
+    '/domain/%E7%94%9F%E4%BA%A7',
   );
 });
 

@@ -26,7 +26,7 @@ import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
-import { buildSpaceSearchPath } from '../utils/searchParams';
+import { buildDomainSearchPath } from '../utils/searchParams';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
 import s from './HomePage.module.css';
@@ -737,8 +737,7 @@ export default function HomePage() {
                     className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
                     style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
                     onClick={() => {
-                      const targetSpaceId = d.space_ids[0];
-                      if (targetSpaceId != null) navigateToTop(buildSpaceSearchPath(targetSpaceId));
+                      navigateToTop(buildDomainSearchPath(d.name));
                     }}
                   >
                     {usesBannerThumb ? null : (
@@ -793,32 +792,34 @@ export default function HomePage() {
                       更多 <ChevronRight size={14} />
                     </Link>
                   </div>
-                  {items.map((f) => (
-                    <div
-                      key={f.id}
-                      className={s.listItem}
-                      onClick={() =>
-                        navigate(`/space/${f.spaceId}/file/${f.id}`, {
-                          state: { returnTo: sec.link },
-                        })}
-                    >
-                      <div className={s.itemBody}>
-                        <span className={s.itemTitle}>{f.title}</span>
-                        <div className={s.itemSummary}>{f.summary}</div>
-                        <div className={s.itemMeta}>
-                          {getPrimaryTag(f) ? (
-                            <TagPill name={getPrimaryTag(f)!} neutral />
-                          ) : null}
-                          <span className={s.itemDate}>{formatDisplayDateTime(f.date)}</span>
+                  <div className={s.sectionList}>
+                    {items.map((f) => (
+                      <div
+                        key={f.id}
+                        className={s.listItem}
+                        onClick={() =>
+                          navigate(`/space/${f.spaceId}/file/${f.id}`, {
+                            state: { returnTo: sec.link },
+                          })}
+                      >
+                        <div className={s.itemBody}>
+                          <span className={s.itemTitle}>{f.title}</span>
+                          <div className={s.itemSummary}>{f.summary}</div>
+                          <div className={s.itemMeta}>
+                            {getPrimaryTag(f) ? (
+                              <TagPill name={getPrimaryTag(f)!} neutral />
+                            ) : null}
+                            <span className={s.itemDate}>{formatDisplayDateTime(f.date)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  {items.length === 0 ? (
-                    <div className={s.sectionEmpty}>
-                      暂无匹配内容
-                    </div>
-                  ) : null}
+                    ))}
+                    {items.length === 0 ? (
+                      <div className={s.sectionEmpty}>
+                        暂无匹配内容
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}

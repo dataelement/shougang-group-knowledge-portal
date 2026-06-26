@@ -129,6 +129,11 @@ export interface SearchRerankModelOptionsResponse {
   models: QAModelOption[];
 }
 
+export interface DocumentTypeConfig {
+  code: string;
+  label: string;
+}
+
 export interface BishengRuntimeConfig {
   base_url: string;
   asset_base_url: string;
@@ -260,6 +265,7 @@ export interface PortalConfig {
   spaces: SpaceConfig[];
   domains: DomainConfig[];
   sections: SectionConfig[];
+  document_types: DocumentTypeConfig[];
   qa: QAConfig;
   agent_config: AgentConfig;
   search: SearchConfig;

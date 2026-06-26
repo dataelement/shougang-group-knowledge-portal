@@ -1,9 +1,6 @@
 export function buildDomainSearchPath(domainName: string): string {
-  const params = new URLSearchParams({
-    domain: domainName,
-    prefill: domainName,
-  });
-  return `/search?${params.toString()}`;
+  const trimmedDomainName = domainName.trim();
+  return trimmedDomainName ? `/domain/${encodeURIComponent(trimmedDomainName)}` : '/domains';
 }
 
 export function buildSpaceSearchPath(spaceId: number): string {

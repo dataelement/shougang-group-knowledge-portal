@@ -22,6 +22,19 @@ class FakeBishengClient:
         self.post_calls: list[tuple[str, dict | None]] = []
 
     async def get_json(self, path: str, params=None):
+        if path == "/api/v1/workstation/config":
+            return {
+                "data": {
+                    "shougang": {
+                        "file_encoding": {
+                            "document_types": [
+                                {"code": "RPT", "label": "报告"},
+                                {"code": "STD", "label": "标准规范"},
+                            ]
+                        }
+                    }
+                }
+            }
         if path == "/api/v1/llm":
             return {
                 "data": [
@@ -658,10 +671,16 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
 
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
+        client.app.state.bisheng_client = FakeBishengClient()
         response = client.get("/api/v1/knowledge/config")
 
     assert response.status_code == 200
-    assert "site" in response.json()["data"]
+    data = response.json()["data"]
+    assert "site" in data
+    assert data["document_types"] == [
+        {"code": "RPT", "label": "报告"},
+        {"code": "STD", "label": "标准规范"},
+    ]
 
 
 def test_get_admin_config_uses_portal_config_service(tmp_path: Path):

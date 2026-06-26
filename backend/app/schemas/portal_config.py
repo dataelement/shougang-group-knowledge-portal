@@ -265,6 +265,11 @@ class SearchRerankModelOptionsResponse(BaseModel):
     models: list[QAModelOption] = Field(default_factory=list)
 
 
+class DocumentTypeConfig(BaseModel):
+    code: str = ""
+    label: str = ""
+
+
 class SpaceOption(BaseModel):
     id: int
     name: str
@@ -375,6 +380,7 @@ class PortalConfig(BaseModel):
     spaces: list[SpaceConfig] = Field(default_factory=list)
     domains: list[DomainConfig] = Field(default_factory=list)
     sections: list[SectionConfig] = Field(default_factory=list)
+    document_types: list[DocumentTypeConfig] = Field(default_factory=list)
     qa: QAConfig
     agent_config: AgentConfig = Field(default_factory=AgentConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)

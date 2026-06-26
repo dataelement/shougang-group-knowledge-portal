@@ -95,6 +95,8 @@ FILE_ENCODING_KEYS = (
     "file_no",
     "fileNo",
 )
+UPDATED_AT_ASC_SORT = "updated_at_asc"
+UPDATED_AT_DESC_SORTS = {"updated_at", "updated_at_desc"}
 
 
 @dataclass
@@ -457,6 +459,7 @@ class KnowledgeService:
         self,
         space_id: int,
         file_ext: Optional[str],
+        document_type: Optional[str],
         tag: Optional[str],
         page: int,
         page_size: int,
@@ -470,6 +473,7 @@ class KnowledgeService:
             items=search_result.items,
             allowed_space_ids={space_id},
             file_ext=file_ext,
+            document_type=document_type,
         )
         sorted_items = self._sort_items(filtered, sort="updated_at", keyword=None)
         mapped = self._map_items(sorted_items)
@@ -486,8 +490,9 @@ class KnowledgeService:
         page: int,
         page_size: int,
         extra_space_ids: Optional[list[int]] = None,
+        document_type: Optional[str] = None,
     ) -> PagedKnowledgeFileData:
-        has_filter = bool(tag or requested_space_ids or space_level or file_ext)
+        has_filter = bool(tag or requested_space_ids or space_level or file_ext or document_type)
         if not q and not has_filter:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
@@ -502,6 +507,7 @@ class KnowledgeService:
                 space_ids=space_ids,
                 space_level=space_level,
                 file_ext=file_ext,
+                document_type=document_type,
                 sort=sort,
                 page=page,
                 page_size=page_size,
@@ -523,6 +529,7 @@ class KnowledgeService:
             items=merged_items,
             allowed_space_ids=set(space_ids),
             file_ext=file_ext,
+            document_type=document_type,
         )
         sorted_items = self._sort_items(filtered, sort=sort, keyword=q)
         mapped = self._map_items(sorted_items)
@@ -613,6 +620,7 @@ class KnowledgeService:
         space_ids: list[int],
         space_level: Optional[str],
         file_ext: Optional[str],
+        document_type: Optional[str],
         sort: str,
         page: int,
         page_size: int,
@@ -627,6 +635,9 @@ class KnowledgeService:
             "page": page,
             "page_size": page_size,
         }
+        normalized_document_type = self._normalize_document_type_code(document_type)
+        if normalized_document_type:
+            request_body["document_type"] = normalized_document_type
         rerank_model_id = str(self._config_service.get_config().search.rerank_model_id or "").strip()
         request_body["rerank_model_id"] = rerank_model_id
         response = await self._bisheng.post_json(
@@ -1138,7 +1149,9 @@ class KnowledgeService:
         items: list[dict[str, Any]],
         allowed_space_ids: set[int],
         file_ext: Optional[str],
+        document_type: Optional[str],
     ) -> list[dict[str, Any]]:
+        normalized_document_type = self._normalize_document_type_code(document_type)
         filtered: list[dict[str, Any]] = []
         for item in items:
             if int(item.get("knowledge_id", 0)) not in allowed_space_ids:
@@ -1150,11 +1163,15 @@ class KnowledgeService:
             file_name = item.get("file_name") or ""
             if file_ext and self._get_file_ext(file_name) != file_ext:
                 continue
+            if normalized_document_type and not self._matches_document_type(item, normalized_document_type):
+                continue
             filtered.append(item)
         return filtered
 
     def _sort_items(self, items: list[dict[str, Any]], sort: str, keyword: Optional[str]) -> list[dict[str, Any]]:
-        if sort == "updated_at" or not keyword:
+        if sort == UPDATED_AT_ASC_SORT:
+            return sorted(items, key=lambda item: self._serialize_datetime(item.get("update_time")))
+        if sort in UPDATED_AT_DESC_SORTS or not keyword:
             return sorted(items, key=lambda item: self._serialize_datetime(item.get("update_time")), reverse=True)
 
         keyword_lower = keyword.lower()
@@ -1175,6 +1192,10 @@ class KnowledgeService:
             return hit_score, self._serialize_datetime(item.get("update_time"))
 
         return sorted(items, key=score, reverse=True)
+
+    @classmethod
+    def _matches_document_type(cls, item: dict[str, Any], document_type: str) -> bool:
+        return cls._extract_document_type_code(item) == document_type
 
     def _map_items(self, items: list[dict[str, Any]]) -> list[KnowledgeFileItem]:
         space_name_map = self.get_space_name_map()
@@ -1317,6 +1338,18 @@ class KnowledgeService:
     def _extract_file_encoding(*items: dict[str, Any] | None) -> str:
         value = KnowledgeService._first_value_from_items(items, FILE_ENCODING_KEYS)
         return str(value).strip() if value not in (None, "") else ""
+
+    @classmethod
+    def _extract_document_type_code(cls, *items: dict[str, Any] | None) -> str:
+        file_encoding = cls._extract_file_encoding(*items)
+        parts = [part.strip() for part in file_encoding.split("-")]
+        if len(parts) < 2:
+            return ""
+        return cls._normalize_document_type_code(parts[1])
+
+    @staticmethod
+    def _normalize_document_type_code(value: Any) -> str:
+        return str(value or "").strip().upper()
 
     @staticmethod
     def _first_value_from_items(items: tuple[dict[str, Any] | None, ...], keys: tuple[str, ...]) -> Any:

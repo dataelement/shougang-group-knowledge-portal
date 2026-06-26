@@ -611,6 +611,8 @@
 
 .primarySectionPanel {
   height: 522px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -626,6 +628,8 @@
 
 .tallSectionPanel {
   height: 522px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -639,12 +643,35 @@
 }
 
 .panelHeader {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0;
   padding-bottom: 11px;
   border-bottom: 1px solid #e5eaf2;
+}
+
+.sectionList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.sectionList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sectionList::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.sectionList::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .panelHeaderLeft {

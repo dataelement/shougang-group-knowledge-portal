@@ -23,7 +23,7 @@ test('search page does not render pagination or request paged search results', (
   assert.equal(activeSource.includes('当前显示'), false);
 });
 
-test('search page passes search results into AI summary instead of triggering independent retrieval', () => {
+test('search page passes displayed search results into AI summary instead of triggering independent retrieval', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
   const activeSource = stripComments(source);
   const streamCallStart = activeSource.indexOf('streamChatCompletion({');
@@ -31,7 +31,7 @@ test('search page passes search results into AI summary instead of triggering in
   const streamCall = activeSource.slice(streamCallStart, streamCallEnd);
 
   assert.notEqual(streamCallStart, -1);
-  assert.match(streamCall, /searchResults:\s*result\.data\.slice\(0,\s*10\)/);
+  assert.match(streamCall, /searchResults:\s*filtered\.slice\(0,\s*10\)/);
 });
 
 test('search page does not render AI summary source file list', () => {

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  fetchSpaceFiles,
   fetchHomeContent,
   fetchPortalContentConfig,
   invalidatePortalContentConfigCache,
+  searchFiles,
 } from '../src/api/content';
 
 const portalConfigPayload = {
@@ -104,6 +106,62 @@ test('home content maps section file DTOs', async () => {
     assert.equal(result.sections['最新精选'][0].spaceId, 12);
     assert.equal(result.sections['最新精选'][0].title, '热轧1580产线精轧机振动纹治理实践');
     assert.deepEqual(result.tags, ['最新精选']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('file search sends document type query parameter', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(
+      String(input),
+      '/api/v1/knowledge/files?space_level=department&file_ext=pdf&document_type=RPT&sort=updated_at_desc&page=1&page_size=10&space_ids=12',
+    );
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { data: [], total: 0, page: 1, page_size: 10 },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await searchFiles({
+      spaceIds: [12],
+      spaceLevel: 'department',
+      fileExt: 'pdf',
+      documentType: 'RPT',
+      sort: 'updated_at_desc',
+      page: 1,
+      pageSize: 10,
+    });
+
+    assert.equal(result.total, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('space file list sends document type query parameter', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(String(input), '/api/v1/knowledge/space/12/files?document_type=STD&page=2&page_size=10');
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { data: [], total: 0, page: 2, page_size: 10 },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await fetchSpaceFiles({
+      spaceId: 12,
+      documentType: 'STD',
+      page: 2,
+      pageSize: 10,
+    });
+
+    assert.equal(result.page, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
