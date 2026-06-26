@@ -260,6 +260,48 @@ class ChatProxyService:
         )
         return self._unwrap_bisheng_data(payload)
 
+    async def list_agent_workflow_conversations(self, page: int = 1, limit: int = 20):
+        config = self._config_service.get_config()
+        enabled_agents = [agent for agent in config.agent_config.agents if agent.enabled]
+        if not enabled_agents:
+            return []
+
+        conversations: list[dict] = []
+        seen_chat_ids: set[str] = set()
+        for agent in enabled_agents:
+            payload = await self._bisheng.get_json(
+                "/api/v1/workstation/app/conversations",
+                params={"flow_id": agent.workflow_id, "page": page, "limit": limit},
+            )
+            data = self._unwrap_bisheng_data(payload)
+            raw_items = data.get("list") if isinstance(data, dict) else data
+            if not isinstance(raw_items, list):
+                continue
+            for item in raw_items:
+                if not isinstance(item, dict):
+                    continue
+                chat_id = str(item.get("chat_id") or item.get("conversationId") or "").strip()
+                if not chat_id or chat_id in seen_chat_ids:
+                    continue
+                seen_chat_ids.add(chat_id)
+                conversations.append(
+                    {
+                        "agent_id": agent.id,
+                        "agent_name": agent.name,
+                        "workflow_id": agent.workflow_id,
+                        "chat_id": chat_id,
+                        "name": item.get("name") or item.get("title") or agent.name,
+                        "flow_id": item.get("flow_id") or agent.workflow_id,
+                        "flow_name": item.get("flow_name") or agent.name,
+                        "flow_type": item.get("flow_type") or 10,
+                        "logo": item.get("logo") or "",
+                        "latest_message": item.get("latest_message"),
+                        "create_time": item.get("create_time") or item.get("createdAt") or "",
+                        "update_time": item.get("update_time") or item.get("updateAt") or item.get("create_time") or "",
+                    }
+                )
+        return conversations
+
     async def get_conversation_messages(self, conversation_id: str):
         payload = await self._bisheng.get_json(
             f"/api/v1/workstation/messages/{conversation_id}/agent",

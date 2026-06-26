@@ -152,6 +152,22 @@ test('smart qa and agent share the apps left sidebar record model', () => {
   assert.match(appsPageSource, /agentRecords/);
 });
 
+test('apps sidebar merges qa and workflow history records with source icons', () => {
+  const contentSource = readFileSync('src/api/content.ts', 'utf8');
+
+  assert.match(contentSource, /fetchAgentWorkflowConversations/);
+  assert.match(contentSource, /\/api\/v1\/workstation\/workflow\/conversations/);
+  assert.match(appsPageSource, /fetchAgentWorkflowConversations\(\{ page: 1, limit: 50 \}\)/);
+  assert.match(appsPageSource, /\[\.\.\.qaRecords, \.\.\.agentRecords\]\.sort/);
+  assert.match(appsPageSource, /resolveRecordGroup\(conversation\.updateAt \|\| conversation\.createAt\)/);
+  assert.match(appsPageSource, /MessageSquareText/);
+  assert.match(appsPageSource, /historyIconAgent/);
+  assert.match(appsPageSource, /appendWorkflowChatId/);
+  assert.match(appsPageSource, /setSelectedAgentConversationId\(record\.conversationId\)/);
+  assert.match(appsPageStyles, /\.historyIconAgent/);
+  assert.match(appsPageStyles, /\.historyIconQa/);
+});
+
 test('legacy qa routes and user entries move to /apps smart qa', () => {
   assert.match(appSource, /path="\/qa"[\s\S]*<RedirectToSmartQa/);
   assert.match(appSource, /path="\/portal\/qa"[\s\S]*<RedirectToSmartQa/);

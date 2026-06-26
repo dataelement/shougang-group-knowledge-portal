@@ -6,6 +6,8 @@ export const PENDING_PORTAL_APPROVAL_KEY = 'shougang-portal:pending-approval';
 
 /** Posted by the embedded BiSheng dialog host when all dialogs have closed. */
 export const PORTAL_DIALOG_CLOSED_MESSAGE = 'shougang-portal:dialog-closed';
+/** Posted by the embedded BiSheng dialog host after its message listener is ready. */
+export const PORTAL_DIALOG_READY_MESSAGE = 'shougang-portal:dialog-ready';
 
 export const PORTAL_APPROVAL_MESSAGE_TYPES: Record<PortalFrameAction, string> = {
   tasks: 'shougang-portal:open-approval-tasks',

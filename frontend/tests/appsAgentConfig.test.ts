@@ -89,15 +89,24 @@ test('bisheng portal workflow chat route is independent from original chat route
 test('portal workflow chat embed hides Bisheng sidebar and starts a fresh workflow session', () => {
   assert.match(standaloneChatPageSource, /hideSidebar\?: boolean/);
   assert.match(standaloneChatPageSource, /forceNewChatOnLoad\?: boolean/);
+  assert.match(standaloneChatPageSource, /initialChatId\?: string/);
   assert.match(standaloneChatPageSource, /const showSidebarControls = !hideSidebar/);
   assert.match(standaloneChatPageSource, /isTabletOrMobile && showSidebarControls && sidebarVisible/);
   assert.match(standaloneChatPageSource, /!isTabletOrMobile && showSidebarControls/);
   assert.match(standaloneChatPageSource, /showSidebarControls && \(/);
   assert.match(standaloneSidebarHookSource, /forceNewChatOnLoad\?: boolean/);
+  assert.match(standaloneSidebarHookSource, /initialChatId\?: string/);
+  assert.match(
+    standaloneSidebarHookSource,
+    /if \(initialChatId\) \{[\s\S]*setActiveChatId\(initialChatId\);[\s\S]*setHistoryLoaded\(true\);[\s\S]*return;/,
+  );
   assert.match(
     standaloneSidebarHookSource,
     /if \(forceNewChatOnLoad\) \{[\s\S]*createNewChat\(\);[\s\S]*setHistoryLoaded\(true\);[\s\S]*return;/,
   );
+  assert.match(portalWorkflowChatClientSource, /searchParams\.get\('chat_id'\)/);
+  assert.match(portalWorkflowChatClientSource, /forceNewChatOnLoad=\{!chatId\}/);
+  assert.match(portalWorkflowChatClientSource, /initialChatId=\{chatId\}/);
   assert.match(appsPageSource, /agentLaunchKey/);
   assert.match(appsPageSource, /setAgentLaunchKey\(\(current\) => current \+ 1\)/);
   assert.match(appsPageSource, /key=\{`\$\{selectedAgent\.id\}-\$\{agentLaunchKey\}`\}/);

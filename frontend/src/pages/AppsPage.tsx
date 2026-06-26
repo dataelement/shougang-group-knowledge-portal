@@ -11,6 +11,7 @@ import {
   FileText,
   Globe,
   Loader2,
+  MessageSquareText,
   PenLine,
   Search,
   Send,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import type { AgentItemConfig, PortalConfig } from '../api/adminConfig';
+import { fetchAgentWorkflowConversations, type AgentWorkflowConversation } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { applyEmbedOriginOverride, resolvePortalWorkflowChatEmbedUrl } from '../utils/bishengEmbed';
 import { SmartQaWorkspace, type Session } from './QAPage';
@@ -32,8 +34,17 @@ interface AgentFilterOption {
 }
 
 type SmartAppsRecord =
-  | { kind: 'qa'; id: string; title: string; group: string; session: Session }
-  | { kind: 'agent'; id: string; agentId: string; title: string; group: string };
+  | { kind: 'qa'; id: string; title: string; group: Session['group']; updatedAt?: string; session: Session }
+  | {
+    kind: 'agent';
+    id: string;
+    agentId: string;
+    workflowId: string;
+    conversationId: string;
+    title: string;
+    group: Session['group'];
+    updatedAt?: string;
+  };
 
 const MAIN_TABS: { id: AppsMainTab; label: string }[] = [
   { id: 'qa', label: '智能问答' },
@@ -76,6 +87,34 @@ function toCategoryFilterId(categoryId: string): AgentFilter {
   return `category:${categoryId}`;
 }
 
+function resolveRecordGroup(dateText?: string): Session['group'] {
+  if (!dateText) return '今天';
+  const time = Date.parse(dateText);
+  if (Number.isNaN(time)) return '今天';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(time);
+  target.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today.getTime() - target.getTime()) / 86400000);
+  if (diffDays <= 0) return '今天';
+  if (diffDays === 1) return '昨天';
+  if (diffDays <= 7) return '7 天内';
+  return '30 天内';
+}
+
+function getRecordTime(record: SmartAppsRecord): number {
+  const time = Date.parse(record.updatedAt || '');
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function appendWorkflowChatId(url: string, chatId: string): string {
+  const safeChatId = chatId.trim();
+  if (!safeChatId) return url;
+  const parsed = new URL(url);
+  parsed.searchParams.set('chat_id', safeChatId);
+  return parsed.toString();
+}
+
 function SmartAppsSidebar({
   records,
   activeRecordId,
@@ -89,7 +128,7 @@ function SmartAppsSidebar({
   onNewQa: () => void;
   onSelectRecord: (record: SmartAppsRecord) => void;
 }) {
-  const groups = ['今天', '昨天', '7 天内', '30 天内', 'Agent'];
+  const groups: Session['group'][] = ['今天', '昨天', '7 天内', '30 天内'];
   return (
     <aside className={s.sidebar} aria-label="智能应用会话列表">
       <div className={s.logoRow}>
@@ -124,7 +163,10 @@ function SmartAppsSidebar({
                   title={record.title}
                   type="button"
                 >
-                  {record.title}
+                  <span className={`${s.historyIcon} ${record.kind === 'agent' ? s.historyIconAgent : s.historyIconQa}`}>
+                    {record.kind === 'agent' ? <Bot size={12} strokeWidth={2} /> : <MessageSquareText size={12} strokeWidth={2} />}
+                  </span>
+                  <span className={s.historyTitle}>{record.title}</span>
                 </button>
               ))}
             </div>
@@ -143,7 +185,9 @@ export default function AppsPage() {
   const [activeAgentFilter, setActiveAgentFilter] = useState<AgentFilter>('all');
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
   const [selectedAgentId, setSelectedAgentId] = useState('');
-  const [agentRecords, setAgentRecords] = useState<SmartAppsRecord[]>([]);
+  const [selectedAgentConversationId, setSelectedAgentConversationId] = useState('');
+  const [agentWorkflowConversations, setAgentWorkflowConversations] = useState<AgentWorkflowConversation[]>([]);
+  const [loadingAgentWorkflowConversations, setLoadingAgentWorkflowConversations] = useState(false);
   const [activeAgentRecordId, setActiveAgentRecordId] = useState('');
   const [agentLaunchKey, setAgentLaunchKey] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(false);
@@ -192,8 +236,35 @@ export default function AppsPage() {
     [bishengBaseUrl, selectedAgent],
   );
   const iframeSrc = iframeResult?.ok
-    ? applyEmbedOriginOverride(iframeResult.url, import.meta.env.VITE_BISHENG_EMBED_ORIGIN)
+    ? appendWorkflowChatId(
+      applyEmbedOriginOverride(iframeResult.url, import.meta.env.VITE_BISHENG_EMBED_ORIGIN),
+      selectedAgentConversationId,
+    )
     : '';
+
+  useEffect(() => {
+    if (configLoading || configError) return undefined;
+    if (!enabledAgents.length) {
+      setAgentWorkflowConversations([]);
+      setLoadingAgentWorkflowConversations(false);
+      return undefined;
+    }
+    let active = true;
+    setLoadingAgentWorkflowConversations(true);
+    void fetchAgentWorkflowConversations({ page: 1, limit: 50 })
+      .then((items) => {
+        if (active) setAgentWorkflowConversations(items);
+      })
+      .catch(() => {
+        if (active) setAgentWorkflowConversations([]);
+      })
+      .finally(() => {
+        if (active) setLoadingAgentWorkflowConversations(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [configLoading, configError, enabledAgents]);
 
   useEffect(() => {
     if (iframeLoadTimerRef.current !== null) {
@@ -245,13 +316,10 @@ export default function AppsPage() {
 
   function selectAgent(agent: AgentItemConfig) {
     setSelectedAgentId(agent.id);
+    setSelectedAgentConversationId('');
     setAgentLaunchKey((current) => current + 1);
-    const recordId = `agent_${agent.id}`;
+    const recordId = `agent_new_${agent.id}`;
     setActiveAgentRecordId(recordId);
-    setAgentRecords((current) => {
-      if (current.some((record) => record.id === recordId)) return current;
-      return [{ kind: 'agent', id: recordId, agentId: agent.id, title: agent.name, group: 'Agent' }, ...current];
-    });
   }
 
   return (
@@ -262,9 +330,20 @@ export default function AppsPage() {
           id: session.id,
           title: session.title,
           group: session.group,
+          updatedAt: session.updatedAt,
           session,
         }));
-        const records = [...qaRecords, ...agentRecords];
+        const agentRecords: SmartAppsRecord[] = agentWorkflowConversations.map((conversation) => ({
+          kind: 'agent',
+          id: `agent_${conversation.conversationId}`,
+          agentId: conversation.agentId,
+          workflowId: conversation.workflowId,
+          conversationId: conversation.conversationId,
+          title: conversation.title,
+          group: resolveRecordGroup(conversation.updateAt || conversation.createAt),
+          updatedAt: conversation.updateAt || conversation.createAt,
+        }));
+        const records = [...qaRecords, ...agentRecords].sort((left, right) => getRecordTime(right) - getRecordTime(left));
         const activeRecordId = activeTab === 'agent' ? activeAgentRecordId : qaSidebarState.activeId;
         const hasSelectedAgentWorkflow = activeTab === 'agent' && Boolean(selectedAgent);
         const showTopComposer = !hasSelectedAgentWorkflow && (activeTab === 'agent' || !hasQaConversation);
@@ -278,9 +357,12 @@ export default function AppsPage() {
                 <SmartAppsSidebar
                   records={records}
                   activeRecordId={activeRecordId}
-                  loading={qaSidebarState.loadingSessions}
+                  loading={qaSidebarState.loadingSessions || loadingAgentWorkflowConversations}
                   onNewQa={() => {
                     qaSidebarState.newSession();
+                    setSelectedAgentId('');
+                    setSelectedAgentConversationId('');
+                    setActiveAgentRecordId('');
                     switchTab('qa');
                   }}
                   onSelectRecord={(record) => {
@@ -290,6 +372,7 @@ export default function AppsPage() {
                       return;
                     }
                     setSelectedAgentId(record.agentId);
+                    setSelectedAgentConversationId(record.conversationId);
                     setActiveAgentRecordId(record.id);
                     setAgentLaunchKey((current) => current + 1);
                     switchTab('agent');

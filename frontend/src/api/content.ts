@@ -143,6 +143,17 @@ export interface WorkstationConversation {
   latestMessage: string;
 }
 
+export interface AgentWorkflowConversation {
+  conversationId: string;
+  agentId: string;
+  agentName: string;
+  workflowId: string;
+  title: string;
+  createAt: string;
+  updateAt: string;
+  latestMessage: string;
+}
+
 export interface ChatAttachment {
   file_id: string;
   temp_file_id: string;
@@ -383,6 +394,22 @@ interface WorkstationConversationDto {
   conversationId?: string;
   name?: string;
   title?: string;
+  create_time?: string;
+  createdAt?: string;
+  update_time?: string;
+  updateAt?: string;
+  latest_message?: string | { message?: string; text?: string };
+}
+
+interface AgentWorkflowConversationDto {
+  agent_id?: string;
+  agent_name?: string;
+  workflow_id?: string;
+  chat_id?: string;
+  conversationId?: string;
+  name?: string;
+  title?: string;
+  flow_name?: string;
   create_time?: string;
   createdAt?: string;
   update_time?: string;
@@ -863,6 +890,25 @@ function mapWorkstationConversation(dto: WorkstationConversationDto): Workstatio
   };
 }
 
+function mapAgentWorkflowConversation(dto: AgentWorkflowConversationDto): AgentWorkflowConversation {
+  const latest = dto.latest_message;
+  const latestMessage = typeof latest === 'string'
+    ? latest
+    : latest?.message ?? latest?.text ?? '';
+  const conversationId = String(dto.chat_id ?? dto.conversationId ?? '');
+  const agentName = String(dto.agent_name ?? '');
+  return {
+    conversationId,
+    agentId: String(dto.agent_id ?? ''),
+    agentName,
+    workflowId: String(dto.workflow_id ?? ''),
+    title: (dto.name ?? dto.title ?? dto.flow_name ?? agentName) || '新会话',
+    createAt: dto.create_time ?? dto.createdAt ?? '',
+    updateAt: dto.update_time ?? dto.updateAt ?? dto.create_time ?? dto.createdAt ?? '',
+    latestMessage,
+  };
+}
+
 function parseMaybeJsonMessage(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
@@ -940,6 +986,19 @@ export async function fetchWorkstationConversations(params: {
   query.set('limit', String(params.limit ?? 50));
   const data = await request<WorkstationConversationDto[]>(`/api/v1/workstation/chat/list?${query.toString()}`);
   return data.map(mapWorkstationConversation).filter((item) => item.conversationId);
+}
+
+export async function fetchAgentWorkflowConversations(params: {
+  page?: number;
+  limit?: number;
+} = {}): Promise<AgentWorkflowConversation[]> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page ?? 1));
+  query.set('limit', String(params.limit ?? 50));
+  const data = await request<AgentWorkflowConversationDto[]>(
+    `/api/v1/workstation/workflow/conversations?${query.toString()}`,
+  );
+  return data.map(mapAgentWorkflowConversation).filter((item) => item.conversationId && item.agentId && item.workflowId);
 }
 
 export async function fetchWorkstationMessages(conversationId: string): Promise<WorkstationChatMessage[]> {

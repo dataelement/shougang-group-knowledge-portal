@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  PORTAL_DIALOG_READY_MESSAGE,
   getPortalApprovalMessageType,
   postPortalApprovalMessageToFrame,
   storePendingPortalApprovalAction,
@@ -36,6 +37,10 @@ test('portal approval actions map to iframe message types', () => {
   assert.equal(getPortalApprovalMessageType('requests'), 'shougang-portal:open-approval-requests');
   assert.equal(getPortalApprovalMessageType('notifications'), 'shougang-portal:open-notifications');
   assert.equal(getPortalApprovalMessageType('my_uploads'), 'shougang-portal:open-my-upload');
+});
+
+test('portal dialog ready message is stable for iframe handshake', () => {
+  assert.equal(PORTAL_DIALOG_READY_MESSAGE, 'shougang-portal:dialog-ready');
 });
 
 test('pending approval action is consumed once from storage', () => {

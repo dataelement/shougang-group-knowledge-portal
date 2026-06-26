@@ -6,6 +6,7 @@ import { ApiRequestError } from '../api/content';
 export type { PortalUser };
 
 const STORAGE_KEY = 'sg_portal_user';
+const PORTAL_USER_CHANGED_EVENT = 'sg_portal_user_changed';
 
 function readStoredUser(): PortalUser | null {
   if (typeof window === 'undefined') return null;
@@ -24,22 +25,31 @@ export function loadPortalUser(): PortalUser | null {
 
 export function savePortalUser(user: PortalUser) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
 }
 
 export function clearPortalUser() {
   window.localStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
 }
 
 export function useAuth() {
   const [user, setUser] = useState<PortalUser | null>(() => readStoredUser());
 
   useEffect(() => {
-    function syncFromStorage(event: StorageEvent) {
-      if (event.key !== STORAGE_KEY) return;
+    function syncUser() {
       setUser(readStoredUser());
     }
+    function syncFromStorage(event: StorageEvent) {
+      if (event.key !== STORAGE_KEY) return;
+      syncUser();
+    }
     window.addEventListener('storage', syncFromStorage);
-    return () => window.removeEventListener('storage', syncFromStorage);
+    window.addEventListener(PORTAL_USER_CHANGED_EVENT, syncUser);
+    return () => {
+      window.removeEventListener('storage', syncFromStorage);
+      window.removeEventListener(PORTAL_USER_CHANGED_EVENT, syncUser);
+    };
   }, []);
 
   // localStorage 是前端登录态，BFF 重启 / session 过期 / cookie 丢失会让它和后端脱钩。
