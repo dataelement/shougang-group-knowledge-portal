@@ -136,7 +136,27 @@ export default function DetailPage() {
         )}
 
         <div className={s.card}>
-          <h1 className={s.title}>{detail.title}</h1>
+          <div className={s.titleRow}>
+            <h1 className={s.title} title={detail.title}>
+              {detail.title}
+            </h1>
+            <button
+              type="button"
+              className={s.readAssistBtn}
+              onClick={() => {
+                if (window.parent !== window) {
+                  window.parent.postMessage(
+                    { type: 'OPEN_KNOWLEDGE_READ', spaceId, fileId, openChat: true },
+                    window.location.origin,
+                  );
+                } else {
+                  navigate(`/knowledge-spaces?spaceId=${spaceId}&fileId=${fileId}&openChat=1`);
+                }
+              }}
+            >
+              辅助阅读
+            </button>
+          </div>
           <div className={s.metaGrid}>
             <div className={s.metaItem}>
               <span className={s.metaLabel}>文件大小</span>

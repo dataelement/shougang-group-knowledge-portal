@@ -4,6 +4,7 @@ const LEGACY_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
 const EMBED_PARAM = 'portal_embed';
 const DEEP_LINK_SPACE_PARAM = 'spaceId';
 const DEEP_LINK_FILE_PARAM = 'fileId';
+const DEEP_LINK_OPEN_CHAT_PARAM = 'openChat';
 
 export type EmbedLocation = Pick<Location, 'protocol' | 'hostname' | 'origin'>;
 
@@ -77,6 +78,10 @@ export function mergeKnowledgeDeepLinkParams(
     const parsed = new URL(rawUrl, current.origin);
     parsed.searchParams.set(DEEP_LINK_SPACE_PARAM, spaceId);
     parsed.searchParams.set(DEEP_LINK_FILE_PARAM, fileId);
+    const openChat = searchParams.get(DEEP_LINK_OPEN_CHAT_PARAM)?.trim();
+    if (openChat) {
+      parsed.searchParams.set(DEEP_LINK_OPEN_CHAT_PARAM, openChat);
+    }
     return parsed.toString();
   } catch {
     return rawUrl;
