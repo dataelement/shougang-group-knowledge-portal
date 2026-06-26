@@ -10,6 +10,8 @@ from app.schemas.common import response_ok
 from app.schemas.knowledge import (
     DocumentFileChatRequest,
     FavoriteDocumentRequest,
+    FavoriteRemoveRequest,
+    FavoriteStatusRequest,
     FilePreviewSourceKind,
     HomeStatsData,
     PublishPrecheckRequest,
@@ -457,7 +459,6 @@ async def create_favorite(
             resource_type="document",
             source_space_id=req.source_space_id,
             source_file_id=req.source_file_id,
-            target_space_id=req.target_space_id,
             space_id=req.source_space_id,
             file_id=req.source_file_id,
         )
@@ -466,6 +467,76 @@ async def create_favorite(
         if err.status_code == _BISHENG_DUPLICATE_FAVORITE_CODE:
             raise HTTPException(status_code=409, detail="该文档已收藏到所选个人知识库") from err
         raise HTTPException(status_code=502, detail=err.status_message) from err
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.post("/favorites/remove")
+async def remove_favorite(
+    req: FavoriteRemoveRequest,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        session = auth_service.require_session(request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        return response_ok(await service.remove_favorite(req))
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.post("/favorites/status")
+async def favorite_status(
+    req: FavoriteStatusRequest,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        session = auth_service.require_session(request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        return response_ok(await service.favorite_status(req))
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.get("/favorites/files")
+async def list_favorites(
+    request: Request,
+    page: int = 1,
+    page_size: int = 20,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        session = auth_service.require_session(request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        return response_ok(await service.list_favorites(page=page, page_size=page_size))
     finally:
         await bisheng_client.aclose()
 

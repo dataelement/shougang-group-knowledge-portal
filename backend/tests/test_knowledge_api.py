@@ -377,6 +377,26 @@ class FakeBishengClient:
                     "expired": False,
                 },
             }
+        if path.startswith("/api/v1/knowledge/shougang-portal/favorites/files"):
+            return {
+                "status_code": 200,
+                "data": {
+                    "data": [
+                        {
+                            "favorite_file_id": 9,
+                            "source_space_id": 1,
+                            "source_file_id": 2,
+                            "title": "doc",
+                            "file_name": "doc.pdf",
+                            "status": "invalid",
+                            "updated_at": "",
+                        }
+                    ],
+                    "total": 1,
+                    "page": 1,
+                    "page_size": 20,
+                },
+            }
         raise AssertionError(f"Unexpected path: {path}")
 
     async def post_json(self, path: str, json=None, headers=None):
@@ -468,14 +488,28 @@ class FakeBishengClient:
             assert json == {
                 "source_space_id": 12,
                 "source_file_id": 1580,
-                "target_space_id": 7201,
             }
             return {
                 "status_code": 200,
                 "data": {
-                    "file_id": 9301,
+                    "favorite_file_id": 9301,
                     "space_id": 7201,
+                    "source_space_id": 12,
+                    "source_file_id": 1580,
                     "title": "热轧1580产线精轧机振动纹治理实践",
+                },
+            }
+        if path == "/api/v1/knowledge/shougang-portal/favorites/remove":
+            return {"status_code": 200, "data": {"removed": True}}
+        if path == "/api/v1/knowledge/shougang-portal/favorites/status":
+            items = (json or {}).get("items", [])
+            return {
+                "status_code": 200,
+                "data": {
+                    "data": [
+                        {"space_id": it["space_id"], "file_id": it["file_id"], "favorited": True}
+                        for it in items
+                    ]
                 },
             }
         if path == "/api/v1/knowledge/shougang-portal/share-links":
@@ -690,7 +724,6 @@ def test_create_favorite_uses_current_user_bisheng_session(tmp_path: Path):
                 json={
                     "source_space_id": 12,
                     "source_file_id": 1580,
-                    "target_space_id": 7201,
                 },
             )
         finally:
@@ -698,13 +731,12 @@ def test_create_favorite_uses_current_user_bisheng_session(tmp_path: Path):
                 client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
-    assert response.json()["data"]["file_id"] == 9301
+    assert response.json()["data"]["favorite_file_id"] == 9301
     assert fake_bisheng.post_calls[-1] == (
         "/api/v1/knowledge/shougang-portal/favorites",
         {
             "source_space_id": 12,
             "source_file_id": 1580,
-            "target_space_id": 7201,
         },
     )
     assert fake_bisheng.telemetry_events[-1] == {
@@ -716,44 +748,65 @@ def test_create_favorite_uses_current_user_bisheng_session(tmp_path: Path):
         "status": "success",
         "space_id": 12,
         "file_id": 1580,
-        "target_space_id": 7201,
         "source_space_id": 12,
         "source_file_id": 1580,
     }
 
 
-def test_create_favorite_maps_duplicate_to_conflict(tmp_path: Path):
-    class DuplicateFavoriteBishengClient(FakeBishengClient):
-        async def post_json(self, path: str, json=None, headers=None):
-            if path == "/api/v1/knowledge/shougang-portal/favorites":
-                return {
-                    "status_code": 18021,
-                    "status_message": "A file with the same name or content already exists in this space",
-                    "data": {},
-                }
-            return await super().post_json(path, json=json)
-
+def test_remove_favorite_requires_session(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
-    fake_bisheng = DuplicateFavoriteBishengClient()
+    fake_bisheng = FakeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        try:
+            response = client.post(
+                "/api/v1/knowledge/favorites/remove",
+                json={"source_space_id": 1, "source_file_id": 2},
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 401
+
+
+def test_favorite_status_returns_map(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = FakeBishengClient()
     with TestClient(app) as client:
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_config_service = config_service
         client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         try:
             response = client.post(
-                "/api/v1/knowledge/favorites",
-                json={
-                    "source_space_id": 12,
-                    "source_file_id": 1580,
-                    "target_space_id": 7201,
-                },
+                "/api/v1/knowledge/favorites/status",
+                json={"items": [{"space_id": 1, "file_id": 2}]},
             )
         finally:
             if previous_auth is not None:
                 client.app.state.portal_auth_service = previous_auth
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == "该文档已收藏到所选个人知识库"
+    assert response.status_code == 200
+    assert response.json()["data"]["data"][0]["favorited"] is True
+
+
+def test_list_favorites_returns_items(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = FakeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.get("/api/v1/knowledge/favorites/files")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert response.json()["data"]["data"][0]["status"] == "invalid"
 
 
 def test_create_share_link_uses_current_user_bisheng_session(tmp_path: Path):
