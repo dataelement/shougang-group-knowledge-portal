@@ -23,7 +23,6 @@ import {
 } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { resolveSectionVisual } from '../utils/adminSections';
-import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
