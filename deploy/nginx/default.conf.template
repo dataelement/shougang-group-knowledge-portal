@@ -63,7 +63,7 @@ server {
         proxy_read_timeout 300s;
     }
 
-    location ~ ^(/workspace)?/bisheng|/tmp-dir {
+    location ~ ^(/workspace)?/(skm-)?bisheng|/tmp-dir {
         rewrite ^/workspace(/.*)$ $1 break;
         proxy_pass         ${BISHENG_MINIO_UPSTREAM};
         proxy_http_version 1.1;

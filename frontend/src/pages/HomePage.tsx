@@ -816,13 +816,16 @@ export default function HomePage() {
                           })}
                       >
                         <div className={s.itemBody}>
-                          <span className={s.itemTitle}>{f.title}</span>
-                          <div className={s.itemSummary}>{f.summary}</div>
+                          <span className={s.itemTitle}>
+                            <span className={s.itemTitleText}>{f.title}</span>
+                            {f.summary ? (
+                              <span className={s.itemSummaryTooltip}>{f.summary}</span>
+                            ) : null}
+                          </span>
                           <div className={s.itemMeta}>
                             {getPrimaryTag(f) ? (
                               <TagPill name={getPrimaryTag(f)!} neutral />
                             ) : null}
-                            <span className={s.itemDate}>{formatDisplayDateTime(f.date)}</span>
                           </div>
                         </div>
                       </div>
