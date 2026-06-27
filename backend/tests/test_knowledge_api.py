@@ -6,7 +6,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.schemas.portal_config import SpacesConfigUpdate
+from app.schemas.portal_config import AgentConfig, SpacesConfigUpdate
 from app.services.portal_config_service import PortalConfigService
 
 
@@ -112,6 +112,19 @@ class FakeBishengClient:
 
     async def get_json(self, path: str, params=None, headers=None):
         params = params or {}
+        if path == "/api/v1/workstation/config":
+            return {
+                "data": {
+                    "shougang": {
+                        "file_encoding": {
+                            "document_types": [
+                                {"code": "RPT", "label": "报告"},
+                                {"code": "STD", "label": "标准规范"},
+                            ]
+                        }
+                    }
+                }
+            }
         if path == "/api/v1/knowledge/space/12/search":
             keyword = params.get("keyword")
             if keyword == "振动纹":
@@ -1915,6 +1928,126 @@ def test_chat_proxy_maps_chat_list_upstream_english_error_to_chinese(tmp_path: P
     assert response.json()["detail"] == "登录状态已失效，请重新登录"
 
 
+def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path):
+    class WorkflowConversationBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/workstation/app/conversations":
+                self.calls.append(params)
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "list": [
+                            {
+                                "chat_id": f"chat-{params['flow_id']}",
+                                "name": f"{params['flow_id']} 历史会话",
+                                "flow_id": params["flow_id"],
+                                "flow_name": f"{params['flow_id']} 工作流",
+                                "flow_type": 10,
+                                "create_time": "2026-06-25T09:00:00",
+                                "update_time": "2026-06-25T10:00:00",
+                                "latest_message": {"message": "workflow 已运行"},
+                            }
+                        ],
+                        "total": 1,
+                    },
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_agent_config(
+        AgentConfig(
+            categories=[{"id": "general", "name": "通用"}],
+            agents=[
+                {
+                    "id": "agent-a",
+                    "workflow_id": "wf-a",
+                    "name": "智能体 A",
+                    "category_id": "general",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                },
+                {
+                    "id": "agent-disabled",
+                    "workflow_id": "wf-disabled",
+                    "name": "停用智能体",
+                    "category_id": "general",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": False,
+                },
+            ],
+        )
+    )
+    user_bisheng = WorkflowConversationBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/workflow/conversations?page=1&limit=20")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert user_bisheng.calls == [{"flow_id": "wf-a", "page": 1, "limit": 20}]
+    body = response.json()["data"]
+    assert body[0]["chat_id"] == "chat-wf-a"
+    assert body[0]["agent_id"] == "agent-a"
+    assert body[0]["workflow_id"] == "wf-a"
+
+
+def test_chat_proxy_maps_workflow_conversation_upstream_error_to_chinese(tmp_path: Path):
+    class WorkflowConversationFailureBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/workstation/app/conversations":
+                return {
+                    "status_code": 401,
+                    "status_message": "Invalid token",
+                    "data": {},
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_agent_config(
+        AgentConfig(
+            categories=[{"id": "general", "name": "通用"}],
+            agents=[
+                {
+                    "id": "agent-a",
+                    "workflow_id": "wf-a",
+                    "name": "智能体 A",
+                    "category_id": "general",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                }
+            ],
+        )
+    )
+    user_bisheng = WorkflowConversationFailureBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/workflow/conversations?page=1&limit=20")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "登录状态已失效，请重新登录"
+
+
 def test_chat_proxy_loads_current_user_conversation_messages(tmp_path: Path):
     class ChatHistoryBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):
@@ -2100,6 +2233,60 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
             },
         )
     ]
+
+
+def test_search_files_passes_document_type_to_shougang_portal_search(tmp_path: Path):
+    class DocumentTypeBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": None,
+                    "tag": None,
+                    "space_ids": [12],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "updated_at_desc",
+                    "page": 1,
+                    "page_size": 10,
+                    "document_type": "RPT",
+                    "rerank_model_id": "",
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "质量分析报告",
+                                "summary": "报告摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": [],
+                                "file_ext": "pdf",
+                                "file_size": "10KB",
+                                "file_encoding": "SGGF-RPT-PP-202604-01201",
+                            }
+                        ],
+                        "total": 1,
+                        "page": 1,
+                        "page_size": 10,
+                    }
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = DocumentTypeBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/files?space_ids=12&document_type=rpt&sort=updated_at_desc&page=1&page_size=10")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["total"] == 1
+    assert body["data"][0]["file_encoding"] == "SGGF-RPT-PP-202604-01201"
 
 
 def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(tmp_path: Path):
@@ -2298,6 +2485,61 @@ def test_search_files_logs_shougang_portal_fallback(tmp_path: Path, caplog):
     assert body["data"][0]["id"] == 1580
     assert fake_bisheng.post_calls[0][0] == "/api/v1/knowledge/shougang-portal/files/search"
     assert "fallback to legacy file search after shougang portal search failed" in caplog.text
+
+
+def test_search_files_fallback_filters_by_document_type_before_pagination(tmp_path: Path):
+    class FallbackDocumentTypeBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                raise httpx.HTTPError("portal search unavailable")
+            return await super().post_json(path, json=json)
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/space/12/search":
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1580,
+                                "knowledge_id": 12,
+                                "file_name": "质量分析报告.pdf",
+                                "abstract": "报告摘要",
+                                "file_type": 1,
+                                "status": 2,
+                                "file_encoding": "SGGF-RPT-PP-202604-01201",
+                                "update_time": "2026-04-13T10:30:00",
+                                "tags": [],
+                            },
+                            {
+                                "id": 1590,
+                                "knowledge_id": 12,
+                                "file_name": "点检标准.pdf",
+                                "abstract": "标准摘要",
+                                "file_type": 1,
+                                "status": 2,
+                                "file_encoding": "SGGF-STD-PP-202604-01202",
+                                "update_time": "2026-04-14T10:30:00",
+                                "tags": [],
+                            },
+                        ],
+                        "total": 2,
+                    }
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = FallbackDocumentTypeBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/files?space_ids=12&document_type=RPT&page=1&page_size=1")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["total"] == 1
+    assert [item["id"] for item in body["data"]] == [1580]
 
 
 def test_related_files_use_full_space_search_without_portal_top50(tmp_path: Path):

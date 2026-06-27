@@ -5,7 +5,6 @@ import SearchPage from './pages/SearchPage';
 import ListPage from './pages/ListPage';
 import DetailPage from './pages/DetailPage';
 import ShareDocumentPage from './pages/ShareDocumentPage';
-import QAPage from './pages/QAPage';
 import AppsPage from './pages/AppsPage';
 import AdminPage from './pages/AdminPage';
 import DomainsPage from './pages/DomainsPage';
@@ -103,6 +102,13 @@ function AdminRoute() {
   return <AdminPage />;
 }
 
+function RedirectToSmartQa() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set('tab', 'qa');
+  return <Navigate to={`/apps?${params.toString()}`} replace />;
+}
+
 export default function App() {
   return (
     <>
@@ -118,8 +124,8 @@ export default function App() {
         <Route path="/space/:spaceId/file/:fileId" element={<DetailPage />} />
         <Route path="/share/document/:token" element={<ShareDocumentPage />} />
         <Route path="/knowledge-spaces" element={<KnowledgeSpacesPage />} />
-        <Route path="/qa" element={<QAPage />} />
-        <Route path="/portal/qa" element={<QAPage />} />
+        <Route path="/qa" element={<RedirectToSmartQa />} />
+        <Route path="/portal/qa" element={<RedirectToSmartQa />} />
         <Route path="/expert-qa" element={<ExpertQAPage />} />
         <Route path="/expert-qa/ask" element={<ExpertQAAskPage />} />
         <Route path="/expert-qa/expertmanage" element={<ExpertManagePage />} />

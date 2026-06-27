@@ -14,7 +14,7 @@ export interface FileItem {
   source: string;
   date: string;
   tags: string[];
-  tag_infos: FileTag[];
+  tag_infos?: FileTag[];
   ext: string;
   sizeLabel: string;
   fileEncoding: string;
@@ -156,6 +156,17 @@ export interface WorkstationConversation {
   latestMessage: string;
 }
 
+export interface AgentWorkflowConversation {
+  conversationId: string;
+  agentId: string;
+  agentName: string;
+  workflowId: string;
+  title: string;
+  createAt: string;
+  updateAt: string;
+  latestMessage: string;
+}
+
 export interface ChatAttachment {
   file_id: string;
   temp_file_id: string;
@@ -216,13 +227,46 @@ interface KnowledgeFileItemDto {
   summary: string;
   source: string;
   updated_at: string;
-  tags: string[];
-  tag_infos: FileTag[];
+  tags: Array<string | FileTag>;
+  tag_infos?: FileTag[];
   file_ext?: string;
   file_size?: string;
   file_encoding?: string;
   folder_path?: string;
   source_path?: string;
+}
+
+function normalizeFileTagInfos(tags: Array<string | FileTag> = [], tagInfos: FileTag[] = []): FileTag[] {
+  const normalized: FileTag[] = [];
+  const seen = new Set<string>();
+
+  const append = (tagName: string, resourceType = '') => {
+    const name = tagName.trim();
+    if (!name) return;
+    const key = `${name}\u0000${resourceType}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push({ tag_name: name, resource_type: resourceType });
+  };
+
+  for (const tag of tagInfos) append(tag.tag_name, tag.resource_type);
+  for (const tag of tags) {
+    if (typeof tag === 'string') {
+      append(tag);
+    } else {
+      append(tag.tag_name, tag.resource_type);
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeFileTagNames(tags: Array<string | FileTag> = [], tagInfos: FileTag[] = []): string[] {
+  const names: string[] = [];
+  for (const tag of normalizeFileTagInfos(tags, tagInfos)) {
+    if (!names.includes(tag.tag_name)) names.push(tag.tag_name);
+  }
+  return names;
 }
 
 interface KnowledgeFileDetailDto extends KnowledgeFileItemDto {
@@ -400,6 +444,22 @@ interface WorkstationConversationDto {
   latest_message?: string | { message?: string; text?: string };
 }
 
+interface AgentWorkflowConversationDto {
+  agent_id?: string;
+  agent_name?: string;
+  workflow_id?: string;
+  chat_id?: string;
+  conversationId?: string;
+  name?: string;
+  title?: string;
+  flow_name?: string;
+  create_time?: string;
+  createdAt?: string;
+  update_time?: string;
+  updateAt?: string;
+  latest_message?: string | { message?: string; text?: string };
+}
+
 interface WorkstationMessageDto {
   messageId?: string | number;
   message_id?: string | number;
@@ -422,6 +482,7 @@ interface WorkstationMessageDto {
 }
 
 export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
+  const tagInfos = normalizeFileTagInfos(dto.tags, dto.tag_infos);
   return {
     id: dto.id,
     spaceId: dto.space_id,
@@ -429,8 +490,8 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     summary: dto.summary,
     source: dto.source,
     date: dto.updated_at,
-    tags: dto.tags ?? [],
-    tag_infos: dto.tag_infos ?? [],
+    tags: normalizeFileTagNames(dto.tags, tagInfos),
+    tag_infos: tagInfos,
     ext: dto.file_ext ?? '',
     sizeLabel: dto.file_size ?? '',
     fileEncoding: dto.file_encoding ?? '',
@@ -448,7 +509,7 @@ function mapSearchResultForSummary(item: FileItem) {
     source: item.source,
     updated_at: item.date,
     tags: item.tags,
-    tag_infos: item.tag_infos,
+    tag_infos: item.tag_infos ?? [],
     file_ext: item.ext,
     file_size: item.sizeLabel,
     file_encoding: item.fileEncoding,
@@ -611,6 +672,7 @@ export async function searchFiles(params: {
   spaceIds?: number[];
   spaceLevel?: string;
   fileExt?: string;
+  documentType?: string;
   sort?: string;
   page?: number;
   pageSize?: number;
@@ -620,6 +682,7 @@ export async function searchFiles(params: {
   if (params.tag) query.set('tag', params.tag);
   if (params.spaceLevel) query.set('space_level', params.spaceLevel);
   if (params.fileExt) query.set('file_ext', params.fileExt);
+  if (params.documentType) query.set('document_type', params.documentType);
   if (params.sort) query.set('sort', params.sort);
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('page_size', String(params.pageSize));
@@ -638,12 +701,14 @@ export async function fetchSpaceFiles(params: {
   spaceId: number;
   tag?: string;
   fileExt?: string;
+  documentType?: string;
   page?: number;
   pageSize?: number;
 }): Promise<{ data: FileItem[]; total: number; page: number; pageSize: number }> {
   const query = new URLSearchParams();
   if (params.tag) query.set('tag', params.tag);
   if (params.fileExt) query.set('file_ext', params.fileExt);
+  if (params.documentType) query.set('document_type', params.documentType);
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('page_size', String(params.pageSize));
 
@@ -940,6 +1005,25 @@ function mapWorkstationConversation(dto: WorkstationConversationDto): Workstatio
   };
 }
 
+function mapAgentWorkflowConversation(dto: AgentWorkflowConversationDto): AgentWorkflowConversation {
+  const latest = dto.latest_message;
+  const latestMessage = typeof latest === 'string'
+    ? latest
+    : latest?.message ?? latest?.text ?? '';
+  const conversationId = String(dto.chat_id ?? dto.conversationId ?? '');
+  const agentName = String(dto.agent_name ?? '');
+  return {
+    conversationId,
+    agentId: String(dto.agent_id ?? ''),
+    agentName,
+    workflowId: String(dto.workflow_id ?? ''),
+    title: (dto.name ?? dto.title ?? dto.flow_name ?? agentName) || '新会话',
+    createAt: dto.create_time ?? dto.createdAt ?? '',
+    updateAt: dto.update_time ?? dto.updateAt ?? dto.create_time ?? dto.createdAt ?? '',
+    latestMessage,
+  };
+}
+
 function parseMaybeJsonMessage(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
@@ -1017,6 +1101,19 @@ export async function fetchWorkstationConversations(params: {
   query.set('limit', String(params.limit ?? 50));
   const data = await request<WorkstationConversationDto[]>(`/api/v1/workstation/chat/list?${query.toString()}`);
   return data.map(mapWorkstationConversation).filter((item) => item.conversationId);
+}
+
+export async function fetchAgentWorkflowConversations(params: {
+  page?: number;
+  limit?: number;
+} = {}): Promise<AgentWorkflowConversation[]> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page ?? 1));
+  query.set('limit', String(params.limit ?? 50));
+  const data = await request<AgentWorkflowConversationDto[]>(
+    `/api/v1/workstation/workflow/conversations?${query.toString()}`,
+  );
+  return data.map(mapAgentWorkflowConversation).filter((item) => item.conversationId && item.agentId && item.workflowId);
 }
 
 export async function fetchWorkstationMessages(conversationId: string): Promise<WorkstationChatMessage[]> {
@@ -1293,7 +1390,7 @@ export async function streamDocumentFileChat(params: {
     });
     await consumeChatStream(response, params.onUpdate, params.onCitations);
   } catch (error) {
-    if (error instanceof ApiRequestError) throw error;
+    if (error instanceof ApiRequestError) throw new Error('问答请求失败，请稍后重试。');
     throw new Error(normalizeUserFacingErrorMessage(error, '问答请求失败，请稍后重试。'));
   }
 }

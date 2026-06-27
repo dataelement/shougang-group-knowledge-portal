@@ -283,6 +283,10 @@ DEFAULT_PORTAL_CONFIG = {
     "search": {
         "rerank_model_id": "",
     },
+    "agent_config": {
+        "categories": [],
+        "agents": [],
+    },
     "recommendation": {
         "provider": "tag_feed",
         "home_strategy": "tag+updated_at",

@@ -82,6 +82,44 @@ export interface QAModelOptionsResponse {
   models: QAModelOption[];
 }
 
+export interface AgentCategoryConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+}
+
+export interface AgentItemConfig {
+  id: string;
+  workflow_id: string;
+  name: string;
+  desc: string;
+  category_id: string;
+  tags: string[];
+  icon: string;
+  color: string;
+  bg: string;
+  enabled: boolean;
+}
+
+export interface AgentConfig {
+  categories: AgentCategoryConfig[];
+  agents: AgentItemConfig[];
+}
+
+export interface AgentWorkflowOption {
+  workflow_id: string;
+  name: string;
+  desc: string;
+  flow_type: number;
+  status: number;
+}
+
+export interface AgentWorkflowOptionsResponse {
+  workflows: AgentWorkflowOption[];
+  has_more: boolean;
+  next_cursor: string;
+}
+
 export interface SearchConfig {
   rerank_model_id: string;
 }
@@ -89,6 +127,11 @@ export interface SearchConfig {
 export interface SearchRerankModelOptionsResponse {
   rerank_model_id: string;
   models: QAModelOption[];
+}
+
+export interface DocumentTypeConfig {
+  code: string;
+  label: string;
 }
 
 export interface BishengRuntimeConfig {
@@ -121,10 +164,6 @@ export interface UnifiedAuthRuntimeConfig {
   state_ttl_seconds: number;
   http_timeout_seconds: number;
   login_sync_signature_header: string;
-  glo_url: string;
-  glo_entity_id: string;
-  glo_redirect_to_url: string;
-  glo_redirect_to_login: boolean;
   has_client_secret: boolean;
   has_state_secret: boolean;
   has_login_sync_hmac_secret: boolean;
@@ -226,7 +265,9 @@ export interface PortalConfig {
   spaces: SpaceConfig[];
   domains: DomainConfig[];
   sections: SectionConfig[];
+  document_types: DocumentTypeConfig[];
   qa: QAConfig;
+  agent_config: AgentConfig;
   search: SearchConfig;
   recommendation: RecommendationConfig;
   display: DisplayConfig;
@@ -379,6 +420,30 @@ export function fetchQaModelOptions() {
   return request<QAModelOptionsResponse>('/api/v1/admin/config/qa/model-options');
 }
 
+export function fetchAgentConfig() {
+  return request<AgentConfig>('/api/v1/admin/config/agent-config');
+}
+
+export function updateAgentConfig(agentConfig: AgentConfig) {
+  return request<AgentConfig>('/api/v1/admin/config/agent-config', {
+    method: 'POST',
+    body: JSON.stringify(agentConfig),
+  });
+}
+
+export function fetchAgentWorkflowOptions(params: {
+  keyword?: string;
+  cursor?: string;
+  page_size?: number;
+} = {}) {
+  const query = new URLSearchParams();
+  if (params.keyword?.trim()) query.set('keyword', params.keyword.trim());
+  if (params.cursor?.trim()) query.set('cursor', params.cursor.trim());
+  if (params.page_size) query.set('page_size', String(params.page_size));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return request<AgentWorkflowOptionsResponse>(`/api/v1/admin/config/agent-config/workflow-options${suffix}`);
+}
+
 export function fetchSearchRerankModelOptions() {
   return request<SearchRerankModelOptionsResponse>('/api/v1/admin/config/search/rerank-model-options');
 }
@@ -426,10 +491,6 @@ export function updateUnifiedAuthRuntimeConfig(payload: {
   http_timeout_seconds: number;
   login_sync_hmac_secret: string;
   login_sync_signature_header: string;
-  glo_url: string;
-  glo_entity_id: string;
-  glo_redirect_to_url: string;
-  glo_redirect_to_login: boolean;
 }) {
   return request<UnifiedAuthRuntimeConfig>('/api/v1/admin/config/unified-auth', {
     method: 'POST',

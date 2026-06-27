@@ -1,18 +1,23 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon,
+  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import Header from '../components/Header';
 import {
   type AppConfig,
+  type AgentCategoryConfig,
+  type AgentConfig,
+  type AgentItemConfig,
+  type AgentWorkflowOption,
   type BannerSlide,
   type BishengRuntimeConfig,
   type DisplayConfig,
   type DomainConfig,
   type UnifiedAuthRuntimeConfig,
   fetchAdminConfig,
+  fetchAgentWorkflowOptions,
   fetchBishengRuntimeConfig,
   fetchSearchRerankModelOptions,
   fetchUnifiedAuthRuntimeConfig,
@@ -33,6 +38,7 @@ import {
   type SpaceConfig,
   type QAConfig,
   updateAppsConfig,
+  updateAgentConfig,
   updateBannersConfig,
   updateBishengRuntimeConfig,
   updateDisplayConfig,
@@ -79,6 +85,20 @@ import {
   type QaTemplateCategoryDraft,
   type QaTemplateDraft,
 } from '../utils/adminQaTemplates';
+import {
+  AGENT_COLOR_PRESETS,
+  AGENT_ICON_OPTIONS,
+  canDeleteAgentCategory,
+  createAgentCategoryDraft,
+  createAgentDraft,
+  toAgentCategoryConfig,
+  toAgentItemConfig,
+  validateAgentCategoryDraft,
+  validateAgentConfig,
+  validateAgentDraft,
+  type AgentCategoryDraft,
+  type AgentDraft,
+} from '../utils/adminAgentConfig';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { canDeleteSpace, getSpaceBindingState, getSpaceUsage, getSpaceUsageSummary, setSpaceEnabled, upsertSpace } from '../utils/adminSpaces';
@@ -102,6 +122,7 @@ const NAV_ITEMS = [
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
   { key: 'qa', label: '问答配置', icon: Bot },
   { key: 'qaTemplates', label: '问答模板', icon: FileText },
+  { key: 'agentConfig', label: '智能应用配置', icon: MessageSquare },
   { key: 'search', label: '搜索配置', icon: SearchIcon },
   { key: 'recommend', label: '推荐策略', icon: Star },
   { key: 'display', label: '展示配置', icon: SlidersHorizontal },
@@ -113,6 +134,20 @@ const NAV_ITEMS = [
 ];
 
 type NavKey = typeof NAV_ITEMS[number]['key'];
+
+function mergeWorkflowOptions(
+  current: AgentWorkflowOption[],
+  incoming: AgentWorkflowOption[],
+): AgentWorkflowOption[] {
+  const seen = new Set(current.map((workflow) => workflow.workflow_id));
+  const merged = [...current];
+  for (const workflow of incoming) {
+    if (seen.has(workflow.workflow_id)) continue;
+    seen.add(workflow.workflow_id);
+    merged.push(workflow);
+  }
+  return merged;
+}
 
 type DisplayItem = {
   group: string;
@@ -160,6 +195,21 @@ type QaTemplateDeleteTarget = {
   index: number;
 };
 
+type AgentCategoryDeleteTarget = {
+  category: AgentCategoryConfig;
+  index: number;
+};
+
+type AgentDeleteTarget = {
+  agent: AgentItemConfig;
+  index: number;
+};
+
+type WorkflowLoadOptions = {
+  cursor?: string;
+  append?: boolean;
+};
+
 interface BishengDraft {
   base_url: string;
   asset_base_url: string;
@@ -183,10 +233,6 @@ interface UnifiedAuthDraft {
   http_timeout_seconds: string;
   login_sync_hmac_secret: string;
   login_sync_signature_header: string;
-  glo_url: string;
-  glo_entity_id: string;
-  glo_redirect_to_url: string;
-  glo_redirect_to_login: boolean;
 }
 
 interface IntegrationsDraft {
@@ -258,6 +304,24 @@ export default function AdminPage() {
   const [qaTemplateDraft, setQaTemplateDraft] = useState<QaTemplateDraft>(createQaTemplateDraft());
   const [qaTemplateFormError, setQaTemplateFormError] = useState('');
   const [qaTemplateDeleteTarget, setQaTemplateDeleteTarget] = useState<QaTemplateDeleteTarget | null>(null);
+  const [agentCategoryEditorOpen, setAgentCategoryEditorOpen] = useState(false);
+  const [agentCategoryEditorIndex, setAgentCategoryEditorIndex] = useState<number | null>(null);
+  const [agentCategoryDraft, setAgentCategoryDraft] = useState<AgentCategoryDraft>(createAgentCategoryDraft());
+  const [agentCategoryFormError, setAgentCategoryFormError] = useState('');
+  const [agentCategoryDeleteTarget, setAgentCategoryDeleteTarget] = useState<AgentCategoryDeleteTarget | null>(null);
+  const [agentEditorOpen, setAgentEditorOpen] = useState(false);
+  const [agentEditorIndex, setAgentEditorIndex] = useState<number | null>(null);
+  const [agentDraft, setAgentDraft] = useState<AgentDraft>(createAgentDraft());
+  const [agentFormError, setAgentFormError] = useState('');
+  const [agentDeleteTarget, setAgentDeleteTarget] = useState<AgentDeleteTarget | null>(null);
+  const [agentWorkflowOptions, setAgentWorkflowOptions] = useState<AgentWorkflowOption[]>([]);
+  const [agentWorkflowLoading, setAgentWorkflowLoading] = useState(false);
+  const [agentWorkflowError, setAgentWorkflowError] = useState('');
+  const [agentWorkflowKeyword, setAgentWorkflowKeyword] = useState('');
+  const [agentWorkflowLoaded, setAgentWorkflowLoaded] = useState(false);
+  const [agentWorkflowLoadedKeyword, setAgentWorkflowLoadedKeyword] = useState('');
+  const [agentWorkflowHasMore, setAgentWorkflowHasMore] = useState(false);
+  const [agentWorkflowNextCursor, setAgentWorkflowNextCursor] = useState('');
   const [recommendDialogKey, setRecommendDialogKey] = useState<RecommendationDialogKey>(null);
   const [recommendDraft, setRecommendDraft] = useState('');
   const [appEditorOpen, setAppEditorOpen] = useState(false);
@@ -482,6 +546,11 @@ export default function AdminPage() {
     };
   }, [active, config, searchRerankModelOptions.length]);
 
+  useEffect(() => {
+    if (active !== 'agentConfig' || !config || agentWorkflowLoaded || agentWorkflowLoading) return;
+    void loadAgentWorkflowOptions('');
+  }, [active, config, agentWorkflowLoaded, agentWorkflowLoading]);
+
   function openQaTextDialog(mode: Exclude<QaDialogMode, 'spaces' | null>, value: string) {
     setQaDialogMode(mode);
     setQaTextDraft(value);
@@ -517,6 +586,58 @@ export default function AdminPage() {
     setQaTemplateEditorIndex(index);
     setQaTemplateDraft(createQaTemplateDraft(template));
     setQaTemplateFormError('');
+  }
+
+  function openCreateAgentCategoryDialog() {
+    setAgentCategoryEditorOpen(true);
+    setAgentCategoryEditorIndex(null);
+    setAgentCategoryDraft(createAgentCategoryDraft());
+    setAgentCategoryFormError('');
+  }
+
+  function openEditAgentCategoryDialog(category: AgentCategoryConfig, index: number) {
+    setAgentCategoryEditorOpen(true);
+    setAgentCategoryEditorIndex(index);
+    setAgentCategoryDraft(createAgentCategoryDraft(category));
+    setAgentCategoryFormError('');
+  }
+
+  async function loadAgentWorkflowOptions(keyword = agentWorkflowKeyword, options: WorkflowLoadOptions = {}) {
+    const normalizedKeyword = keyword.trim();
+    const cursor = options.cursor?.trim() || '';
+    setAgentWorkflowLoading(true);
+    if (!options.append) setAgentWorkflowError('');
+    try {
+      const data = await fetchAgentWorkflowOptions({ keyword: normalizedKeyword, cursor, page_size: 50 });
+      setAgentWorkflowOptions((current) => (
+        options.append ? mergeWorkflowOptions(current, data.workflows) : data.workflows
+      ));
+      setAgentWorkflowHasMore(data.has_more);
+      setAgentWorkflowNextCursor(data.next_cursor);
+      setAgentWorkflowLoadedKeyword(normalizedKeyword);
+      setAgentWorkflowLoaded(true);
+    } catch (err) {
+      setAgentWorkflowError(err instanceof Error ? err.message : 'workflow 候选项加载失败');
+      setAgentWorkflowLoaded(true);
+    } finally {
+      setAgentWorkflowLoading(false);
+    }
+  }
+
+  function openCreateAgentDialog() {
+    setAgentEditorOpen(true);
+    setAgentEditorIndex(null);
+    setAgentDraft(createAgentDraft({ category_id: config?.agent_config.categories[0]?.id ?? '' }));
+    setAgentFormError('');
+    void loadAgentWorkflowOptions('');
+  }
+
+  function openEditAgentDialog(agent: AgentItemConfig, index: number) {
+    setAgentEditorOpen(true);
+    setAgentEditorIndex(index);
+    setAgentDraft(createAgentDraft(agent));
+    setAgentFormError('');
+    void loadAgentWorkflowOptions('');
   }
 
   function openRecommendationDialog(key: Exclude<RecommendationDialogKey, null>, value: string) {
@@ -742,6 +863,55 @@ export default function AdminPage() {
                 const updated = [...config.qa.templates];
                 updated[index] = { ...updated[index], enabled };
                 void runSave(() => persistQa({ ...config.qa, templates: updated }, setConfig));
+              }}
+            />
+          )}
+          {config && active === 'agentConfig' && (
+            <AgentConfigTable
+              agentConfig={config.agent_config}
+              workflowOptions={agentWorkflowOptions}
+              workflowLoading={agentWorkflowLoading}
+              workflowError={agentWorkflowError}
+              workflowLoaded={agentWorkflowLoaded}
+              workflowSourceReliable={agentWorkflowLoaded && !agentWorkflowLoading && !agentWorkflowError && !agentWorkflowHasMore && agentWorkflowLoadedKeyword === ''}
+              workflowHasMore={agentWorkflowHasMore}
+              saving={saving}
+              onRefreshWorkflows={() => void loadAgentWorkflowOptions('')}
+              onLoadMoreWorkflows={() => void loadAgentWorkflowOptions(agentWorkflowLoadedKeyword, {
+                cursor: agentWorkflowNextCursor,
+                append: true,
+              })}
+              onAddCategory={openCreateAgentCategoryDialog}
+              onEditCategory={(index) => openEditAgentCategoryDialog(config.agent_config.categories[index], index)}
+              onDeleteCategory={(index) => setAgentCategoryDeleteTarget({ category: config.agent_config.categories[index], index })}
+              onMoveCategory={(index, direction) => {
+                const nextIndex = index + direction;
+                if (nextIndex < 0 || nextIndex >= config.agent_config.categories.length) return;
+                const updated = [...config.agent_config.categories];
+                const [moved] = updated.splice(index, 1);
+                updated.splice(nextIndex, 0, moved);
+                void runSave(() => persistAgentConfig({ ...config.agent_config, categories: updated }, setConfig));
+              }}
+              onToggleCategory={(index, enabled) => {
+                const updated = [...config.agent_config.categories];
+                updated[index] = { ...updated[index], enabled };
+                void runSave(() => persistAgentConfig({ ...config.agent_config, categories: updated }, setConfig));
+              }}
+              onAddAgent={openCreateAgentDialog}
+              onEditAgent={(index) => openEditAgentDialog(config.agent_config.agents[index], index)}
+              onDeleteAgent={(index) => setAgentDeleteTarget({ agent: config.agent_config.agents[index], index })}
+              onMoveAgent={(index, direction) => {
+                const nextIndex = index + direction;
+                if (nextIndex < 0 || nextIndex >= config.agent_config.agents.length) return;
+                const updated = [...config.agent_config.agents];
+                const [moved] = updated.splice(index, 1);
+                updated.splice(nextIndex, 0, moved);
+                void runSave(() => persistAgentConfig({ ...config.agent_config, agents: updated }, setConfig));
+              }}
+              onToggleAgent={(index, enabled) => {
+                const updated = [...config.agent_config.agents];
+                updated[index] = { ...updated[index], enabled };
+                void runSave(() => persistAgentConfig({ ...config.agent_config, agents: updated }, setConfig));
               }}
             />
           )}
@@ -1248,6 +1418,151 @@ export default function AdminPage() {
                 templates: config.qa.templates.filter((_, index) => index !== target.index),
               }, setConfig);
               setQaTemplateDeleteTarget(null);
+            });
+          }}
+        />
+      ) : null}
+      {config && agentCategoryEditorOpen ? (
+        <AgentCategoryDialog
+          open
+          draft={agentCategoryDraft}
+          saving={saving}
+          error={agentCategoryFormError}
+          onClose={() => setAgentCategoryEditorOpen(false)}
+          onChange={(patch) => {
+            setAgentCategoryDraft((current) => ({ ...current, ...patch }));
+            setAgentCategoryFormError('');
+          }}
+          onSubmit={() => {
+            const result = validateAgentCategoryDraft(agentCategoryDraft);
+            if (result) {
+              setAgentCategoryFormError(result);
+              return;
+            }
+            const nextCategory = toAgentCategoryConfig(agentCategoryDraft);
+            const currentId = agentCategoryEditorIndex === null
+              ? undefined
+              : config.agent_config.categories[agentCategoryEditorIndex]?.id;
+            const duplicate = config.agent_config.categories.some((category, index) => (
+              category.id === nextCategory.id && (currentId === undefined || index !== agentCategoryEditorIndex)
+            ));
+            if (duplicate) {
+              setAgentCategoryFormError('分类 ID 不能重复。');
+              return;
+            }
+            void runSave(async () => {
+              const categories = [...config.agent_config.categories];
+              if (agentCategoryEditorIndex === null) {
+                categories.push(nextCategory);
+              } else {
+                categories[agentCategoryEditorIndex] = nextCategory;
+              }
+              const agents = config.agent_config.agents.map((agent) => (
+                currentId && agent.category_id === currentId
+                  ? { ...agent, category_id: nextCategory.id }
+                  : agent
+              ));
+              await persistAgentConfig({ categories, agents }, setConfig);
+              setAgentCategoryEditorOpen(false);
+            });
+          }}
+        />
+      ) : null}
+      {config && agentCategoryDeleteTarget ? (
+        <AgentCategoryDeleteDialog
+          open
+          category={agentCategoryDeleteTarget.category}
+          saving={saving}
+          onClose={() => setAgentCategoryDeleteTarget(null)}
+          onConfirm={() => {
+            const target = agentCategoryDeleteTarget;
+            const deleteState = canDeleteAgentCategory(target.category, config.agent_config.agents);
+            if (!deleteState.canDelete) {
+              setAgentCategoryDeleteTarget(null);
+              setError(deleteState.reason);
+              return;
+            }
+            void runSave(async () => {
+              await persistAgentConfig({
+                ...config.agent_config,
+                categories: config.agent_config.categories.filter((_, index) => index !== target.index),
+              }, setConfig);
+              setAgentCategoryDeleteTarget(null);
+            });
+          }}
+        />
+      ) : null}
+      {config && agentEditorOpen ? (
+        <AgentDialog
+          open
+          draft={agentDraft}
+          categories={config.agent_config.categories}
+          workflowOptions={agentWorkflowOptions}
+          workflowLoading={agentWorkflowLoading}
+          workflowError={agentWorkflowError}
+          workflowKeyword={agentWorkflowKeyword}
+          workflowHasMore={agentWorkflowHasMore}
+          saving={saving}
+          error={agentFormError}
+          onClose={() => setAgentEditorOpen(false)}
+          onChange={(patch) => {
+            setAgentDraft((current) => ({ ...current, ...patch }));
+            setAgentFormError('');
+          }}
+          onWorkflowKeywordChange={setAgentWorkflowKeyword}
+          onRefreshWorkflows={() => void loadAgentWorkflowOptions(agentWorkflowKeyword)}
+          onLoadMoreWorkflows={() => void loadAgentWorkflowOptions(agentWorkflowLoadedKeyword, {
+            cursor: agentWorkflowNextCursor,
+            append: true,
+          })}
+          onSelectWorkflow={(workflow) => {
+            setAgentDraft((current) => ({
+              ...current,
+              workflowId: workflow.workflow_id,
+              name: current.name.trim() ? current.name : workflow.name,
+              desc: current.desc.trim() ? current.desc : workflow.desc,
+            }));
+            setAgentFormError('');
+          }}
+          onSubmit={() => {
+            const draftError = validateAgentDraft(agentDraft);
+            if (draftError) {
+              setAgentFormError(draftError);
+              return;
+            }
+            const nextAgent = toAgentItemConfig(agentDraft);
+            const agents = [...config.agent_config.agents];
+            if (agentEditorIndex === null) {
+              agents.push(nextAgent);
+            } else {
+              agents[agentEditorIndex] = nextAgent;
+            }
+            const configError = validateAgentConfig({ ...config.agent_config, agents });
+            if (configError) {
+              setAgentFormError(configError);
+              return;
+            }
+            void runSave(async () => {
+              await persistAgentConfig({ ...config.agent_config, agents }, setConfig);
+              setAgentEditorOpen(false);
+            });
+          }}
+        />
+      ) : null}
+      {config && agentDeleteTarget ? (
+        <AgentDeleteDialog
+          open
+          agent={agentDeleteTarget.agent}
+          saving={saving}
+          onClose={() => setAgentDeleteTarget(null)}
+          onConfirm={() => {
+            const target = agentDeleteTarget;
+            void runSave(async () => {
+              await persistAgentConfig({
+                ...config.agent_config,
+                agents: config.agent_config.agents.filter((_, index) => index !== target.index),
+              }, setConfig);
+              setAgentDeleteTarget(null);
             });
           }}
         />
@@ -2387,16 +2702,6 @@ function UnifiedAuthConfigTable({
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
           </tr>
           <tr>
-            <td>GLO 退出</td>
-            <td>
-              <div className={s.valueStack}>
-                <span className={s.valueTitle}>{config?.glo_entity_id ? `entityId ${config.glo_entity_id}` : '未配置 entityId'}</span>
-                <span className={s.valueMeta}>redirctToUrl：{config?.glo_redirect_to_url || '未配置'}</span>
-              </div>
-            </td>
-            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
-          </tr>
-          <tr>
             <td>getToken 参数位置</td>
             <td><div className={s.valueStack}><span className={s.valueTitle}>{config?.token_param_style === 'form' ? 'form body' : 'URL query'}</span></div></td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : config ? '编辑' : '创建'}</button></div></td>
@@ -2519,26 +2824,6 @@ function UnifiedAuthEditorDialog({
             <label className={s.formField}>
               <span className={s.fieldLabel}>签名请求头</span>
               <input className={s.formInput} value={draft.login_sync_signature_header} onChange={(event) => onChange({ login_sync_signature_header: event.target.value })} placeholder="X-Signature" />
-            </label>
-            <label className={`${s.formField} ${s.formFieldWide}`}>
-              <span className={s.fieldLabel}>glo_url</span>
-              <input className={s.formInput} value={draft.glo_url} onChange={(event) => onChange({ glo_url: event.target.value })} placeholder="留空使用集团/股份默认 GLO 地址；自定义端点时填写完整 URL" />
-            </label>
-            <label className={s.formField}>
-              <span className={s.fieldLabel}>GLO entityId</span>
-              <input className={s.formInput} value={draft.glo_entity_id} onChange={(event) => onChange({ glo_entity_id: event.target.value })} placeholder="统一认证平台分配的 entityId" />
-            </label>
-            <label className={s.formField}>
-              <span className={s.fieldLabel}>redirectToLogin</span>
-              <select className={s.formInput} value={draft.glo_redirect_to_login ? 'true' : 'false'} onChange={(event) => onChange({ glo_redirect_to_login: event.target.value === 'true' })}>
-                <option value="true">true</option>
-                <option value="false">false</option>
-              </select>
-            </label>
-            <label className={`${s.formField} ${s.formFieldWide}`}>
-              <span className={s.fieldLabel}>redirctToUrl（门户本地退出回调）</span>
-              <input className={s.formInput} value={draft.glo_redirect_to_url} onChange={(event) => onChange({ glo_redirect_to_url: event.target.value })} placeholder="例如：https://portal.example.com/api/v1/auth/unified/logout/callback" />
-              <span className={s.fieldHint}>这里对应统一认证文档参数 redirctToUrl，参数名保留原文拼写。</span>
             </label>
           </div>
         </div>
@@ -2771,6 +3056,418 @@ function SearchConfigTable({
         </tbody>
       </table>
     </>
+  );
+}
+
+function AgentConfigTable({
+  agentConfig,
+  workflowOptions,
+  workflowLoading,
+  workflowError,
+  workflowLoaded,
+  workflowSourceReliable,
+  workflowHasMore,
+  saving,
+  onRefreshWorkflows,
+  onLoadMoreWorkflows,
+  onAddCategory,
+  onEditCategory,
+  onDeleteCategory,
+  onMoveCategory,
+  onToggleCategory,
+  onAddAgent,
+  onEditAgent,
+  onDeleteAgent,
+  onMoveAgent,
+  onToggleAgent,
+}: {
+  agentConfig: AgentConfig;
+  workflowOptions: AgentWorkflowOption[];
+  workflowLoading: boolean;
+  workflowError: string;
+  workflowLoaded: boolean;
+  workflowSourceReliable: boolean;
+  workflowHasMore: boolean;
+  saving: boolean;
+  onRefreshWorkflows: () => void;
+  onLoadMoreWorkflows: () => void;
+  onAddCategory: () => void;
+  onEditCategory: (index: number) => void;
+  onDeleteCategory: (index: number) => void;
+  onMoveCategory: (index: number, direction: -1 | 1) => void;
+  onToggleCategory: (index: number, enabled: boolean) => void;
+  onAddAgent: () => void;
+  onEditAgent: (index: number) => void;
+  onDeleteAgent: (index: number) => void;
+  onMoveAgent: (index: number, direction: -1 | 1) => void;
+  onToggleAgent: (index: number, enabled: boolean) => void;
+}) {
+  const categoryNameById = new Map(agentConfig.categories.map((category) => [category.id, category.name]));
+  const workflowIds = new Set(workflowOptions.map((workflow) => workflow.workflow_id));
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>智能应用配置</h2>
+        <div className={s.actions}>
+          <button className={s.subtleBtn} onClick={onRefreshWorkflows} disabled={saving || workflowLoading}>
+            <RefreshCw size={14} />
+            刷新 workflow
+          </button>
+          <button className={s.addBtn} onClick={onAddAgent} disabled={saving || !agentConfig.categories.length}>
+            <Plus size={14} /> 添加 Agent
+          </button>
+          <button className={s.addBtn} onClick={onAddCategory} disabled={saving}>
+            <Plus size={14} /> 添加分类
+          </button>
+        </div>
+      </div>
+      <p className={s.pageNote}>
+        Agent 智能体来源于 Bisheng 已发布 workflow。前台智能应用页按这里的分类和 Agent 顺序展示，iframe 运行态由 Bisheng portal 专用 workflow 页面承接。
+      </p>
+      {workflowError ? <div className={s.errorBox}>{workflowError}</div> : null}
+      {workflowLoading ? <div className={s.emptyState}>正在加载 Bisheng workflow 候选项...</div> : null}
+
+      <h3 className={s.sectionTitle}>分类管理</h3>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>分类名称</th>
+            <th>ID</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {agentConfig.categories.map((category, index) => (
+            <tr key={category.id}>
+              <td>{category.name}</td>
+              <td>{category.id}</td>
+              <td><span className={category.enabled ? s.stateEnabled : s.stateDisabled}>{category.enabled ? '已启用' : '已停用'}</span></td>
+              <td>
+                <div className={s.actionGroup}>
+                  <button className={s.inlineBtn} onClick={() => onEditCategory(index)} disabled={saving}>编辑</button>
+                  <button className={s.inlineBtn} onClick={() => onToggleCategory(index, !category.enabled)} disabled={saving}>{category.enabled ? '停用' : '启用'}</button>
+                  <button className={s.inlineDangerBtn} onClick={() => onDeleteCategory(index)} disabled={saving}>删除</button>
+                  <button className={s.iconActionBtn} onClick={() => onMoveCategory(index, -1)} disabled={saving || index === 0} title="上移"><ArrowUp size={15} /></button>
+                  <button className={s.iconActionBtn} onClick={() => onMoveCategory(index, 1)} disabled={saving || index === agentConfig.categories.length - 1} title="下移"><ArrowDown size={15} /></button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          {!agentConfig.categories.length ? (
+            <tr><td colSpan={4}><div className={s.emptyState}>暂无分类，请先添加分类。</div></td></tr>
+          ) : null}
+        </tbody>
+      </table>
+
+      <h3 className={s.sectionTitle}>Agent 列表</h3>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>分类</th>
+            <th>workflow</th>
+            <th>标签</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {agentConfig.agents.map((agent, index) => {
+            const sourceAbnormal = workflowSourceReliable && !workflowIds.has(agent.workflow_id);
+            return (
+              <tr key={agent.id}>
+                <td>
+                  <div className={s.spaceNameCell}>
+                    <span>{agent.name}</span>
+                    <span className={s.inlineHint}>{agent.desc || '未配置描述'}</span>
+                  </div>
+                </td>
+                <td>{categoryNameById.get(agent.category_id) || agent.category_id}</td>
+                <td>
+                  <div className={s.spaceNameCell}>
+                    <span>{agent.workflow_id}</span>
+                    {sourceAbnormal ? <span className={s.errorText}>未在已发布 workflow 候选项中</span> : null}
+                  </div>
+                </td>
+                <td>{agent.tags.join('，') || '未配置'}</td>
+                <td><span className={agent.enabled ? s.stateEnabled : s.stateDisabled}>{agent.enabled ? '已启用' : '已停用'}</span></td>
+                <td>
+                  <div className={s.actionGroup}>
+                    <button className={s.inlineBtn} onClick={() => onEditAgent(index)} disabled={saving}>编辑</button>
+                    <button className={s.inlineBtn} onClick={() => onToggleAgent(index, !agent.enabled)} disabled={saving}>{agent.enabled ? '停用' : '启用'}</button>
+                    <button className={s.inlineDangerBtn} onClick={() => onDeleteAgent(index)} disabled={saving}>删除</button>
+                    <button className={s.iconActionBtn} onClick={() => onMoveAgent(index, -1)} disabled={saving || index === 0} title="上移"><ArrowUp size={15} /></button>
+                    <button className={s.iconActionBtn} onClick={() => onMoveAgent(index, 1)} disabled={saving || index === agentConfig.agents.length - 1} title="下移"><ArrowDown size={15} /></button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+          {!agentConfig.agents.length ? (
+            <tr><td colSpan={6}><div className={s.emptyState}>暂无 Agent，添加后会在前台智能应用页展示。</div></td></tr>
+          ) : null}
+        </tbody>
+      </table>
+      {workflowHasMore ? (
+        <div className={s.tableFooter}>
+          <button className={s.subtleBtn} onClick={onLoadMoreWorkflows} disabled={saving || workflowLoading}>
+            {workflowLoading ? '加载中...' : '加载更多 workflow'}
+          </button>
+          {workflowLoaded ? <span className={s.inlineHint}>仍有更多已发布 workflow，可继续加载后再判断来源异常。</span> : null}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function AgentCategoryDialog({
+  open,
+  draft,
+  saving,
+  error,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  draft: AgentCategoryDraft;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onChange: (patch: Partial<AgentCategoryDraft>) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>Agent 分类</h3>
+            <p className={s.modalNote}>分类用于前台 Agent 智能体 tab 筛选。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.formGrid}>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>分类名称</span>
+            <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：AI问答" />
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>分类 ID</span>
+            <input className={s.formInput} value={draft.id} onChange={(event) => onChange({ id: event.target.value })} placeholder="例如：qa" />
+          </label>
+          <label className={s.checkRow}>
+            <input type="checkbox" checked={draft.enabled} onChange={(event) => onChange({ enabled: event.target.checked })} />
+            启用该分类
+          </label>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentDialog({
+  open,
+  draft,
+  categories,
+  workflowOptions,
+  workflowLoading,
+  workflowError,
+  workflowKeyword,
+  workflowHasMore,
+  saving,
+  error,
+  onClose,
+  onChange,
+  onWorkflowKeywordChange,
+  onRefreshWorkflows,
+  onLoadMoreWorkflows,
+  onSelectWorkflow,
+  onSubmit,
+}: {
+  open: boolean;
+  draft: AgentDraft;
+  categories: AgentCategoryConfig[];
+  workflowOptions: AgentWorkflowOption[];
+  workflowLoading: boolean;
+  workflowError: string;
+  workflowKeyword: string;
+  workflowHasMore: boolean;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onChange: (patch: Partial<AgentDraft>) => void;
+  onWorkflowKeywordChange: (value: string) => void;
+  onRefreshWorkflows: () => void;
+  onLoadMoreWorkflows: () => void;
+  onSelectWorkflow: (workflow: AgentWorkflowOption) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={`${s.modalCard} ${s.qaTemplateModal}`} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>Agent 智能体</h3>
+            <p className={s.modalNote}>从 Bisheng 已发布 workflow 选择来源，展示文案可按门户场景覆盖。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.modalActions}>
+          <input
+            className={s.optionSearch}
+            value={workflowKeyword}
+            onChange={(event) => onWorkflowKeywordChange(event.target.value)}
+            placeholder="搜索 Bisheng workflow"
+          />
+          <button className={s.subtleBtn} onClick={onRefreshWorkflows} disabled={workflowLoading || saving}>
+            <RefreshCw size={14} />
+            刷新
+          </button>
+        </div>
+        {workflowError ? <div className={s.errorBox}>{workflowError}</div> : null}
+        <div className={s.optionList}>
+          {workflowLoading ? <div className={s.emptyState}>正在加载 workflow...</div> : null}
+          {!workflowLoading && !workflowOptions.length ? <div className={s.emptyState}>暂无已发布 workflow 候选项</div> : null}
+          {!workflowLoading && workflowOptions.map((workflow) => (
+            <div key={workflow.workflow_id} className={s.optionRow}>
+              <div className={s.optionMain}>
+                <div className={s.optionName}>{workflow.name}</div>
+                <div className={s.optionMeta}>{workflow.desc || workflow.workflow_id}</div>
+              </div>
+              <button className={draft.workflowId === workflow.workflow_id ? s.subtleBtn : s.addBtn} onClick={() => onSelectWorkflow(workflow)} disabled={saving}>
+                {draft.workflowId === workflow.workflow_id ? '已选择' : '选择'}
+              </button>
+            </div>
+          ))}
+          {workflowHasMore ? (
+            <button className={s.subtleBtn} onClick={onLoadMoreWorkflows} disabled={workflowLoading || saving}>
+              {workflowLoading ? '加载中...' : '加载更多 workflow'}
+            </button>
+          ) : null}
+        </div>
+        <div className={s.formGrid}>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>workflow_id</span>
+            <input className={s.formInput} value={draft.workflowId} onChange={(event) => onChange({ workflowId: event.target.value })} placeholder="选择 workflow 后自动填充" />
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>展示名称</span>
+            <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>分类</span>
+            <select className={s.formInput} value={draft.categoryId} onChange={(event) => onChange({ categoryId: event.target.value })}>
+              <option value="">请选择分类</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>标签</span>
+            <input className={s.formInput} value={draft.tagsText} onChange={(event) => onChange({ tagsText: event.target.value })} placeholder="多个标签用逗号分隔" />
+          </label>
+          <label className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>描述</span>
+            <textarea className={s.formTextarea} value={draft.desc} onChange={(event) => onChange({ desc: event.target.value })} rows={3} />
+          </label>
+          <div className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>图标</span>
+            <div className={s.optionPickerRow}>
+              {AGENT_ICON_OPTIONS.map((icon) => (
+                <button key={icon} type="button" className={`${s.iconOptionBtn} ${draft.icon === icon ? s.iconOptionBtnActive : ''}`} onClick={() => onChange({ icon })}>
+                  <DomainIcon icon={icon} color={draft.color} bg={draft.bg} size={40} />
+                  <span className={s.optionLabel}>{icon}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>颜色</span>
+            <div className={s.optionPickerRow}>
+              {AGENT_COLOR_PRESETS.map((option) => (
+                <button key={`${option.color}-${option.bg}`} type="button" className={`${s.colorOptionBtn} ${draft.color === option.color && draft.bg === option.bg ? s.colorOptionBtnActive : ''}`} onClick={() => onChange({ color: option.color, bg: option.bg })}>
+                  <span className={s.colorPairPreview}>
+                    <span className={s.colorSwatchMain} style={{ background: option.color }} />
+                    <span className={s.colorSwatchBg} style={{ background: option.bg }} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className={s.checkRow}>
+            <input type="checkbox" checked={draft.enabled} onChange={(event) => onChange({ enabled: event.target.checked })} />
+            启用该 Agent
+          </label>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentCategoryDeleteDialog({
+  open,
+  category,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  category: AgentCategoryConfig;
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}><h3 className={s.modalTitle}>删除 Agent 分类</h3><button className={s.subtleBtn} onClick={onClose}>取消</button></div>
+        <div className={s.confirmBody}><div className={s.confirmLine}><strong>分类名称：</strong>{category.name}</div></div>
+        <div className={s.confirmActions}><button className={s.subtleBtn} onClick={onClose}>关闭</button><button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button></div>
+      </div>
+    </div>
+  );
+}
+
+function AgentDeleteDialog({
+  open,
+  agent,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  agent: AgentItemConfig;
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}><h3 className={s.modalTitle}>删除 Agent</h3><button className={s.subtleBtn} onClick={onClose}>取消</button></div>
+        <div className={s.confirmBody}><div className={s.confirmLine}><strong>Agent：</strong>{agent.name}</div><div className={s.confirmLine}><strong>workflow：</strong>{agent.workflow_id}</div></div>
+        <div className={s.confirmActions}><button className={s.subtleBtn} onClick={onClose}>关闭</button><button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button></div>
+      </div>
+    </div>
   );
 }
 
@@ -4313,6 +5010,11 @@ async function persistQa(qa: QAConfig, setConfig: Dispatch<SetStateAction<Portal
   setConfig((current) => (current ? { ...current, qa: data } : current));
 }
 
+async function persistAgentConfig(agentConfig: AgentConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
+  const data = await updateAgentConfig(agentConfig);
+  setConfig((current) => (current ? { ...current, agent_config: data } : current));
+}
+
 async function persistSearch(search: SearchConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
   const data = await updateSearchConfig(search);
   setConfig((current) => (current ? { ...current, search: data } : current));
@@ -4584,10 +5286,6 @@ function createUnifiedAuthDraft(current?: UnifiedAuthRuntimeConfig): UnifiedAuth
     http_timeout_seconds: String(current?.http_timeout_seconds ?? 10),
     login_sync_hmac_secret: '',
     login_sync_signature_header: current?.login_sync_signature_header || 'X-Signature',
-    glo_url: current?.glo_url ?? '',
-    glo_entity_id: current?.glo_entity_id ?? '',
-    glo_redirect_to_url: current?.glo_redirect_to_url ?? '',
-    glo_redirect_to_login: current?.glo_redirect_to_login ?? true,
   };
 }
 
@@ -4697,9 +5395,6 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
   const authorize_url = draft.authorize_url.trim();
   const token_url = draft.token_url.trim();
   const userinfo_url = draft.userinfo_url.trim();
-  const glo_url = draft.glo_url.trim();
-  const glo_entity_id = draft.glo_entity_id.trim();
-  const glo_redirect_to_url = draft.glo_redirect_to_url.trim();
   const login_sync_signature_header = draft.login_sync_signature_header.trim() || 'X-Signature';
 
   if (draft.enabled && !client_id) return { error: '启用统一认证前需要填写 client_id' };
@@ -4710,8 +5405,6 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
     ['authorize_url', authorize_url],
     ['token_url', token_url],
     ['userinfo_url', userinfo_url],
-    ['glo_url', glo_url],
-    ['redirctToUrl', glo_redirect_to_url],
   ] as const) {
     if (value && !/^https?:\/\//i.test(value)) {
       return { error: `${label} 必须以 http:// 或 https:// 开头` };
@@ -4748,10 +5441,6 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
       http_timeout_seconds,
       login_sync_hmac_secret: draft.login_sync_hmac_secret.trim(),
       login_sync_signature_header,
-      glo_url,
-      glo_entity_id,
-      glo_redirect_to_url,
-      glo_redirect_to_login: draft.glo_redirect_to_login,
     },
   };
 }

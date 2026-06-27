@@ -1,4 +1,6 @@
-from typing import Annotated, Optional
+import asyncio
+import logging
+from typing import Annotated, Any, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
@@ -18,6 +20,7 @@ from app.schemas.knowledge import (
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
+from app.schemas.portal_config import PortalConfig
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
@@ -33,6 +36,7 @@ from app.services.portal_telemetry_service import PortalTelemetryService, Portal
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
+logger = logging.getLogger(__name__)
 
 _BISHENG_DUPLICATE_FAVORITE_CODE = 18021
 _BISHENG_PERMISSION_DENIED_CODE = 18040
@@ -88,6 +92,35 @@ async def _fetch_shougang_portal_space_info(
         item_data = item.get("data") or {}
         live_space_data[int(item["id"])] = item_data if isinstance(item_data, dict) else {}
     return live_space_data
+
+
+def _normalize_document_types(raw_items: Any) -> list[dict[str, str]]:
+    if not isinstance(raw_items, list):
+        return []
+    document_types: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("code") or "").strip().upper()
+        label = str(item.get("label") or item.get("name") or "").strip()
+        if not code or not label or code in seen:
+            continue
+        seen.add(code)
+        document_types.append({"code": code, "label": label})
+    return document_types
+
+
+async def _fetch_shougang_document_types(bisheng_client: BishengClient) -> list[dict[str, str]]:
+    try:
+        response = await bisheng_client.get_json("/api/v1/workstation/config")
+    except Exception:
+        logger.warning("failed to fetch shougang document types", exc_info=True)
+        return []
+    data = response.get("data") if isinstance(response, dict) else {}
+    shougang = data.get("shougang") if isinstance(data, dict) else {}
+    file_encoding = shougang.get("file_encoding") if isinstance(shougang, dict) else {}
+    return _normalize_document_types(file_encoding.get("document_types") if isinstance(file_encoding, dict) else [])
 
 
 async def _scoped_service_and_extra_ids(
@@ -153,6 +186,7 @@ async def search_files(
     space_ids: Annotated[Optional[list[int]], Query()] = None,
     space_level: Optional[str] = None,
     file_ext: Optional[str] = None,
+    document_type: Optional[str] = None,
     sort: str = "updated_at",
     page: int = 1,
     page_size: int = 20,
@@ -175,6 +209,7 @@ async def search_files(
                 requested_space_ids=space_ids,
                 space_level=space_level,
                 file_ext=file_ext,
+                document_type=document_type,
                 sort=sort,
                 page=page,
                 page_size=page_size,
@@ -199,6 +234,7 @@ async def search_files(
                 requested_space_ids=space_ids,
                 space_level=space_level,
                 file_ext=file_ext,
+                document_type=document_type,
                 sort=sort,
                 page=page,
                 page_size=page_size,
@@ -248,11 +284,18 @@ async def get_portal_config(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
     config = portal_config_service.get_config()
-    live_space_data = await _fetch_shougang_portal_space_info(
-        bisheng_client,
-        [space.id for space in config.spaces],
+    live_space_data, document_types = await asyncio.gather(
+        _fetch_shougang_portal_space_info(
+            bisheng_client,
+            [space.id for space in config.spaces],
+        ),
+        _fetch_shougang_document_types(bisheng_client),
     )
-    return response_ok(portal_config_service.with_live_space_data(config, live_space_data))
+    runtime_config = portal_config_service.with_live_space_data(config, live_space_data)
+    return response_ok(PortalConfig.model_validate({
+        **runtime_config.model_dump(mode="json"),
+        "document_types": document_types,
+    }))
 
 
 @router.get("/domain-file-counts")
@@ -636,6 +679,7 @@ async def list_space_files(
     space_id: int,
     request: Request,
     file_ext: Optional[str] = None,
+    document_type: Optional[str] = None,
     tag: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
@@ -651,6 +695,7 @@ async def list_space_files(
             await service.list_space_files(
                 space_id=space_id,
                 file_ext=file_ext,
+                document_type=document_type,
                 tag=tag,
                 page=page,
                 page_size=page_size,

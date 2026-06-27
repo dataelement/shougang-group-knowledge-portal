@@ -157,6 +157,105 @@ class QAModelOptionsResponse(BaseModel):
     models: list[QAModelOption] = Field(default_factory=list)
 
 
+class AgentCategoryConfig(BaseModel):
+    id: str
+    name: str
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def normalize_and_validate(self):
+        self.id = self.id.strip()
+        self.name = self.name.strip()
+        if not self.id:
+            raise ValueError("Agent category id is required")
+        if not self.name:
+            raise ValueError("Agent category name is required")
+        return self
+
+
+class AgentItemConfig(BaseModel):
+    id: str
+    workflow_id: str
+    name: str
+    desc: str = ""
+    category_id: str
+    tags: list[str] = Field(default_factory=list)
+    icon: str
+    color: str
+    bg: str
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def normalize_and_validate(self):
+        self.id = self.id.strip()
+        self.workflow_id = self.workflow_id.strip()
+        self.name = self.name.strip()
+        self.desc = self.desc.strip()
+        self.category_id = self.category_id.strip()
+        self.tags = [tag.strip() for tag in self.tags if tag.strip()]
+        self.icon = self.icon.strip()
+        self.color = self.color.strip()
+        self.bg = self.bg.strip()
+        if not self.id:
+            raise ValueError("Agent id is required")
+        if not self.workflow_id:
+            raise ValueError("Agent workflow_id is required")
+        if not self.name:
+            raise ValueError("Agent name is required")
+        if not self.category_id:
+            raise ValueError("Agent category is required")
+        if not self.icon:
+            raise ValueError("Agent icon is required")
+        if not self.color:
+            raise ValueError("Agent color is required")
+        if not self.bg:
+            raise ValueError("Agent background color is required")
+        return self
+
+
+class AgentConfig(BaseModel):
+    categories: list[AgentCategoryConfig] = Field(default_factory=list)
+    agents: list[AgentItemConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_and_validate(self):
+        category_ids = [category.id for category in self.categories]
+        duplicate_category_ids = {category_id for category_id in category_ids if category_ids.count(category_id) > 1}
+        if duplicate_category_ids:
+            raise ValueError("Agent category ids must be unique")
+        agent_ids = [agent.id for agent in self.agents]
+        duplicate_agent_ids = {agent_id for agent_id in agent_ids if agent_ids.count(agent_id) > 1}
+        if duplicate_agent_ids:
+            raise ValueError("Agent ids must be unique")
+        workflow_ids = [agent.workflow_id for agent in self.agents]
+        duplicate_workflow_ids = {workflow_id for workflow_id in workflow_ids if workflow_ids.count(workflow_id) > 1}
+        if duplicate_workflow_ids:
+            raise ValueError("Agent workflow_ids must be unique")
+        valid_category_ids = set(category_ids)
+        orphan_agents = [
+            agent.id
+            for agent in self.agents
+            if agent.category_id not in valid_category_ids
+        ]
+        if orphan_agents:
+            raise ValueError("Agent category must exist")
+        return self
+
+
+class AgentWorkflowOption(BaseModel):
+    workflow_id: str
+    name: str
+    desc: str = ""
+    flow_type: int = 10
+    status: int = 2
+
+
+class AgentWorkflowOptionsResponse(BaseModel):
+    workflows: list[AgentWorkflowOption] = Field(default_factory=list)
+    has_more: bool = False
+    next_cursor: str = ""
+
+
 class SearchConfig(BaseModel):
     rerank_model_id: str = ""
 
@@ -164,6 +263,11 @@ class SearchConfig(BaseModel):
 class SearchRerankModelOptionsResponse(BaseModel):
     rerank_model_id: str = ""
     models: list[QAModelOption] = Field(default_factory=list)
+
+
+class DocumentTypeConfig(BaseModel):
+    code: str = ""
+    label: str = ""
 
 
 class SpaceOption(BaseModel):
@@ -276,7 +380,9 @@ class PortalConfig(BaseModel):
     spaces: list[SpaceConfig] = Field(default_factory=list)
     domains: list[DomainConfig] = Field(default_factory=list)
     sections: list[SectionConfig] = Field(default_factory=list)
+    document_types: list[DocumentTypeConfig] = Field(default_factory=list)
     qa: QAConfig
+    agent_config: AgentConfig = Field(default_factory=AgentConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     recommendation: RecommendationConfig
     display: DisplayConfig

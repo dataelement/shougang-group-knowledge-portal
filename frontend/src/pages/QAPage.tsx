@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Bot,
   BriefcaseBusiness,
@@ -51,7 +52,7 @@ interface Message {
   citations?: Citation[];
 }
 
-interface Session {
+export interface Session {
   id: string;
   conversationId?: string;
   title: string;
@@ -74,6 +75,7 @@ interface ConfiguredQaModelChoice {
 }
 
 type AnswerMode = 'normal' | 'expert';
+type SmartQaComposerPlacement = 'top' | 'bottom';
 
 const ALL_TEMPLATE_CATEGORY_ID = '__all__';
 
@@ -287,7 +289,32 @@ function findWritingTemplateById(templates: QATemplateConfig[], templateId: stri
 
 const INITIAL_DRAFT_SESSION = createDraftSession();
 
-export default function QAPage() {
+export interface SmartQaWorkspaceRenderArgs {
+  sidebar: ReactNode;
+  workspace: ReactNode;
+  qaContent: ReactNode;
+  hasConversation: boolean;
+  renderComposer: (options?: { placement?: SmartQaComposerPlacement }) => ReactNode;
+  qaSidebarState: {
+    sessions: Session[];
+    activeId: string;
+    loadingSessions: boolean;
+    loadingSessionId: string | null;
+    activeSession: Session;
+    newSession: () => void;
+    selectSession: (session: Session) => void;
+  };
+}
+
+interface SmartQaWorkspaceProps {
+  children?: (args: SmartQaWorkspaceRenderArgs) => ReactNode;
+  onBeforeSend?: () => void;
+}
+
+export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspaceProps = {}) {
+  const isSmartAppsMode = Boolean(children);
+  const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [assistantGreeting, setAssistantGreeting] = useState(getWelcomeMessage());
   const [sessions, setSessions] = useState<Session[]>(() => [INITIAL_DRAFT_SESSION]);
@@ -303,7 +330,7 @@ export default function QAPage() {
   const [writingTemplates, setWritingTemplates] = useState<QATemplateConfig[]>([]);
   const [templateCategory, setTemplateCategory] = useState(ALL_TEMPLATE_CATEGORY_ID);
   const [pendingTemplateId, setPendingTemplateId] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     return params.get('templateId')?.trim() || '';
   });
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
@@ -351,17 +378,22 @@ export default function QAPage() {
   };
 
   useEffect(() => {
+    const templateId = new URLSearchParams(location.search).get('templateId')?.trim() || '';
+    setPendingTemplateId((current) => (current === templateId ? current : templateId));
+  }, [location.search]);
+
+  useEffect(() => {
     if (!pendingTemplateId || !templatesLoaded) return;
     const template = findWritingTemplateById(writingTemplates, pendingTemplateId);
     if (template) applyWritingTemplate(template);
 
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     params.delete('templateId');
     const query = params.toString();
-    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
-    window.history.replaceState(null, '', nextUrl);
+    const nextUrl = `${location.pathname}${query ? `?${query}` : ''}${location.hash}`;
+    navigate(nextUrl, { replace: true });
     setPendingTemplateId('');
-  }, [pendingTemplateId, templatesLoaded, writingTemplates]);
+  }, [location.hash, location.pathname, location.search, navigate, pendingTemplateId, templatesLoaded, writingTemplates]);
 
   useEffect(() => {
     msgEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -531,6 +563,7 @@ export default function QAPage() {
     }
     const finalText = text || '请分析附件内容。';
     const targetSessionId = activeId;
+    onBeforeSend?.();
     setInput('');
     setAttachedFiles([]);
     setStreaming(true);
@@ -664,269 +697,409 @@ export default function QAPage() {
     setComposerTip(`${label}入口已保留，当前仅作为前端演示状态。`);
   };
 
-  return (
-    <>
-      <Header />
-      <main className={s.layout}>
-        <aside className={s.sidebar} aria-label="对话列表">
-          <div className={s.sideTop}>
-            <div className={s.sideTitle}>对话列表</div>
+  const sidebar = (
+    <aside className={s.sidebar} aria-label="对话列表">
+      <div className={s.sideTop}>
+        <div className={s.sideTitle}>对话列表</div>
+      </div>
+      <button className={s.newSessionBtn} onClick={newSession}>
+        <Plus size={15} />
+        开启新对话
+      </button>
+      {loadingSessions ? <div className={s.groupLabel}>会话加载中...</div> : null}
+      <div className={s.sessionList}>
+        {(['今天', '昨天', '7 天内', '30 天内'] as Session['group'][]).map((group) => {
+          const groupSessions = sessions.filter((session) => session.group === group);
+          if (groupSessions.length === 0) return null;
+          return (
+            <section key={group} className={s.sessionGroup}>
+              <div className={s.groupLabel}>{group}</div>
+              {groupSessions.map((ss) => (
+                <button
+                  key={ss.id}
+                  type="button"
+                  className={`${s.sessionItem} ${ss.id === activeId ? s.sessionItemActive : ''}`}
+                  onClick={() => selectSession(ss)}
+                  title={ss.title}
+                >
+                  {ss.title}
+                </button>
+              ))}
+            </section>
+          );
+        })}
+      </div>
+    </aside>
+  );
+
+  const qaContent = (
+    <div className={`${s.contentArea} ${isSmartAppsMode ? s.smartAppContentArea : ''}`}>
+      {!hasConversation ? (
+        <div className={`${s.templatePanel} ${isSmartAppsMode ? s.smartAppTemplatePanel : ''}`}>
+          <div className={`${s.templateTabs} ${isSmartAppsMode ? s.smartAppTemplateTabs : ''}`} role="tablist" aria-label="写作模板分类">
+            {[{ id: ALL_TEMPLATE_CATEGORY_ID, name: '全部' }, ...enabledCategories].map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                role="tab"
+                aria-selected={templateCategory === category.id}
+                className={`${s.templateTab} ${isSmartAppsMode ? s.smartAppTemplateTab : ''} ${templateCategory === category.id ? s.templateTabActive : ''}`}
+                onClick={() => setTemplateCategory(category.id)}
+              >
+                {category.name}
+              </button>
+            ))}
           </div>
-          <button className={s.newSessionBtn} onClick={newSession}>
-            <Plus size={15} />
-            开启新对话
-          </button>
-          {loadingSessions ? <div className={s.groupLabel}>会话加载中...</div> : null}
-          <div className={s.sessionList}>
-            {(['今天', '昨天', '7 天内', '30 天内'] as Session['group'][]).map((group) => {
-              const groupSessions = sessions.filter((session) => session.group === group);
-              if (groupSessions.length === 0) return null;
+          <div className={`${s.templateGrid} ${isSmartAppsMode ? s.smartAppTemplateGrid : ''}`}>
+            {visibleTemplates.map((template) => {
+              const TemplateIcon = getTemplateIcon(template.icon);
               return (
-                <section key={group} className={s.sessionGroup}>
-                  <div className={s.groupLabel}>{group}</div>
-                  {groupSessions.map((ss) => (
-                    <button
-                      key={ss.id}
-                      type="button"
-                      className={`${s.sessionItem} ${ss.id === activeId ? s.sessionItemActive : ''}`}
-                      onClick={() => selectSession(ss)}
-                      title={ss.title}
-                    >
-                      {ss.title}
-                    </button>
-                  ))}
-                </section>
+                <button
+                  key={template.id}
+                  type="button"
+                  className={`${s.templateCard} ${isSmartAppsMode ? s.smartAppTemplateCard : ''}`}
+                  onClick={() => chooseTemplate(template)}
+                >
+                  <span className={`${s.templateIcon} ${isSmartAppsMode ? s.smartAppTemplateIcon : ''}`} style={{ background: template.color }}>
+                    <TemplateIcon size={17} />
+                  </span>
+                  <span className={`${s.templateText} ${isSmartAppsMode ? s.smartAppTemplateText : ''}`}>
+                    <strong>{template.name}</strong>
+                    <span>{template.desc}</span>
+                  </span>
+                  <span className={`${s.templateLines} ${isSmartAppsMode ? s.smartAppTemplateLines : ''}`} aria-hidden="true" />
+                </button>
               );
             })}
           </div>
-        </aside>
-
-        <section className={s.workspace}>
-          <div className={s.workspaceHeader}>
-            <div>
-              <h1>知识问答</h1>
-              <p>基于企业知识范围的演示对话</p>
+        </div>
+      ) : (
+        <div className={s.messages}>
+          {activeSessionLoading ? (
+            <div className={s.thinking}>
+              <Loader2 size={16} className={s.spinner} />
+              <span>正在加载会话...</span>
             </div>
-            <div className={s.modelWrap} ref={modelMenuRef}>
+          ) : null}
+          {!activeSessionLoading && activeSession.messages.length === 0 ? (
+            <div className={s.emptyConversation}>
+              <Bot size={18} />
+              <span>当前会话暂无历史消息，请输入问题继续对话。</span>
+            </div>
+          ) : null}
+          {activeSession.messages.map((msg, i) => {
+            const isLastMessage = i === activeSession.messages.length - 1;
+            const isThinking = streaming && msg.role === 'bot' && isLastMessage && !msg.text.trim();
+            const referenced = msg.role === 'bot' && msg.citations
+              ? extractReferencedCitations(msg.text, msg.citations)
+              : [];
+            return (
+              <div
+                key={`${msg.role}-${i}`}
+                className={`${s.msgRow} ${msg.role === 'user' ? s.msgRowUser : ''}`}
+              >
+                <div className={`${s.avatar} ${msg.role === 'bot' ? s.avatarBot : s.avatarUser}`}>
+                  {msg.role === 'bot' ? <Bot size={16} /> : <User size={16} />}
+                </div>
+                <div className={s.msgColumn}>
+                  {msg.role === 'bot' ? (
+                    isThinking ? (
+                      <div className={`${s.msgBubble} ${s.msgBot} ${s.thinking}`}>
+                        <Loader2 size={16} className={s.spinner} />
+                        <span>思考中...</span>
+                      </div>
+                    ) : (
+                      <div
+                        className={`${s.msgBubble} ${s.msgBot} ${s.botContent}`}
+                        dangerouslySetInnerHTML={{ __html: renderChatMarkdown(msg.text, msg.citations ?? []) }}
+                      />
+                    )
+                  ) : (
+                    <div className={`${s.msgBubble} ${s.msgUser}`}>{msg.text}</div>
+                  )}
+                  {msg.files?.length ? (
+                    <AttachmentChips files={msg.files} className={s.messageAttachments} />
+                  ) : null}
+                  {msg.role === 'bot' && referenced.length > 0 ? (
+                    <CitationList items={referenced} />
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={msgEndRef} />
+        </div>
+      )}
+    </div>
+  );
+
+  const renderModelMenu = () => (
+    modelMenuOpen && modelChoices.length ? (
+      <div className={s.modelMenu}>
+        {modelChoices.map((choice) => (
+          <button
+            key={`${choice.typeLabel}-${choice.id}`}
+            type="button"
+            className={`${s.modelOption} ${choice.id === selectedModel ? s.modelOptionActive : ''}`}
+            onClick={() => chooseModel(choice)}
+          >
+            <strong>{choice.label}</strong>
+          </button>
+        ))}
+      </div>
+    ) : null
+  );
+
+  const renderComposer = ({ placement = 'top' }: { placement?: SmartQaComposerPlacement } = {}) => (
+    <div className={`${s.smartAppComposer} ${placement === 'bottom' ? s.smartAppComposerBottom : s.smartAppComposerTop}`}>
+      <div className={s.smartAppInputBox}>
+        <div className={s.smartAppInputRow}>
+          <textarea
+            ref={inputRef}
+            aria-label="输入智能问答问题，Enter 发送，Shift+Enter 换行"
+            placeholder="开始提问..."
+            value={input}
+            rows={2}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <div className={s.smartAppInputActions}>
+            <div
+              className={`${s.modelWrap} ${s.smartAppModelWrap} ${placement === 'bottom' ? s.smartAppPopoverUp : ''}`}
+              ref={modelMenuRef}
+            >
               <button
-                className={s.modelSelect}
+                className={s.smartAppModelButton}
                 type="button"
                 disabled={!modelChoices.length}
                 onClick={() => setModelMenuOpen((value) => !value)}
               >
-                {selectedModelChoice ? selectedModelChoice.label : '未配置模型'}
-                <ChevronDown size={15} />
+                <Layers3 size={14} />
+                <span>{selectedModelChoice ? selectedModelChoice.label : '选择模型'}</span>
+                <ChevronDown size={13} />
               </button>
-              {modelMenuOpen && modelChoices.length ? (
-                <div className={s.modelMenu}>
-                  {modelChoices.map((choice) => (
-                    <button
-                      key={`${choice.typeLabel}-${choice.id}`}
-                      type="button"
-                      className={`${s.modelOption} ${choice.id === selectedModel ? s.modelOptionActive : ''}`}
-                      onClick={() => chooseModel(choice)}
-                    >
-                      <strong>{choice.label}</strong>
-                    </button>
-                  ))}
+              {renderModelMenu()}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={QA_ATTACHMENT_ACCEPT}
+              className={s.hiddenFileInput}
+              onChange={handleAttachmentSelect}
+            />
+            <button
+              type="button"
+              className={s.smartAppToolButton}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="上传附件"
+              disabled={streaming}
+            >
+              <Paperclip size={16} />
+            </button>
+            <button
+              type="button"
+              className={s.smartAppSendButton}
+              onClick={sendMessage}
+              disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
+              aria-label="发送智能问答"
+            >
+              {streaming ? <Loader2 size={17} className={s.spinner} /> : <Send size={17} />}
+            </button>
+          </div>
+        </div>
+        {hasChatAttachments ? (
+          <AttachmentChips
+            files={attachedFiles}
+            uploadingFiles={uploadingFiles}
+            onRemove={removeAttachedFile}
+            className={s.smartAppAttachments}
+          />
+        ) : null}
+        <div className={s.smartAppFooter}>
+          <span className={s.smartAppFooterHint}>支持上传单文档和图片</span>
+          <div
+            className={`${s.knowledgePicker} ${s.smartAppKnowledgePicker} ${placement === 'top' ? s.smartAppPopoverDown : ''}`}
+            ref={knowledgePickerRef}
+          >
+            <button
+              type="button"
+              className={s.smartAppFooterLink}
+              disabled={loadingKnowledgeSpaces || !availableSpaces.length}
+              onClick={() => setKnowledgePickerOpen((value) => !value)}
+            >
+              <Layers3 size={14} />
+              {knowledgePickerLabel}
+            </button>
+            {knowledgePickerOpen ? (
+              <div className={s.knowledgePanel}>
+                <QAKnowledgeTreePicker
+                  spaces={availableSpaces}
+                  scope={selectedKnowledgeScope}
+                  loading={loadingKnowledgeSpaces}
+                  onChange={setSelectedKnowledgeScope}
+                  onLoadChildren={fetchQaKnowledgeTreeChildren}
+                  onSearchFiles={searchQaKnowledgeFiles}
+                  onTip={setComposerTip}
+                  onClose={() => setKnowledgePickerOpen(false)}
+                />
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {composerTip ? <div className={s.smartAppComposerTip}>{composerTip}</div> : null}
+      </div>
+    </div>
+  );
+
+  const workspace = (
+    <section className={s.workspace}>
+      <div className={s.workspaceHeader}>
+        <div>
+          <h1>知识问答</h1>
+          <p>基于企业知识范围的演示对话</p>
+        </div>
+        <div className={s.modelWrap} ref={modelMenuRef}>
+          <button
+            className={s.modelSelect}
+            type="button"
+            disabled={!modelChoices.length}
+            onClick={() => setModelMenuOpen((value) => !value)}
+          >
+            {selectedModelChoice ? selectedModelChoice.label : '未配置模型'}
+            <ChevronDown size={15} />
+          </button>
+          {renderModelMenu()}
+        </div>
+      </div>
+
+      {qaContent}
+
+      <div className={s.composerShell}>
+        <div className={s.composerSlogan}>
+          <PenLine size={18} />
+          <span>先厘清要写什么，动笔时帮你少走弯路</span>
+        </div>
+        <textarea
+          ref={inputRef}
+          className={s.chatInput}
+          aria-label="输入你的问题，Enter 发送，Shift+Enter 换行"
+          placeholder={assistantGreeting}
+          value={input}
+          rows={3}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+        {hasChatAttachments ? (
+          <AttachmentChips
+            files={attachedFiles}
+            uploadingFiles={uploadingFiles}
+            onRemove={removeAttachedFile}
+            className={s.composerAttachments}
+          />
+        ) : null}
+        <div className={s.composerTools}>
+          <div className={s.toolLeft}>
+            <div className={s.knowledgePicker} ref={knowledgePickerRef}>
+              <button
+                type="button"
+                className={s.pillButton}
+                disabled={loadingKnowledgeSpaces || !availableSpaces.length}
+                onClick={() => setKnowledgePickerOpen((value) => !value)}
+              >
+                <Search size={15} />
+                {knowledgePickerLabel}
+                <ChevronDown size={14} />
+              </button>
+              {knowledgePickerOpen ? (
+                <div className={s.knowledgePanel}>
+                  <QAKnowledgeTreePicker
+                    spaces={availableSpaces}
+                    scope={selectedKnowledgeScope}
+                    loading={loadingKnowledgeSpaces}
+                    onChange={setSelectedKnowledgeScope}
+                    onLoadChildren={fetchQaKnowledgeTreeChildren}
+                    onSearchFiles={searchQaKnowledgeFiles}
+                    onTip={setComposerTip}
+                    onClose={() => setKnowledgePickerOpen(false)}
+                  />
                 </div>
               ) : null}
             </div>
+            <button
+              type="button"
+              className={`${s.toggleButton} ${webSearchEnabled ? s.toggleButtonActive : ''}`}
+              onClick={() => setWebSearchEnabled((value) => !value)}
+            >
+              <Globe2 size={15} />
+              联网搜索
+              {webSearchEnabled ? <Check size={14} /> : null}
+            </button>
           </div>
-
-          <div className={s.contentArea}>
-            {!hasConversation ? (
-              <div className={s.templatePanel}>
-                <div className={s.templateTabs} role="tablist" aria-label="写作模板分类">
-                  {[{ id: ALL_TEMPLATE_CATEGORY_ID, name: '全部' }, ...enabledCategories].map((category) => (
-                    <button
-                      key={category.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={templateCategory === category.id}
-                      className={`${s.templateTab} ${templateCategory === category.id ? s.templateTabActive : ''}`}
-                      onClick={() => setTemplateCategory(category.id)}
-                    >
-                      {category.name}
-                    </button>
-                  ))}
-                </div>
-                <div className={s.templateGrid}>
-                  {visibleTemplates.map((template) => {
-                    const TemplateIcon = getTemplateIcon(template.icon);
-                    return (
-                      <button
-                        key={template.id}
-                        type="button"
-                        className={s.templateCard}
-                        onClick={() => chooseTemplate(template)}
-                      >
-                        <span className={s.templateIcon} style={{ background: template.color }}>
-                          <TemplateIcon size={17} />
-                        </span>
-                        <span className={s.templateText}>
-                          <strong>{template.name}</strong>
-                          <span>{template.desc}</span>
-                        </span>
-                        <span className={s.templateLines} aria-hidden="true" />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className={s.messages}>
-                {activeSessionLoading ? (
-                  <div className={s.thinking}>
-                    <Loader2 size={16} className={s.spinner} />
-                    <span>正在加载会话...</span>
-                  </div>
-                ) : null}
-                {!activeSessionLoading && activeSession.messages.length === 0 ? (
-                  <div className={s.emptyConversation}>
-                    <Bot size={18} />
-                    <span>当前会话暂无历史消息，请输入问题继续对话。</span>
-                  </div>
-                ) : null}
-                {activeSession.messages.map((msg, i) => {
-                  const isLastMessage = i === activeSession.messages.length - 1;
-                  const isThinking = streaming && msg.role === 'bot' && isLastMessage && !msg.text.trim();
-                  const referenced = msg.role === 'bot' && msg.citations
-                    ? extractReferencedCitations(msg.text, msg.citations)
-                    : [];
-                  return (
-                    <div
-                      key={`${msg.role}-${i}`}
-                      className={`${s.msgRow} ${msg.role === 'user' ? s.msgRowUser : ''}`}
-                    >
-                      <div className={`${s.avatar} ${msg.role === 'bot' ? s.avatarBot : s.avatarUser}`}>
-                        {msg.role === 'bot' ? <Bot size={16} /> : <User size={16} />}
-                      </div>
-                      <div className={s.msgColumn}>
-                        {msg.role === 'bot' ? (
-                          isThinking ? (
-                            <div className={`${s.msgBubble} ${s.msgBot} ${s.thinking}`}>
-                              <Loader2 size={16} className={s.spinner} />
-                              <span>思考中...</span>
-                            </div>
-                          ) : (
-                            <div
-                              className={`${s.msgBubble} ${s.msgBot} ${s.botContent}`}
-                              dangerouslySetInnerHTML={{ __html: renderChatMarkdown(msg.text, msg.citations ?? []) }}
-                            />
-                          )
-                        ) : (
-                          <div className={`${s.msgBubble} ${s.msgUser}`}>{msg.text}</div>
-                        )}
-                        {msg.files?.length ? (
-                          <AttachmentChips files={msg.files} className={s.messageAttachments} />
-                        ) : null}
-                        {msg.role === 'bot' && referenced.length > 0 ? (
-                          <CitationList items={referenced} />
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={msgEndRef} />
-              </div>
-            )}
-          </div>
-
-          <div className={s.composerShell}>
-            <div className={s.composerSlogan}>
-              <PenLine size={18} />
-              <span>先厘清要写什么，动笔时帮你少走弯路</span>
-            </div>
-            <textarea
-              ref={inputRef}
-              className={s.chatInput}
-              aria-label="输入你的问题，Enter 发送，Shift+Enter 换行"
-              placeholder={assistantGreeting}
-              value={input}
-              rows={3}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
+          <div className={s.toolRight}>
+            {composerTip ? <span className={s.composerTip}>{composerTip}</span> : null}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={QA_ATTACHMENT_ACCEPT}
+              className={s.hiddenFileInput}
+              onChange={handleAttachmentSelect}
             />
-            {hasChatAttachments ? (
-              <AttachmentChips
-                files={attachedFiles}
-                uploadingFiles={uploadingFiles}
-                onRemove={removeAttachedFile}
-                className={s.composerAttachments}
-              />
-            ) : null}
-            <div className={s.composerTools}>
-              <div className={s.toolLeft}>
-                <div className={s.knowledgePicker} ref={knowledgePickerRef}>
-                  <button
-                    type="button"
-                    className={s.pillButton}
-                    disabled={loadingKnowledgeSpaces || !availableSpaces.length}
-                    onClick={() => setKnowledgePickerOpen((value) => !value)}
-                  >
-                    <Search size={15} />
-                    {knowledgePickerLabel}
-                    <ChevronDown size={14} />
-                  </button>
-                  {knowledgePickerOpen ? (
-                    <div className={s.knowledgePanel}>
-                      <QAKnowledgeTreePicker
-                        spaces={availableSpaces}
-                        scope={selectedKnowledgeScope}
-                        loading={loadingKnowledgeSpaces}
-                        onChange={setSelectedKnowledgeScope}
-                        onLoadChildren={fetchQaKnowledgeTreeChildren}
-                        onSearchFiles={searchQaKnowledgeFiles}
-                        onTip={setComposerTip}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className={`${s.toggleButton} ${webSearchEnabled ? s.toggleButtonActive : ''}`}
-                  onClick={() => setWebSearchEnabled((value) => !value)}
-                >
-                  <Globe2 size={15} />
-                  联网搜索
-                  {webSearchEnabled ? <Check size={14} /> : null}
-                </button>
-              </div>
-              <div className={s.toolRight}>
-                {composerTip ? <span className={s.composerTip}>{composerTip}</span> : null}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept={QA_ATTACHMENT_ACCEPT}
-                  className={s.hiddenFileInput}
-                  onChange={handleAttachmentSelect}
-                />
-                <button
-                  type="button"
-                  className={s.iconButton}
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="上传附件"
-                  disabled={streaming}
-                >
-                  <Paperclip size={17} />
-                </button>
-                <button type="button" className={s.iconButton} onClick={() => showUnavailableTip('语音输入')} aria-label="语音输入">
-                  <Mic size={17} />
-                </button>
-                <button
-                  type="button"
-                  className={s.sendBtn}
-                  onClick={sendMessage}
-                  disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
-                >
-                  {streaming ? <Loader2 size={18} className={s.spinner} /> : <Send size={18} />}
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              className={s.iconButton}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="上传附件"
+              disabled={streaming}
+            >
+              <Paperclip size={17} />
+            </button>
+            <button type="button" className={s.iconButton} onClick={() => showUnavailableTip('语音输入')} aria-label="语音输入">
+              <Mic size={17} />
+            </button>
+            <button
+              type="button"
+              className={s.sendBtn}
+              onClick={sendMessage}
+              disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
+            >
+              {streaming ? <Loader2 size={18} className={s.spinner} /> : <Send size={18} />}
+            </button>
           </div>
-        </section>
+        </div>
+      </div>
+    </section>
+  );
+
+  const qaSidebarState = {
+    sessions,
+    activeId,
+    loadingSessions,
+    loadingSessionId,
+    activeSession,
+    newSession,
+    selectSession,
+  };
+
+  if (children) {
+    return <>{children({ sidebar, workspace, qaContent, hasConversation, renderComposer, qaSidebarState })}</>;
+  }
+
+  return (
+    <>
+      {sidebar}
+      {workspace}
+    </>
+  );
+}
+
+export default function QAPage() {
+  return (
+    <>
+      <Header />
+      <main className={s.layout}>
+        <SmartQaWorkspace />
       </main>
     </>
   );

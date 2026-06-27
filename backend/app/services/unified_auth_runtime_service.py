@@ -71,10 +71,6 @@ class UnifiedAuthRuntimeService:
                 current.login_sync_hmac_secret,
             ),
             login_sync_signature_header=payload.login_sync_signature_header or "X-Signature",
-            glo_url=payload.glo_url,
-            glo_entity_id=payload.glo_entity_id,
-            glo_redirect_to_url=payload.glo_redirect_to_url,
-            glo_redirect_to_login=payload.glo_redirect_to_login,
         )
         self._write_config(updated)
         return self._to_public_view(updated)
@@ -107,10 +103,6 @@ class UnifiedAuthRuntimeService:
                 or self._settings.unified_auth_bisheng_signature_header
                 or "X-Signature"
             ),
-            glo_url=self._settings.unified_auth_glo_url,
-            glo_entity_id=self._settings.unified_auth_glo_entity_id,
-            glo_redirect_to_url=self._settings.unified_auth_glo_redirect_to_url,
-            glo_redirect_to_login=self._settings.unified_auth_glo_redirect_to_login,
         )
 
     def _settings_login_sync_secret(self) -> str:
@@ -154,10 +146,6 @@ class UnifiedAuthRuntimeService:
             state_ttl_seconds=config.state_ttl_seconds,
             http_timeout_seconds=config.http_timeout_seconds,
             login_sync_signature_header=config.login_sync_signature_header or "X-Signature",
-            glo_url=config.glo_url,
-            glo_entity_id=config.glo_entity_id,
-            glo_redirect_to_url=config.glo_redirect_to_url,
-            glo_redirect_to_login=config.glo_redirect_to_login,
             has_client_secret=bool(config.client_secret),
             has_state_secret=bool(config.state_secret),
             has_login_sync_hmac_secret=bool(config.login_sync_hmac_secret),

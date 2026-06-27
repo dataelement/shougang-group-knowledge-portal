@@ -1,10 +1,16 @@
 const DEFAULT_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge-portal';
+const DEFAULT_BISHENG_PORTAL_WORKFLOW_CHAT_PATH = '/workspace/portal-chat/workflow/auth/';
 const LEGACY_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
 const EMBED_PARAM = 'portal_embed';
 const DEEP_LINK_SPACE_PARAM = 'spaceId';
 const DEEP_LINK_FILE_PARAM = 'fileId';
+const DEEP_LINK_OPEN_CHAT_PARAM = 'openChat';
 
 export type EmbedLocation = Pick<Location, 'protocol' | 'hostname' | 'origin'>;
+
+export type PortalWorkflowChatEmbedResult =
+  | { ok: true; url: string }
+  | { ok: false; reason: 'missing_bisheng_base_url' | 'missing_workflow_id' | 'invalid_bisheng_base_url'; message: string };
 
 function getCurrentLocation(locationOverride?: EmbedLocation): EmbedLocation {
   if (locationOverride) return locationOverride;
@@ -72,6 +78,10 @@ export function mergeKnowledgeDeepLinkParams(
     const parsed = new URL(rawUrl, current.origin);
     parsed.searchParams.set(DEEP_LINK_SPACE_PARAM, spaceId);
     parsed.searchParams.set(DEEP_LINK_FILE_PARAM, fileId);
+    const openChat = searchParams.get(DEEP_LINK_OPEN_CHAT_PARAM)?.trim();
+    if (openChat) {
+      parsed.searchParams.set(DEEP_LINK_OPEN_CHAT_PARAM, openChat);
+    }
     return parsed.toString();
   } catch {
     return rawUrl;
@@ -122,4 +132,45 @@ export function resolveKnowledgeEmbedUrl(
 
   const current = getCurrentLocation(locationOverride);
   return `${current.origin}${DEFAULT_BISHENG_KNOWLEDGE_PATH}?${EMBED_PARAM}=1`;
+}
+
+export function resolvePortalWorkflowChatEmbedUrl(
+  bishengBaseUrl: string | undefined,
+  workflowId: string | undefined,
+  locationOverride?: EmbedLocation,
+): PortalWorkflowChatEmbedResult {
+  const sourceUrl = bishengBaseUrl?.trim() || '';
+  if (!sourceUrl) {
+    return {
+      ok: false,
+      reason: 'missing_bisheng_base_url',
+      message: '未配置 Bisheng 访问地址，无法打开 Agent。',
+    };
+  }
+  const safeWorkflowId = workflowId?.trim() || '';
+  if (!safeWorkflowId) {
+    return {
+      ok: false,
+      reason: 'missing_workflow_id',
+      message: '当前 Agent 未绑定 workflow，无法打开对话页。',
+    };
+  }
+
+  try {
+    const parsed = new URL(sourceUrl, getCurrentLocation(locationOverride).origin);
+    parsed.pathname = `${DEFAULT_BISHENG_PORTAL_WORKFLOW_CHAT_PATH}${encodeURIComponent(safeWorkflowId)}/`;
+    parsed.search = '';
+    parsed.hash = '';
+    parsed.searchParams.set(EMBED_PARAM, '1');
+    return {
+      ok: true,
+      url: toPortalOriginUrl(parsed.toString(), locationOverride),
+    };
+  } catch {
+    return {
+      ok: false,
+      reason: 'invalid_bisheng_base_url',
+      message: 'Bisheng 访问地址格式不正确，无法打开 Agent。',
+    };
+  }
 }

@@ -41,6 +41,8 @@ export interface FileListItemView {
   sourcePath: string;
   summaryText: string;
   tagGroups: TagGroup[];
+  visibleTags: string[];
+  hiddenTagCount: number;
   confidenceLabel: string;
   actions: FileListItemAction[];
 }
@@ -71,8 +73,11 @@ export function buildFileListItemView(
   const systemTags: string[] = [];
   const aiTags: string[] = [];
   const manualTags: string[] = [];
+  const visibleTagCount = options.visibleTagCount ?? 3;
+  const displayTags = file.tags.filter((tag) => tag && !META_TAGS.has(tag));
+  const tagInfos = file.tag_infos ?? displayTags.map((tag) => ({ tag_name: tag, resource_type: 'manual_tag' }));
 
-  for (const tag of file.tag_infos) {
+  for (const tag of tagInfos) {
     if (!tag || !tag.tag_name || META_TAGS.has(tag.tag_name)) continue;
     if (tag.resource_type === 'system_tag') {
       systemTags.push(tag.tag_name);
@@ -110,6 +115,8 @@ export function buildFileListItemView(
     sourcePath: sourcePath || folderPath || file.source || '',
     summaryText,
     tagGroups,
+    visibleTags: displayTags.slice(0, visibleTagCount),
+    hiddenTagCount: Math.max(0, displayTags.length - visibleTagCount),
     confidenceLabel: '',
     actions: [
       ...(options.canFavorite ? ['favorite' as const] : []),

@@ -99,7 +99,7 @@ export default function DetailPage() {
   }
 
   const META_TAGS = ['最新精选', '典型案例'];
-  const displayTags = detail.tag_infos.filter((t) => !META_TAGS.includes(t.tag_name));
+  const displayTags = (detail.tag_infos ?? []).filter((t) => !META_TAGS.includes(t.tag_name));
   const formattedUpdatedAt = formatDisplayDateTime(detail.date) || '—';
   const resolvedPreview = resolveFilePreview(preview);
   const effectivePreview = clientFallbackActive
@@ -136,7 +136,27 @@ export default function DetailPage() {
         )}
 
         <div className={s.card}>
-          <h1 className={s.title}>{detail.title}</h1>
+          <div className={s.titleRow}>
+            <h1 className={s.title} title={detail.title}>
+              {detail.title}
+            </h1>
+            <button
+              type="button"
+              className={s.readAssistBtn}
+              onClick={() => {
+                if (window.parent !== window) {
+                  window.parent.postMessage(
+                    { type: 'OPEN_KNOWLEDGE_READ', spaceId, fileId, openChat: true },
+                    window.location.origin,
+                  );
+                } else {
+                  navigate(`/knowledge-spaces?spaceId=${spaceId}&fileId=${fileId}&openChat=1`);
+                }
+              }}
+            >
+              辅助阅读
+            </button>
+          </div>
           <div className={s.metaGrid}>
             <div className={s.metaItem}>
               <span className={s.metaLabel}>文件大小</span>
@@ -204,7 +224,7 @@ export default function DetailPage() {
             <SectionHeader icon={Star} title="相关推荐" />
             <div className={s.relatedGrid}>
               {related.map((f) => {
-                const rTags = f.tag_infos.filter((t) => !META_TAGS.includes(t.tag_name));
+                const rTags = (f.tag_infos ?? []).filter((t) => !META_TAGS.includes(t.tag_name));
                 return (
                   <div
                     key={f.id}

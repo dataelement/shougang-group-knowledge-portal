@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import PageShell from '../components/PageShell';
@@ -14,7 +14,6 @@ import {
   searchFiles,
   type FileItem,
 } from '../api/content';
-import type { PortalConfig } from '../api/adminConfig';
 import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
@@ -23,6 +22,8 @@ import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import { getVisibleRange } from '../utils/listControls';
+import { resolveListContext } from '../utils/listPageContext';
+import { getRuntimeDocumentTypes, normalizeDocumentTypeCode } from '../utils/documentTypes';
 import {
   buildDownloadFileName,
   openFileDownloadUrl,
@@ -31,35 +32,7 @@ import {
 import { getEnabledSpaces, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import s from './ListPage.module.css';
 
-function resolveListContext(
-  config: PortalConfig,
-  domainName?: string,
-  spaceIdParam?: string,
-  tagParam?: string,
-  titleParam?: string,
-) {
-  const matchedDomain = domainName ? config.domains.find((item) => item.name === domainName) : undefined;
-  const parsedSpaceId = spaceIdParam ? Number(spaceIdParam) : undefined;
-  const spaceId = matchedDomain ? matchedDomain.space_ids[0] : parsedSpaceId;
-
-  let pageTitle = '';
-  if (spaceId) {
-    const space = config.spaces.find((item) => item.id === spaceId);
-    pageTitle = matchedDomain?.name || space?.name || '知识库';
-  } else if (titleParam) {
-    pageTitle = titleParam;
-  } else if (tagParam) {
-    const sec = config.sections.find((item) => item.tag === tagParam);
-    pageTitle = sec?.title || tagParam;
-  } else {
-    pageTitle = '知识列表';
-  }
-
-  return {
-    spaceId,
-    pageTitle,
-  };
-}
+const EMPTY_SPACE_IDS: number[] = [];
 
 export default function ListPage() {
   const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
@@ -68,8 +41,7 @@ export default function ListPage() {
   const tagParam = params.get('tag') || '';
   const titleParam = params.get('title') || '';
   const fileExt = params.get('file_ext') || '';
-  const [spaceId, setSpaceId] = useState<number | undefined>();
-  const [pageTitle, setPageTitle] = useState('知识列表');
+  const documentType = normalizeDocumentTypeCode(params.get('document_type'));
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
@@ -84,6 +56,14 @@ export default function ListPage() {
   const { openDocumentQa, documentQaModalProps } = useDocumentQa();
   const canDownload = Boolean(user);
   const canFavorite = Boolean(user);
+  const listContext = useMemo(() => (
+    config ? resolveListContext(config, domainName, spaceIdStr, tagParam, titleParam) : undefined
+  ), [config, domainName, spaceIdStr, tagParam, titleParam]);
+  const pageTitle = listContext?.pageTitle ?? '知识列表';
+  const spaceId = listContext?.spaceId;
+  const spaceIds = listContext?.spaceIds ?? EMPTY_SPACE_IDS;
+  const isDomainList = listContext?.mode === 'domain';
+  const documentTypes = useMemo(() => getRuntimeDocumentTypes(config?.document_types), [config?.document_types]);
 
   const handleDownload = useCallback(async (file: FileItem) => {
     setError('');
@@ -109,29 +89,49 @@ export default function ListPage() {
   }, [toggleFavorite]);
 
   useEffect(() => {
-    if (!config) return;
-    const context = resolveListContext(config, domainName, spaceIdStr, tagParam, titleParam);
-    setSpaceId(context.spaceId);
-    setPageTitle(context.pageTitle);
-  }, [config, domainName, spaceIdStr, tagParam, titleParam]);
-
-  useEffect(() => {
     if (!configError) return;
     setError(configError);
   }, [configError]);
 
   useEffect(() => {
     let active = true;
-    if (!config) return;
+    if (!config || !listContext) return;
     setLoading(true);
     setError('');
     void (async () => {
       try {
-        if (spaceId) {
+        if (isDomainList) {
+          if (spaceIds.length === 0) {
+            if (!active) return;
+            setFiles([]);
+            setTotal(0);
+            setPageSize(displayConfig.list.pageSize);
+            setAvailableTags([]);
+            return;
+          }
+          const [result, tags] = await Promise.all([
+            searchFiles({
+              spaceIds,
+              fileExt: fileExt || undefined,
+              documentType: documentType || undefined,
+              tag: tagParam || undefined,
+              sort: 'updated_at_desc',
+              page,
+              pageSize: displayConfig.list.pageSize,
+            }),
+            fetchAggregatedTags(spaceIds),
+          ]);
+          if (!active) return;
+          setFiles(result.data);
+          setTotal(result.total);
+          setPageSize(result.pageSize);
+          setAvailableTags(tags);
+        } else if (spaceId) {
           const [result, tags] = await Promise.all([
             fetchSpaceFiles({
               spaceId,
               fileExt: fileExt || undefined,
+              documentType: documentType || undefined,
               tag: tagParam || undefined,
               page,
               pageSize: displayConfig.list.pageSize,
@@ -148,6 +148,7 @@ export default function ListPage() {
             searchFiles({
               tag: tagParam || undefined,
               fileExt: fileExt || undefined,
+              documentType: documentType || undefined,
               page,
               pageSize: displayConfig.list.pageSize,
             }),
@@ -169,7 +170,7 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [config, displayConfig.list.pageSize, fileExt, page, spaceId, tagParam]);
+  }, [config, displayConfig.list.pageSize, documentType, fileExt, isDomainList, listContext, page, spaceId, spaceIds, tagParam]);
 
   useEffect(() => {
     if (canFavorite && files.length) void loadStatuses(files);
@@ -192,6 +193,10 @@ export default function ListPage() {
           <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
             <option value="">文件格式</option>
             {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select className={s.filterSelect} value={documentType} onChange={(e) => setFilter('document_type', e.target.value)}>
+            <option value="">文档类型</option>
+            {documentTypes.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
           </select>
           <select className={s.filterSelect} value={tagParam} onChange={(e) => setFilter('tag', e.target.value)}>
             <option value="">标签</option>

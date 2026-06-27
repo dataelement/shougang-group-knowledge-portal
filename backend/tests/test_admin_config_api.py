@@ -22,6 +22,19 @@ class FakeBishengClient:
         self.post_calls: list[tuple[str, dict | None]] = []
 
     async def get_json(self, path: str, params=None):
+        if path == "/api/v1/workstation/config":
+            return {
+                "data": {
+                    "shougang": {
+                        "file_encoding": {
+                            "document_types": [
+                                {"code": "RPT", "label": "报告"},
+                                {"code": "STD", "label": "标准规范"},
+                            ]
+                        }
+                    }
+                }
+            }
         if path == "/api/v1/llm":
             return {
                 "data": [
@@ -275,10 +288,6 @@ def create_unified_auth_service(tmp_path: Path, **settings_overrides) -> Unified
         "unified_auth_login_sync_hmac_secret": "seed-login-sync-secret",
         "unified_auth_state_ttl_seconds": 300,
         "unified_auth_http_timeout_seconds": 5,
-        "unified_auth_glo_url": "https://iam.example.com/idp/profile/OAUTH2/Redirect/GLO",
-        "unified_auth_glo_entity_id": "seed-entity",
-        "unified_auth_glo_redirect_to_url": "https://portal.example.com/api/v1/auth/unified/logout/callback",
-        "unified_auth_glo_redirect_to_login": True,
     }
     settings_values.update(settings_overrides)
     return UnifiedAuthRuntimeService(
@@ -328,7 +337,7 @@ def test_export_admin_config_includes_non_sensitive_runtime_config(tmp_path: Pat
     assert body["unified_auth"]["client_secret"] == "seed-secret"
     assert body["unified_auth"]["state_secret"] == "seed-state-secret"
     assert body["unified_auth"]["login_sync_hmac_secret"] == "seed-login-sync-secret"
-    assert body["unified_auth"]["glo_entity_id"] == "seed-entity"
+    assert "glo_entity_id" not in body["unified_auth"]
     serialized = response.text
     assert "secret-token" not in serialized
     assert "api_token" not in serialized
@@ -414,10 +423,6 @@ def test_import_admin_config_replaces_unified_auth_runtime_config_with_plaintext
             "http_timeout_seconds": 7,
             "login_sync_hmac_secret": "imported-login-sync-secret",
             "login_sync_signature_header": "X-Imported-Signature",
-            "glo_url": "https://iam.example.com/idp/profile/OAUTH2/Redirect/GLO",
-            "glo_entity_id": "imported-entity",
-            "glo_redirect_to_url": "https://portal.example.com/api/v1/auth/unified/logout/callback",
-            "glo_redirect_to_login": False,
         },
     }
 
@@ -442,8 +447,6 @@ def test_import_admin_config_replaces_unified_auth_runtime_config_with_plaintext
     assert config.state_secret == "imported-state-secret"
     assert config.login_sync_hmac_secret == "imported-login-sync-secret"
     assert config.login_sync_signature_header == "X-Imported-Signature"
-    assert config.glo_entity_id == "imported-entity"
-    assert config.glo_redirect_to_login is False
 
 
 def test_import_admin_config_rejects_invalid_payload_without_writing(tmp_path: Path):
@@ -668,10 +671,16 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
 
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
+        client.app.state.bisheng_client = FakeBishengClient()
         response = client.get("/api/v1/knowledge/config")
 
     assert response.status_code == 200
-    assert "site" in response.json()["data"]
+    data = response.json()["data"]
+    assert "site" in data
+    assert data["document_types"] == [
+        {"code": "RPT", "label": "报告"},
+        {"code": "STD", "label": "标准规范"},
+    ]
 
 
 def test_get_admin_config_uses_portal_config_service(tmp_path: Path):

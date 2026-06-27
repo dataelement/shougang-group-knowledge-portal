@@ -26,7 +26,7 @@ import { resolveSectionVisual } from '../utils/adminSections';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
-import { buildSpaceSearchPath } from '../utils/searchParams';
+import { buildDomainSearchPath } from '../utils/searchParams';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
 import s from './HomePage.module.css';
@@ -38,6 +38,13 @@ const DOMAIN_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
 
 const APP_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
   PenLine, Search, MessageSquare, Globe, BarChart3, Network, FileText, Bot, BriefcaseBusiness, Layers3, ScrollText,
+};
+
+const APP_SHORTCUT_IMAGES: Record<string, string> = {
+  'thought-report': '/app-shortcuts/office-writing.png',
+  'work-push-plan': '/app-shortcuts/hero-semantic-search.png',
+  'office-writing': '/app-shortcuts/hero-open-qa.png',
+  'hero-doc-translate': '/app-shortcuts/hero-doc-translate.png',
 };
 
 const SECTION_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
@@ -333,7 +340,7 @@ function buildBannerBackground(imageUrl: string): string {
 }
 
 function getPrimaryTag(file: FileItem) {
-  return file.tag_infos.find((t) => t.tag_name !== '最新精选' && t.tag_name !== '典型案例')?.tag_name;
+  return file.tag_infos?.find((t) => t.tag_name !== '最新精选' && t.tag_name !== '典型案例')?.tag_name;
 }
 
 function getWelcomeMessage(welcomeMessage?: string) {
@@ -663,7 +670,9 @@ export default function HomePage() {
           <div className={s.heroBottomRow} onClick={(event) => event.stopPropagation()}>
             <div className={s.appShortcutList}>
               {appEntryItems.map((template) => {
+                const iconImage = APP_SHORTCUT_IMAGES[template.id];
                 const AppIcon = APP_ICONS[template.icon] || Bot;
+       
                 return (
                   <button
                     key={template.id}
@@ -671,13 +680,17 @@ export default function HomePage() {
                     className={s.appShortcut}
                     onClick={(event) => {
                       event.stopPropagation();
-                      navigate(`/portal/qa?templateId=${encodeURIComponent(template.id)}`);
+                      navigate(`/apps?tab=qa&templateId=${encodeURIComponent(template.id)}`);
                     }}
                   >
-                    <span className={s.appShortcutIcon}>
-                      <AppIcon size={13} />
+                  <span className={s.appShortcutIcon}>
+                      {iconImage ? (
+                        <img src={iconImage} alt="" className={s.appShortcutImage} />
+                      ) : (
+                        <AppIcon size={13} />
+                      )}
                     </span>
-                    <span className={s.appShortcutText}>{template.name}</span>
+                  <span className={s.appShortcutText}>{template.name}</span>
                   </button>
                 );
               })}
@@ -737,8 +750,7 @@ export default function HomePage() {
                     className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
                     style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
                     onClick={() => {
-                      const targetSpaceId = d.space_ids[0];
-                      if (targetSpaceId != null) navigateToTop(buildSpaceSearchPath(targetSpaceId));
+                      navigateToTop(buildDomainSearchPath(d.name));
                     }}
                   >
                     {usesBannerThumb ? null : (
@@ -793,32 +805,34 @@ export default function HomePage() {
                       更多 <ChevronRight size={14} />
                     </Link>
                   </div>
-                  {items.map((f) => (
-                    <div
-                      key={f.id}
-                      className={s.listItem}
-                      onClick={() =>
-                        navigate(`/space/${f.spaceId}/file/${f.id}`, {
-                          state: { returnTo: sec.link },
-                        })}
-                    >
-                      <div className={s.itemBody}>
-                        <span className={s.itemTitle}>{f.title}</span>
-                        <div className={s.itemSummary}>{f.summary}</div>
-                        <div className={s.itemMeta}>
-                          {getPrimaryTag(f) ? (
-                            <TagPill name={getPrimaryTag(f)!} neutral />
-                          ) : null}
-                          <span className={s.itemDate}>{formatDisplayDateTime(f.date)}</span>
+                  <div className={s.sectionList}>
+                    {items.map((f) => (
+                      <div
+                        key={f.id}
+                        className={s.listItem}
+                        onClick={() =>
+                          navigate(`/space/${f.spaceId}/file/${f.id}`, {
+                            state: { returnTo: sec.link },
+                          })}
+                      >
+                        <div className={s.itemBody}>
+                          <span className={s.itemTitle}>{f.title}</span>
+                          <div className={s.itemSummary}>{f.summary}</div>
+                          <div className={s.itemMeta}>
+                            {getPrimaryTag(f) ? (
+                              <TagPill name={getPrimaryTag(f)!} neutral />
+                            ) : null}
+                            <span className={s.itemDate}>{formatDisplayDateTime(f.date)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  {items.length === 0 ? (
-                    <div className={s.sectionEmpty}>
-                      暂无匹配内容
-                    </div>
-                  ) : null}
+                    ))}
+                    {items.length === 0 ? (
+                      <div className={s.sectionEmpty}>
+                        暂无匹配内容
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}
@@ -869,7 +883,7 @@ export default function HomePage() {
                   <div className={s.panelIcon}><Bot size={14} /></div>
                   <span className={s.panelTitle}>智能问答</span>
                 </div>
-                <Link to="/qa" className={s.panelMore}>
+                <Link to="/apps?tab=qa" className={s.panelMore}>
                   进入 <ChevronRight size={14} />
                 </Link>
               </div>

@@ -17,10 +17,8 @@ interface Message {
 }
 
 const QUICK_QUESTIONS = [
-  '这个文档的核心内容是什么？',
-  '有哪些关键的优化方案？',
-  '具体的技术实现方案是什么？',
-  '文档中的关键要点有哪些？',
+  '总结文章要点',
+  '文章的主要结论是什么',
 ];
 
 function getInitialMessages(file: FileItem): Message[] {

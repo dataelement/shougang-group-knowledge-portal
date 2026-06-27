@@ -293,7 +293,7 @@ function parseUnknownAttachments(value?: string | null,
 
 
 
-async  function mapQuestionDetail(
+async function mapQuestionDetail(
   question: ApiQuestion,
   relatedQuestions: SimilarQuestionItem[] = [],
 ): Promise<DetailQuestion> {
@@ -302,14 +302,28 @@ async  function mapQuestionDetail(
   const invitedNames = splitInvitedNames(
     question.experts_names || question.invited_experts,
   );
-  const invitedExperts = await Promise.all(
-    invitedNames.map(async (name, index) => ({
-      expert: await buildInvitedExpert(name, index, question.created_at),
-      status: await fetchExpertAnswerDetail(question.id, name).then((res) => 
-        res ? ('answered' as const) : ('pending' as const)
-      )
-    }))
+  const results = await Promise.allSettled(
+    invitedNames.map(async (name, index) => {
+      // 1. 去掉多余的 await
+      const expert = buildInvitedExpert(name, index, question.created_at);
+      
+      let status: 'answered' | 'pending' = 'pending';
+      try {
+        const res = await fetchExpertAnswerDetail(question.id, name);
+        status = res ? ('answered' as const) : ('pending' as const);
+      } catch (err) {
+        console.error(`查询专家 ${name} 状态失败:`, err);
+      }
+
+      return { expert, status };
+    })
   );
+
+  const invitedExperts = results
+    .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+    .map((r) => r.value);
+
+
   return {
     id: String(question.id),
     title: question.title,
@@ -1123,7 +1137,7 @@ export default function ExpertQADetailPage() {
           if (active) setCurrentExpert(expert);
           return;
         } catch {
-          // Continue with the next user identifier; some deployments key experts by account.
+         
         }
       }
       if (active) setCurrentExpert(null);
@@ -1402,7 +1416,8 @@ export default function ExpertQADetailPage() {
       !questionNumericId ||
       questionVoteSubmitting ||
       votedTargets.has(voteKey)
-    ) {
+    ) 
+    {
       if (votedTargets.has(voteKey)) setAnswerError('你已经投过票了');
       return;
     }
@@ -1514,42 +1529,6 @@ export default function ExpertQADetailPage() {
     );
   }
 
-  // async function handleEditQuestion() {
-  //   if (!questionNumericId || !question || !canManageQuestion) return;
-
-  //   const nextTitle = window.prompt('编辑问题标题', question.title)?.trim();
-  //   if (!nextTitle) return;
-  //   const nextBody = window.prompt(
-  //     '编辑问题描述',
-  //     question.bodyParagraphs.join('\n\n') || question.excerpt,
-  //   )?.trim();
-  //   if (!nextBody) return;
-
-  //   setAnswerError(null);
-  //   try {
-  //     await updateExpertQuestion(questionNumericId, {
-  //       title: nextTitle,
-  //       body: nextBody,
-  //       domain: question.domain,
-  //     });
-  //     await refreshQuestionAndAnswers(questionNumericId);
-  //   } catch (err) {
-  //     setAnswerError(err instanceof Error ? err.message : '问题保存失败，请稍后重试');
-  //   }
-  // }
-
-  // async function handleDeleteQuestion() {
-  //   if (!questionNumericId || !canManageQuestion) return;
-  //   if (!window.confirm('确定删除该问题吗？删除后不可恢复。')) return;
-
-  //   setAnswerError(null);
-  //   try {
-  //     await deleteExpertQuestion(questionNumericId);
-  //     navigate('/expert-qa');
-  //   } catch (err) {
-  //     setAnswerError(err instanceof Error ? err.message : '问题删除失败，请稍后重试');
-  //   }
-  // }
 
   if (qLoading) {
     return (
@@ -1618,18 +1597,6 @@ export default function ExpertQADetailPage() {
                   <span>浏览 {question.views} 次</span>
                 </div>
 
-                {/* {canManageQuestion ? (
-                  <div className={s.ownerActions}>
-                    <button type="button" className={s.btnGhost} onClick={() => void handleEditQuestion()}>
-                      <Edit3 size={13} />
-                      编辑
-                    </button>
-                    <button type="button" className={s.btnGhost} onClick={() => void handleDeleteQuestion()}>
-                      <Trash2 size={13} />
-                      删除
-                    </button>
-                  </div>
-                ) : null} */}
 
               </div>
             </div>

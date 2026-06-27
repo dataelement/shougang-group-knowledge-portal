@@ -21,6 +21,13 @@ import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import {
+  getRuntimeDocumentTypes,
+  matchesDocumentType,
+  normalizeDocumentTypeCode,
+  normalizeUpdatedAtSort,
+  UPDATED_AT_SORT_OPTIONS,
+} from '../utils/documentTypes';
+import {
   buildDownloadFileName,
   openFileDownloadUrl,
   resolveFileDownloadUrl,
@@ -63,14 +70,18 @@ export default function SearchPage() {
   const spaceLevel = params.get('space_level') || '';
   const spaceId = params.get('space_id') || '';
   const fileExt = params.get('file_ext') || '';
+  const documentType = normalizeDocumentTypeCode(params.get('document_type'));
   const tag = params.get('tag') || '';
-  const sort = params.get('sort') || 'relevance';
+  const sort = normalizeUpdatedAtSort(params.get('sort'));
   const hasSearch = hasSearchContext(params);
   const { config } = usePortalConfig();
   const { user } = useAuth();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   // 登录用户个人可见空间（按个人权限），用于扩充二级「知识空间」筛选
   const [visibleSpaces, setVisibleSpaces] = useState<SpaceOption[]>([]);
+  const [rawFiles, setRawFiles] = useState<FileItem[]>([]);
+  const [rawTotal, setRawTotal] = useState(0);
+  const [resultsReady, setResultsReady] = useState(false);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [total, setTotal] = useState(0);
@@ -151,6 +162,7 @@ export default function SearchPage() {
   const spaceById = useMemo(() => new Map(searchSpaces.map((sp) => [sp.id, sp])), [searchSpaces]);
   const selectedSpaceId = Number(spaceId);
   const selectedSpace = Number.isFinite(selectedSpaceId) ? spaceById.get(selectedSpaceId) : undefined;
+  const documentTypes = useMemo(() => getRuntimeDocumentTypes(config?.document_types), [config?.document_types]);
 
   const resultSpaceLevelOptions = useMemo(() => {
     const levelSet = new Set<string>();
@@ -201,7 +213,7 @@ export default function SearchPage() {
   const resultTagOptions = useMemo(() => {
     const tagSet = new Set<string>();
     for (const file of files) {
-      for (const item of file.tag_infos) addStringOption(tagSet, item.tag_name);
+      for (const item of file.tags) addStringOption(tagSet, item);
     }
     addStringOption(tagSet, tag);
     return [...tagSet].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
@@ -216,6 +228,9 @@ export default function SearchPage() {
   useEffect(() => {
     let active = true;
     if (!hasSearch) {
+      setResultsReady(false);
+      setRawFiles([]);
+      setRawTotal(0);
       setFiles([]);
       setTotal(0);
       setAiText('');
@@ -225,10 +240,16 @@ export default function SearchPage() {
       return;
     }
     setLoading(true);
+    setResultsReady(false);
     setError('');
+    setRawFiles([]);
+    setRawTotal(0);
+    setFiles([]);
+    setTotal(0);
     setAiText('');
     setAiCitations([]);
     setAiThinking(true);
+    requestSeq.current += 1;
     void (async () => {
       try {
         const result = await searchFiles({
@@ -240,29 +261,9 @@ export default function SearchPage() {
           sort,
         });
         if (!active) return;
-        setFiles(result.data);
-        setTotal(result.total);
-        const currentRequest = ++requestSeq.current;
-        void streamChatCompletion({
-          scene: 'search',
-          text: q,
-          knowledgeSpaceIds: sids ?? [],
-          spaceLevel: spaceLevel || undefined,
-          searchResults: result.data.slice(0, 10),
-          onUpdate(text) {
-            if (!active || requestSeq.current !== currentRequest) return;
-            setAiText(text);
-            setAiThinking(false);
-          },
-          onCitations(list) {
-            if (!active || requestSeq.current !== currentRequest) return;
-            setAiCitations(list);
-          },
-        }).finally(() => {
-          if (active && requestSeq.current === currentRequest) {
-            setAiThinking(false);
-          }
-        });
+        setRawFiles(result.data);
+        setRawTotal(result.total);
+        setResultsReady(true);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : '搜索失败');
@@ -275,6 +276,43 @@ export default function SearchPage() {
       active = false;
     };
   }, [fileExt, hasSearch, q, sids, spaceLevel, sort, tag]);
+
+  useEffect(() => {
+    if (!hasSearch || loading || !resultsReady) return;
+    let active = true;
+    const filtered = documentType
+      ? rawFiles.filter((file) => matchesDocumentType(file.fileEncoding, documentType))
+      : rawFiles;
+    setFiles(filtered);
+    setTotal(documentType ? filtered.length : rawTotal);
+    setAiText('');
+    setAiCitations([]);
+    setAiThinking(true);
+    const currentRequest = ++requestSeq.current;
+    void streamChatCompletion({
+      scene: 'search',
+      text: q,
+      knowledgeSpaceIds: sids ?? [],
+      spaceLevel: spaceLevel || undefined,
+      searchResults: filtered.slice(0, 10),
+      onUpdate(text) {
+        if (!active || requestSeq.current !== currentRequest) return;
+        setAiText(text);
+        setAiThinking(false);
+      },
+      onCitations(list) {
+        if (!active || requestSeq.current !== currentRequest) return;
+        setAiCitations(list);
+      },
+    }).finally(() => {
+      if (active && requestSeq.current === currentRequest) {
+        setAiThinking(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [documentType, hasSearch, loading, q, rawFiles, rawTotal, resultsReady, sids, spaceLevel]);
 
   useEffect(() => {
     if (canFavorite && files.length) void loadStatuses(files);
@@ -339,8 +377,12 @@ export default function SearchPage() {
               {resultSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
             </select>
             <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value, false)}>
-              <option value="">文档类型</option>
+              <option value="">文件格式</option>
               {resultFileExtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <select className={s.filterSelect} value={documentType} onChange={(e) => setFilter('document_type', e.target.value, false)}>
+              <option value="">文档类型</option>
+              {documentTypes.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
             </select>
             <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
               <option value="">标签</option>
@@ -349,8 +391,9 @@ export default function SearchPage() {
             <div className={s.sortWrap}>
               排序：
               <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value, false)}>
-                <option value="relevance">相关性优先</option>
-                <option value="updated_at">最近更新</option>
+                {UPDATED_AT_SORT_OPTIONS.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
               </select>
             </div>
           </div>

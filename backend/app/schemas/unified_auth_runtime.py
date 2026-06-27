@@ -35,10 +35,6 @@ class UnifiedAuthRuntimeConfig(BaseModel):
     http_timeout_seconds: float = 10.0
     login_sync_hmac_secret: str = ""
     login_sync_signature_header: str = "X-Signature"
-    glo_url: str = ""
-    glo_entity_id: str = ""
-    glo_redirect_to_url: str = ""
-    glo_redirect_to_login: bool = True
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -56,7 +52,7 @@ class UnifiedAuthRuntimeConfig(BaseModel):
             raise ValueError("token_param_style must be query or form")
         return style
 
-    @field_validator("redirect_uri", "authorize_url", "token_url", "userinfo_url", "glo_url", "glo_redirect_to_url", mode="before")
+    @field_validator("redirect_uri", "authorize_url", "token_url", "userinfo_url", mode="before")
     @classmethod
     def validate_urls(cls, value: str | None) -> str:
         return _validate_optional_http_url(value)
@@ -67,7 +63,6 @@ class UnifiedAuthRuntimeConfig(BaseModel):
         "state_secret",
         "login_sync_hmac_secret",
         "login_sync_signature_header",
-        "glo_entity_id",
         mode="before",
     )
     @classmethod
@@ -101,10 +96,6 @@ class UnifiedAuthRuntimeConfigView(BaseModel):
     state_ttl_seconds: int = 300
     http_timeout_seconds: float = 10.0
     login_sync_signature_header: str = "X-Signature"
-    glo_url: str = ""
-    glo_entity_id: str = ""
-    glo_redirect_to_url: str = ""
-    glo_redirect_to_login: bool = True
     has_client_secret: bool = False
     has_state_secret: bool = False
     has_login_sync_hmac_secret: bool = False
@@ -127,10 +118,6 @@ class UnifiedAuthRuntimeConfigUpdate(BaseModel):
     http_timeout_seconds: float = 10.0
     login_sync_hmac_secret: SecretStr | None = None
     login_sync_signature_header: str = "X-Signature"
-    glo_url: str = ""
-    glo_entity_id: str = ""
-    glo_redirect_to_url: str = ""
-    glo_redirect_to_login: bool = True
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -142,12 +129,12 @@ class UnifiedAuthRuntimeConfigUpdate(BaseModel):
     def validate_token_param_style(cls, value: str | None) -> str:
         return UnifiedAuthRuntimeConfig.validate_token_param_style(value)
 
-    @field_validator("redirect_uri", "authorize_url", "token_url", "userinfo_url", "glo_url", "glo_redirect_to_url", mode="before")
+    @field_validator("redirect_uri", "authorize_url", "token_url", "userinfo_url", mode="before")
     @classmethod
     def validate_urls(cls, value: str | None) -> str:
         return UnifiedAuthRuntimeConfig.validate_urls(value)
 
-    @field_validator("client_id", "login_sync_signature_header", "glo_entity_id", mode="before")
+    @field_validator("client_id", "login_sync_signature_header", mode="before")
     @classmethod
     def normalize_strings(cls, value: str | None) -> str:
         return _normalize_text(value)

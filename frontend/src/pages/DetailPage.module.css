@@ -50,11 +50,44 @@
   margin-bottom: 32px;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
 .title {
+  flex: 1;
+  min-width: 0;
   font-size: 1.9rem;
   font-weight: 700;
   color: var(--neutral-900);
-  margin-bottom: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readAssistBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--primary-200);
+  background: var(--primary-50);
+  color: var(--primary-600);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.readAssistBtn:hover {
+  background: var(--primary-100);
+  border-color: var(--primary-300);
+  color: var(--primary-700);
 }
 
 .metaGrid {

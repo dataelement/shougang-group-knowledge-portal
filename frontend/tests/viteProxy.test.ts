@@ -9,6 +9,34 @@ test('vite dev server proxies root MinIO asset paths returned by BiSheng', () =>
   assert.match(configSource, /\^\/bisheng/);
 });
 
+test('vite dev server proxies BiSheng workflow websocket traffic', () => {
+  const configSource = readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+
+  assert.match(configSource, /['"]\^\/workspace\/api\(\/\|\$\)['"]\s*:\s*\{[\s\S]*?ws:\s*true/);
+});
+
+test('vite dev server proxies BiSheng web websocket traffic', () => {
+  const configSource = readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+
+  assert.match(configSource, /['"]\/workspace\/['"]\s*:\s*\{[\s\S]*?ws:\s*true/);
+});
+
+test('nginx BiSheng API proxy preserves websocket upgrade headers', () => {
+  const nginxSource = readFileSync(resolve(process.cwd(), '../deploy/nginx/default.conf.template'), 'utf8');
+
+  assert.match(nginxSource, /location\s+~\s+\^\/workspace\/api\(\/\|\$\)\s*\{[\s\S]*?proxy_http_version\s+1\.1;/);
+  assert.match(nginxSource, /location\s+~\s+\^\/workspace\/api\(\/\|\$\)\s*\{[\s\S]*?proxy_set_header\s+Upgrade\s+\$http_upgrade;/);
+  assert.match(nginxSource, /location\s+~\s+\^\/workspace\/api\(\/\|\$\)\s*\{[\s\S]*?proxy_set_header\s+Connection\s+\$connection_upgrade;/);
+});
+
+test('nginx BiSheng web proxy preserves websocket upgrade headers', () => {
+  const nginxSource = readFileSync(resolve(process.cwd(), '../deploy/nginx/default.conf.template'), 'utf8');
+
+  assert.match(nginxSource, /location\s+\/workspace\/\s*\{[\s\S]*?proxy_http_version\s+1\.1;/);
+  assert.match(nginxSource, /location\s+\/workspace\/\s*\{[\s\S]*?proxy_set_header\s+Upgrade\s+\$http_upgrade;/);
+  assert.match(nginxSource, /location\s+\/workspace\/\s*\{[\s\S]*?proxy_set_header\s+Connection\s+\$connection_upgrade;/);
+});
+
 test('nginx MinIO proxy preserves the Host used to sign presigned URLs', () => {
   const nginxSource = readFileSync(resolve(process.cwd(), '../deploy/nginx/default.conf.template'), 'utf8');
 

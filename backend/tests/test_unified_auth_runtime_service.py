@@ -56,10 +56,6 @@ def make_settings(**overrides) -> Settings:
         "unified_auth_login_sync_hmac_secret": "seed-login-sync-secret",
         "unified_auth_state_ttl_seconds": 300,
         "unified_auth_http_timeout_seconds": 5,
-        "unified_auth_glo_url": "https://iam.example.com/idp/profile/OAUTH2/Redirect/GLO",
-        "unified_auth_glo_entity_id": "seed-entity",
-        "unified_auth_glo_redirect_to_url": "https://portal.example.com/api/v1/auth/unified/logout/callback",
-        "unified_auth_glo_redirect_to_login": True,
     }
     defaults.update(overrides)
     return Settings(**defaults)
@@ -83,12 +79,9 @@ def test_runtime_config_seeds_from_settings_and_hides_secrets(tmp_path: Path):
     assert config.client_id == "seed-client"
     assert config.client_secret == "seed-secret"
     assert config.login_sync_hmac_secret == "seed-login-sync-secret"
-    assert config.glo_entity_id == "seed-entity"
-    assert config.glo_redirect_to_url == "https://portal.example.com/api/v1/auth/unified/logout/callback"
     assert view.has_client_secret is True
     assert view.has_state_secret is True
     assert view.has_login_sync_hmac_secret is True
-    assert view.glo_entity_id == "seed-entity"
     serialized = view.model_dump_json()
     assert "seed-secret" not in serialized
     assert "seed-state-secret" not in serialized
@@ -119,10 +112,6 @@ def test_runtime_config_update_preserves_blank_secrets_and_generates_state_secre
             http_timeout_seconds=8,
             login_sync_hmac_secret="login-sync-a",
             login_sync_signature_header="X-Test-Signature",
-            glo_url="https://iam.example.com/idp/profile/OAUTH2/Redirect/GLO",
-            glo_entity_id="entity-a",
-            glo_redirect_to_url="https://portal.example.com/api/v1/auth/unified/logout/callback",
-            glo_redirect_to_login=True,
         )
     )
 
@@ -133,7 +122,6 @@ def test_runtime_config_update_preserves_blank_secrets_and_generates_state_secre
     assert config.client_secret == "secret-a"
     assert config.state_secret == "generated-state-secret"
     assert config.login_sync_hmac_secret == "login-sync-a"
-    assert config.glo_entity_id == "entity-a"
 
     service.update_config(
         UnifiedAuthRuntimeConfigUpdate(
@@ -151,10 +139,6 @@ def test_runtime_config_update_preserves_blank_secrets_and_generates_state_secre
             http_timeout_seconds=9,
             login_sync_hmac_secret="",
             login_sync_signature_header="X-Signature",
-            glo_url="https://iam.example.com/idp/profile/OAUTH2/Redirect/GLO",
-            glo_entity_id="entity-b",
-            glo_redirect_to_url="https://portal.example.com/api/v1/auth/unified/logout/callback",
-            glo_redirect_to_login=False,
         )
     )
 
@@ -163,8 +147,6 @@ def test_runtime_config_update_preserves_blank_secrets_and_generates_state_secre
     assert config.client_secret == "secret-a"
     assert config.state_secret == "generated-state-secret"
     assert config.login_sync_hmac_secret == "login-sync-a"
-    assert config.glo_entity_id == "entity-b"
-    assert config.glo_redirect_to_login is False
 
 
 def test_runtime_config_validation_rejects_invalid_provider_and_token_style(tmp_path: Path):
@@ -216,10 +198,6 @@ def test_admin_unified_auth_config_get_post_does_not_echo_secrets(tmp_path: Path
                     "http_timeout_seconds": 10,
                     "login_sync_hmac_secret": "admin-login-sync-secret",
                     "login_sync_signature_header": "X-Signature",
-                    "glo_url": "",
-                    "glo_entity_id": "admin-entity",
-                    "glo_redirect_to_url": "https://portal.example.com/api/v1/auth/unified/logout/callback",
-                    "glo_redirect_to_login": True,
                 },
             )
             get_response = client.get("/api/v1/admin/config/unified-auth")
@@ -234,8 +212,8 @@ def test_admin_unified_auth_config_get_post_does_not_echo_secrets(tmp_path: Path
     assert body["has_client_secret"] is True
     assert body["has_state_secret"] is True
     assert body["has_login_sync_hmac_secret"] is True
-    assert body["glo_entity_id"] == "admin-entity"
-    assert body["glo_redirect_to_url"] == "https://portal.example.com/api/v1/auth/unified/logout/callback"
+    assert "glo_entity_id" not in body
+    assert "glo_redirect_to_url" not in body
     assert "admin-secret" not in response.text
     assert "admin-login-sync-secret" not in response.text
     assert get_response.status_code == 200
@@ -267,8 +245,6 @@ def test_unified_auth_start_uses_latest_admin_runtime_config(tmp_path: Path):
             userinfo_url="https://iam.runtime.example.com/userinfo",
             token_param_style="query",
             login_sync_hmac_secret="runtime-login-sync-secret",
-            glo_entity_id="runtime-entity",
-            glo_redirect_to_url="https://runtime.example.com/api/v1/auth/unified/logout/callback",
         )
     )
 
