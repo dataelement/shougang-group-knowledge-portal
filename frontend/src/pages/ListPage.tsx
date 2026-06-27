@@ -99,6 +99,15 @@ export default function ListPage() {
     }
   }, []);
 
+  const handleToggleFavorite = useCallback(async (file: FileItem) => {
+    setError('');
+    try {
+      await toggleFavorite(file);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '收藏操作失败');
+    }
+  }, [toggleFavorite]);
+
   useEffect(() => {
     if (!config) return;
     const context = resolveListContext(config, domainName, spaceIdStr, tagParam, titleParam);
@@ -203,7 +212,7 @@ export default function ListPage() {
             key={f.id}
             file={f}
             visibleTagCount={displayConfig.list.visibleTagCount}
-            onFavorite={canFavorite ? toggleFavorite : undefined}
+            onFavorite={canFavorite ? handleToggleFavorite : undefined}
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload ? handleDownload : undefined}

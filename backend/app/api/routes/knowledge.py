@@ -490,6 +490,8 @@ async def remove_favorite(
             portal_config_service=portal_config_service,
         )
         return response_ok(await service.remove_favorite(req))
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
     finally:
         await bisheng_client.aclose()
 
@@ -513,6 +515,8 @@ async def favorite_status(
             portal_config_service=portal_config_service,
         )
         return response_ok(await service.favorite_status(req))
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
     finally:
         await bisheng_client.aclose()
 
@@ -537,6 +541,8 @@ async def list_favorites(
             portal_config_service=portal_config_service,
         )
         return response_ok(await service.list_favorites(page=page, page_size=page_size))
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
     finally:
         await bisheng_client.aclose()
 

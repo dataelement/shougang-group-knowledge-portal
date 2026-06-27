@@ -100,6 +100,15 @@ export default function SearchPage() {
     }
   }, []);
 
+  const handleToggleFavorite = useCallback(async (file: FileItem) => {
+    setError('');
+    try {
+      await toggleFavorite(file);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '收藏操作失败');
+    }
+  }, [toggleFavorite]);
+
   // 选中具体空间时按该空间检索；否则为整个范围
   const sids = useMemo(() => (spaceId ? [Number(spaceId)] : undefined), [spaceId]);
 
@@ -421,7 +430,7 @@ export default function SearchPage() {
             key={f.id}
             file={f}
             visibleTagCount={displayConfig.search.visibleTagCount}
-            onFavorite={canFavorite ? toggleFavorite : undefined}
+            onFavorite={canFavorite ? handleToggleFavorite : undefined}
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload ? handleDownload : undefined}

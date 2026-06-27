@@ -40,8 +40,16 @@ test('ListPage wires the favorite toggle with login gating and removes the modal
 
   assert.match(source, /const canFavorite = Boolean\(user\)/);
   assert.match(source, /loadStatuses\(/);
-  assert.match(source, /onFavorite=\{canFavorite \? toggleFavorite : undefined\}/);
+  assert.match(source, /onFavorite=\{canFavorite \? handleToggleFavorite : undefined\}/);
   assert.equal(activeSource.includes('FavoriteDocumentModal'), false);
+});
+
+test('ListPage surfaces favorite toggle failures via setError', () => {
+  const source = readSource('src/pages/ListPage.tsx');
+
+  assert.match(source, /const handleToggleFavorite = useCallback\(async \(file: FileItem\) =>/);
+  assert.match(source, /await toggleFavorite\(file\)/);
+  assert.match(source, /catch \(err\) \{\s*setError\(/);
 });
 
 test('SearchPage wires the favorite toggle with login gating and removes the modal', () => {
@@ -50,6 +58,14 @@ test('SearchPage wires the favorite toggle with login gating and removes the mod
 
   assert.match(source, /const canFavorite = Boolean\(user\)/);
   assert.match(source, /loadStatuses\(/);
-  assert.match(source, /onFavorite=\{canFavorite \? toggleFavorite : undefined\}/);
+  assert.match(source, /onFavorite=\{canFavorite \? handleToggleFavorite : undefined\}/);
   assert.equal(activeSource.includes('FavoriteDocumentModal'), false);
+});
+
+test('SearchPage surfaces favorite toggle failures via setError', () => {
+  const source = readSource('src/pages/SearchPage.tsx');
+
+  assert.match(source, /const handleToggleFavorite = useCallback\(async \(file: FileItem\) =>/);
+  assert.match(source, /await toggleFavorite\(file\)/);
+  assert.match(source, /catch \(err\) \{\s*setError\(/);
 });

@@ -809,6 +809,54 @@ def test_list_favorites_returns_items(tmp_path: Path):
     assert response.json()["data"]["data"][0]["status"] == "invalid"
 
 
+def test_favorite_routes_map_bisheng_business_error_to_bad_gateway(tmp_path: Path):
+    class BusinessErrorBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path.startswith("/api/v1/knowledge/shougang-portal/favorites/files"):
+                return {
+                    "status_code": 500,
+                    "status_message": "上游收藏服务异常",
+                    "data": {},
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            if path in {
+                "/api/v1/knowledge/shougang-portal/favorites/remove",
+                "/api/v1/knowledge/shougang-portal/favorites/status",
+            }:
+                return {
+                    "status_code": 500,
+                    "status_message": "上游收藏服务异常",
+                    "data": {},
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = BusinessErrorBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            remove_response = client.post(
+                "/api/v1/knowledge/favorites/remove",
+                json={"source_space_id": 1, "source_file_id": 2},
+            )
+            status_response = client.post(
+                "/api/v1/knowledge/favorites/status",
+                json={"items": [{"space_id": 1, "file_id": 2}]},
+            )
+            list_response = client.get("/api/v1/knowledge/favorites/files")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    for response in (remove_response, status_response, list_response):
+        assert response.status_code == 502
+        assert response.json()["detail"] == "上游收藏服务异常"
+
+
 def test_create_share_link_uses_current_user_bisheng_session(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     fake_bisheng = FakeBishengClient()
