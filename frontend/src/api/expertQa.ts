@@ -590,6 +590,7 @@ export async function fetchExpertProfiles(
 export async function fetchUserList(
   pageNum = 1,
   pageSize = 10,
+  keyword: string | undefined = undefined,
 ): Promise<PagedUserResponse> {
   type RawUserList =
     | UserListItem[]
@@ -601,7 +602,13 @@ export async function fetchUserList(
       };
 
   const raw = await req<RawUserList>(
-    `/workspace/api/v1/user/list${qs({ page_size: pageSize, page_num: pageNum, simple: 'false' })}`,
+    `/workspace/api/v1/user/list${qs({
+      page_size: pageSize,
+      page_num: pageNum,
+      simple: 'false',
+      keyword,
+      name: keyword,
+    })}`,
     undefined,
     KNOWLEDGE_TREE_TIMEOUT,
     

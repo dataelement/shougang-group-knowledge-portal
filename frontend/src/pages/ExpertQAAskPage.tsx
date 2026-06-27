@@ -22,7 +22,7 @@ import CommonFileUploadModal, {
 } from '../components/CommonFileUploadModal';
 import {
   createExpertQuestion,
-  handleCheckQuestion,
+  // handleCheckQuestion,
   fetchConfigData,
   fetchExpertProfiles,
   fetchSimilarExpertQuestions,
@@ -409,7 +409,7 @@ export default function ExpertQAAskPage() {
 
     try {
       // 校验问题是否存在安全内容
-      await handleCheckQuestion(title.trim()+"\n"+ body.trim());
+      // await handleCheckQuestion(title.trim()+"\n"+ body.trim());
       await createExpertQuestion({
         title: title.trim(),
         body: body.trim(),

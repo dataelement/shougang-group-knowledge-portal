@@ -91,7 +91,9 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
   const [usersTotal, setUsersTotal] = useState(0);
   const [usersLoading, setUsersLoading] = useState(false);
   const usersLoadingRef = useRef(false);
+  const usersRequestSeq = useRef(0);
   const [userPickerOpen, setUserPickerOpen] = useState(false);
+  const [userSearch, setUserSearch] = useState(initial.expert_name ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isEdit = mode === 'edit';
@@ -103,13 +105,30 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  const loadUsers = useCallback(async (pageNum: number) => {
+  function handleUserSearchChange(value: string) {
     if (isEdit) return;
-    if (usersLoadingRef.current) return;
+    setUserSearch(value);
+    setUserPickerOpen(true);
+    if (form.user_id && value.trim() !== form.expert_name.trim()) {
+      setForm((prev) => ({
+        ...prev,
+        user_id: 0,
+        expert_name: '',
+        depart_ment: '',
+      }));
+    }
+  }
+
+  const loadUsers = useCallback(async (pageNum: number, keyword = userSearch.trim()) => {
+    if (isEdit) return;
+    if (usersLoadingRef.current && pageNum > 1) return;
     usersLoadingRef.current = true;
+    const requestSeq = ++usersRequestSeq.current;
+    const normalizedKeyword = keyword.trim();
     setUsersLoading(true);
     try {
-      const res = await fetchUserList(pageNum, USER_PAGE_SIZE);
+      const res = await fetchUserList(pageNum, USER_PAGE_SIZE, normalizedKeyword || undefined);
+      if (requestSeq !== usersRequestSeq.current) return;
       setUsers((prev) => {
         const next = pageNum === 1 ? [] : [...prev];
         res.users.forEach((user) => {
@@ -122,17 +141,26 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
       setUsersPage(pageNum);
       setUsersTotal(res.total);
     } catch (err) {
+      if (requestSeq !== usersRequestSeq.current) return;
       setError(err instanceof Error ? err.message : '用户列表加载失败');
     } finally {
-      usersLoadingRef.current = false;
-      setUsersLoading(false);
+      if (requestSeq === usersRequestSeq.current) {
+        usersLoadingRef.current = false;
+        setUsersLoading(false);
+      }
     }
-  }, [isEdit]);
+  }, [isEdit, userSearch]);
 
   useEffect(() => {
     if (isEdit) return;
-    loadUsers(1);
-  }, [isEdit, loadUsers]);
+    const tid = window.setTimeout(() => {
+      setUsers([]);
+      setUsersPage(0);
+      setUsersTotal(0);
+      loadUsers(1, userSearch);
+    }, 300);
+    return () => window.clearTimeout(tid);
+  }, [isEdit, loadUsers, userSearch]);
 
   function selectUser(userId: number) {
     const user = users.find((item) => item.user_id === userId);
@@ -146,6 +174,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
       expert_name: user.user_name,
       depart_ment: getUserDepartment(user),
     }));
+    setUserSearch(user.user_name);
     setUserPickerOpen(false);
   }
 
@@ -154,7 +183,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
     const target = e.currentTarget;
     const reachedBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 12;
     if (reachedBottom && hasMoreUsers && !usersLoading) {
-      loadUsers(usersPage + 1);
+      loadUsers(usersPage + 1, userSearch);
     }
   }
 
@@ -162,11 +191,11 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
     const expertName = form.expert_name.trim();
     const userId = Number(form.user_id);
     if (!expertName) {
-      setError('请填写专家姓名');
+      setError('请先选择关联用户生成专家姓名');
       return;
     }
     if (!userId || userId <= 0) {
-      setError('请填写有效的用户 ID');
+      setError('请选择关联用户');
       return;
     }
     setLoading(true);
@@ -230,62 +259,58 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
               <input
                 className={s.input}
                 value={form.expert_name}
-                onChange={(e) => set('expert_name', e.target.value)}
-                placeholder="请输入真实姓名"
-                readOnly={isEdit}
+                placeholder="选择关联用户后自动填充"
+                readOnly
               />
             </div>
             <div className={s.field}>
               <label className={s.fieldLabel}>
                 关联用户<span className={s.req}>*</span>
               </label>
-              <div className={s.userPicker}>
-                <button
-                  type="button"
-                  className={`${s.userPickerBtn} ${isEdit ? s.userPickerBtnReadonly : ''}`}
-                  onClick={() => setUserPickerOpen((open) => !open)}
-                  disabled={isEdit || (usersLoading && users.length === 0)}
-                >
-                  <span>
-                    {isEdit
-                      ? selectedUserName
-                      : selectedUser
-                        ? selectedUser.user_name
-                        : form.user_id
-                          ? form.expert_name || '已选用户'
-                          : usersLoading
-                            ? '用户加载中...'
-                            : '请选择用户'}
-                  </span>
-                </button>
+              <div className={`${s.userPicker} ${isEdit ? s.userPickerReadonly : ''}`}>
+                <Search size={14} className={s.userPickerIco} />
+                <input
+                  className={`${s.userPickerInput} ${isEdit ? s.userPickerInputReadonly : ''}`}
+                  value={isEdit ? selectedUserName : userSearch}
+                  onChange={(e) => handleUserSearchChange(e.target.value)}
+                  onFocus={() => {
+                    if (!isEdit) setUserPickerOpen(true);
+                  }}
+                  placeholder={usersLoading && users.length === 0 ? '用户加载中...' : '输入用户名称搜索'}
+                  readOnly={isEdit}
+                />
                 {userPickerOpen && !isEdit ? (
-                  <div className={s.userPickerMenu} onScroll={handleUserListScroll}>
-                    {users.map((user) => {
-                      const department = getUserDepartment(user);
-                      const active = user.user_id === form.user_id;
-                      return (
-                        <button
-                          key={user.user_id}
-                          type="button"
-                          className={`${s.userOption} ${active ? s.userOptionActive : ''}`}
-                          onClick={() => selectUser(user.user_id)}
-                        >
-                          <span className={s.userOptionName}>{user.user_name}</span>
-                          <span className={s.userOptionMeta}>
-                            ID: {user.user_id}{department ? ` · 部门: ${department}` : ''}
-                          </span>
-                        </button>
-                      );
-                    })}
-                    {usersLoading ? (
-                      <div className={s.userPickerState}>用户加载中...</div>
-                    ) : null}
-                    {!usersLoading && users.length === 0 ? (
-                      <div className={s.userPickerState}>暂无用户数据</div>
-                    ) : null}
-                    {!usersLoading && users.length > 0 && !hasMoreUsers ? (
-                      <div className={s.userPickerState}>已加载全部用户</div>
-                    ) : null}
+                  <div className={s.userPickerMenu}>
+                    <div className={s.userOptionList} onScroll={handleUserListScroll}>
+                      {users.map((user) => {
+                        const department = getUserDepartment(user);
+                        const active = user.user_id === form.user_id;
+                        return (
+                          <button
+                            key={user.user_id}
+                            type="button"
+                            className={`${s.userOption} ${active ? s.userOptionActive : ''}`}
+                            onClick={() => selectUser(user.user_id)}
+                          >
+                            <span className={s.userOptionName}>{user.user_name}</span>
+                            <span className={s.userOptionMeta}>
+                              ID: {user.user_id}{department ? ` · 部门: ${department}` : ''}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {usersLoading ? (
+                        <div className={s.userPickerState}>用户加载中...</div>
+                      ) : null}
+                      {!usersLoading && users.length === 0 ? (
+                        <div className={s.userPickerState}>
+                          {userSearch.trim() ? '未找到匹配用户' : '暂无用户数据'}
+                        </div>
+                      ) : null}
+                      {!usersLoading && users.length > 0 && !hasMoreUsers ? (
+                        <div className={s.userPickerState}>已加载全部用户</div>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -303,9 +328,8 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
             <input
               className={s.input}
               value={form.depart_ment ?? ''}
-              onChange={(e) => set('depart_ment', e.target.value)}
-              placeholder="请输入所属部门"
-              readOnly={isEdit}
+              placeholder="选择关联用户后自动填充"
+              readOnly
             />
           </div>
 

@@ -554,64 +554,58 @@ tbody td {
   position: relative;
 }
 
-.userPickerBtn {
+.userPickerIco {
+  position: absolute;
+  left: 10px;
+  top: 20px;
+  color: var(--neutral-400);
+  pointer-events: none;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.userPickerInput {
   width: 100%;
   min-height: 40px;
   border: 1px solid var(--neutral-200);
   border-radius: 8px;
-  padding: 9px 34px 9px 13px;
+  padding: 9px 34px 9px 32px;
   font-size: 0.9rem;
   color: var(--neutral-800);
   font-family: var(--font-sans);
   background: #fff;
   box-sizing: border-box;
-  text-align: left;
-  cursor: pointer;
-  position: relative;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.userPickerBtn::after {
+.userPicker::after {
   content: '';
   position: absolute;
   right: 12px;
-  top: 50%;
+  top: 20px;
   width: 8px;
   height: 8px;
   border-right: 1.5px solid var(--neutral-400);
   border-bottom: 1.5px solid var(--neutral-400);
   transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
 }
 
-.userPickerBtn:hover,
-.userPickerBtn:focus {
+.userPickerInput:hover,
+.userPickerInput:focus {
   outline: none;
   border-color: var(--primary-400);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.userPickerBtn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.userPickerBtnReadonly,
-.userPickerBtnReadonly:disabled {
+.userPickerInputReadonly {
   color: var(--neutral-800);
-  opacity: 1;
   cursor: default;
-  pointer-events: none;
+  background: var(--neutral-50);
 }
 
-.userPickerBtnReadonly::after {
+.userPickerReadonly::after {
   display: none;
-}
-
-.userPickerBtn span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .userPickerMenu {
@@ -620,13 +614,16 @@ tbody td {
   left: 0;
   right: 0;
   top: calc(100% + 6px);
-  max-height: 220px;
-  overflow-y: auto;
   background: #fff;
   border: 1px solid var(--neutral-200);
   border-radius: 8px;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
   padding: 6px;
+}
+
+.userOptionList {
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .userOption {
