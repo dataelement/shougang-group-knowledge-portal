@@ -108,11 +108,17 @@ export function buildFileListItemView(
   const sourcePath = file.sourcePath?.trim();
   const folderPath = file.folderPath?.trim();
 
+  // Display directory path only (no filename). folderPath is already directory-only;
+  // fall back to stripping the last segment from sourcePath, then to the space name.
+  const displayPath = folderPath
+    || (sourcePath ? sourcePath.split('/').slice(0, -1).join('/') || sourcePath : '')
+    || file.source
+    || '';
+
   return {
     documentTypeLabel,
     dateLabel: formatCardDate(file.date),
-    // 完整来源路径优先；历史数据没有该字段时回退到目录路径或知识空间名称。
-    sourcePath: sourcePath || folderPath || file.source || '',
+    sourcePath: displayPath,
     summaryText,
     tagGroups,
     visibleTags: displayTags.slice(0, visibleTagCount),
