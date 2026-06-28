@@ -323,15 +323,6 @@ export default function LoginPage() {
                   </span>
                   记住我（7 天内免登录）
                 </label>
-                <button
-                  type="button"
-                  className={s.forgot}
-                  onClick={() =>
-                    setFormError('请联系系统管理员或运维窗口（内线 88-2031）重置密码。')
-                  }
-                >
-                  忘记密码
-                </button>
               </div>
 
               <button type="submit" className={s.submitBtn} disabled={submitting}>
