@@ -29,6 +29,7 @@ import {
   openFileDownloadUrl,
   resolveFileDownloadUrl,
 } from '../utils/fileDownload';
+import { recordFileDownloadEvent } from '../api/content';
 import { getEnabledSpaces, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import s from './ListPage.module.css';
 
@@ -74,6 +75,7 @@ export default function ListPage() {
         return;
       }
       openFileDownloadUrl(downloadUrl, buildDownloadFileName(file));
+      void recordFileDownloadEvent(file.spaceId, file.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '下载链接获取失败');
     }

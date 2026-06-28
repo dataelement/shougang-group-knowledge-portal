@@ -7,6 +7,7 @@ import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
 import {
   fetchKnowledgeSpaces,
+  recordFileDownloadEvent,
   searchFiles,
   streamChatCompletion,
   type Citation,
@@ -106,6 +107,7 @@ export default function SearchPage() {
         return;
       }
       openFileDownloadUrl(downloadUrl, buildDownloadFileName(file));
+      void recordFileDownloadEvent(file.spaceId, file.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '下载链接获取失败');
     }
