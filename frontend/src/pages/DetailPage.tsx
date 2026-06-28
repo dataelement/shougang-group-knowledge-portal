@@ -4,7 +4,7 @@ import { ArrowLeft, Download, Sparkles, Star } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
-import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewManifest } from '../api/content';
+import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, recordFileDownloadEvent, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewManifest } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { resolveDetailBackTarget } from '../utils/detailPage';
@@ -209,7 +209,8 @@ export default function DetailPage() {
                 rel={effectivePreview.downloadUrl ? 'noreferrer' : undefined}
                 aria-disabled={!effectivePreview.downloadUrl}
                 onClick={(event) => {
-                  if (!effectivePreview.downloadUrl) event.preventDefault();
+                  if (!effectivePreview.downloadUrl) { event.preventDefault(); return; }
+                  void recordFileDownloadEvent(Number(spaceIdStr), Number(fileIdStr));
                 }}
               >
                 <Download size={16} />

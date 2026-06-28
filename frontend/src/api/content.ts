@@ -1394,3 +1394,14 @@ export async function streamDocumentFileChat(params: {
     throw new Error(normalizeUserFacingErrorMessage(error, '问答请求失败，请稍后重试。'));
   }
 }
+
+export async function recordFileDownloadEvent(spaceId: number, fileId: number): Promise<void> {
+  try {
+    await fetch(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/download-event`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch {
+    // best-effort, ignore errors
+  }
+}

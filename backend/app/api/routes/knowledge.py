@@ -926,6 +926,30 @@ async def get_related_files(
             await client_to_close.aclose()
 
 
+@router.post("/space/{space_id}/files/{file_id}/download-event")
+async def record_file_download_event(
+    space_id: int,
+    file_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    """Record a download telemetry event for a file. Best-effort, always returns 200."""
+    async def _record() -> None:
+        telemetry = PortalTelemetryService(bisheng_client)
+        await telemetry.record_event(
+            event_type="portal_document_download",
+            source_app="shougang_portal",
+            scene="document_download",
+            entry_point="detail_page",
+            resource_type="document",
+            space_id=space_id,
+            file_id=file_id,
+        )
+    background_tasks.add_task(_record)
+    return response_ok({"accepted": True})
+
+
 @router.post("/publish/precheck")
 async def publish_precheck(
     payload: PublishPrecheckRequest,

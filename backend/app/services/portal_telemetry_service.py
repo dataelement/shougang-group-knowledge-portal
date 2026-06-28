@@ -14,7 +14,7 @@ PORTAL_BFF_TELEMETRY_HEADERS = {
     PORTAL_BFF_TELEMETRY_SOURCE_HEADER: PORTAL_BFF_TELEMETRY_SOURCE,
 }
 
-PortalEventType = Literal["portal_favorite", "portal_qa", "portal_document_read"]
+PortalEventType = Literal["portal_favorite", "portal_qa", "portal_document_read", "portal_document_download"]
 
 
 class PortalTelemetryStatsError(RuntimeError):
