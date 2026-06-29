@@ -151,6 +151,33 @@ class BishengClient:
             payload = response.json()
         return payload
 
+    async def delete_json(
+        self,
+        path: str,
+        json: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> dict:
+        response = await self._request(
+            "DELETE",
+            path,
+            retry_auth=True,
+            json=json,
+            headers=headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+            response = await self._request(
+                "DELETE",
+                path,
+                retry_auth=False,
+                json=json,
+                headers=headers,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return payload
+
     def resolve_url(self, path_or_url: str) -> str:
         if not path_or_url:
             return ""

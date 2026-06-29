@@ -2048,6 +2048,106 @@ def test_chat_proxy_maps_workflow_conversation_upstream_error_to_chinese(tmp_pat
     assert response.json()["detail"] == "登录状态已失效，请重新登录"
 
 
+def test_chat_proxy_lists_agent_favorite_workflow_ids(tmp_path: Path):
+    class FavoriteWorkflowBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.favorite_calls = []
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/workstation/app/portal-agent-favorites":
+                self.favorite_calls.append(path)
+                return {
+                    "status_code": 200,
+                    "data": {"workflow_ids": ["wf-a", "wf-a", "", "wf-b"]},
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = FavoriteWorkflowBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/workflow/favorites")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert user_bisheng.favorite_calls == ["/api/v1/workstation/app/portal-agent-favorites"]
+    assert response.json()["data"] == {"workflow_ids": ["wf-a", "wf-b"]}
+
+
+def test_chat_proxy_adds_agent_favorite_workflow(tmp_path: Path):
+    class FavoriteWorkflowBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.favorite_posts = []
+
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/workstation/app/portal-agent-favorites":
+                self.favorite_posts.append((path, json))
+                return {
+                    "status_code": 200,
+                    "data": {"workflow_id": json["workflow_id"], "favorited": True},
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = FavoriteWorkflowBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.post("/api/v1/workstation/workflow/favorites", json={"workflow_id": "wf-a"})
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert user_bisheng.favorite_posts == [
+        ("/api/v1/workstation/app/portal-agent-favorites", {"workflow_id": "wf-a"})
+    ]
+    assert response.json()["data"] == {"workflow_id": "wf-a", "favorited": True}
+
+
+def test_chat_proxy_deletes_agent_favorite_workflow(tmp_path: Path):
+    class FavoriteWorkflowBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.favorite_deletes = []
+
+        async def delete_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/workstation/app/portal-agent-favorites":
+                self.favorite_deletes.append((path, json))
+                return {
+                    "status_code": 200,
+                    "data": {"workflow_id": json["workflow_id"], "favorited": False},
+                }
+            raise AssertionError(f"Unexpected delete path: {path}")
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = FavoriteWorkflowBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.request("DELETE", "/api/v1/workstation/workflow/favorites", json={"workflow_id": "wf-a"})
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert user_bisheng.favorite_deletes == [
+        ("/api/v1/workstation/app/portal-agent-favorites", {"workflow_id": "wf-a"})
+    ]
+    assert response.json()["data"] == {"workflow_id": "wf-a", "favorited": False}
+
+
 def test_chat_proxy_loads_current_user_conversation_messages(tmp_path: Path):
     class ChatHistoryBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):

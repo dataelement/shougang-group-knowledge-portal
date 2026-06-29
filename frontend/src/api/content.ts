@@ -460,6 +460,11 @@ interface AgentWorkflowConversationDto {
   latest_message?: string | { message?: string; text?: string };
 }
 
+interface AgentFavoriteWorkflowsDto {
+  workflow_ids?: string[];
+  workflowIds?: string[];
+}
+
 interface WorkstationMessageDto {
   messageId?: string | number;
   message_id?: string | number;
@@ -1024,6 +1029,19 @@ function mapAgentWorkflowConversation(dto: AgentWorkflowConversationDto): AgentW
   };
 }
 
+function normalizeWorkflowIds(dto: AgentFavoriteWorkflowsDto): string[] {
+  const rawIds = Array.isArray(dto.workflow_ids) ? dto.workflow_ids : dto.workflowIds;
+  const seen = new Set<string>();
+  const workflowIds: string[] = [];
+  for (const rawId of rawIds ?? []) {
+    const workflowId = String(rawId || '').trim();
+    if (!workflowId || seen.has(workflowId)) continue;
+    seen.add(workflowId);
+    workflowIds.push(workflowId);
+  }
+  return workflowIds;
+}
+
 function parseMaybeJsonMessage(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
@@ -1114,6 +1132,27 @@ export async function fetchAgentWorkflowConversations(params: {
     `/api/v1/workstation/workflow/conversations?${query.toString()}`,
   );
   return data.map(mapAgentWorkflowConversation).filter((item) => item.conversationId && item.agentId && item.workflowId);
+}
+
+export async function fetchAgentFavoriteWorkflowIds(): Promise<string[]> {
+  const data = await request<AgentFavoriteWorkflowsDto>('/api/v1/workstation/workflow/favorites');
+  return normalizeWorkflowIds(data);
+}
+
+export async function favoriteAgentWorkflow(workflowId: string): Promise<void> {
+  await request('/api/v1/workstation/workflow/favorites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workflow_id: workflowId }),
+  });
+}
+
+export async function removeAgentWorkflowFavorite(workflowId: string): Promise<void> {
+  await request('/api/v1/workstation/workflow/favorites', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workflow_id: workflowId }),
+  });
 }
 
 export async function fetchWorkstationMessages(conversationId: string): Promise<WorkstationChatMessage[]> {

@@ -308,6 +308,41 @@ class ChatProxyService:
         )
         return self._unwrap_bisheng_data(payload)
 
+    async def list_agent_favorite_workflow_ids(self) -> dict[str, list[str]]:
+        payload = await self._bisheng.get_json("/api/v1/workstation/app/portal-agent-favorites")
+        data = self._unwrap_bisheng_data(payload)
+        raw_ids = data.get("workflow_ids") if isinstance(data, dict) else []
+        workflow_ids: list[str] = []
+        seen: set[str] = set()
+        if isinstance(raw_ids, list):
+            for raw_id in raw_ids:
+                workflow_id = str(raw_id or "").strip()
+                if not workflow_id or workflow_id in seen:
+                    continue
+                seen.add(workflow_id)
+                workflow_ids.append(workflow_id)
+        return {"workflow_ids": workflow_ids}
+
+    async def add_agent_favorite_workflow(self, workflow_id: str):
+        safe_workflow_id = workflow_id.strip()
+        if not safe_workflow_id:
+            raise ValueError("workflow_id 不能为空")
+        payload = await self._bisheng.post_json(
+            "/api/v1/workstation/app/portal-agent-favorites",
+            json={"workflow_id": safe_workflow_id},
+        )
+        return self._unwrap_bisheng_data(payload)
+
+    async def delete_agent_favorite_workflow(self, workflow_id: str):
+        safe_workflow_id = workflow_id.strip()
+        if not safe_workflow_id:
+            raise ValueError("workflow_id 不能为空")
+        payload = await self._bisheng.delete_json(
+            "/api/v1/workstation/app/portal-agent-favorites",
+            json={"workflow_id": safe_workflow_id},
+        )
+        return self._unwrap_bisheng_data(payload)
+
     @staticmethod
     def _build_final_prompt(system_prompt: str, user_text: str) -> str:
         if not system_prompt.strip():

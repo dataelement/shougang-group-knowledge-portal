@@ -7,6 +7,7 @@ import {
 
 const appsPageSource = readFileSync('src/pages/AppsPage.tsx', 'utf8');
 const adminConfigSource = readFileSync('src/api/adminConfig.ts', 'utf8');
+const contentApiSource = readFileSync('src/api/content.ts', 'utf8');
 const embedSource = readFileSync('src/utils/bishengEmbed.ts', 'utf8');
 const bishengRoutesSource = readFileSync('../../bisheng/src/frontend/platform/src/routes/index.tsx', 'utf8');
 const bishengClientRoutesSource = readFileSync('../../bisheng/src/frontend/client/src/routes/index.tsx', 'utf8');
@@ -70,6 +71,16 @@ test('apps agent filtering uses category ids and iframe has loading states', () 
   assert.match(appsPageSource, /iframeLoading/);
   assert.match(appsPageSource, /iframeLoadTimedOut/);
   assert.match(appsPageSource, /onLoad=\{\(\) => \{/);
+});
+
+test('apps agent favorites are persisted by workflow id', () => {
+  assert.match(contentApiSource, /fetchAgentFavoriteWorkflowIds/);
+  assert.match(contentApiSource, /favoriteAgentWorkflow/);
+  assert.match(contentApiSource, /removeAgentWorkflowFavorite/);
+  assert.match(contentApiSource, /\/api\/v1\/workstation\/workflow\/favorites/);
+  assert.match(appsPageSource, /favoriteWorkflowIds/);
+  assert.match(appsPageSource, /favoriteWorkflowIds\.has\(agent\.workflow_id\)/);
+  assert.match(appsPageSource, /toggleFavorite\(agent\)/);
 });
 
 test('bisheng portal workflow chat route is independent from original chat route', () => {

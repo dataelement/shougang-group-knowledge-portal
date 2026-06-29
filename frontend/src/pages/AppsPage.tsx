@@ -20,7 +20,13 @@ import {
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import type { AgentItemConfig, PortalConfig } from '../api/adminConfig';
-import { fetchAgentWorkflowConversations, type AgentWorkflowConversation } from '../api/content';
+import {
+  favoriteAgentWorkflow,
+  fetchAgentFavoriteWorkflowIds,
+  fetchAgentWorkflowConversations,
+  removeAgentWorkflowFavorite,
+  type AgentWorkflowConversation,
+} from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { applyEmbedOriginOverride, resolvePortalWorkflowChatEmbedUrl } from '../utils/bishengEmbed';
 import { SmartQaWorkspace, type Session } from './QAPage';
@@ -48,7 +54,7 @@ type SmartAppsRecord =
   };
 
 const MAIN_TABS: { id: AppsMainTab; label: string }[] = [
-  { id: 'qa', label: '智能问答' },
+  { id: 'qa', label: '智能协作' },
   { id: 'agent', label: 'Agent 智能体' },
 ];
 
@@ -232,7 +238,8 @@ export default function AppsPage() {
   const { config, loading: configLoading, error: configError } = usePortalConfig();
   const [activeTab, setActiveTab] = useState<AppsMainTab>(() => resolveAppsTab(location.search));
   const [activeAgentFilter, setActiveAgentFilter] = useState<AgentFilter>('all');
-  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
+  const [favoriteWorkflowIds, setFavoriteWorkflowIds] = useState<Set<string>>(() => new Set());
+  const [updatingFavoriteWorkflowIds, setUpdatingFavoriteWorkflowIds] = useState<Set<string>>(() => new Set());
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [selectedAgentConversationId, setSelectedAgentConversationId] = useState('');
   const [agentWorkflowConversations, setAgentWorkflowConversations] = useState<AgentWorkflowConversation[]>([]);
@@ -263,7 +270,7 @@ export default function AppsPage() {
   const agentFilters = useMemo<AgentFilterOption[]>(
     () => [
       { id: 'all', label: '全部' },
-      { id: 'favorite', label: '收藏' },
+      { id: 'favorite', label: '我的收藏' },
       ...enabledCategories.map((category) => ({
         id: toCategoryFilterId(category.id),
         label: category.name,
@@ -273,10 +280,10 @@ export default function AppsPage() {
   );
   const visibleAgents = useMemo(() => {
     if (activeAgentFilter === 'all') return enabledAgents;
-    if (activeAgentFilter === 'favorite') return enabledAgents.filter((agent) => favoriteIds.has(agent.id));
+    if (activeAgentFilter === 'favorite') return enabledAgents.filter((agent) => favoriteWorkflowIds.has(agent.workflow_id));
     const categoryId = activeAgentFilter.replace(/^category:/, '');
     return enabledAgents.filter((agent) => agent.category_id === categoryId);
-  }, [activeAgentFilter, enabledAgents, enabledCategories, favoriteIds]);
+  }, [activeAgentFilter, enabledAgents, enabledCategories, favoriteWorkflowIds]);
   const bishengBaseUrl = getBishengBaseUrl(config);
   const iframeResult = useMemo(
     () => (selectedAgent
@@ -316,6 +323,20 @@ export default function AppsPage() {
   }, [configLoading, configError, enabledAgents]);
 
   useEffect(() => {
+    let active = true;
+    void fetchAgentFavoriteWorkflowIds()
+      .then((workflowIds) => {
+        if (active) setFavoriteWorkflowIds(new Set(workflowIds));
+      })
+      .catch(() => {
+        if (active) setFavoriteWorkflowIds(new Set());
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (iframeLoadTimerRef.current !== null) {
       window.clearTimeout(iframeLoadTimerRef.current);
       iframeLoadTimerRef.current = null;
@@ -351,16 +372,33 @@ export default function AppsPage() {
     syncTabToUrl(tab);
   }
 
-  function toggleFavorite(agentId: string) {
-    setFavoriteIds((current) => {
-      const next = new Set(current);
-      if (next.has(agentId)) {
-        next.delete(agentId);
+  async function toggleFavorite(agent: AgentItemConfig) {
+    const workflowId = agent.workflow_id.trim();
+    if (!workflowId || updatingFavoriteWorkflowIds.has(workflowId)) return;
+    const shouldFavorite = !favoriteWorkflowIds.has(workflowId);
+    setUpdatingFavoriteWorkflowIds((current) => new Set(current).add(workflowId));
+    try {
+      if (shouldFavorite) {
+        await favoriteAgentWorkflow(workflowId);
       } else {
-        next.add(agentId);
+        await removeAgentWorkflowFavorite(workflowId);
       }
-      return next;
-    });
+      setFavoriteWorkflowIds((current) => {
+        const next = new Set(current);
+        if (shouldFavorite) {
+          next.add(workflowId);
+        } else {
+          next.delete(workflowId);
+        }
+        return next;
+      });
+    } finally {
+      setUpdatingFavoriteWorkflowIds((current) => {
+        const next = new Set(current);
+        next.delete(workflowId);
+        return next;
+      });
+    }
   }
 
   function selectAgent(agent: AgentItemConfig) {
@@ -501,7 +539,7 @@ export default function AppsPage() {
                         {!configLoading && !configError && visibleAgents.length === 0 ? (
                           <div className={s.agentEmpty}>
                             <Bot size={24} />
-                            <span>{activeAgentFilter === 'favorite' ? '暂无收藏的智能体' : '暂无可用智能体'}</span>
+                            <span>{activeAgentFilter === 'favorite' ? '暂无我的收藏智能体' : '暂无可用智能体'}</span>
                           </div>
                         ) : null}
 
@@ -509,7 +547,8 @@ export default function AppsPage() {
                           <div className={s.agentGrid}>
                             {visibleAgents.map((agent) => {
                               const Icon = AGENT_ICON_MAP[agent.icon] || Bot;
-                              const isFavorite = favoriteIds.has(agent.id);
+                              const isFavorite = favoriteWorkflowIds.has(agent.workflow_id);
+                              const isFavoriteUpdating = updatingFavoriteWorkflowIds.has(agent.workflow_id);
                               return (
                                 <article
                                   className={`${s.agentCard} ${selectedAgentId === agent.id ? s.agentCardActive : ''}`}
@@ -527,8 +566,9 @@ export default function AppsPage() {
                                         className={`${s.favoriteButton} ${isFavorite ? s.favoriteButtonActive : ''}`}
                                         onClick={(event) => {
                                           event.stopPropagation();
-                                          toggleFavorite(agent.id);
+                                          void toggleFavorite(agent);
                                         }}
+                                        disabled={isFavoriteUpdating}
                                         title={isFavorite ? '取消收藏' : '收藏'}
                                         type="button"
                                       >

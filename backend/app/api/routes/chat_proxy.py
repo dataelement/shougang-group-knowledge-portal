@@ -3,6 +3,7 @@ from uuid import uuid4
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from app.api.dependencies import (
     get_bisheng_client,
@@ -22,6 +23,10 @@ from app.services.portal_telemetry_service import PortalTelemetryService
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/workstation", tags=["chat-proxy"])
+
+
+class AgentFavoriteWorkflowPayload(BaseModel):
+    workflow_id: str
 
 
 def get_chat_proxy_service(
@@ -108,6 +113,75 @@ async def list_workflow_conversations(
             default_model=get_settings().bisheng_default_model,
         )
         return response_ok(await service.list_agent_workflow_conversations(page=page, limit=limit))
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.get("/workflow/favorites")
+async def list_workflow_favorites(
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = ChatProxyService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        return response_ok(await service.list_agent_favorite_workflow_ids())
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.post("/workflow/favorites")
+async def add_workflow_favorite(
+    payload: AgentFavoriteWorkflowPayload,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        if not payload.workflow_id.strip():
+            raise HTTPException(status_code=400, detail="workflow_id 不能为空")
+        service = ChatProxyService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        return response_ok(await service.add_agent_favorite_workflow(payload.workflow_id))
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.delete("/workflow/favorites")
+async def delete_workflow_favorite(
+    payload: AgentFavoriteWorkflowPayload,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        if not payload.workflow_id.strip():
+            raise HTTPException(status_code=400, detail="workflow_id 不能为空")
+        service = ChatProxyService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        return response_ok(await service.delete_agent_favorite_workflow(payload.workflow_id))
     except ValueError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     finally:

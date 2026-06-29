@@ -17,9 +17,9 @@ function cssBlock(styles: string, selector: string): string {
 
 test('/apps exposes smart qa and agent top-level tabs in the required order', () => {
   assert.match(appsPageSource, /MAIN_TABS/);
-  assert.match(appsPageSource, /id:\s*'qa'[\s\S]*label:\s*'智能问答'/);
+  assert.match(appsPageSource, /id:\s*'qa'[\s\S]*label:\s*'智能协作'/);
   assert.match(appsPageSource, /id:\s*'agent'[\s\S]*label:\s*'Agent 智能体'/);
-  assert.ok(appsPageSource.indexOf("label: '智能问答'") < appsPageSource.indexOf("label: 'Agent 智能体'"));
+  assert.ok(appsPageSource.indexOf("label: '智能协作'") < appsPageSource.indexOf("label: 'Agent 智能体'"));
   assert.match(appsPageSource, /resolveAppsTab/);
   assert.match(appsPageSource, /useState<AppsMainTab>\(\(\) => resolveAppsTab/);
 });
