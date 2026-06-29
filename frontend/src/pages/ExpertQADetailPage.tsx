@@ -8,23 +8,22 @@ import {
 import type { MouseEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  ArrowUp,
   BadgeCheck,
   BarChart3,
-
   Check,
   CheckCircle,
-  // ChevronUp,
-  // Edit3,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Eye,
   FileText,
   Image as ImageIcon,
   Link2,
   Loader2,
   MessageCircle,
-  MessageSquare,
-  Send,
-
+  Plus,
   ThumbsUp,
-  // Trash2,
   User,
   UserCheck,
   X,
@@ -47,7 +46,6 @@ import {
   markAnswerUseful,
   // updateExpertQuestion,
   uploadQaImage,
-  voteQuestion,
   type ApiAnswer,
   type ApiComment,
   type ApiQuestion,
@@ -837,28 +835,19 @@ function CommentThread({
 
       {visibleComments.map((comment) => (
         <div key={comment.id} className={s.comment}>
-          <span
-            className={s.commentAv}
-            style={{ backgroundColor: getAvatarColor(comment.user_name) }}
-          >
-            {getAvatarInitial(comment.user_name)}
-          </span>
-          <div className={s.commentText}>
-            <div>
-              <span className={s.commentName}>{comment.user_name}</span>
-              {comment.content}
-              <span className={s.commentTs}>
-                {formatDateTime(comment.created_at)}
-              </span>
-            </div>
+          <div className={s.commentHead}>
+            <span
+              className={s.commentAv}
+              style={{ backgroundColor: getAvatarColor(comment.user_name) }}
+            >
+              {getAvatarInitial(comment.user_name)}
+            </span>
+            <span className={s.commentName}>{comment.user_name}</span>
+            <span className={s.commentTs}>
+              {formatDateTime(comment.created_at)}
+            </span>
           </div>
-          {/* <button
-            type="button"
-            className={s.commentUseful}
-            onClick={() => handleCommentUseful(comment.id)}
-          >
-            有用 {comment.vote_count ? `(${comment.vote_count})` : ''}
-          </button> */}
+          <div className={s.commentBody}>{comment.content}</div>
         </div>
       ))}
 
@@ -897,14 +886,15 @@ function CommentThread({
           <span />
           <button
             type="button"
-            className={s.commentSubmit}
+            className={s.sendRoundBtn}
             onClick={() => void handleSubmit()}
             disabled={state.submitting || !hasDraftContent}
+            aria-label="发布"
           >
             {state.submitting ? (
-              <Loader2 size={12} className={s.spin} />
+              <Loader2 size={14} className={s.spin} />
             ) : (
-              '发布'
+              <ArrowUp size={16} />
             )}
           </button>
         </div>
@@ -1075,7 +1065,9 @@ export default function ExpertQADetailPage() {
   const [answerError, setAnswerError] = useState<string | null>(null);
 
   const [sortMode, setSortMode] = useState<SortMode>('top');
-  const [openComments, setOpenComments] = useState<Set<string>>(new Set());
+  const [openComments, setOpenComments] = useState<Set<string>>(
+    new Set([QUESTION_FOLLOWUP_THREAD_ID]),
+  );
   const [followupCount, setFollowupCount] = useState(0);
 
   const [draft, setDraft] = useState('');
@@ -1086,7 +1078,7 @@ export default function ExpertQADetailPage() {
   const [answerRelatedDocs, setAnswerRelatedDocs] = useState<KnowledgeAttachment[]>([]);
   const [answerUploadError, setAnswerUploadError] = useState<string | null>(null);
   const [answerKnowledgeDialogOpen, setAnswerKnowledgeDialogOpen] = useState(false);
-  const [questionVoteSubmitting, setQuestionVoteSubmitting] = useState(false);
+  const [answerToolMenuOpen, setAnswerToolMenuOpen] = useState(false);
   const [votedTargets, setVotedTargets] = useState<Set<string>>(new Set());
   const [currentExpert, setCurrentExpert] = useState<ExpertProfileResponse | null>(null);
   const answerImageInputRef = useRef<HTMLInputElement>(null);
@@ -1237,7 +1229,7 @@ export default function ExpertQADetailPage() {
     setAnswers([]);
     setAnswerTotal(0);
     setAnswerPage(0);
-    setOpenComments(new Set());
+    setOpenComments(new Set([QUESTION_FOLLOWUP_THREAD_ID]));
   
     activeQuestionIdRef.current = null;
 
@@ -1403,50 +1395,6 @@ export default function ExpertQADetailPage() {
 
 
 
-  async function castVote(
-    targetId: string,
-    event?: MouseEvent<HTMLButtonElement>,
-  ) {
-    event?.preventDefault();
-    event?.stopPropagation();
-
-    const voteKey = `question:${questionNumericId}`;
-    if (
-      targetId !== '0' ||
-      !questionNumericId ||
-      questionVoteSubmitting ||
-      votedTargets.has(voteKey)
-    ) 
-    {
-      if (votedTargets.has(voteKey)) setAnswerError('你已经投过票了');
-      return;
-    }
-
-    setQuestionVoteSubmitting(true);
-    setAnswerError(null);
-    storeVote(currentUserKey, 'question', questionNumericId);
-    setVotedTargets((prev) => new Set(prev).add(voteKey));
-    setQuestion((prev) => (prev ? { ...prev, votes: prev.votes + 1 } : prev));
-
-    try {
-      await voteQuestion({ target_id: questionNumericId, target_type: 'question' });
-    } catch (err) {
-      console.error('问题投票失败:', err);
-      removeStoredVote(currentUserKey, 'question', questionNumericId);
-      setVotedTargets((prev) => {
-        const next = new Set(prev);
-        next.delete(voteKey);
-        return next;
-      });
-      setQuestion((prev) =>
-        prev ? { ...prev, votes: Math.max(prev.votes - 1, 0) } : prev,
-      );
-      setAnswerError(err instanceof Error ? err.message : '投票失败，请稍后重试');
-    } finally {
-      setQuestionVoteSubmitting(false);
-    }
-  }
-
   async function handleAnswerUseful(answerId: string) {
     const voteKey = `answer-helpful:${answerId}`;
     if (votedTargets.has(voteKey)) {
@@ -1557,147 +1505,122 @@ export default function ExpertQADetailPage() {
     <PageShell>
       <div className={s.container}>
         <div className={s.crumbs}>
-          <Link to="/">首页</Link>
-          <span> · </span>
           <Link to="/expert-qa">专家问答</Link>
-          <span> · </span>
-          <span>{question.domain}</span>
-          <span> · </span>
-          <span>问题详情</span>
+          <ChevronRight size={14} className={s.crumbChevron} />
+          <span>{question.domain} · 问题详情</span>
         </div>
 
         <div className={s.layout}>
           <main>
-            <div className={s.qHeader}>
-              <div className={s.qHeaderMeta}>
-                <span className={s.domainPill}>{question.domain}</span>
-                <StatusPill status={question.status} />
-      
-                {question.invitedSummary ? (
-                  <span className={s.targetExpert}>
-                    <User size={11} />
-                    {question.invitedSummary}
-                  </span>
+            <div className={s.qCard}>
+              <div className={s.askerRow}>
+                <span className={s.askerAvatar}>
+                  {question.asker?.name.charAt(0) || '?'}
+                </span>
+                <span className={s.askerName}>{question.asker.name}</span>
+                <span className={s.askerDate}>{question.askedAt}</span>
+              </div>
+
+              <h1 className={s.qTitle}>
+                <span className={s.askBadge}>问</span>
+                {question.title}
+              </h1>
+
+              <div className={s.qBodyText}>
+                {question.bodyParagraphs.length > 0 ? (
+                  question.bodyParagraphs.map((paragraph) => (
+                    <p key={paragraph}>{paragraph}</p>
+                  ))
+                ) : (
+                  <p>{QUESTION_FALLBACK_TEXT}</p>
+                )}
+                {question.imageUrls.length > 0 ? (
+                  <div className={s.questionImages}>
+                    {question.imageUrls.map((url) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <img src={url} alt="问题图片" />
+                      </a>
+                    ))}
+                  </div>
                 ) : null}
-              </div>
 
-              <h1 className={s.qHeaderTitle}>{question.title}</h1>
-              <div className={s.qHeaderRow}>
-                <div className={s.askedInfo}>
-                  <span className={`${s.avatar} ${s.avatarSm}`}>                 
-                     {question.asker?.name.charAt(0) || '?'}
-                  </span>
-                  <span>
-                    <span className={s.askedName}>{question.asker.name}</span>
-                    {question.asker.role ? ` · ${question.asker.role}` : null}
-                    {' · '}
-                    提问于 {question.askedAt}
-                  </span>
-                  <span className={s.divider}>|</span>
-                  <span>浏览 {question.views} 次</span>
-                </div>
-
-
-              </div>
-            </div>
-
-            <div className={s.qContent}>
-              <div className={s.voteCol}>
-                <button
-                  type="button"
-                  className={`${s.voteBtn} ${s.voteUpAct}`}      
-                  onClick={(event) => void castVote('0', event)}
-                  disabled={
-                    questionVoteSubmitting ||
-                    votedTargets.has(`question:${questionNumericId}`)
-                  }
-                  aria-label="赞同问题"
-                >
-                  {/* <ChevronUp size={15} /> */}
-                    <ThumbsUp   className="transition-transform duration-300 group-hover:scale-110"  size={15}/>
-                </button>
-                <span className={s.voteCount}>{question.votes}</span>
-              </div>
-
-              <div className={s.qContentMain}>
-                <div className={s.qBodyText}>
-                  {question.bodyParagraphs.length > 0 ? (
-                    question.bodyParagraphs.map((paragraph) => (
-                      <p key={paragraph}>{paragraph}</p>
-                    ))
-                  ) : (
-                    <p>{QUESTION_FALLBACK_TEXT}</p>
-                  )}
-                  {question.imageUrls.length > 0 ? (
-                    <div className={s.questionImages}>
-                      {question.imageUrls.map((url) => (
+                {question.attachments.length > 0 ? (
+                  <div className={s.attachmentPanel}>
+                    <div className={s.attachmentTitle}>关联文档</div>
+                    <div className={s.attachmentList}>
+                      {question.attachments.map((item) => (
                         <a
-                          key={url}
-                          href={url}
+                          key={`${item.label}-${item.href}`}
+                          href={item.href}
                           target="_blank"
                           rel="noopener noreferrer"
+                          className={s.attachmentItem}
                         >
-                          <img src={url} alt="问题图片" />
+                          <FileText size={14} />
+                          {item.label}
                         </a>
                       ))}
                     </div>
-                  ) : null}
+                  </div>
+                ) : null}
+              </div>
 
-                  {question.attachments.length > 0 ? (
-                    <div className={s.attachmentPanel}>
-                      <div className={s.attachmentTitle}>关联文档</div>
-                      <div className={s.attachmentList}>
-                        {question.attachments.map((item) => (
-                          <a
-                            key={`${item.label}-${item.href}`}
-                            href={item.href}       
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={s.attachmentItem}
-                          >
-                            <FileText size={14} />
-                            {item.label}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
+              <div className={s.qTagsRow}>
+                <div className={s.qTags}>
+                  <span className={s.domainPill}>{question.domain}</span>
+                  <StatusPill status={question.status} />
+                  {question.invitedSummary ? (
+                    <span className={s.targetExpert}>
+                      <User size={11} />
+                      {question.invitedSummary}
+                    </span>
                   ) : null}
                 </div>
+                <span className={s.qViews}>
+                  <Eye size={14} />
+                  {question.views} 浏览
+                </span>
+              </div>
 
-                <div className={s.questionFollowupCard} ref={followupThreadRef}>
-                  <div className={s.followupHead}>
-                    <div className={s.sideTitle}>
-                      <MessageCircle size={15} className={s.sideTitleIco} />
-                      问题追问
-                    </div>
-                    <span className={s.followupCount}>{followupCount}条追问</span>
-                  </div>
+              <div className={s.questionFollowupCard} ref={followupThreadRef}>
+                <div className={s.followupHead}>
                   <button
                     type="button"
-                    className={`${s.followupToggle} ${
-                      followupsOpen ? s.followupToggleActive : ''
-                    }`}
+                    className={s.followupTitleBtn}
                     onClick={(event) =>
                       toggleComments(QUESTION_FOLLOWUP_THREAD_ID, event)
                     }
                   >
-                    <MessageCircle size={13} />
-                    {followupsOpen ? '收起追问' : '展开追问'}
+                    <span className={s.followupTitle}>问题追问</span>
+                    {followupsOpen ? (
+                      <ChevronUp size={16} />
+                    ) : (
+                      <ChevronDown size={16} />
+                    )}
                   </button>
-                  {followupsOpen ? (
+                  <span className={s.followupCount}>共{followupCount}条追问</span>
+                </div>
+                {followupsOpen ? (
+                  <div className={s.followupThreadWrap}>
                     <CommentThread
                       answerId={QUESTION_FOLLOWUP_ANSWER_ID}
                       questionId={questionNumericId}
                       initialCount={followupCount}
                       onTotalChange={setFollowupCount}
                     />
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
+            <div className={s.answersCard}>
             <div className={s.answersHeader}>
-              <h2>{answerTotal} 个回答</h2>
+              <h2>共 <strong>{answerTotal}</strong> 个回答</h2>
               <div className={s.sortToggle}>
                 <button
                   type="button"
@@ -1747,7 +1670,9 @@ export default function ExpertQADetailPage() {
 
             {!answerLoading && answerTotal === 0 ? (
               <div className={s.emptyAnswers}>
-                暂无回答，你可以率先作答，或点击“追问”补充信息。
+                <div className={s.emptyAnswersInner}>
+                  暂无回答，你可以率先作答，或点击“追问”补充信息。
+                </div>
               </div>
             ) : null}
 
@@ -1772,10 +1697,7 @@ export default function ExpertQADetailPage() {
             ) : null}
 
             <div className={s.yourAnswerCard}>
-              <h3 className={s.yourAnswerTitle}>
-                <MessageSquare size={15} className={s.yourAnswerIco} />
-                发布回答
-              </h3>
+              <h3 className={s.yourAnswerTitle}>发布回答</h3>
               <input
                 ref={answerImageInputRef}
                 type="file"
@@ -1788,101 +1710,128 @@ export default function ExpertQADetailPage() {
                   event.target.value = '';
                 }}
               />
-              <textarea
-                className={s.yourAnswerInput}
-                placeholder={ANSWER_PLACEHOLDER}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                disabled={submitting}
-              />
+              <div className={s.answerComposerBox}>
+                <textarea
+                  className={s.yourAnswerInput}
+                  placeholder={ANSWER_PLACEHOLDER}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  disabled={submitting}
+                />
 
-              {answerImageUrls.length > 0 || answerUploadingImages ? (
-                <div className={s.commentPreviewGrid}>
-                  {answerImageUrls.map((url) => (
-                    <div key={url} className={s.commentImagePreview}>
-                      <img src={url} alt="已上传回答图片" />
-                      <button
-                        type="button"
-                        onClick={() => removeAnswerImage(url)}
-                        aria-label="移除图片"
+                {answerImageUrls.length > 0 || answerUploadingImages ? (
+                  <div className={s.commentPreviewGrid}>
+                    {answerImageUrls.map((url) => (
+                      <div key={url} className={s.commentImagePreview}>
+                        <img src={url} alt="已上传回答图片" />
+                        <button
+                          type="button"
+                          onClick={() => removeAnswerImage(url)}
+                          aria-label="移除图片"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    {answerUploadingImages ? (
+                      <div className={`${s.commentImagePreview} ${s.commentUploading}`}>
+                        <Loader2 size={16} className={s.spin} />
+                        <span>上传中</span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {answerRelatedDocs.length > 0 ? (
+                  <div className={s.commentAttachmentList}>
+                    {answerRelatedDocs.map((item) => (
+                      <span
+                        key={`${item.spaceId}-${item.id}`}
+                        className={s.commentAttachmentChip}
                       >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                  {answerUploadingImages ? (
-                    <div className={`${s.commentImagePreview} ${s.commentUploading}`}>
-                      <Loader2 size={16} className={s.spin} />
-                      <span>上传中</span>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+                        <FileText size={13} />
+                        <span>{item.title}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeAnswerRelatedDoc(item)}
+                          aria-label="移除关联文档"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
 
-              {answerRelatedDocs.length > 0 ? (
-                <div className={s.commentAttachmentList}>
-                  {answerRelatedDocs.map((item) => (
-                    <span
-                      key={`${item.spaceId}-${item.id}`}
-                      className={s.commentAttachmentChip}
+                <div className={s.answerComposerToolbar}>
+                  <div className={s.answerPlusWrap}>
+                    <button
+                      type="button"
+                      className={s.composerPlusBtn}
+                      disabled={submitting}
+                      onClick={() => setAnswerToolMenuOpen((prev) => !prev)}
+                      aria-label="添加附件"
                     >
-                      <FileText size={13} />
-                      <span>{item.title}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeAnswerRelatedDoc(item)}
-                        aria-label="移除关联文档"
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
+                      <Plus size={18} />
+                    </button>
+                    {answerToolMenuOpen ? (
+                      <>
+                        <div
+                          className={s.composerMenuMask}
+                          onClick={() => setAnswerToolMenuOpen(false)}
+                        />
+                        <div className={s.composerMenu}>
+                          <button
+                            type="button"
+                            disabled={submitting || answerUploadingImages}
+                            onClick={() => {
+                              setAnswerToolMenuOpen(false);
+                              answerImageInputRef.current?.click();
+                            }}
+                          >
+                            <ImageIcon size={15} />
+                            图片
+                          </button>
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={() => {
+                              setAnswerToolMenuOpen(false);
+                              openAnswerKnowledgeDialog();
+                            }}
+                          >
+                            <FileText size={15} />
+                            选择文档
+                          </button>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className={s.sendRoundBtn}
+                    disabled={submitting || answerUploadingImages || !draft.trim()}
+                    onClick={() => void handleSubmitAnswer()}
+                    aria-label="发布回答"
+                  >
+                    {submitting ? (
+                      <Loader2 size={14} className={s.spin} />
+                    ) : (
+                      <ArrowUp size={16} />
+                    )}
+                  </button>
                 </div>
-              ) : null}
+              </div>
 
               {answerUploadError ? (
                 <p className={s.answerError}>{answerUploadError}</p>
               ) : null}
               {submitError ? <p className={s.answerError}>{submitError}</p> : null}
 
-              <div className={s.yourAnswerFoot}>
-                <span className={s.yourAnswerHint}>
-                  支持图片和知识库文档，回答可被采纳为最佳答案
-                </span>
-                <div className={s.yourAnswerBtns}>
-                  <button
-                    type="button"
-                    className={s.btnGhost}
-                    disabled={submitting || answerUploadingImages}
-                    onClick={() => answerImageInputRef.current?.click()}
-                  >
-                    <ImageIcon size={13} />
-                    图片
-                  </button>
-                  <button
-                    type="button"
-                    className={s.btnGhost}
-                    disabled={submitting}
-                    onClick={openAnswerKnowledgeDialog}
-                  >
-                    <FileText size={13} />
-                    选择文档
-                  </button>
-                  <button
-                    type="button"
-                    className={s.btnPrimary}
-                    disabled={submitting || answerUploadingImages || !draft.trim()}
-                    onClick={() => void handleSubmitAnswer()}
-                  >
-                    {submitting ? (
-                      <Loader2 size={13} className={s.spin} />
-                    ) : (
-                      <Send size={13} />
-                    )}
-                    {submitting ? '发布中...' : '发布回答'}
-                  </button>
-                </div>
-              </div>
+              <p className={s.yourAnswerHint}>
+                支持图片和知识库文档，回答可被采纳为最佳答案
+              </p>
+            </div>
             </div>
           </main>
 
@@ -1894,7 +1843,11 @@ export default function ExpertQADetailPage() {
               </div>
               <div className={s.qStat}>
                 <span>状态</span>
-                <span className={s.qStatVal}>
+                <span
+                  className={`${s.qStatVal} ${
+                    question.status === 'solved' ? s.qStatSolved : s.qStatPending
+                  }`}
+                >
                   {STATUS_LABEL[question.status]?.text ?? '未知'}
                 </span>
               </div>
