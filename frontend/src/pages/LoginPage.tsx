@@ -40,7 +40,20 @@ export default function LoginPage() {
   const loginBrandName = config?.site?.login_brand_name?.trim() || '首钢股份知库';
   const loginLogoUrl = config?.site?.login_logo_url?.trim() || '/shougang-stock-logo.png';
 
+  // When this page is loaded inside an iframe (e.g., bisheng client redirecting to portal login),
+  // navigate the top-level frame to the login page instead of rendering inside the iframe.
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
   useEffect(() => {
+    if (!isInIframe) return;
+    try {
+      window.top!.location.href = `${window.location.pathname}${window.location.search}`;
+    } catch {
+      // cross-origin access blocked — ignore
+    }
+  }, [isInIframe]);
+
+  useEffect(() => {
+    if (isInIframe) return;
     const storedUser = loadPortalUser();
     if (storedUser) {
       navigate(redirect, { replace: true });
@@ -57,7 +70,7 @@ export default function LoginPage() {
     return () => {
       active = false;
     };
-  }, [navigate, redirect]);
+  }, [navigate, redirect, isInIframe]);
 
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
@@ -160,6 +173,8 @@ export default function LoginPage() {
   const unifiedAuthAvailable = unifiedAuthConfig?.enabled === true;
   const unifiedAuthLabel = unifiedAuthConfig?.label?.trim() || '统一身份认证';
   const unifiedAuthDisabled = unifiedAuthLoading || !unifiedAuthAvailable || unifiedAuthStarting;
+
+  if (isInIframe) return null;
 
   return (
     <div className={s.page}>

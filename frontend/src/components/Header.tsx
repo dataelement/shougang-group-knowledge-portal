@@ -49,6 +49,9 @@ export default function Header() {
   const menuRef = useRef<HTMLDivElement>(null);
   const menuOpen = menuKey === location.pathname;
 
+  // Never render the portal header when loaded inside an iframe.
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+
   useEffect(() => {
     if (!menuOpen) return;
     function handleAway(event: MouseEvent) {
@@ -85,6 +88,8 @@ export default function Header() {
     const knowledgeFrame = document.getElementById('bisheng-knowledge-frame') as HTMLIFrameElement | null;
     postPortalApprovalMessageToFrame(knowledgeFrame, 'my_uploads');
   };
+
+  if (isInIframe) return null;
 
   return (
     <header className={s.header}>
