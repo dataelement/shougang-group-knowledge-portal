@@ -8,9 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UIEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  BadgeCheck,
   Pencil,
-  Plus,
   Search,
   Trash2,
   TriangleAlert,
@@ -28,6 +26,8 @@ import type { ExpertProfileResponse, ExpertUpsertPayload, UserListItem } from '.
 import s from './ExpertManagePage.module.css';
 import { getAdminAccessState } from '../utils/adminAccess';
 import { useAuth } from '../hooks/useAuth';
+import expertBanner from '../assets/expert-banner@2x.png';
+import verifiedIcon from '../assets/icon-verified-expert.svg';
 
 // ─── 工具函数 ─────────────────────────────────────────────────
 
@@ -520,44 +520,24 @@ export default function ExpertManagePage() {
     setModal({ type: 'none' });
   }
 
-  // ─── Hero 统计 ───────────────────────────────────────────────
-  const totalAnswers = experts.reduce((acc, e) => acc + (e.answer_count ?? 0), 0);
-  const totalAdoptions = experts.reduce((acc, e) => acc + (e.adoption_count ?? 0), 0);
-
   return (
     <PageShell>
-      {/* Hero */}
-      <section className={s.heroStrip}>
+      {/* Hero banner */}
+      <section
+        className={s.heroStrip}
+        style={{ backgroundImage: `url(${expertBanner})` }}
+      >
         <div className={s.heroInner}>
-          <div>
-            <h1 className={s.heroTitle}>专家库管理</h1>
-            <p className={s.heroSub}>管理认证专家信息、查看答题贡献与积分数据</p>
-            <div className={s.heroStats}>
-              <div className={s.heroStat}>
-                <span className={s.heroStatNum}>{total}</span>
-                <span className={s.heroStatLb}>认证专家</span>
-              </div>
-              <div className={s.heroStat}>
-                <span className={s.heroStatNum}>{totalAnswers}</span>
-                <span className={s.heroStatLb}>累计回答</span>
-              </div>
-              <div className={s.heroStat}>
-                <span className={s.heroStatNum}>{totalAdoptions}</span>
-                <span className={s.heroStatLb}>采纳次数</span>
-              </div>
-            </div>
-          </div>
-            {isAdmin && (
-              <>
-              <button
-                type="button"
-                className={s.btnPrimary}
-                onClick={() => setModal({ type: 'create' })}
-              >
-                <Plus size={15} />
-                新增专家
-              </button>
-            </>
+          <h1 className={s.heroTitle}>专家库管理</h1>
+          <p className={s.heroSub}>管理认证专家信息、查看答题贡献与积分数据</p>
+          {isAdmin && (
+            <button
+              type="button"
+              className={s.btnPrimary}
+              onClick={() => setModal({ type: 'create' })}
+            >
+              新增专家
+            </button>
           )}
         </div>
       </section>
@@ -565,43 +545,9 @@ export default function ExpertManagePage() {
       <div className={s.container}>
         {/* 面包屑 */}
         <div className={s.crumbs}>
-          <Link to="/">首页</Link>
-          <span> · </span>
           <Link to="/expert-qa">专家问答</Link>
-          <span> · </span>
+          <span className={s.crumbSep}>&gt;</span>
           <span>专家管理</span>
-        </div>
-
-        {/* 工具栏 */}
-        <div className={s.toolbar}>
-          <div className={s.toolbarLeft}>
-            <div className={s.searchWrap}>
-              <Search size={14} className={s.searchIco} />
-              <input
-                className={s.searchInput}
-                placeholder="搜索专家姓名或简介…"
-                value={search}
-                onChange={(e) => {
-                  setPageSize(500)
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-              />
-            </div>
-
-          </div>
-            {isAdmin && (
-              <>
-            <button
-                        type="button"
-                        className={s.btnPrimary}
-                        onClick={() => setModal({ type: 'create' })}
-                      >
-                        <Plus size={15} />
-                        新增专家
-                      </button>
-                </>
-          )}
         </div>
 
         {/* 错误提示 */}
@@ -609,13 +555,30 @@ export default function ExpertManagePage() {
 
         {/* 表格 */}
         <div className={s.tableCard}>
+          {/* 卡片头部：标题 + 搜索 */}
+          <div className={s.cardHead}>
+            <span className={s.cardTitle}>专家列表</span>
+            <div className={s.searchWrap}>
+              <Search size={14} className={s.searchIco} />
+              <input
+                className={s.searchInput}
+                placeholder="搜索专家姓名或简介"
+                value={search}
+                onChange={(e) => {
+                  setPageSize(500);
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+          </div>
+
           <div className={s.tableWrap}>
             <table>
               <thead>
                 <tr>
-                  <th>专家</th>
+                  <th>名字</th>
                   <th>部门</th>
-                  <th>所属专业</th>
                   <th>回答数</th>
                   <th>采纳数</th>
                   <th>获赞数</th>
@@ -626,13 +589,13 @@ export default function ExpertManagePage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={7}>
                       <div className={s.stateRow}>专家数据加载中…</div>
                     </td>
                   </tr>
                 ) : experts.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={7}>
                       <div className={s.stateRow}>
                         {search ? '没有符合条件的专家' : '暂无专家数据'}
                       </div>
@@ -645,7 +608,7 @@ export default function ExpertManagePage() {
                       <td>
                         <div className={s.expertCell}>
                           <div
-                            className={`${s.avatar} ${s.avatarExpert}`}
+                            className={s.avatar}
                             style={{ backgroundColor: avatarColor(expert.expert_name) }}
                           >
                             {initials(expert.expert_name)}
@@ -653,7 +616,7 @@ export default function ExpertManagePage() {
                           <div>
                             <div className={s.expertName}>
                               {expert.expert_name}
-                              <BadgeCheck size={13} style={{ color: 'var(--primary-600)' }} />
+                              <img src={verifiedIcon} alt="认证专家" width={14} height={14} />
                             </div>
                             {expert.introduction ? (
                               <div className={s.expertIntro}>{expert.introduction}</div>
@@ -664,31 +627,18 @@ export default function ExpertManagePage() {
 
                       {/* 部门 */}
                       <td>
-                        {expert.depart_ment ? (
-                          <span className={s.deptPill}>{expert.depart_ment}</span>
-                        ) : (
-                          <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>—</span>
-                        )}
-                      </td>
-
-                      {/* 所属专业 */}
-                      <td>
-                        {expert.major ? (
-                          <span className={s.majorPill}>{expert.major}</span>
-                        ) : (
-                          <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>—</span>
-                        )}
+                        <span className={s.cellText}>{expert.depart_ment || '—'}</span>
                       </td>
 
                       {/* 统计 */}
                       <td>
-                        <span className={s.statNum}>{expert.answer_count ?? 0}</span>
+                        <span className={s.cellText}>{expert.answer_count ?? 0}</span>
                       </td>
                       <td>
-                        <span className={s.statNum}>{expert.adoption_count ?? 0}</span>
+                        <span className={s.cellText}>{expert.adoption_count ?? 0}</span>
                       </td>
                       <td>
-                        <span className={s.statNum}>{expert.vote_count ?? 0}</span>
+                        <span className={s.cellText}>{expert.vote_count ?? 0}</span>
                       </td>
 
                       {/* 时间 */}
@@ -706,15 +656,16 @@ export default function ExpertManagePage() {
                                 className={s.btnEdit}
                                 onClick={() => setModal({ type: 'edit', expert })}
                               >
-                                <Pencil size={12} />
+                                <Pencil size={14} />
                                 编辑
                               </button>
+                              <span className={s.actionSep} aria-hidden />
                               <button
                                 type="button"
                                 className={s.btnDelete}
                                 onClick={() => setModal({ type: 'delete', expert })}
                               >
-                                <Trash2 size={12} />
+                                <Trash2 size={14} />
                                 删除
                               </button>
                             </>
@@ -732,7 +683,7 @@ export default function ExpertManagePage() {
           {/* 分页 */}
           <div className={s.pagination}>
             <span>
-              共 <strong>{total}</strong> 名专家，当前第 {page} / {totalPages} 页
+              共 <strong>{total}</strong> 名专家，当前第 {page} 页
             </span>
             <div className={s.pgBtns}>
               <button
