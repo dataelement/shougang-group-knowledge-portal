@@ -22,7 +22,9 @@ from app.schemas.portal_config import (
     AgentConfig,
     AppsConfigUpdate,
     BannersConfigUpdate,
+    BusinessDomainOptionsConfigUpdate,
     DisplayConfig,
+    DocumentTypesConfigUpdate,
     DomainsConfigUpdate,
     IntegrationsConfig,
     PortalConfig,
@@ -305,6 +307,36 @@ async def update_sections_config(
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
     return response_ok({"sections": service.update_sections(payload).sections})
+
+
+@router.get("/document-types")
+async def get_document_types_config(
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok({"document_types": service.get_config().document_types})
+
+
+@router.post("/document-types")
+async def update_document_types_config(
+    payload: DocumentTypesConfigUpdate,
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok({"document_types": service.update_document_types(payload).document_types})
+
+
+@router.get("/business-domain-options")
+async def get_business_domain_options_config(
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok({"business_domain_options": service.get_config().business_domain_options})
+
+
+@router.post("/business-domain-options")
+async def update_business_domain_options_config(
+    payload: BusinessDomainOptionsConfigUpdate,
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok({"business_domain_options": service.update_business_domain_options(payload).business_domain_options})
 
 
 @router.get("/qa")

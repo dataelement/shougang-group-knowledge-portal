@@ -20,7 +20,7 @@ from app.schemas.knowledge import (
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
-from app.schemas.portal_config import PortalConfig
+from app.schemas.portal_config import DEFAULT_BUSINESS_DOMAIN_OPTIONS, DEFAULT_DOCUMENT_TYPES, PortalConfig
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
@@ -284,17 +284,33 @@ async def get_portal_config(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
     config = portal_config_service.get_config()
-    live_space_data, document_types = await asyncio.gather(
-        _fetch_shougang_portal_space_info(
+    if config.document_types:
+        live_space_data = await _fetch_shougang_portal_space_info(
             bisheng_client,
             [space.id for space in config.spaces],
-        ),
-        _fetch_shougang_document_types(bisheng_client),
+        )
+        document_types = [dt.model_dump() for dt in config.document_types]
+    else:
+        live_space_data, bisheng_document_types = await asyncio.gather(
+            _fetch_shougang_portal_space_info(
+                bisheng_client,
+                [space.id for space in config.spaces],
+            ),
+            _fetch_shougang_document_types(bisheng_client),
+        )
+        document_types = bisheng_document_types or DEFAULT_DOCUMENT_TYPES
+
+    business_domain_options = (
+        [opt.model_dump() for opt in config.business_domain_options]
+        if config.business_domain_options
+        else DEFAULT_BUSINESS_DOMAIN_OPTIONS
     )
+
     runtime_config = portal_config_service.with_live_space_data(config, live_space_data)
     return response_ok(PortalConfig.model_validate({
         **runtime_config.model_dump(mode="json"),
         "document_types": document_types,
+        "business_domain_options": business_domain_options,
     }))
 
 

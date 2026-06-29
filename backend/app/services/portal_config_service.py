@@ -9,6 +9,8 @@ from app.schemas.portal_config import (
     AgentWorkflowOptionsResponse,
     AppsConfigUpdate,
     BannersConfigUpdate,
+    BusinessDomainOptionsConfigUpdate,
+    DocumentTypesConfigUpdate,
     DomainsConfigUpdate,
     IntegrationsConfig,
     PortalConfig,
@@ -149,6 +151,16 @@ class PortalConfigService:
     def update_sections(self, payload: SectionsConfigUpdate) -> PortalConfig:
         data = self.get_config().model_dump()
         data["sections"] = payload.model_dump()["sections"]
+        return self._write_config(PortalConfig.model_validate(data))
+
+    def update_document_types(self, payload: DocumentTypesConfigUpdate) -> PortalConfig:
+        data = self.get_config().model_dump()
+        data["document_types"] = payload.model_dump()["document_types"]
+        return self._write_config(PortalConfig.model_validate(data))
+
+    def update_business_domain_options(self, payload: BusinessDomainOptionsConfigUpdate) -> PortalConfig:
+        data = self.get_config().model_dump()
+        data["business_domain_options"] = payload.model_dump()["business_domain_options"]
         return self._write_config(PortalConfig.model_validate(data))
 
     def update_qa(self, payload: QAConfig) -> PortalConfig:

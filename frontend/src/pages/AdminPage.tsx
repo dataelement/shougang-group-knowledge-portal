@@ -12,7 +12,9 @@ import {
   type AgentWorkflowOption,
   type BannerSlide,
   type BishengRuntimeConfig,
+  type BusinessDomainOption,
   type DisplayConfig,
+  type DocumentTypeConfig,
   type DomainConfig,
   type UnifiedAuthRuntimeConfig,
   fetchAdminConfig,
@@ -42,6 +44,8 @@ import {
   updateBishengRuntimeConfig,
   updateDisplayConfig,
   updateDomainsConfig,
+  updateDocumentTypesConfig,
+  updateBusinessDomainOptionsConfig,
   updateIntegrationsConfig,
   updateSearchConfig,
   updateUnifiedAuthRuntimeConfig,
@@ -119,6 +123,8 @@ const NAV_ITEMS = [
   { key: 'domains', label: '业务域', icon: Building },
   { key: 'sections', label: '首页分区', icon: Tag },
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
+  { key: 'documentTypes', label: '文件分类', icon: FileText },
+  { key: 'businessDomainOptions', label: '业务域选项', icon: Tag },
   { key: 'qa', label: '问答配置', icon: Bot },
   { key: 'qaTemplates', label: '问答模板', icon: FileText },
   { key: 'agentConfig', label: '智能应用配置', icon: MessageSquare },
@@ -271,6 +277,14 @@ export default function AdminPage() {
   const [sectionDraft, setSectionDraft] = useState<SectionDraft>(createSectionDraft());
   const [sectionFormError, setSectionFormError] = useState('');
   const [sectionDeleteIndex, setSectionDeleteIndex] = useState<number | null>(null);
+  const [documentTypeDialogOpen, setDocumentTypeDialogOpen] = useState(false);
+  const [documentTypeEditIndex, setDocumentTypeEditIndex] = useState<number | null>(null);
+  const [documentTypeDraft, setDocumentTypeDraft] = useState<DocumentTypeConfig>({ code: '', label: '' });
+  const [documentTypeDialogError, setDocumentTypeDialogError] = useState('');
+  const [businessDomainOptionDialogOpen, setBusinessDomainOptionDialogOpen] = useState(false);
+  const [businessDomainOptionEditIndex, setBusinessDomainOptionEditIndex] = useState<number | null>(null);
+  const [businessDomainOptionDraft, setBusinessDomainOptionDraft] = useState<BusinessDomainOption>({ code: '', name: '' });
+  const [businessDomainOptionDialogError, setBusinessDomainOptionDialogError] = useState('');
   const [bishengConfig, setBishengConfig] = useState<BishengRuntimeConfig | null>(null);
   const [bishengEditorOpen, setBishengEditorOpen] = useState(false);
   const [bishengDraft, setBishengDraft] = useState<BishengDraft>(createBishengDraft());
@@ -441,6 +455,54 @@ export default function AdminPage() {
     setSectionEditorIndex(index);
     setSectionDraft(createSectionDraft(section));
     setSectionFormError('');
+  }
+
+  async function handleConfirmDocumentType() {
+    const code = documentTypeDraft.code.trim().toUpperCase();
+    const label = documentTypeDraft.label.trim();
+    if (!code) { setDocumentTypeDialogError('请输入编码'); return; }
+    if (!label) { setDocumentTypeDialogError('请输入名称'); return; }
+    const currentList = config?.document_types ?? [];
+    let nextList: DocumentTypeConfig[];
+    if (documentTypeEditIndex !== null) {
+      nextList = currentList.map((item, i) => i === documentTypeEditIndex ? { code, label } : item);
+    } else {
+      if (currentList.some((item) => item.code === code)) {
+        setDocumentTypeDialogError('编码已存在');
+        return;
+      }
+      nextList = [...currentList, { code, label }];
+    }
+    try {
+      await runSave(() => persistDocumentTypes(nextList, setConfig));
+      setDocumentTypeDialogOpen(false);
+    } catch (err) {
+      setDocumentTypeDialogError(err instanceof Error ? err.message : '保存失败');
+    }
+  }
+
+  async function handleConfirmBusinessDomainOption() {
+    const code = businessDomainOptionDraft.code.trim().toUpperCase();
+    const name = businessDomainOptionDraft.name.trim();
+    if (!code) { setBusinessDomainOptionDialogError('请输入编码'); return; }
+    if (!name) { setBusinessDomainOptionDialogError('请输入名称'); return; }
+    const currentList = config?.business_domain_options ?? [];
+    let nextList: BusinessDomainOption[];
+    if (businessDomainOptionEditIndex !== null) {
+      nextList = currentList.map((item, i) => i === businessDomainOptionEditIndex ? { code, name } : item);
+    } else {
+      if (currentList.some((item) => item.code === code)) {
+        setBusinessDomainOptionDialogError('编码已存在');
+        return;
+      }
+      nextList = [...currentList, { code, name }];
+    }
+    try {
+      await runSave(() => persistBusinessDomainOptions(nextList, setConfig));
+      setBusinessDomainOptionDialogOpen(false);
+    } catch (err) {
+      setBusinessDomainOptionDialogError(err instanceof Error ? err.message : '保存失败');
+    }
   }
 
   function openBishengDialog(current?: BishengRuntimeConfig | null) {
@@ -807,6 +869,48 @@ export default function AdminPage() {
               onMoveDown={(index) => void handleMoveSection(config.sections, index, 1, runSave, setConfig)}
             />
           )}
+          {config && active === 'documentTypes' && (
+            <DocumentTypesTable
+              documentTypes={config.document_types}
+              saving={saving}
+              onAdd={() => {
+                setDocumentTypeDraft({ code: '', label: '' });
+                setDocumentTypeEditIndex(null);
+                setDocumentTypeDialogError('');
+                setDocumentTypeDialogOpen(true);
+              }}
+              onEdit={(index) => {
+                setDocumentTypeDraft({ ...config.document_types[index] });
+                setDocumentTypeEditIndex(index);
+                setDocumentTypeDialogError('');
+                setDocumentTypeDialogOpen(true);
+              }}
+              onDelete={(index) => void handleDeleteDocumentType(config.document_types, index, runSave, setConfig)}
+              onMoveUp={(index) => void handleMoveDocumentType(config.document_types, index, -1, runSave, setConfig)}
+              onMoveDown={(index) => void handleMoveDocumentType(config.document_types, index, 1, runSave, setConfig)}
+            />
+          )}
+          {config && active === 'businessDomainOptions' && (
+            <BusinessDomainOptionsTable
+              options={config.business_domain_options}
+              saving={saving}
+              onAdd={() => {
+                setBusinessDomainOptionDraft({ code: '', name: '' });
+                setBusinessDomainOptionEditIndex(null);
+                setBusinessDomainOptionDialogError('');
+                setBusinessDomainOptionDialogOpen(true);
+              }}
+              onEdit={(index) => {
+                setBusinessDomainOptionDraft({ ...config.business_domain_options[index] });
+                setBusinessDomainOptionEditIndex(index);
+                setBusinessDomainOptionDialogError('');
+                setBusinessDomainOptionDialogOpen(true);
+              }}
+              onDelete={(index) => void handleDeleteBusinessDomainOption(config.business_domain_options, index, runSave, setConfig)}
+              onMoveUp={(index) => void handleMoveBusinessDomainOption(config.business_domain_options, index, -1, runSave, setConfig)}
+              onMoveDown={(index) => void handleMoveBusinessDomainOption(config.business_domain_options, index, 1, runSave, setConfig)}
+            />
+          )}
           {config && active === 'qa' && (
             <QAConfigTable
               qa={config.qa}
@@ -1126,6 +1230,38 @@ export default function AdminPage() {
               onSuccess: () => setSectionDeleteIndex(null),
             });
           }}
+        />
+      ) : null}
+      {documentTypeDialogOpen ? (
+        <SimpleCodeLabelDialog
+          open
+          title={documentTypeEditIndex !== null ? '编辑文件分类' : '新增文件分类'}
+          codePlaceholder="如 ZC"
+          labelPlaceholder="如 政策制度"
+          code={documentTypeDraft.code}
+          label={documentTypeDraft.label}
+          saving={saving}
+          error={documentTypeDialogError}
+          onClose={() => setDocumentTypeDialogOpen(false)}
+          onChangeCode={(code) => { setDocumentTypeDraft((d) => ({ ...d, code })); setDocumentTypeDialogError(''); }}
+          onChangeLabel={(label) => { setDocumentTypeDraft((d) => ({ ...d, label })); setDocumentTypeDialogError(''); }}
+          onSubmit={() => void handleConfirmDocumentType()}
+        />
+      ) : null}
+      {businessDomainOptionDialogOpen ? (
+        <SimpleCodeNameDialog
+          open
+          title={businessDomainOptionEditIndex !== null ? '编辑业务域选项' : '新增业务域选项'}
+          codePlaceholder="如 PP"
+          namePlaceholder="如 生产"
+          code={businessDomainOptionDraft.code}
+          name={businessDomainOptionDraft.name}
+          saving={saving}
+          error={businessDomainOptionDialogError}
+          onClose={() => setBusinessDomainOptionDialogOpen(false)}
+          onChangeCode={(code) => { setBusinessDomainOptionDraft((d) => ({ ...d, code })); setBusinessDomainOptionDialogError(''); }}
+          onChangeName={(name) => { setBusinessDomainOptionDraft((d) => ({ ...d, name })); setBusinessDomainOptionDialogError(''); }}
+          onSubmit={() => void handleConfirmBusinessDomainOption()}
         />
       ) : null}
       {bishengEditorOpen ? (
@@ -5003,6 +5139,16 @@ async function persistSections(sections: SectionConfig[], setConfig: Dispatch<Se
   setConfig((current) => (current ? { ...current, sections: data.sections } : current));
 }
 
+async function persistDocumentTypes(document_types: DocumentTypeConfig[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
+  const data = await updateDocumentTypesConfig(document_types);
+  setConfig((current) => (current ? { ...current, document_types: data.document_types } : current));
+}
+
+async function persistBusinessDomainOptions(business_domain_options: BusinessDomainOption[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
+  const data = await updateBusinessDomainOptionsConfig(business_domain_options);
+  setConfig((current) => (current ? { ...current, business_domain_options: data.business_domain_options } : current));
+}
+
 async function persistQa(qa: QAConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
   const data = await updateQaConfig(qa);
   setConfig((current) => (current ? { ...current, qa: data } : current));
@@ -5198,6 +5344,56 @@ async function handleMoveSection(
   const [moved] = reordered.splice(index, 1);
   reordered.splice(nextIndex, 0, moved);
   await runSave(() => persistSections(reordered, setConfig));
+}
+
+async function handleDeleteDocumentType(
+  documentTypes: DocumentTypeConfig[],
+  index: number,
+  runSave: SaveRunner,
+  setConfig: ConfigSetter,
+) {
+  const next = documentTypes.filter((_, i) => i !== index);
+  await runSave(() => persistDocumentTypes(next, setConfig));
+}
+
+async function handleMoveDocumentType(
+  documentTypes: DocumentTypeConfig[],
+  index: number,
+  direction: -1 | 1,
+  runSave: SaveRunner,
+  setConfig: ConfigSetter,
+) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= documentTypes.length) return;
+  const reordered = [...documentTypes];
+  const [moved] = reordered.splice(index, 1);
+  reordered.splice(nextIndex, 0, moved);
+  await runSave(() => persistDocumentTypes(reordered, setConfig));
+}
+
+async function handleDeleteBusinessDomainOption(
+  options: BusinessDomainOption[],
+  index: number,
+  runSave: SaveRunner,
+  setConfig: ConfigSetter,
+) {
+  const next = options.filter((_, i) => i !== index);
+  await runSave(() => persistBusinessDomainOptions(next, setConfig));
+}
+
+async function handleMoveBusinessDomainOption(
+  options: BusinessDomainOption[],
+  index: number,
+  direction: -1 | 1,
+  runSave: SaveRunner,
+  setConfig: ConfigSetter,
+) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= options.length) return;
+  const reordered = [...options];
+  const [moved] = reordered.splice(index, 1);
+  reordered.splice(nextIndex, 0, moved);
+  await runSave(() => persistBusinessDomainOptions(reordered, setConfig));
 }
 
 function truncateText(text: string, maxLength: number): string {
@@ -5750,6 +5946,226 @@ function BannerDeleteDialog({
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
           <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocumentTypesTable({
+  documentTypes,
+  saving,
+  onAdd,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+}: {
+  documentTypes: DocumentTypeConfig[];
+  saving: boolean;
+  onAdd: () => void;
+  onEdit: (index: number) => void;
+  onDelete: (index: number) => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
+}) {
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>文件分类管理</h2>
+        <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
+      </div>
+      <p className={s.pageNote}>管理上传文件时"文件分类"下拉框的选项，修改后立即生效。</p>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>编码</th>
+            <th>名称</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {documentTypes.length === 0 ? (
+            <tr><td colSpan={3} style={{ textAlign: 'center', color: '#888' }}>暂无文件分类，请点击右上角添加</td></tr>
+          ) : documentTypes.map((dt, index) => (
+            <tr key={dt.code}>
+              <td>{dt.code}</td>
+              <td>{dt.label}</td>
+              <td>
+                <div className={s.actionGroup}>
+                  <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
+                  <button className={s.inlineDangerBtn} onClick={() => onDelete(index)} disabled={saving}>删除</button>
+                  <button className={s.iconActionBtn} onClick={() => onMoveUp(index)} disabled={saving || index === 0} aria-label="上移" title="上移"><ArrowUp size={15} /></button>
+                  <button className={s.iconActionBtn} onClick={() => onMoveDown(index)} disabled={saving || index === documentTypes.length - 1} aria-label="下移" title="下移"><ArrowDown size={15} /></button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function BusinessDomainOptionsTable({
+  options,
+  saving,
+  onAdd,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+}: {
+  options: BusinessDomainOption[];
+  saving: boolean;
+  onAdd: () => void;
+  onEdit: (index: number) => void;
+  onDelete: (index: number) => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
+}) {
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>业务域选项管理</h2>
+        <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
+      </div>
+      <p className={s.pageNote}>管理上传文件时"业务域"下拉框的选项，修改后立即生效。</p>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>编码</th>
+            <th>名称</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {options.length === 0 ? (
+            <tr><td colSpan={3} style={{ textAlign: 'center', color: '#888' }}>暂无业务域选项，请点击右上角添加</td></tr>
+          ) : options.map((opt, index) => (
+            <tr key={opt.code}>
+              <td>{opt.code}</td>
+              <td>{opt.name}</td>
+              <td>
+                <div className={s.actionGroup}>
+                  <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
+                  <button className={s.inlineDangerBtn} onClick={() => onDelete(index)} disabled={saving}>删除</button>
+                  <button className={s.iconActionBtn} onClick={() => onMoveUp(index)} disabled={saving || index === 0} aria-label="上移" title="上移"><ArrowUp size={15} /></button>
+                  <button className={s.iconActionBtn} onClick={() => onMoveDown(index)} disabled={saving || index === options.length - 1} aria-label="下移" title="下移"><ArrowDown size={15} /></button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function SimpleCodeLabelDialog({
+  open,
+  title,
+  codePlaceholder,
+  labelPlaceholder,
+  code,
+  label,
+  saving,
+  error,
+  onClose,
+  onChangeCode,
+  onChangeLabel,
+  onSubmit,
+}: {
+  open: boolean;
+  title: string;
+  codePlaceholder: string;
+  labelPlaceholder: string;
+  code: string;
+  label: string;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onChangeCode: (v: string) => void;
+  onChangeLabel: (v: string) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop}>
+      <div className={s.confirmCard}>
+        <div className={s.modalHeader} style={{ justifyContent: "space-between" }}>
+          <span>{title}</span>
+          <button className={s.subtleBtn} onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className={s.confirmBody}>
+          <label className={s.formField}>
+            <span style={{ display: "block", fontWeight: 500, marginBottom: 4 }}>编码</span>
+            <input className={s.formInput} value={code} placeholder={codePlaceholder} onChange={(e) => onChangeCode(e.target.value)} />
+          </label>
+          <label className={s.formField}>
+            <span style={{ display: "block", fontWeight: 500, marginBottom: 4 }}>名称</span>
+            <input className={s.formInput} value={label} placeholder={labelPlaceholder} onChange={(e) => onChangeLabel(e.target.value)} />
+          </label>
+          {error ? <div className={s.errorBox}>{error}</div> : null}
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>确认</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SimpleCodeNameDialog({
+  open,
+  title,
+  codePlaceholder,
+  namePlaceholder,
+  code,
+  name,
+  saving,
+  error,
+  onClose,
+  onChangeCode,
+  onChangeName,
+  onSubmit,
+}: {
+  open: boolean;
+  title: string;
+  codePlaceholder: string;
+  namePlaceholder: string;
+  code: string;
+  name: string;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onChangeCode: (v: string) => void;
+  onChangeName: (v: string) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop}>
+      <div className={s.confirmCard}>
+        <div className={s.modalHeader} style={{ justifyContent: "space-between" }}>
+          <span>{title}</span>
+          <button className={s.subtleBtn} onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className={s.confirmBody}>
+          <label className={s.formField}>
+            <span style={{ display: "block", fontWeight: 500, marginBottom: 4 }}>编码</span>
+            <input className={s.formInput} value={code} placeholder={codePlaceholder} onChange={(e) => onChangeCode(e.target.value)} />
+          </label>
+          <label className={s.formField}>
+            <span style={{ display: "block", fontWeight: 500, marginBottom: 4 }}>名称</span>
+            <input className={s.formInput} value={name} placeholder={namePlaceholder} onChange={(e) => onChangeName(e.target.value)} />
+          </label>
+          {error ? <div className={s.errorBox}>{error}</div> : null}
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>确认</button>
         </div>
       </div>
     </div>
