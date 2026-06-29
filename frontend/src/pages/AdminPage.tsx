@@ -4,7 +4,6 @@ import {
   FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
-import Header from '../components/Header';
 import {
   type AppConfig,
   type AgentCategoryConfig,
