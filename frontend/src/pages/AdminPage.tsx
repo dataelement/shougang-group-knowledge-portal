@@ -723,7 +723,6 @@ export default function AdminPage() {
 
   return (
     <>
-      <Header />
       <div className={s.layout}>
         {/* Left nav */}
         <nav className={s.nav}>

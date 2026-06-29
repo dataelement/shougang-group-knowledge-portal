@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import PageShell from '../components/PageShell';
 import { fetchBishengRuntimeConfig } from '../api/adminConfig';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { useAuth } from '../hooks/useAuth';
 import { applyEmbedOriginOverride, mergeKnowledgeDeepLinkParams, resolveKnowledgeEmbedUrl } from '../utils/bishengEmbed';
 import s from './KnowledgeSpacesPage.module.css';
 
@@ -10,7 +11,17 @@ const OPEN_DOCUMENT_CHAT_MESSAGE = 'shougang-portal:open-document-chat';
 
 export default function KnowledgeSpacesPage() {
   const { config } = usePortalConfig();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (user === null) {
+      const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
+      navigate(`/login?redirect=${redirect}`, { replace: true });
+    }
+  }, [user, navigate, location.pathname, location.search]);
   const [runtimeAssetBaseUrl, setRuntimeAssetBaseUrl] = useState('');
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const openChatTimerRef = useRef<number | null>(null);

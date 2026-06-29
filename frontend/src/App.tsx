@@ -99,7 +99,12 @@ function AdminRoute() {
     );
   }
 
-  return <AdminPage />;
+  return (
+    <>
+      <Header />
+      <AdminPage />
+    </>
+  );
 }
 
 function RedirectToSmartQa() {
