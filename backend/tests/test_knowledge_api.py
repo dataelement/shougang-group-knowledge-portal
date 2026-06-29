@@ -1035,6 +1035,142 @@ def test_get_file_detail_and_preview(tmp_path: Path):
     }
 
 
+def test_get_doc_file_preview_uses_bisheng_preview_resource(tmp_path: Path):
+    class DocPreviewBishengClient(FakeBishengClient):
+        async def get(self, path: str, params=None):
+            if path == "https://example.com/preview/1591.docx":
+                return httpx.Response(
+                    200,
+                    headers={
+                        "content-type": (
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                    },
+                    content=b"docx-preview",
+                )
+            return await super().get(path, params=params)
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/file/info/1591":
+                return {
+                    "data": {
+                        "id": 1591,
+                        "knowledge_id": 12,
+                        "file_name": "首钢测试环境统一身份认证oauth集成指南v1.0.2.doc",
+                        "abstract": "认证集成指南",
+                        "update_time": "2026-04-14T09:00:00",
+                    }
+                }
+            if path == "/api/v1/knowledge/space/12/files/1591/preview":
+                return {
+                    "data": {
+                        "original_url": "https://example.com/original/1591.doc",
+                        "preview_url": "https://example.com/preview/1591.docx",
+                    }
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = DocPreviewBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        preview_response = client.get("/api/v1/knowledge/space/12/files/1591/preview")
+        content_response = client.get(
+            "/api/v1/knowledge/space/12/files/1591/preview/content?source_kind=preview_url"
+        )
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()["data"]
+    assert preview["mode"] == "docx"
+    assert preview["source_kind"] == "preview_url"
+    assert preview["download_url"] == "https://example.com/original/1591.doc"
+    assert preview["supports_chunks_fallback"] is False
+    assert preview["viewer_url"].endswith("source_kind=preview_url")
+
+    assert content_response.status_code == 200
+    assert content_response.content == b"docx-preview"
+    assert fake_bisheng.preview_asset_requests == [
+        {"path": "https://example.com/preview/1591.docx", "params": None}
+    ]
+
+
+def test_get_doc_file_preview_returns_unsupported_when_no_preview_source(tmp_path: Path):
+    class MissingDocPreviewBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/file/info/1591":
+                return {
+                    "data": {
+                        "id": 1591,
+                        "knowledge_id": 12,
+                        "file_name": "首钢测试环境统一身份认证oauth集成指南v1.0.2.doc",
+                        "abstract": "认证集成指南",
+                        "update_time": "2026-04-14T09:00:00",
+                    }
+                }
+            if path == "/api/v1/knowledge/space/12/files/1591/preview":
+                return {"data": {"original_url": "", "preview_url": ""}}
+            return await super().get_json(path, params=params, headers=headers)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/knowledge/preview":
+                return {"data": {}}
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = MissingDocPreviewBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        preview_response = client.get("/api/v1/knowledge/space/12/files/1591/preview")
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()["data"]
+    assert preview["mode"] == "unsupported"
+    assert preview["source_kind"] == "none"
+    assert preview["supports_chunks_fallback"] is False
+    assert preview["reason"] == "当前文件类型暂不支持在线预览，请下载原文件查看。"
+
+
+def test_get_ppt_file_preview_remains_unsupported(tmp_path: Path):
+    class PptPreviewBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/file/info/1592":
+                return {
+                    "data": {
+                        "id": 1592,
+                        "knowledge_id": 12,
+                        "file_name": "设备培训材料.ppt",
+                        "abstract": "培训材料",
+                        "update_time": "2026-04-14T09:30:00",
+                    }
+                }
+            if path == "/api/v1/knowledge/space/12/files/1592/preview":
+                return {
+                    "data": {
+                        "original_url": "https://example.com/original/1592.ppt",
+                        "preview_url": "https://example.com/preview/1592.pdf",
+                    }
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = PptPreviewBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        preview_response = client.get("/api/v1/knowledge/space/12/files/1592/preview")
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()["data"]
+    assert preview["mode"] == "unsupported"
+    assert preview["download_url"] == "https://example.com/original/1592.ppt"
+    assert preview["supports_chunks_fallback"] is False
+
+
 def test_home_stats_returns_document_and_telemetry_counts(tmp_path: Path):
     for client, _, _ in make_client(tmp_path):
         response = client.get("/api/v1/knowledge/home/stats")

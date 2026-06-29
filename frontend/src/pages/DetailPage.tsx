@@ -102,18 +102,26 @@ export default function DetailPage() {
   const displayTags = (detail.tag_infos ?? []).filter((t) => !META_TAGS.includes(t.tag_name));
   const formattedUpdatedAt = formatDisplayDateTime(detail.date) || '—';
   const resolvedPreview = resolveFilePreview(preview);
-  const effectivePreview = clientFallbackActive
-    ? {
+  let effectivePreview = resolvedPreview;
+  if (clientFallbackActive) {
+    effectivePreview = resolvedPreview.supportsChunksFallback ? {
       ...resolvedPreview,
       mode: 'chunks' as const,
       prefersChunks: true,
       reason: '当前文件预览失败，已回退到正文分段内容。',
       viewerUrl: '',
-    }
-    : resolvedPreview;
+    } : {
+      ...resolvedPreview,
+      mode: 'unsupported' as const,
+      prefersChunks: false,
+      reason: '当前文件预览失败，请下载文件查看。',
+      viewerUrl: '',
+    };
+  }
 
   async function handlePreviewFailure() {
     if (!clientFallbackActive) setClientFallbackActive(true);
+    if (!resolvedPreview.supportsChunksFallback) return;
     if (chunks.length > 0) return;
     try {
       const fallbackChunks = await fetchFileChunks(spaceId, fileId, shareToken || undefined);

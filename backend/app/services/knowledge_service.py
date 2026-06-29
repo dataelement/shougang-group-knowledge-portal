@@ -59,7 +59,8 @@ SPREADSHEET_EXTENSIONS = {"csv", "xls", "xlsx"}
 MARKDOWN_EXTENSIONS = {"markdown", "md"}
 HTML_EXTENSIONS = {"htm", "html"}
 TEXT_EXTENSIONS = {"txt"}
-UNSUPPORTED_PREVIEW_EXTENSIONS = {"doc", "ppt", "pptx"}
+LEGACY_WORD_EXTENSIONS = {"doc"}
+UNSUPPORTED_PREVIEW_EXTENSIONS = {"ppt", "pptx"}
 PREVIEW_TASK_CACHE_TTL_SECONDS = 900.0
 PREVIEW_TASK_POLL_ATTEMPTS = 6
 PREVIEW_TASK_POLL_DELAY_SECONDS = 0.4
@@ -786,6 +787,13 @@ class KnowledgeService:
             extra_space_ids=extra_space_ids,
         )
         if source is None:
+            if normalized_ext in LEGACY_WORD_EXTENSIONS:
+                return FilePreviewManifest(
+                    mode="unsupported",
+                    download_url=download_url,
+                    reason="当前文件类型暂不支持在线预览，请下载原文件查看。",
+                    supports_chunks_fallback=False,
+                )
             return FilePreviewManifest(
                 mode="chunks",
                 download_url=download_url,
@@ -795,6 +803,13 @@ class KnowledgeService:
 
         mode = self._infer_preview_mode(source.url, normalized_ext)
         if mode in {"unsupported", "chunks"}:
+            if normalized_ext in LEGACY_WORD_EXTENSIONS:
+                return FilePreviewManifest(
+                    mode="unsupported",
+                    download_url=download_url or source.url,
+                    reason="当前文件类型暂不支持在线预览，请下载原文件查看。",
+                    supports_chunks_fallback=False,
+                )
             return FilePreviewManifest(
                 mode="chunks",
                 download_url=download_url or source.url,
@@ -807,7 +822,7 @@ class KnowledgeService:
             download_url=download_url or source.url,
             viewer_url=source.url if self._is_frontend_proxy_asset_url(source.url) else "",
             source_kind=source.source_kind,
-            supports_chunks_fallback=True,
+            supports_chunks_fallback=normalized_ext not in LEGACY_WORD_EXTENSIONS,
         )
 
     async def resolve_preview_content_source(
@@ -890,6 +905,8 @@ class KnowledgeService:
 
     def _get_preview_source_priority(self, file_ext: str) -> tuple[FilePreviewSourceKind, ...]:
         if file_ext == "pdf" or file_ext in IMAGE_EXTENSIONS:
+            return ("preview_url", "original_url", "preview_task")
+        if file_ext in LEGACY_WORD_EXTENSIONS:
             return ("preview_url", "original_url", "preview_task")
         if (
             file_ext == "docx"
@@ -1006,7 +1023,7 @@ class KnowledgeService:
         normalized_ext = self._normalize_ext(source_ext or fallback_ext)
         if normalized_ext == "pdf":
             return "pdf"
-        if normalized_ext == "docx":
+        if normalized_ext == "docx" or normalized_ext in LEGACY_WORD_EXTENSIONS:
             return "docx"
         if normalized_ext in SPREADSHEET_EXTENSIONS:
             return "spreadsheet"

@@ -114,3 +114,10 @@ test('embedded preview detail page does not refetch preview when display config 
   assert.match(source, /\}, \[embed, fileId, relatedFilesCount, shareToken, spaceId\]\);/);
   assert.doesNotMatch(source, /\}, \[displayConfig\.detail\.relatedFilesCount, embed, fileId, shareToken, spaceId\]\);/);
 });
+
+test('detail preview failure does not fetch chunks when backend disables chunk fallback', () => {
+  const source = readSource('src/pages/DetailPage.tsx');
+
+  assert.match(source, /mode: 'unsupported' as const/);
+  assert.match(source, /if \(!resolvedPreview\.supportsChunksFallback\) return;/);
+});
