@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Bold,
+  Check,
   Code,
   Image as ImageIcon,
   Italic,
@@ -32,32 +33,8 @@ import {
 } from '../api/expertQa';
 import s from './ExpertQAAskPage.module.css';
 import type { DomainConfig } from '../api/adminConfig';
-import {
-  CheckCircle,
-  Settings,
-  Shield,
-  Leaf,
-  GraduationCap,
-  Network,
-  Zap,
-  Factory,
-} from 'lucide-react';
 import { ASK_DRAFT } from '../data/expertQaMock';
-
-// 侧边栏图标映射
-const iconMap: Record<
-  string,
-  React.ComponentType<{ size?: number; className?: string }>
-> = {
-  CheckCircle,
-  Settings,
-  Shield,
-  Leaf,
-  GraduationCap,
-  Network,
-  Zap,
-  Factory,
-};
+import askBanner from '../assets/ask-banner@2x.png';
 
 // 颜色缓存，避免每次渲染重新计算
 const colorCache = new Map<string, string>();
@@ -433,13 +410,24 @@ export default function ExpertQAAskPage() {
     <PageShell>
       <div className={s.container}>
         <div className={s.crumbs}>
-          <Link to="/expert-qa">专家问答</Link> / <span>我要提问</span>
+          <Link to="/expert-qa">专家问答</Link>
+          <span className={s.crumbSep}>&gt;</span>
+          <span>我要提问</span>
         </div>
         <div className={s.layout}>
           <main className={s.formCard}>
-            <h1 className={s.formTitle}>我要提问</h1>
-            <p className={s.formSub}>描述您的问题，邀请专家为您解答</p>
+            <div
+              className={s.formHeader}
+              style={{ backgroundImage: `url(${askBanner})` }}
+            >
+              <div className={s.formHeaderTitle}>
+                <span className={s.formAccent} aria-hidden />
+                我要提问
+              </div>
+              <p className={s.formHeaderSub}>描述您的问题，邀请专家为您解答～</p>
+            </div>
 
+            <div className={s.formBody}>
             {/* 标题 */}
             <div className={s.field}>
               <label className={s.fieldLabel}>
@@ -466,7 +454,6 @@ export default function ExpertQAAskPage() {
                 </label>
                 <div className={s.domainGrid}>
                   {domainList.map((d) => {
-                    const Icon = iconMap[d.icon] ?? CheckCircle;
                     const sel = selectedDomain === d.name;
                     return (
                       <button
@@ -478,8 +465,8 @@ export default function ExpertQAAskPage() {
                           setDomainError(false);
                         }}
                       >
-                        <Icon size={18} className={s.domainIco} />
                         <span className={s.domainName}>{d.name}</span>
+                        {sel && <Check size={13} className={s.domainCheck} />}
                       </button>
                     );
                   })}
@@ -526,7 +513,7 @@ export default function ExpertQAAskPage() {
               />
 
               <textarea
-                className={s.input}
+                className={`${s.input} ${s.textarea}`}
                 placeholder="请详细描述您的问题…"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
@@ -692,17 +679,14 @@ export default function ExpertQAAskPage() {
             {submitError && <div className={s.errorTip}>{submitError}</div>}
 
             {/* 发布按钮 */}
-            <div className={s.actionBar}>
-              <div className={s.actionBtns}>
-                <button
-                  type="button"
-                  className={s.btnPrimary}
-                  onClick={handlePublish}
-                  disabled={submitLoading}
-                >
-                  <Send size={14} /> {submitLoading ? '发布中...' : '发布提问'}
-                </button>
-              </div>
+            <button
+              type="button"
+              className={s.btnPrimary}
+              onClick={handlePublish}
+              disabled={submitLoading}
+            >
+              <Send size={14} /> {submitLoading ? '发布中...' : '发布提问'}
+            </button>
             </div>
           </main>
 
