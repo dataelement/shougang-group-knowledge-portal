@@ -4,7 +4,8 @@ import {
   getDocumentTypeCodeFromFileEncoding,
   getRuntimeDocumentTypes,
   matchesDocumentType,
-  normalizeUpdatedAtSort,
+  normalizeSearchSort,
+  SEARCH_SORT_OPTIONS,
 } from '../src/utils/documentTypes';
 
 test('document type code is parsed from the second file encoding segment', () => {
@@ -34,8 +35,14 @@ test('document type matching requires an exact configured code match', () => {
   assert.equal(matchesDocumentType('', 'RPT'), false);
 });
 
-test('updated time sort only exposes ascending and descending modes', () => {
-  assert.equal(normalizeUpdatedAtSort('updated_at_asc'), 'updated_at_asc');
-  assert.equal(normalizeUpdatedAtSort('relevance'), 'updated_at_desc');
-  assert.equal(normalizeUpdatedAtSort(null), 'updated_at_desc');
+test('search sort defaults to relevance and keeps updated time modes', () => {
+  assert.deepEqual(
+    SEARCH_SORT_OPTIONS.map((item) => item.value),
+    ['relevance', 'updated_at_desc', 'updated_at_asc'],
+  );
+  assert.equal(normalizeSearchSort('relevance'), 'relevance');
+  assert.equal(normalizeSearchSort('updated_at_desc'), 'updated_at_desc');
+  assert.equal(normalizeSearchSort('updated_at_asc'), 'updated_at_asc');
+  assert.equal(normalizeSearchSort(null), 'relevance');
+  assert.equal(normalizeSearchSort('unknown'), 'relevance');
 });

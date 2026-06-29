@@ -25,8 +25,8 @@ import {
   getRuntimeDocumentTypes,
   matchesDocumentType,
   normalizeDocumentTypeCode,
-  normalizeUpdatedAtSort,
-  UPDATED_AT_SORT_OPTIONS,
+  normalizeSearchSort,
+  SEARCH_SORT_OPTIONS,
 } from '../utils/documentTypes';
 import {
   buildDownloadFileName,
@@ -73,7 +73,7 @@ export default function SearchPage() {
   const fileExt = params.get('file_ext') || '';
   const documentType = normalizeDocumentTypeCode(params.get('document_type'));
   const tag = params.get('tag') || '';
-  const sort = normalizeUpdatedAtSort(params.get('sort'));
+  const sort = normalizeSearchSort(params.get('sort'));
   const hasSearch = hasSearchContext(params);
   const { config } = usePortalConfig();
   const { user } = useAuth();
@@ -393,7 +393,7 @@ export default function SearchPage() {
             <div className={s.sortWrap}>
               排序：
               <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value, false)}>
-                {UPDATED_AT_SORT_OPTIONS.map((item) => (
+                {SEARCH_SORT_OPTIONS.map((item) => (
                   <option key={item.value} value={item.value}>{item.label}</option>
                 ))}
               </select>

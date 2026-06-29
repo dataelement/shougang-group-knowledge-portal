@@ -187,7 +187,7 @@ async def search_files(
     space_level: Optional[str] = None,
     file_ext: Optional[str] = None,
     document_type: Optional[str] = None,
-    sort: str = "updated_at",
+    sort: str = "relevance",
     page: int = 1,
     page_size: int = 20,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),

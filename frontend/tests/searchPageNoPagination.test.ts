@@ -23,6 +23,15 @@ test('search page does not render pagination or request paged search results', (
   assert.equal(activeSource.includes('当前显示'), false);
 });
 
+test('search page uses relevance as the default sort option', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
+  const activeSource = stripComments(source);
+
+  assert.match(activeSource, /const sort = normalizeSearchSort\(params\.get\('sort'\)\)/);
+  assert.equal(activeSource.includes('normalizeUpdatedAtSort'), false);
+  assert.equal(activeSource.includes('SEARCH_SORT_OPTIONS.map'), true);
+});
+
 test('search page passes displayed search results into AI summary instead of triggering independent retrieval', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
   const activeSource = stripComments(source);

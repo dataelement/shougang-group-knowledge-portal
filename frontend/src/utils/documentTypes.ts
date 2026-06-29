@@ -1,14 +1,16 @@
 import type { DocumentTypeConfig } from '../api/adminConfig';
 
-export type UpdatedAtSortValue = 'updated_at_desc' | 'updated_at_asc';
+export type SearchSortValue = 'relevance' | 'updated_at_desc' | 'updated_at_asc';
 
-export const UPDATED_AT_SORT_OPTIONS: Array<{ value: UpdatedAtSortValue; label: string }> = [
+export const SEARCH_SORT_OPTIONS: Array<{ value: SearchSortValue; label: string }> = [
+  { value: 'relevance', label: '相关性' },
   { value: 'updated_at_desc', label: '更新时间倒序' },
   { value: 'updated_at_asc', label: '更新时间正序' },
 ];
 
-export function normalizeUpdatedAtSort(value?: string | null): UpdatedAtSortValue {
-  return value === 'updated_at_asc' ? 'updated_at_asc' : 'updated_at_desc';
+export function normalizeSearchSort(value?: string | null): SearchSortValue {
+  if (value === 'updated_at_desc' || value === 'updated_at_asc') return value;
+  return 'relevance';
 }
 
 export function normalizeDocumentTypeCode(value?: string | null): string {
