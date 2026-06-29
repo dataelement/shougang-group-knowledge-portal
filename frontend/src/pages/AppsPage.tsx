@@ -11,14 +11,26 @@ import {
   FileText,
   Globe,
   Loader2,
-  MessageSquareText,
   PenLine,
   Search,
   Send,
   Star,
-  X,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
+import appsSearchIcon from '../assets/apps-search.png';
+import appsNewIcon from '../assets/apps-new.svg';
+import appsHistoryIcon from '../assets/apps-history.svg';
+import agentIconZhidu from '../assets/agent-icon-zhidu.png';
+import agentIconFalv from '../assets/agent-icon-falv.png';
+import agentIconChailv from '../assets/agent-icon-chailv.png';
+import agentIconZongjie from '../assets/agent-icon-zongjie.png';
+import agentIconTuijin from '../assets/agent-icon-tuijin.png';
+import agentIconJianbao from '../assets/agent-icon-jianbao.png';
+import agentIconBangong from '../assets/agent-icon-bangong.png';
+import agentIconChachong from '../assets/agent-icon-chachong.png';
+import agentIconYinhuan from '../assets/agent-icon-yinhuan.png';
+import agentIconHuozai from '../assets/agent-icon-huozai.png';
+import agentIconHetong from '../assets/agent-icon-hetong.png';
 import type { AgentItemConfig, PortalConfig } from '../api/adminConfig';
 import {
   favoriteAgentWorkflow,
@@ -82,6 +94,27 @@ function getAgentCategoryName(agent: AgentItemConfig, config: PortalConfig | nul
   return config?.agent_config.categories.find((category) => category.id === agent.category_id)?.name || agent.category_id;
 }
 
+const AGENT_IMAGE_MAP: Record<string, string> = {
+  制度专家: agentIconZhidu,
+  安全法律法规: agentIconFalv,
+  差旅问答助手: agentIconChailv,
+  总结报告: agentIconZongjie,
+  工作推进方案: agentIconTuijin,
+  行业洞察简报: agentIconJianbao,
+  办公材料撰写: agentIconBangong,
+  项目查重: agentIconChachong,
+  AI识别隐患: agentIconYinhuan,
+  安全重大火灾隐患: agentIconHuozai,
+  合同审核: agentIconHetong,
+};
+
+function getCategoryStyle(name: string): { color: string; background: string } {
+  if (/写作/.test(name)) return { color: '#00B42A', background: 'rgba(0, 180, 42, 0.08)' };
+  if (/识别/.test(name)) return { color: '#FF7D00', background: 'rgba(255, 125, 0, 0.08)' };
+  if (/审核/.test(name)) return { color: '#8848CB', background: 'rgba(136, 72, 203, 0.08)' };
+  return { color: '#3662E3', background: 'rgba(54, 98, 227, 0.08)' };
+}
+
 function getBishengBaseUrl(config: PortalConfig | null): string {
   return (
     config?.integrations?.bisheng_admin_entry_url?.trim()
@@ -135,95 +168,48 @@ function SmartAppsSidebar({
   onNewQa: () => void;
   onSelectRecord: (record: SmartAppsRecord) => void;
 }) {
-  const groups: Session['group'][] = ['今天', '昨天', '7 天内', '30 天内'];
-  const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const visibleRecords = useMemo(() => {
     if (!normalizedSearchQuery) return records;
     return records.filter((record) => record.title.toLowerCase().includes(normalizedSearchQuery));
   }, [normalizedSearchQuery, records]);
 
-  useEffect(() => {
-    if (!searchOpen) return undefined;
-    const focusTimer = window.setTimeout(() => searchInputRef.current?.focus(), 0);
-    return () => window.clearTimeout(focusTimer);
-  }, [searchOpen]);
-
   return (
     <aside className={s.sidebar} aria-label="智能应用会话列表">
-      <div className={s.logoRow}>
-        <div className={s.logoIcon}>
-          <Bot size={17} strokeWidth={2} />
-        </div>
+      <div className={s.searchBox}>
+        <img src={appsSearchIcon} className={s.searchBoxIcon} alt="" aria-hidden="true" />
+        <input
+          aria-label="搜索对话内容"
+          className={s.searchBoxInput}
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="搜索对话内容"
+        />
       </div>
-      <div className={s.sidebarBody}>
-        <button className={s.newButton} type="button" onClick={onNewQa}>
-          <PenLine size={14} strokeWidth={2} />
-          发起新对话
-        </button>
-        {searchOpen ? (
-          <div className={s.searchInputWrap}>
-            <Search size={14} strokeWidth={2} />
-            <input
-              ref={searchInputRef}
-              aria-label="搜索会话"
-              className={s.searchInput}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') {
-                  setSearchQuery('');
-                  setSearchOpen(false);
-                }
-              }}
-              placeholder="搜索会话"
-            />
-            {searchQuery ? (
-              <button
-                aria-label="清空搜索"
-                className={s.searchClearButton}
-                onClick={() => setSearchQuery('')}
-                type="button"
-              >
-                <X size={12} strokeWidth={2} />
-              </button>
-            ) : null}
-          </div>
-        ) : (
-          <button className={s.searchButton} type="button" onClick={() => setSearchOpen(true)}>
-            <Search size={14} strokeWidth={2} />
-            搜索会话
-          </button>
-        )}
+
+      <button className={s.navRow} type="button" onClick={onNewQa}>
+        <img src={appsNewIcon} className={s.navRowIcon} alt="" aria-hidden="true" />
+        <span className={s.navRowText}>新对话</span>
+      </button>
+      <div className={s.navRow}>
+        <img src={appsHistoryIcon} className={s.navRowIcon} alt="" aria-hidden="true" />
+        <span className={s.navRowText}>历史对话</span>
       </div>
-      <div className={s.sidebarSection}>最近</div>
+
       <div className={s.historyList}>
-        {loading ? <div className={s.historyGroupLabel}>会话加载中...</div> : null}
-        {groups.map((group) => {
-          const groupRecords = visibleRecords.filter((record) => record.group === group);
-          if (!groupRecords.length) return null;
-          return (
-            <div className={s.historyGroup} key={group}>
-              <div className={s.historyGroupLabel}>{group}</div>
-              {groupRecords.map((record) => (
-                <button
-                  className={`${s.historyItem} ${activeRecordId === record.id ? s.historyItemActive : ''}`}
-                  key={`${record.kind}-${record.id}`}
-                  onClick={() => onSelectRecord(record)}
-                  title={record.title}
-                  type="button"
-                >
-                  <span className={`${s.historyIcon} ${record.kind === 'agent' ? s.historyIconAgent : s.historyIconQa}`}>
-                    {record.kind === 'agent' ? <Bot size={12} strokeWidth={2} /> : <MessageSquareText size={12} strokeWidth={2} />}
-                  </span>
-                  <span className={s.historyTitle}>{record.title}</span>
-                </button>
-              ))}
-            </div>
-          );
-        })}
+        {loading ? <div className={s.historyEmpty}>会话加载中...</div> : null}
+        {visibleRecords.map((record) => (
+          <button
+            className={`${s.convItem} ${activeRecordId === record.id ? s.convItemActive : ''}`}
+            key={`${record.kind}-${record.id}`}
+            onClick={() => onSelectRecord(record)}
+            title={record.title}
+            type="button"
+          >
+            {record.title}
+          </button>
+        ))}
         {!loading && normalizedSearchQuery && !visibleRecords.length ? (
           <div className={s.historyEmpty}>未找到匹配会话</div>
         ) : null}
@@ -438,7 +424,7 @@ export default function AppsPage() {
         const showAgentList = !hasSelectedAgentWorkflow;
 
         return (
-          <PageShell>
+          <PageShell hideFooter>
             <div className={s.page}>
               <div className={s.shell}>
                 <SmartAppsSidebar
@@ -467,7 +453,6 @@ export default function AppsPage() {
                 />
 
                 <section className={s.mainPanel}>
-                  {!hasSelectedAgentWorkflow ? <div className={s.topbar} /> : null}
 
                   {showTopComposer ? (
                     <div className={s.sharedComposerTop}>
@@ -512,13 +497,12 @@ export default function AppsPage() {
                           {agentFilters.map((filter) => (
                             <button
                               aria-selected={activeAgentFilter === filter.id}
-                              className={`${s.tab} ${filter.id === 'favorite' ? s.favoriteTab : ''} ${activeAgentFilter === filter.id ? s.tabActive : ''}`}
+                              className={`${s.tab} ${activeAgentFilter === filter.id ? s.tabActive : ''}`}
                               key={filter.id}
                               onClick={() => setActiveAgentFilter(filter.id)}
                               role="tab"
                               type="button"
                             >
-                              {filter.id === 'favorite' ? <Star size={12} strokeWidth={2} /> : null}
                               {filter.label}
                             </button>
                           ))}
@@ -547,6 +531,7 @@ export default function AppsPage() {
                           <div className={s.agentGrid}>
                             {visibleAgents.map((agent) => {
                               const Icon = AGENT_ICON_MAP[agent.icon] || Bot;
+                              const agentImage = AGENT_IMAGE_MAP[agent.name.trim()];
                               const isFavorite = favoriteWorkflowIds.has(agent.workflow_id);
                               const isFavoriteUpdating = updatingFavoriteWorkflowIds.has(agent.workflow_id);
                               return (
@@ -556,27 +541,33 @@ export default function AppsPage() {
                                   onClick={() => selectAgent(agent)}
                                 >
                                   <div className={s.agentCardTop}>
-                                    <div className={s.agentIcon} style={{ background: agent.bg, color: agent.color }}>
-                                      <Icon size={16} strokeWidth={2} />
+                                    {agentImage ? (
+                                      <img className={s.agentIconImg} src={agentImage} alt="" aria-hidden="true" />
+                                    ) : (
+                                      <div className={s.agentIcon} style={{ background: agent.bg, color: agent.color }}>
+                                        <Icon size={24} strokeWidth={2} />
+                                      </div>
+                                    )}
+                                    <div className={s.agentCardHead}>
+                                      <div className={s.agentName}>{agent.name}</div>
+                                      <span className={s.agentCategory} style={getCategoryStyle(getAgentCategoryName(agent, config))}>
+                                        {getAgentCategoryName(agent, config)}
+                                      </span>
                                     </div>
-                                    <div className={s.agentCardMeta}>
-                                      <div className={s.agentCategory}>{getAgentCategoryName(agent, config)}</div>
-                                      <button
-                                        aria-label={isFavorite ? `取消收藏${agent.name}` : `收藏${agent.name}`}
-                                        className={`${s.favoriteButton} ${isFavorite ? s.favoriteButtonActive : ''}`}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          void toggleFavorite(agent);
-                                        }}
-                                        disabled={isFavoriteUpdating}
-                                        title={isFavorite ? '取消收藏' : '收藏'}
-                                        type="button"
-                                      >
-                                        <Star size={14} strokeWidth={2} />
-                                      </button>
-                                    </div>
+                                    <button
+                                      aria-label={isFavorite ? `取消收藏${agent.name}` : `收藏${agent.name}`}
+                                      className={`${s.favoriteButton} ${isFavorite ? s.favoriteButtonActive : ''}`}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void toggleFavorite(agent);
+                                      }}
+                                      disabled={isFavoriteUpdating}
+                                      title={isFavorite ? '取消收藏' : '收藏'}
+                                      type="button"
+                                    >
+                                      <Star size={16} strokeWidth={2} />
+                                    </button>
                                   </div>
-                                  <div className={s.agentName}>{agent.name}</div>
                                   <div className={s.agentDesc}>{agent.desc}</div>
                                   <div className={s.agentTags}>
                                     {agent.tags.map((tag) => (

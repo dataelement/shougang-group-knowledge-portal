@@ -245,6 +245,7 @@
   gap: 24px;
   margin-bottom: 14px;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .templateTab {
@@ -370,8 +371,9 @@
 
 .smartAppTemplatePanel {
   width: 100%;
-  max-width: 1040px;
+  max-width: 952px;
   min-width: 0;
+  margin: 0 auto;
   padding: 0 36px 32px;
 }
 
@@ -385,6 +387,7 @@
   margin-bottom: 14px;
   border-bottom: 1px solid #e2e8f2;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .smartAppTemplateTab {
@@ -487,6 +490,7 @@
 .messages {
   max-width: 1040px;
   margin: 0 auto;
+  padding-top: 24px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1142,13 +1146,13 @@
 
 .smartAppComposer {
   width: 100%;
-  max-width: 690px;
+  max-width: 880px;
   min-width: 0;
   margin: 0 auto;
 }
 
 .smartAppComposerTop {
-  padding: 20px 0 6px;
+  padding: 20px 0 28px;
 }
 
 .smartAppComposerBottom {
@@ -1156,40 +1160,36 @@
 }
 
 .smartAppInputBox {
-  border: 1px solid #c8d8f0;
+  border: 1px solid #D9D9DA;
   border-radius: 8px;
   background: #fff;
-  box-shadow: 0 2px 8px rgba(26, 63, 168, 0.06);
+  box-shadow: 0px 0px 6px 0px #D1D6E2;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .smartAppInputBox:focus-within {
-  border-color: #2d6ef5;
-  box-shadow: 0 0 0 3px rgba(45, 110, 245, 0.1), 0 2px 8px rgba(26, 63, 168, 0.06);
+  border-color: #3662E3;
 }
 
 .smartAppInputRow {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px 12px 8px 16px;
+  padding: 16px 16px 0;
 }
 
 .smartAppInputRow textarea {
-  flex: 1;
-  height: 42px;
+  width: 100%;
+  height: 48px;
   min-width: 0;
   border: none;
   outline: none;
   resize: none;
   background: transparent;
-  color: #1a2a4a;
-  font-size: 14px;
+  color: #273142;
+  font-size: 15px;
   line-height: 1.5;
 }
 
 .smartAppInputRow textarea::placeholder {
-  color: #b0bcd0;
+  color: #86909C;
 }
 
 .smartAppInputActions {
@@ -1255,12 +1255,11 @@
 }
 
 .smartAppToolButton {
-  color: #8a9ab8;
+  color: #545A60;
 }
 
 .smartAppToolButton:hover:not(:disabled) {
-  background: #eef2fc;
-  color: #2d6ef5;
+  color: #3662E3;
 }
 
 .smartAppToolButton:disabled,
@@ -1270,12 +1269,74 @@
 }
 
 .smartAppSendButton {
-  background: linear-gradient(135deg, #1a3fa8, #2d6ef5);
+  background: #3662E3;
+  border-radius: 8px;
   color: #fff;
 }
 
 .smartAppSendButton:hover:not(:disabled) {
   opacity: 0.86;
+}
+
+.smartAppToolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px 12px;
+}
+
+.smartAppToolItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #273142;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.smartAppToolItem span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smartAppToolItem:hover:not(:disabled) {
+  color: #3662E3;
+}
+
+.smartAppToolItem:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+}
+
+.smartAppToolIcon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.smartAppToolCaret {
+  color: #86909C;
+  flex: 0 0 auto;
+}
+
+.smartAppToolDivider {
+  width: 1px;
+  height: 16px;
+  background: #E5E6EB;
+  flex-shrink: 0;
+}
+
+.smartAppToolbarSpacer {
+  flex: 1;
 }
 
 .smartAppAttachments {

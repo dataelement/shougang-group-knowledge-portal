@@ -43,6 +43,8 @@ import {
 import { fetchQaModelOptions, type QAConfig, type QAModelOption, type QATemplateCategoryConfig, type QATemplateConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
+import composerModelIcon from '../assets/composer-model.svg';
+import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
 import s from './QAPage.module.css';
 
 interface Message {
@@ -863,50 +865,6 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
           />
-          <div className={s.smartAppInputActions}>
-            <div
-              className={`${s.modelWrap} ${s.smartAppModelWrap} ${placement === 'bottom' ? s.smartAppPopoverUp : ''}`}
-              ref={modelMenuRef}
-            >
-              <button
-                className={s.smartAppModelButton}
-                type="button"
-                disabled={!modelChoices.length}
-                onClick={() => setModelMenuOpen((value) => !value)}
-              >
-                <Layers3 size={14} />
-                <span>{selectedModelChoice ? selectedModelChoice.label : '选择模型'}</span>
-                <ChevronDown size={13} />
-              </button>
-              {renderModelMenu()}
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept={QA_ATTACHMENT_ACCEPT}
-              className={s.hiddenFileInput}
-              onChange={handleAttachmentSelect}
-            />
-            <button
-              type="button"
-              className={s.smartAppToolButton}
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="上传附件"
-              disabled={streaming}
-            >
-              <Paperclip size={16} />
-            </button>
-            <button
-              type="button"
-              className={s.smartAppSendButton}
-              onClick={sendMessage}
-              disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
-              aria-label="发送智能问答"
-            >
-              {streaming ? <Loader2 size={17} className={s.spinner} /> : <Send size={17} />}
-            </button>
-          </div>
         </div>
         {hasChatAttachments ? (
           <AttachmentChips
@@ -916,20 +874,55 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
             className={s.smartAppAttachments}
           />
         ) : null}
-        <div className={s.smartAppFooter}>
-          <span className={s.smartAppFooterHint}>支持上传单文档和图片</span>
+        <div className={s.smartAppToolbar}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={QA_ATTACHMENT_ACCEPT}
+            className={s.hiddenFileInput}
+            onChange={handleAttachmentSelect}
+          />
+          <button
+            type="button"
+            className={s.smartAppToolButton}
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="上传附件"
+            disabled={streaming}
+          >
+            <Plus size={18} />
+          </button>
+          <span className={s.smartAppToolDivider} />
           <div
-            className={`${s.knowledgePicker} ${s.smartAppKnowledgePicker} ${placement === 'top' ? s.smartAppPopoverDown : ''}`}
+            className={`${s.modelWrap} ${s.smartAppModelWrap} ${placement === 'bottom' ? s.smartAppPopoverUp : ''}`}
+            ref={modelMenuRef}
+          >
+            <button
+              className={s.smartAppToolItem}
+              type="button"
+              disabled={!modelChoices.length}
+              onClick={() => setModelMenuOpen((value) => !value)}
+            >
+              <img className={s.smartAppToolIcon} src={composerModelIcon} alt="" aria-hidden="true" />
+              <span>{selectedModelChoice ? selectedModelChoice.label : '选择模型'}</span>
+              <ChevronDown size={12} className={s.smartAppToolCaret} />
+            </button>
+            {renderModelMenu()}
+          </div>
+          <span className={s.smartAppToolDivider} />
+          <div
+            className={`${s.knowledgePicker} ${s.smartAppKnowledgePicker} ${placement === 'bottom' ? s.smartAppPopoverUp : s.smartAppPopoverDown}`}
             ref={knowledgePickerRef}
           >
             <button
               type="button"
-              className={s.smartAppFooterLink}
+              className={s.smartAppToolItem}
               disabled={loadingKnowledgeSpaces || !availableSpaces.length}
               onClick={() => setKnowledgePickerOpen((value) => !value)}
             >
-              <Layers3 size={14} />
-              {knowledgePickerLabel}
+              <img className={s.smartAppToolIcon} src={composerKnowledgeIcon} alt="" aria-hidden="true" />
+              <span>{knowledgePickerLabel}</span>
+              <ChevronDown size={12} className={s.smartAppToolCaret} />
             </button>
             {knowledgePickerOpen ? (
               <div className={s.knowledgePanel}>
@@ -946,6 +939,16 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               </div>
             ) : null}
           </div>
+          <div className={s.smartAppToolbarSpacer} />
+          <button
+            type="button"
+            className={s.smartAppSendButton}
+            onClick={sendMessage}
+            disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
+            aria-label="发送智能问答"
+          >
+            {streaming ? <Loader2 size={17} className={s.spinner} /> : <Send size={17} />}
+          </button>
         </div>
         {composerTip ? <div className={s.smartAppComposerTip}>{composerTip}</div> : null}
       </div>
