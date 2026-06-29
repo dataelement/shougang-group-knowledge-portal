@@ -180,7 +180,7 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="输入您的问题...（Enter 发送，Shift+Enter 换行）"
-              rows={2}
+              rows={1}
               disabled={streaming}
             />
             <button
