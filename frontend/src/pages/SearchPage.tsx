@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
 // import ShareDocumentModal from '../components/ShareDocumentModal';
@@ -39,6 +39,7 @@ import {
   getSearchDisplayKeyword,
   hasSearchContext,
 } from '../utils/searchParams';
+import searchHeroBg from '../assets/search-hero-bg@2x.png';
 import s from './SearchPage.module.css';
 
 type SpaceOption = {
@@ -89,6 +90,7 @@ export default function SearchPage() {
   const [aiText, setAiText] = useState('');
   const [aiCitations, setAiCitations] = useState<Citation[]>([]);
   const [aiThinking, setAiThinking] = useState(false);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const requestSeq = useRef(0);
@@ -325,7 +327,11 @@ export default function SearchPage() {
   };
 
   return (
-    <PageShell>
+    <PageShell
+      mainStyle={{
+        background: `#EAF0F7 url(${searchHeroBg}) top center / 100% auto no-repeat`,
+      }}
+    >
       <div className={s.container}>
         <div className={s.searchHero}>
           <div ref={resultsTopRef} />
@@ -350,15 +356,16 @@ export default function SearchPage() {
                 支持按设备、工艺、质量、安全等主题检索知识文档。
               </div>
             </div>
-          ) : (
-            <div className={s.resultCount}>
-              {resultHeading} 共找到 {total} 个相关文件
-            </div>
-          )}
+          ) : null}
         </div>
 
         {hasSearch && (
-          <div className={s.filterBar}>
+          <div className={s.resultBar}>
+            <div className={s.resultCount}>
+              <span className={s.resultMark} />
+              {resultHeading} 共找到 <strong className={s.resultTotal}>{total}</strong> 个相关文件
+            </div>
+            <div className={s.filters}>
             <select
               className={s.filterSelect}
               value={spaceLevel}
@@ -390,13 +397,11 @@ export default function SearchPage() {
               <option value="">标签</option>
               {resultTagOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
-            <div className={s.sortWrap}>
-              排序：
-              <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value, false)}>
-                {SEARCH_SORT_OPTIONS.map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
-                ))}
-              </select>
+            <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value, false)}>
+              {SEARCH_SORT_OPTIONS.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
             </div>
           </div>
         )}
@@ -406,21 +411,30 @@ export default function SearchPage() {
           // const referenced = aiCitations;
           return (
             <div className={s.aiOverview}>
-              <div className={s.aiBadge}>
-                <Search size={12} />
-                搜索助手
-              </div>
-              {aiThinking ? (
-                <div className={s.aiThinking}>
-                  <Loader2 size={16} className={s.spinner} />
-                  <span>思考中...</span>
+              <div className={s.aiBody}>
+                <div className={s.aiHeader}>
+                  <span className={s.aiTitle}>{`${q || displayKeyword || '搜索'}总结`}</span>
+                  <button
+                    type="button"
+                    className={s.aiToggle}
+                    onClick={() => setSummaryCollapsed((v) => !v)}
+                  >
+                    {summaryCollapsed ? '展开' : '收起'}
+                    {summaryCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  </button>
                 </div>
-              ) : (
-                <div
-                  className={s.aiText}
-                  dangerouslySetInnerHTML={{ __html: renderChatMarkdown(aiText, aiCitations) }}
-                />
-              )}
+                {summaryCollapsed ? null : aiThinking ? (
+                  <div className={s.aiThinking}>
+                    <Loader2 size={16} className={s.spinner} />
+                    <span>思考中...</span>
+                  </div>
+                ) : (
+                  <div
+                    className={s.aiText}
+                    dangerouslySetInnerHTML={{ __html: renderChatMarkdown(aiText, aiCitations) }}
+                  />
+                )}
+              </div>
               {/*
               {referenced.length > 0 && (
                 <ol className={s.citations}>

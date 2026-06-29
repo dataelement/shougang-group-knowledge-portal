@@ -5,18 +5,18 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronUp,
-  Download,
   FileText,
   FolderTree,
   Loader2,
-  // MessageCircle,
   Network,
   PencilLine,
   Share2,
-  Star,
   Tag,
 } from 'lucide-react';
 import { buildFileListItemView } from '../utils/fileListItemView';
+import iconFavorite from '../assets/icon-favorite.svg';
+import iconDownload from '../assets/icon-download.svg';
+import iconAi from '../assets/icon-ai.svg';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './ui/Tooltip';
 import s from './FileListItem.module.css';
 import tooltipS from './ui/Tooltip.module.css';
@@ -115,9 +115,8 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
               {view.actions.includes('favorite') ? (
                 <button
                   type="button"
-                  className={`${s.actionButton} ${s.favoriteButton}${favorited ? ` ${s.favoriteButtonActive}` : ''}`}
+                  className={`${s.actionButton} ${s.actionFavorite}`}
                   title={favorited ? '取消收藏' : '收藏文档'}
-                  aria-label={favorited ? '已收藏' : '收藏文档'}
                   aria-pressed={favorited}
                   disabled={favoritePending}
                   onClick={(event) => {
@@ -125,49 +124,53 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
                     onFavorite?.(file);
                   }}
                 >
-                  <Star size={19} fill={favorited ? 'currentColor' : 'none'} />
+                  <img className={s.actionIcon} src={iconFavorite} alt="" aria-hidden="true" />
+                  {favorited ? '已收藏' : '收藏'}
                 </button>
               ) : null}
               {view.actions.includes('download') ? (
                 <button
                   type="button"
-                  className={`${s.actionButton} ${s.downloadButton}`}
+                  className={s.actionButton}
                   title={downloadPending ? '正在获取下载链接' : '下载文档'}
-                  aria-label={downloadPending ? '正在获取下载链接' : '下载文档'}
                   aria-busy={downloadPending}
                   disabled={downloadPending}
                   onClick={handleDownloadClick}
                 >
-                  {downloadPending ? <Loader2 size={19} className={s.spinner} /> : <Download size={19} />}
+                  {downloadPending ? (
+                    <Loader2 size={16} className={`${s.actionIcon} ${s.spinner}`} />
+                  ) : (
+                    <img className={s.actionIcon} src={iconDownload} alt="" aria-hidden="true" />
+                  )}
+                  下载
                 </button>
               ) : null}
               {view.actions.includes('share') ? (
                 <button
                   type="button"
-                  className={`${s.actionButton} ${s.shareButton}`}
+                  className={s.actionButton}
                   title="分享文档"
-                  aria-label="分享文档"
                   onClick={(event) => {
                     event.stopPropagation();
                     onShare?.(file);
                   }}
                 >
-                  <Share2 size={19} />
+                  <Share2 size={16} className={s.actionIcon} />
+                  分享
                 </button>
               ) : null}
               {view.actions.includes('qa') ? (
                 <button
                   type="button"
-                  className={`${s.actionButton} ${s.qaButton}`}
-                  title="文档问答"
-                  aria-label="文档问答"
+                  className={s.actionButton}
+                  title="智能问答"
                   onClick={(event) => {
                     event.stopPropagation();
                     onAsk?.(file);
                   }}
                 >
-                    <img className={s.icon} src="/qa-floating-icon.png" alt="" aria-hidden="true" />
-                  {/* <MessageCircle size={19} /> */}
+                  <img className={s.actionIcon} src={iconAi} alt="" aria-hidden="true" />
+                  智能问答
                 </button>
               ) : null}
             </div>
@@ -176,8 +179,8 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
 
         {view.summaryText ? (
           <section className={s.textBlock}>
-            <div className={s.blockTitle}>文档摘要</div>
             <div className={s.summaryBox}>
+              <div className={s.blockTitle}>文档摘要</div>
               <div
                 ref={summaryRef}
                 className={`${s.summary} ${summaryExpanded ? s.summaryExpanded : ''}`}

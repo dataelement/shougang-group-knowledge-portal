@@ -19,6 +19,7 @@ import {
   postPortalApprovalMessageToFrame,
   type PortalApprovalAction,
 } from '../utils/portalApprovalBridge';
+import adminIcon from '../assets/admin-icon.svg';
 import s from './Header.module.css';
 
 type HeaderNavItem =
@@ -140,7 +141,7 @@ export default function Header() {
               aria-expanded={menuOpen}
               onClick={() => setMenuKey((current) => (current === location.pathname ? null : location.pathname))}
             >
-              <LayoutDashboard size={13} className={s.userTriggerIcon} />
+              <img src={adminIcon} alt="" className={s.userTriggerIcon} />
               <span className={s.userTriggerName}>{user.name}</span>
               <ChevronDown size={12} className={s.userTriggerCaret} />
               {badges.total > 0 ? (

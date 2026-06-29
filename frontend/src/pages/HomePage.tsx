@@ -1,16 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
-  Search, Building, Star, AlertTriangle, LayoutGrid,
-  ArrowUp, BarChart3, Bot, ChevronLeft, ChevronRight, FileText,
+  Search,
+  ArrowUp, BarChart3, Bot, ChevronRight, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Sparkles,
-  BookOpen, Package, Video, Flame, Briefcase, Users, Tag, TrendingUp, FolderOpen, ScrollText,
+  Package, Video, Flame, Briefcase, Users, ScrollText,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
-import SectionHeader from '../components/SectionHeader';
-import TagPill from '../components/TagPill';
 import ExpertQuestions from '../components/ExpertQuestions';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
@@ -22,13 +20,33 @@ import {
   type HomeStats,
 } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { resolveSectionVisual } from '../utils/adminSections';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
 import s from './HomePage.module.css';
+import navIcon from '../assets/nav-icon@2x.png';
+import iconCourse from '../assets/icon-course@2x.png';
+import iconExpert from '../assets/icon-expert@2x.png';
+import iconAiqa from '../assets/icon-aiqa@2x.png';
+import iconRank from '../assets/icon-rank@2x.png';
+import iconRecommend from '../assets/icon-recommend@2x.png';
+import iconIntel from '../assets/icon-intel@2x.png';
+import iconFolder from '../assets/icon-folder@2x.png';
+import iconHot from '../assets/icon-hot@2x.png';
+import { formatDisplayDateTime } from '../utils/dateTime';
+
+/** Resolve a homepage panel header icon (PNG) from its title keywords. */
+function resolveSectionIcon(title: string): string {
+  if (/课程/.test(title)) return iconCourse;
+  if (/专家/.test(title)) return iconExpert;
+  if (/智能|问答助手|AI/i.test(title)) return iconAiqa;
+  if (/百科|积分|榜|排行|排名/.test(title)) return iconRank;
+  if (/情报|资讯|行业|案例|事故/.test(title)) return iconIntel;
+  if (/文件|资料/.test(title)) return iconFolder;
+  return iconRecommend;
+}
 
 const DOMAIN_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle, Leaf, Truck, Network, Wrench, GraduationCap,
@@ -44,13 +62,9 @@ const APP_SHORTCUT_IMAGES: Record<string, string> = {
   'work-push-plan': '/app-shortcuts/hero-semantic-search.png',
   'office-writing': '/app-shortcuts/hero-open-qa.png',
   'hero-doc-translate': '/app-shortcuts/hero-doc-translate.png',
+  'hero-semantic-search': '/app-shortcuts/summary-report.png',
+  'hero-open-qa': '/app-shortcuts/work-plan.png',
 };
-
-const SECTION_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
-  Star, AlertTriangle, Tag, TrendingUp, FolderOpen, LayoutGrid, BarChart3,
-};
-
-const DOMAIN_PAGE_SIZE = 4;
 
 type HomeQaMessage = {
   role: 'bot' | 'user';
@@ -338,10 +352,6 @@ function buildBannerBackground(imageUrl: string): string {
   return `${BANNER_OVERLAY_GRADIENT}, url("${imageUrl}")`;
 }
 
-function getPrimaryTag(file: FileItem) {
-  return file.tag_infos?.find((t) => t.tag_name !== '最新精选' && t.tag_name !== '典型案例')?.tag_name;
-}
-
 function getWelcomeMessage(welcomeMessage?: string) {
   return welcomeMessage?.trim() || '你好，我是首钢股份知库智能助手，请问有什么可以帮您？';
 }
@@ -363,7 +373,6 @@ export default function HomePage() {
   const [qaMessages, setQaMessages] = useState<HomeQaMessage[]>([]);
   const [qaStreaming, setQaStreaming] = useState(false);
   const [bannerIdx, setBannerIdx] = useState(0);
-  const [domainPage, setDomainPage] = useState(0);
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionDataFailed, setSectionDataFailed] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
@@ -534,9 +543,6 @@ export default function HomePage() {
   const useMockHomeContent = useMockShellContent || sectionDataFailed;
   const isUsingMockDomains = useMockShellContent && configuredHomeDomains.length === 0;
   const homeDomains = isUsingMockDomains ? MOCK_DOMAIN_NAV_ITEMS : configuredHomeDomains;
-  const domainPageCount = Math.max(1, Math.ceil(homeDomains.length / DOMAIN_PAGE_SIZE));
-  const safeDomainPage = domainPage % domainPageCount;
-  const visibleDomains = homeDomains.slice(safeDomainPage * DOMAIN_PAGE_SIZE, safeDomainPage * DOMAIN_PAGE_SIZE + DOMAIN_PAGE_SIZE);
   const domainTotals = isUsingMockDomains ? MOCK_DOMAIN_STATS : new Map(homeDomains.map((domain) => {
     const code = (domain.code || '').trim().toUpperCase();
     return [domain.name, code ? (domainCounts[code] ?? 0) : 0] as [string, number];
@@ -620,9 +626,9 @@ export default function HomePage() {
                 aria-controls="home-hot-tag-menu"
                 onClick={() => setShowHotTagMenu((open) => !open)}
               >
-                <Flame size={13} />
+                <img src={iconHot} alt="" className={s.searchModeIcon} />
                 <span>热门搜索</span>
-                <ChevronRight size={12} className={s.searchModeCaret} />
+                <ChevronRight size={10} className={s.searchModeCaret} />
               </button>
               <input
                 className={s.searchInput}
@@ -686,7 +692,7 @@ export default function HomePage() {
                       {iconImage ? (
                         <img src={iconImage} alt="" className={s.appShortcutImage} />
                       ) : (
-                        <AppIcon size={13} />
+                        <AppIcon size={20} />
                       )}
                     </span>
                   <span className={s.appShortcutText}>{template.name}</span>
@@ -724,20 +730,13 @@ export default function HomePage() {
       <div className={s.container}>
         {/* Domain navigation */}
         <div className={`${s.section} ${s.domainSection}`}>
-          <SectionHeader icon={Building} title="业务域导航" size="large" />
+          <div className={s.domainHeader}>
+            <img src={navIcon} alt="" className={s.domainHeaderIcon} />
+            <span className={s.domainHeaderTitle}>业务域导航</span>
+          </div>
           <div className={s.domainCarousel}>
-            {homeDomains.length > DOMAIN_PAGE_SIZE && (
-              <button
-                type="button"
-                className={`${s.domainArrow} ${s.domainArrowLeft}`}
-                aria-label="上一组业务域"
-                onClick={() => setDomainPage((current) => (current + domainPageCount - 1) % domainPageCount)}
-              >
-                <ChevronLeft size={22} />
-              </button>
-            )}
             <div className={s.domainGrid}>
-              {visibleDomains.map((d) => {
+              {homeDomains.map((d) => {
                 const Icon = DOMAIN_ICONS[d.icon] || Settings;
                 const visualPreset = getDomainVisualPreset(d);
                 const domainBackground = visualPreset.backgroundImage;
@@ -765,16 +764,6 @@ export default function HomePage() {
                 );
               })}
             </div>
-            {homeDomains.length > DOMAIN_PAGE_SIZE && (
-              <button
-                type="button"
-                className={`${s.domainArrow} ${s.domainArrowRight}`}
-                aria-label="下一组业务域"
-                onClick={() => setDomainPage((current) => (current + 1) % domainPageCount)}
-              >
-                <ChevronRight size={22} />
-              </button>
-            )}
           </div>
         </div>
 
@@ -783,8 +772,6 @@ export default function HomePage() {
           {/* Left: knowledge list panels */}
           <div className={s.leftColumn}>
             {contentSections.map((sec, index) => {
-              const Icon = SECTION_ICONS[sec.icon] || Star;
-              const visual = resolveSectionVisual(sec);
               const fetchedItems = sectionData[sec.tag] || [];
               const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems;
               return (
@@ -794,7 +781,7 @@ export default function HomePage() {
                 >
                   <div className={s.panelHeader}>
                     <div className={s.panelHeaderLeft}>
-                      <div className={s.panelIcon} style={{ background: visual.bg, color: visual.color }}><Icon size={14} /></div>
+                      <img src={resolveSectionIcon(sec.title)} alt="" className={s.panelIconImg} />
                       <span className={s.panelTitle}>{sec.title}</span>
                     </div>
                     <Link
@@ -814,18 +801,14 @@ export default function HomePage() {
                             state: { returnTo: sec.link },
                           })}
                       >
-                        <div className={s.itemBody}>
-                          <span className={s.itemTitle}>
-                            <span className={s.itemTitleText}>{f.title}</span>
-                            {f.summary ? (
-                              <span className={s.itemSummaryTooltip}>{f.summary}</span>
-                            ) : null}
+                        <div className={s.itemTitle}>{f.title}</div>
+                        <div className={s.itemSubRow}>
+                          <span className={s.itemSummary}>
+                            {f.summary ? `【摘要】${f.summary}` : ''}
                           </span>
-                          <div className={s.itemMeta}>
-                            {getPrimaryTag(f) ? (
-                              <TagPill name={getPrimaryTag(f)!} neutral />
-                            ) : null}
-                          </div>
+                          {f.date ? (
+                            <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
+                          ) : null}
                         </div>
                       </div>
                     ))}
@@ -843,9 +826,7 @@ export default function HomePage() {
             <div className={s.panel}>
               <div className={s.panelHeader}>
                 <div className={s.panelHeaderLeft}>
-                  <div className={`${s.panelIcon} ${s.panelIconCourse}`}>
-                    <GraduationCap size={14} />
-                  </div>
+                  <img src={iconCourse} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>专业课程 · 岗位赋能</span>
                 </div>
                 <Link to="/course" className={s.panelMore}>
@@ -882,7 +863,7 @@ export default function HomePage() {
             <div className={`${s.qaPanel} ${s.aiQaPanel}`}>
               <div className={s.qaHeader}>
                 <div className={s.qaHeaderLeft}>
-                  <div className={s.panelIcon}><Bot size={14} /></div>
+                  <img src={iconAiqa} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>智能问答</span>
                 </div>
                 <Link to="/apps?tab=qa" className={s.panelMore}>
@@ -954,9 +935,7 @@ export default function HomePage() {
             <div className={s.panel}>
               <div className={s.panelHeader}>
                 <div className={s.panelHeaderLeft}>
-                  <div className={`${s.panelIcon} ${s.panelIconWiki}`}>
-                    <BookOpen size={14} />
-                  </div>
+                  <img src={iconRank} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>股份百科 · 知识产品</span>
                 </div>
                 <Link to="/wiki" className={s.panelMore}>

@@ -3,7 +3,7 @@ import type { DocumentTypeConfig } from '../api/adminConfig';
 export type SearchSortValue = 'relevance' | 'updated_at_desc' | 'updated_at_asc';
 
 export const SEARCH_SORT_OPTIONS: Array<{ value: SearchSortValue; label: string }> = [
-  { value: 'relevance', label: '相关性' },
+  { value: 'relevance', label: '相关性优先' },
   { value: 'updated_at_desc', label: '更新时间倒序' },
   { value: 'updated_at_asc', label: '更新时间正序' },
 ];
