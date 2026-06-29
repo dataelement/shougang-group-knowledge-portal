@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Bold,
   Check,
+  ChevronRight,
   Code,
   Image as ImageIcon,
   Italic,
@@ -411,7 +412,7 @@ export default function ExpertQAAskPage() {
       <div className={s.container}>
         <div className={s.crumbs}>
           <Link to="/expert-qa">专家问答</Link>
-          <span className={s.crumbSep}>&gt;</span>
+          <ChevronRight size={14} className={s.crumbChevron} />
           <span>我要提问</span>
         </div>
         <div className={s.layout}>

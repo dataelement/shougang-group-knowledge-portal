@@ -9,8 +9,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
+  Eye,
+  MessageCircle,
   PenLine,
   Tag,
+  ThumbsUp,
   Trash2,
   User,
   Settings, Shield, Leaf, GraduationCap, Network, Zap, Factory,
@@ -23,15 +26,15 @@ import {
   fetchConfigData,
   fetchExpertProfiles,
   fetchExpertQuestions,
-  statistics,
   updateExpertQuestion,
   type ApiAnswer,
   type ApiQuestion,
   type ExpertProfileResponse,
 } from '../api/expertQa';
 import { SORT_TABS, STATUS_FILTERS } from '../data/expertQaData';
-import type { StatusFilterKey, TranslationStatistics } from '../types/expertQa';
+import type { StatusFilterKey } from '../types/expertQa';
 import s from './ExpertQAPage.module.css';
+import expertBanner from '../assets/expert-banner@2x.png';
 import type { DomainConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
 
@@ -141,36 +144,16 @@ function QuestionCard({
       onClick={handleOpen}
       onKeyDown={handleKeyDown}
     >
-      <div className={s.qStatsCol}>
-        <div className={s.statBlock}>
-          <span className={s.statNum}>{q.votes}</span>
-          <span className={s.statLb}>投票</span>
-        </div>
-        <div
-          className={`${s.statBlock} ${s.statAns} ${q.acceptedAnswers > 0 ? s.statSolved : ''}`}
-        >
-          <span className={s.statNum}>{q.answers}</span>
-          <span className={s.statLb}>{q.acceptedAnswers > 0 ? '已采纳' : '回答'}</span>
-        </div>
-        <div className={`${s.statBlock} ${s.statViews}`}>
-          <span className={s.statNum}>{q.views}</span>
-          <span className={s.statLb}>浏览</span>
-        </div>
-      </div>
       <div className={s.qBody}>
-        <div className={s.qMeta}>
-          <span className={s.domainPill}>{q.domain}</span>
-          <StatusPill status={q.statusMeta.text} />
-          {q.invitedSummary ? (
-            <span className={s.targetExpert}>
-              <User size={11} />
-              {q.invitedSummary}
-            </span>
-          ) : q.statusMeta.text === 'unanswered' ? (
-            <span className={`${s.statusPill} ${s.unsolved}`}>未回答</span>
-          ) : null}
+        <div className={s.rowHead}>
+          <span className={s.askedAv}>{q.asker.initial}</span>
+          <span className={s.askedName}>{q.asker.name}</span>
+          <span className={s.askedAt}>{q.askedAt}</span>
         </div>
-        <h3 className={s.qTitle}>{q.title}</h3>
+        <div className={s.rowTitleLine}>
+          <span className={s.askBadge}>问</span>
+          <h3 className={s.qTitle}>{q.title}</h3>
+        </div>
         <p className={s.qExcerpt}>{q.excerpt}</p>
         {accepted ? (
           <div className={s.answerPreview}>
@@ -192,40 +175,64 @@ function QuestionCard({
             <p className={s.answerPreviewText}>{accepted.excerpt}</p>
           </div>
         ) : null}
-        <div className={s.qFooter}>
-          <div className={s.askedBy}>
-            <span className={s.askedAv}>{q.asker.initial}</span>
-            <span className={s.askedName}>{q.asker.name}</span>
-            <span className={s.askedAt}>{q.askedAt}</span>
+        <div className={s.rowFooter}>
+          <div className={s.footerTags}>
+            <span className={s.domainPill}>{q.domain}</span>
+            <StatusPill status={q.statusMeta.text} />
+            {q.invitedSummary ? (
+              <span className={s.targetExpert}>
+                <User size={11} />
+                {q.invitedSummary}
+              </span>
+            ) : null}
           </div>
-          {showOwnerActions ? (
-            <div className={s.ownerActions}>
-              <button
-                type="button"
-                className={s.ownerActionBtn}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onEdit(q);
-                }}
-              >
-                <Edit3 size={13} />
-                编辑
-              </button>
-              <button
-                type="button"
-                className={`${s.ownerActionBtn} ${s.ownerDangerBtn}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onDelete(q);
-                }}
-              >
-                <Trash2 size={13} />
-                删除
-              </button>
+          <div className={s.footerRight}>
+            <div className={s.countStats}>
+              <span className={s.countItem}>
+                <ThumbsUp size={14} />
+                <span className={s.countNum}>{q.votes}</span>
+                <span className={s.countLb}>投票</span>
+              </span>
+              <span className={s.countItem}>
+                <MessageCircle size={14} />
+                <span className={s.countNum}>{q.answers}</span>
+                <span className={s.countLb}>{q.acceptedAnswers > 0 ? '已采纳' : '回答'}</span>
+              </span>
+              <span className={s.countItem}>
+                <Eye size={14} />
+                <span className={s.countNum}>{q.views}</span>
+                <span className={s.countLb}>浏览</span>
+              </span>
             </div>
-          ) : null}
+            {showOwnerActions ? (
+              <div className={s.ownerActions}>
+                <button
+                  type="button"
+                  className={s.ownerActionBtn}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onEdit(q);
+                  }}
+                >
+                  <Edit3 size={13} />
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  className={`${s.ownerActionBtn} ${s.ownerDangerBtn}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onDelete(q);
+                  }}
+                >
+                  <Trash2 size={13} />
+                  删除
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </article>
@@ -248,13 +255,6 @@ const STATUS_LABEL: Record<string, { text: string; cls: string; icon?: typeof Ch
   unanswered: { text: '未回答', cls: s.urgent },
   urgent: { text: '紧急', cls: s.urgent, icon: AlertTriangle },
 };
-
-const INITIAL_STATS = [
-  { value: '—', label: '问题' },
-  { value: '—', label: '回答' },
-  { value: '—', label: '认证专家' },
-  { value: '—', label: '解决率' },
-];
 
 // ─── Modal 组件 ───────────────────────────────────────────────────────────────
 
@@ -359,7 +359,6 @@ export default function ExpertQAPage() {
   const [experts, setExperts] = useState<ExpertProfileResponse[]>([]);
   const [domains, setDomains] = useState<DomainConfig[]>([]);
   const { user } = useAuth();
-  const [heroStats, setHeroStats] = useState(INITIAL_STATS);
   const showOwnerActions = activeStatus === 'my_question';
 
   const maxPage = Math.max(1, Math.ceil(total / pageSize));
@@ -498,22 +497,6 @@ export default function ExpertQAPage() {
           console.error('获取专家列表失败:', err);
           setSidebarError('获取专家列表失败');
         }),
-
-      statistics()
-        .then((res: TranslationStatistics) => {
-          if (!active) return;
-          setHeroStats([
-            { value: String(res.total_questions), label: '问题' },
-            { value: String(res.total_answers), label: '回答' },
-            { value: String(res.total_experts), label: '认证专家' },
-            { value: `${(res.resolution_rate * 100).toFixed(1)}%`, label: '解决率' },
-          ]);
-        })
-        .catch((err) => {
-          if (!active) return;
-          console.error('获取统计数据失败:', err);
-          setSidebarError('获取统计数据失败');
-        }),
     ];
 
     Promise.allSettled(tasks).then(() => {
@@ -588,23 +571,16 @@ export default function ExpertQAPage() {
 
   return (
     <PageShell>
-      <section className={s.heroStrip}>
+      <section
+        className={s.heroStrip}
+        style={{ backgroundImage: `url(${expertBanner})` }}
+      >
         <div className={s.heroInner}>
           <div className={s.heroL}>
             <h1 className={s.heroTitle}>专家问答 · 一线问题，专家解答</h1>
             <p className={s.heroSub}>
               提问时可指定业务域或邀请特定专家，专家应答后所有同事可参与讨论与追问
             </p>
-            <div className={s.heroStats}>
-              {heroStats.map((stat) => (
-                <div key={stat.label} className={s.heroStat}>
-                  <span className={s.heroStatNum}>{stat.value}</span>
-                  <span className={s.heroStatLb}>{stat.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className={s.heroAction}>
             <Link to="/expert-qa/ask" className={s.askBtn}>
               <PenLine size={15} /> 我要提问
             </Link>
@@ -614,7 +590,9 @@ export default function ExpertQAPage() {
 
       <div className={s.container}>
         <div className={s.crumbs}>
-          <Link to="/">首页</Link> <span> · </span> <span>专家问答</span>
+          <Link to="/">首页</Link>
+          <ChevronRight size={14} className={s.crumbChevron} />
+          <span>专家问答</span>
         </div>
 
         <div className={s.layout}>
@@ -660,6 +638,7 @@ export default function ExpertQAPage() {
           </aside>
 
           <main className={s.center}>
+            <div className={s.listCard}>
             <div className={s.sortBar}>
               <div className={s.sortTabs}>
                 {SORT_TABS.map((tab) => (
@@ -696,6 +675,7 @@ export default function ExpertQAPage() {
                 />
               ))
             )}
+            </div>
 
             <div className={s.pagination}>
               <button

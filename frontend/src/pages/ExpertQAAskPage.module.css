@@ -8,23 +8,22 @@
 .crumbs {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.82rem;
-  color: var(--neutral-500);
-  margin-bottom: 14px;
-}
-
-.crumbSep {
-  color: var(--neutral-400);
+  gap: 6px;
+  font-size: 14px;
+  color: #273142;
+  margin-bottom: 24px;
 }
 
 .crumbs a {
-  color: var(--neutral-500);
-  transition: color 0.15s ease;
+  color: #545A60;
 }
 
 .crumbs a:hover {
-  color: var(--primary-600);
+  color: #3662E3;
+}
+
+.crumbChevron {
+  color: #C9CDD4;
 }
 
 .layout {

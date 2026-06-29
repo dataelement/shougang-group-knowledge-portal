@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UIEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  ChevronRight,
   Pencil,
   Search,
   Trash2,
@@ -546,7 +547,7 @@ export default function ExpertManagePage() {
         {/* 面包屑 */}
         <div className={s.crumbs}>
           <Link to="/expert-qa">专家问答</Link>
-          <span className={s.crumbSep}>&gt;</span>
+          <ChevronRight size={14} className={s.crumbChevron} />
           <span>专家管理</span>
         </div>
 
