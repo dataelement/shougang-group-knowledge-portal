@@ -11,7 +11,6 @@ import {
   Edit3,
   Eye,
   MessageCircle,
-  PenLine,
   Tag,
   ThumbsUp,
   Trash2,
@@ -35,6 +34,9 @@ import { SORT_TABS, STATUS_FILTERS } from '../data/expertQaData';
 import type { StatusFilterKey } from '../types/expertQa';
 import s from './ExpertQAPage.module.css';
 import expertBanner from '../assets/expert-banner@2x.png';
+import askBadge from '../assets/ask-badge.png';
+import emptyQuestionsImg from '../assets/empty-questions.png';
+import expertsErrorImg from '../assets/experts-error.png';
 import type { DomainConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
 
@@ -151,7 +153,7 @@ function QuestionCard({
           <span className={s.askedAt}>{q.askedAt}</span>
         </div>
         <div className={s.rowTitleLine}>
-          <span className={s.askBadge}>问</span>
+          <img className={s.askBadge} src={askBadge} alt="问" />
           <h3 className={s.qTitle}>{q.title}</h3>
         </div>
         <p className={s.qExcerpt}>{q.excerpt}</p>
@@ -535,11 +537,11 @@ export default function ExpertQAPage() {
         current.map((item) =>
           item.id === q.id
             ? {
-                ...item,
-                title: title.trim(),
-                body: body.trim(),
-                excerpt: textExcerpt(body.trim(), 120),
-              }
+              ...item,
+              title: title.trim(),
+              body: body.trim(),
+              excerpt: textExcerpt(body.trim(), 120),
+            }
             : item,
         ),
       );
@@ -570,7 +572,7 @@ export default function ExpertQAPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell mainStyle={{ background: '#EAF0F7' }}>
       <section
         className={s.heroStrip}
         style={{ backgroundImage: `url(${expertBanner})` }}
@@ -582,19 +584,13 @@ export default function ExpertQAPage() {
               提问时可指定业务域或邀请特定专家，专家应答后所有同事可参与讨论与追问
             </p>
             <Link to="/expert-qa/ask" className={s.askBtn}>
-              <PenLine size={15} /> 我要提问
+              我要提问
             </Link>
           </div>
         </div>
       </section>
 
       <div className={s.container}>
-        <div className={s.crumbs}>
-          <Link to="/">首页</Link>
-          <ChevronRight size={14} className={s.crumbChevron} />
-          <span>专家问答</span>
-        </div>
-
         <div className={s.layout}>
           <aside className={s.left}>
             <div className={s.leftCard}>
@@ -639,42 +635,49 @@ export default function ExpertQAPage() {
 
           <main className={s.center}>
             <div className={s.listCard}>
-            <div className={s.sortBar}>
-              <div className={s.sortTabs}>
-                {SORT_TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    className={`${s.sortTab} ${sort === tab.key ? s.sortTabActive : ''}`}
-                    onClick={() => setSort(tab.key as SortKey)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+              <div className={s.sortBar}>
+                <div className={s.sortTabs}>
+                  {SORT_TABS.map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      className={`${s.sortTab} ${sort === tab.key ? s.sortTabActive : ''}`}
+                      onClick={() => setSort(tab.key as SortKey)}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                <div className={s.sortMeta}>
+                  共 <strong>{total}</strong> 个问题
+                </div>
               </div>
-              <div className={s.sortMeta}>
-                共 <strong>{total}</strong> 个问题
-              </div>
-            </div>
 
-            {loading ? (
-              <div className={s.loading}>问题加载中…</div>
-            ) : error ? (
-              <div className={s.errorTip}>{error}</div>
-            ) : questions.length === 0 ? (
-              <div className={s.loading}>暂无符合条件的问题</div>
-            ) : (
-              questions.map((q) => (
-                <QuestionCard
-                  key={q.id}
-                  q={q}
-                  showOwnerActions={showOwnerActions}
-                  onOpen={(id) => navigate(`/expert-qa/${id}`)}
-                  onEdit={(item) => handleEditQuestion(item)}
-                  onDelete={(item) => handleDeleteQuestion(item)}
-                />
-              ))
-            )}
+              {loading ? (
+                <div className={s.loading}>问题加载中…</div>
+              ) : error ? (
+                <div className={s.errorTip}>{error}</div>
+              ) : questions.length === 0 ? (
+                <div className={s.emptyState}>
+                  <img
+                    className={s.emptyImg}
+                    src={emptyQuestionsImg}
+                    alt=""
+                  />
+                  <span className={s.emptyText}>暂无符合条件的问题</span>
+                </div>
+              ) : (
+                questions.map((q) => (
+                  <QuestionCard
+                    key={q.id}
+                    q={q}
+                    showOwnerActions={showOwnerActions}
+                    onOpen={(id) => navigate(`/expert-qa/${id}`)}
+                    onEdit={(item) => handleEditQuestion(item)}
+                    onDelete={(item) => handleDeleteQuestion(item)}
+                  />
+                ))
+              )}
             </div>
 
             <div className={s.pagination}>
@@ -710,8 +713,17 @@ export default function ExpertQAPage() {
               </div>
               {sidebarLoading && experts.length === 0 ? (
                 <div className={s.loading}>加载中…</div>
-              ) : sidebarError && experts.length === 0 ? (
-                <div className={s.errorTip}>{sidebarError}</div>
+              ) : experts.length === 0 ? (
+                <div className={s.emptyState}>
+                  <img
+                    className={s.emptyImg}
+                    src={expertsErrorImg}
+                    alt=""
+                  />
+                  <span className={s.emptyText}>
+                    {sidebarError ? '获取专家列表失败' : '暂无专家'}
+                  </span>
+                </div>
               ) : (
                 experts.map((expert) => (
                   <div key={expert.id} className={s.expRow}>

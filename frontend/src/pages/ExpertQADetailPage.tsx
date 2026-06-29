@@ -61,6 +61,7 @@ import {
   type QuestionDetail,
   type QuestionStatus,
 } from '../types/expertQa';
+import askBadge from '../assets/ask-badge.png';
 import s from './ExpertQADetailPage.module.css';
 
 const ANSWERS_PAGE_SIZE = 10;
@@ -1522,7 +1523,7 @@ export default function ExpertQADetailPage() {
               </div>
 
               <h1 className={s.qTitle}>
-                <span className={s.askBadge}>问</span>
+                <img className={s.askBadge} src={askBadge} alt="问" />
                 {question.title}
               </h1>
 

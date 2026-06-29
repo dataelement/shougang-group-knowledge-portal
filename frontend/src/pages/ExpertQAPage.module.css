@@ -34,12 +34,12 @@
 .heroSub {
   font-size: 14px;
   color: #273142;
-  margin-top: 16px;
+  margin-top: 8px;
 }
 
 .askBtn {
-  width: 88px;
   height: 36px;
+  padding: 0 16px;
   border-radius: 5px;
   background: #3662E3;
   color: #fff;
@@ -47,8 +47,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  margin-top: 30px;
+  margin-top: 24px;
   transition: background 0.15s ease;
 }
 
@@ -88,9 +87,10 @@
 /* === 3-column layout === */
 .layout {
   display: grid;
-  grid-template-columns: 224px minmax(0, 1fr) 304px;
+  grid-template-columns: 224px minmax(0, 704px) 304px;
   gap: 24px;
   align-items: start;
+  justify-content: center;
 }
 
 @media (max-width: 1080px) {
@@ -151,7 +151,7 @@
 }
 
 .filterItem:hover {
-  background: var(--neutral-50);
+  background: #EFF6FF;
 }
 
 .filterActive {
@@ -291,14 +291,8 @@
   flex-shrink: 0;
   width: 26px;
   height: 20px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, #5b86f5, #3662E3);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  object-fit: contain;
+  display: block;
 }
 
 .qTitle {
@@ -378,13 +372,34 @@
   font-size: 0.72rem;
 }
 
+/* empty / error state */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 64px 16px;
+}
+
+.emptyImg {
+  width: 184px;
+  height: auto;
+  object-fit: contain;
+}
+
+.emptyText {
+  font-size: 15px;
+  color: #273142;
+}
+
 /* answer preview */
 .answerPreview {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: linear-gradient(180deg, #f0f9ff 0%, #fff 100%);
-  border: 1px solid #bae6fd;
-  border-radius: 8px;
+  margin: 12px 0 16px;
+  padding: 16px;
+  background: #F8FCFF;
+  border: 1px solid rgba(54, 98, 227, 0.3);
+  border-radius: 4px;
 }
 
 .answerPreviewHead {

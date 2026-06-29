@@ -96,16 +96,10 @@
 
 .askBadge {
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 26px;
   height: 20px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, #5b86f5, #3662E3);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
+  object-fit: contain;
 }
 
 .qTagsRow {
