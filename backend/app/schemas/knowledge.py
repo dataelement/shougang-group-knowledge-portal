@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -15,8 +15,8 @@ class KnowledgeFileItem(BaseModel):
     summary: str
     source: str
     updated_at: str
-    tags: list[FileTag] = Field(default_factory=list)
-    tag_infos: list[FileTag] = Field(default_factory=list)
+    tags: list[Any] = Field(default_factory=list)
+    tag_infos: list[Any] = Field(default_factory=list)
     file_ext: str = ""
     file_size: str = ""
     file_encoding: str = ""
