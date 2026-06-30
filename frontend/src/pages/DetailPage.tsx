@@ -162,7 +162,7 @@ export default function DetailPage() {
                 }
               }}
             >
-              辅助阅读
+              进入知识库
             </button>
           </div>
           <div className={s.metaGrid}>
