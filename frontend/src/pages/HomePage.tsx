@@ -735,7 +735,10 @@ export default function HomePage() {
             <span className={s.domainHeaderTitle}>业务域导航</span>
           </div>
           <div className={s.domainCarousel}>
-            <div className={s.domainGrid}>
+            <div
+              className={s.domainGrid}
+              style={homeDomains.length > 0 ? { gridTemplateColumns: `repeat(${Math.ceil(homeDomains.length / 2)}, minmax(0, 1fr))` } : undefined}
+            >
               {homeDomains.map((d) => {
                 const Icon = DOMAIN_ICONS[d.icon] || Settings;
                 const visualPreset = getDomainVisualPreset(d);
