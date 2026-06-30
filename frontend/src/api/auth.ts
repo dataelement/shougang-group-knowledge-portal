@@ -44,6 +44,8 @@ interface PortalUnifiedAuthConfigDto {
   unavailable_reason?: string;
 }
 
+export const MULTI_LOGIN_CONFLICT_CODE = 10612;
+
 function mapPortalUser(dto: PortalUserDto): PortalUser {
   return {
     account: dto.account,
@@ -83,7 +85,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
       '请求失败，请稍后重试。',
       response.status,
     );
-    throw new ApiRequestError(message, response.status);
+    throw new ApiRequestError(message, response.status, payload?.status_code);
   }
   if (!payload) {
     throw new Error('响应内容为空');
@@ -95,14 +97,25 @@ export async function loginPortal(params: {
   account: string;
   password: string;
   remember: boolean;
+  forceLogin?: boolean;
 }): Promise<PortalUser> {
   const data = await requestPortalApi<PortalAuthDataDto>('/api/v1/auth/login', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      account: params.account,
+      password: params.password,
+      remember: params.remember,
+      force_login: Boolean(params.forceLogin),
+    }),
   });
+  return mapPortalUser(data.user);
+}
+
+export async function confirmUnifiedAuthLogin(): Promise<PortalUser> {
+  const data = await requestPortalApi<PortalAuthDataDto>('/api/v1/auth/unified/confirm', { method: 'POST' });
   return mapPortalUser(data.user);
 }
 
@@ -135,6 +148,7 @@ const UNIFIED_AUTH_ERROR_MESSAGES: Record<string, string> = {
   invalid_account: '账号无效，请联系管理员开通账号。',
   permission_denied: '账号已认证但暂未开通知库权限，请联系管理员。',
   oauth_unavailable: '统一认证暂不可用，请使用账号密码登录。',
+  multi_login_conflict: '该用户已在其它设备登录，是否继续登录？',
 };
 
 export function getUnifiedAuthErrorMessage(code: string | null | undefined): string {

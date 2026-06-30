@@ -59,7 +59,7 @@ class RecordingUnifiedHttpClient:
         *,
         token_payload: dict | None = None,
         userinfo_payload: dict | None = None,
-        login_sync_payload: dict | None = None,
+        login_sync_payload: dict | list[dict] | None = None,
     ):
         self.token_payload = token_payload or {"access_token": "unified-token", "uid": "token-uid"}
         self.userinfo_payload = userinfo_payload or {
@@ -70,7 +70,9 @@ class RecordingUnifiedHttpClient:
             "mobile": "13800000000",
             "title": "zhangs001#stockOA,zhangs001#oa_group",
         }
-        self.login_sync_payload = login_sync_payload or {"status_code": 200, "data": {"token": "bisheng-token"}}
+        payloads = login_sync_payload or {"status_code": 200, "data": {"token": "bisheng-token"}}
+        self.login_sync_payloads = payloads if isinstance(payloads, list) else [payloads]
+        self.login_sync_index = 0
         self.calls: list[dict] = []
         self.closed = 0
 
@@ -88,7 +90,9 @@ class RecordingUnifiedHttpClient:
         if "getToken" in url:
             return httpx.Response(200, json=self.token_payload, request=httpx.Request("POST", url))
         if LOGIN_SYNC_PATH in url:
-            return httpx.Response(200, json=self.login_sync_payload, request=httpx.Request("POST", url))
+            payload = self.login_sync_payloads[min(self.login_sync_index, len(self.login_sync_payloads) - 1)]
+            self.login_sync_index += 1
+            return httpx.Response(200, json=payload, request=httpx.Request("POST", url))
         raise AssertionError(f"Unexpected post url: {url}")
 
     async def get(self, url: str, params=None):
@@ -328,6 +332,53 @@ def test_callback_success_exchanges_token_userinfo_login_sync_sets_cookies(capsy
     expected_signature = compute_login_sync_signature("POST", LOGIN_SYNC_PATH, login_sync_call["content"], "hmac-secret")
     assert login_sync_call["headers"]["X-Signature"] == expected_signature
     assert "[portal unified auth getUserInfo raw]" in capsys.readouterr().out
+
+
+def test_callback_multi_login_conflict_sets_pending_cookie_and_confirm_forces_login():
+    auth_service = make_auth_service()
+    http_client = RecordingUnifiedHttpClient(
+        login_sync_payload=[
+            {
+                "status_code": 10612,
+                "status_message": "该用户已在其它设备登录，是否继续登录？",
+                "data": {},
+            },
+            {"status_code": 200, "data": {"token": "bisheng-token"}},
+        ],
+    )
+    unified_service = make_unified_service(auth_service=auth_service, http_client=http_client)
+    with TestClient(app) as client:
+        previous_auth, previous_unified = install_services(client, unified_service, auth_service)
+        try:
+            start = client.get("/api/v1/auth/unified/start?redirect=/admin", follow_redirects=False)
+            state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+            callback = client.get(
+                f"/api/v1/auth/unified/callback?code=oauth-code&state={state}",
+                follow_redirects=False,
+            )
+            confirm = client.post("/api/v1/auth/unified/confirm")
+        finally:
+            restore_services(client, previous_auth, previous_unified)
+
+    assert callback.status_code == 307
+    assert callback.headers["location"] == "/login?auth_error=multi_login_conflict&redirect=%2Fadmin"
+    callback_cookie = callback.headers["set-cookie"].lower()
+    assert "sg_unified_auth_pending=" in callback_cookie
+    assert "httponly" in callback_cookie
+
+    assert confirm.status_code == 200
+    confirm_cookie = confirm.headers["set-cookie"]
+    assert "test_portal_session=" in confirm_cookie
+    assert "access_token_cookie=bisheng-token" in confirm_cookie
+    assert confirm.json()["data"]["user"]["account"] == "token-user"
+
+    login_sync_bodies = [
+        json.loads(call["content"].decode("utf-8"))
+        for call in http_client.calls
+        if LOGIN_SYNC_PATH in call["url"]
+    ]
+    assert "force_login" not in login_sync_bodies[0]
+    assert login_sync_bodies[1]["force_login"] is True
 
 
 def test_unified_auth_logout_start_clears_local_cookies_without_glo_redirect():

@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from app.api.dependencies import get_portal_auth_service, get_portal_unified_auth_service
 from app.schemas.auth import PortalAuthData, PortalLoginRequest, PortalUnifiedAuthConfigData
-from app.schemas.common import response_ok
-from app.services.portal_auth_service import PortalAuthError, PortalAuthService
+from app.schemas.common import UnifiedResponseModel, response_ok
+from app.services.portal_auth_service import PortalAuthError, PortalAuthService, PortalMultiLoginConflictError
 from app.services.portal_unified_auth_service import (
+    PENDING_LOGIN_COOKIE_NAME,
     STATE_COOKIE_NAME,
     UnifiedAuthFailure,
+    UnifiedAuthPendingConfirmation,
     UnifiedAuthUnavailable,
     PortalUnifiedAuthService,
     log_unified_auth_trace,
@@ -33,6 +35,16 @@ async def login(
             remember=payload.remember,
             captcha_key=payload.captcha_key.strip(),
             captcha=payload.captcha.strip(),
+            force_login=payload.force_login,
+        )
+    except PortalMultiLoginConflictError as err:
+        return JSONResponse(
+            status_code=err.status_code,
+            content=UnifiedResponseModel(
+                status_code=err.code,
+                status_message=err.message,
+                data={"code": err.code},
+            ).model_dump(mode="json"),
         )
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
@@ -76,6 +88,11 @@ async def unified_auth_callback(
             state=state,
             cookie_state=request.cookies.get(STATE_COOKIE_NAME),
         )
+    except UnifiedAuthPendingConfirmation as err:
+        response = RedirectResponse(service.build_failure_redirect_url("multi_login_conflict", err.redirect))
+        service.clear_state_cookie(response)
+        service.set_pending_login_cookie(response, err.pending_id)
+        return response
     except (UnifiedAuthFailure, UnifiedAuthUnavailable) as err:
         auth_error = err.auth_error if isinstance(err, UnifiedAuthFailure) else "oauth_unavailable"
         redirect = err.redirect if isinstance(err, UnifiedAuthFailure) else "/"
@@ -86,6 +103,24 @@ async def unified_auth_callback(
     service.clear_state_cookie(response)
     auth_service.attach_session_cookie(response, result.session, remember=True)
     return response
+
+
+@router.post("/unified/confirm")
+async def confirm_unified_auth_login(
+    request: Request,
+    response: Response,
+    service: PortalUnifiedAuthService = Depends(get_portal_unified_auth_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+):
+    try:
+        result = await service.confirm_pending_login(request.cookies.get(PENDING_LOGIN_COOKIE_NAME))
+    except (UnifiedAuthFailure, UnifiedAuthUnavailable) as err:
+        service.clear_pending_login_cookie(response)
+        detail = err.auth_error if isinstance(err, UnifiedAuthFailure) else "oauth_unavailable"
+        raise HTTPException(status_code=400, detail=detail) from err
+    service.clear_pending_login_cookie(response)
+    auth_service.attach_session_cookie(response, result.session, remember=True)
+    return response_ok(PortalAuthData(user=result.session.user))
 
 
 @router.get("/unified/logout/start")

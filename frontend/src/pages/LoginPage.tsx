@@ -16,13 +16,16 @@ import {
 } from 'lucide-react';
 import {
   buildUnifiedAuthStartUrl,
+  confirmUnifiedAuthLogin,
   fetchPortalMe,
   fetchUnifiedAuthConfig,
   getUnifiedAuthErrorMessage,
   loginPortal,
+  MULTI_LOGIN_CONFLICT_CODE,
   normalizePortalRedirect,
   type PortalUnifiedAuthConfig,
 } from '../api/auth';
+import { ApiRequestError } from '../api/content';
 import { fetchBishengBootstrapStatus } from '../api/bootstrap';
 import { loadPortalUser, savePortalUser } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
@@ -36,7 +39,9 @@ export default function LoginPage() {
   const { config } = usePortalConfig();
   const params = new URLSearchParams(location.search);
   const redirect = normalizePortalRedirect(params.get('redirect'));
-  const unifiedAuthError = getUnifiedAuthErrorMessage(params.get('auth_error'));
+  const authErrorCode = params.get('auth_error');
+  const unifiedAuthConflict = authErrorCode === 'multi_login_conflict';
+  const unifiedAuthError = unifiedAuthConflict ? '' : getUnifiedAuthErrorMessage(authErrorCode);
   const loginBrandName = config?.site?.login_brand_name?.trim() || '首钢股份知库';
   const loginLogoUrl = config?.site?.login_logo_url?.trim() || '/shougang-stock-logo.png';
 
@@ -54,6 +59,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isInIframe) return;
+    if (unifiedAuthConflict) return;
     const storedUser = loadPortalUser();
     if (storedUser) {
       navigate(redirect, { replace: true });
@@ -70,7 +76,7 @@ export default function LoginPage() {
     return () => {
       active = false;
     };
-  }, [navigate, redirect, isInIframe]);
+  }, [navigate, redirect, isInIframe, unifiedAuthConflict]);
 
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
@@ -84,6 +90,14 @@ export default function LoginPage() {
   const [unifiedAuthConfig, setUnifiedAuthConfig] = useState<PortalUnifiedAuthConfig | null>(null);
   const [unifiedAuthLoading, setUnifiedAuthLoading] = useState(true);
   const [unifiedAuthStarting, setUnifiedAuthStarting] = useState(false);
+  const [multiLoginMode, setMultiLoginMode] = useState<'password' | 'unified' | null>(
+    unifiedAuthConflict ? 'unified' : null,
+  );
+  const [confirmingMultiLogin, setConfirmingMultiLogin] = useState(false);
+
+  useEffect(() => {
+    if (unifiedAuthConflict) setMultiLoginMode('unified');
+  }, [unifiedAuthConflict]);
 
   useEffect(() => {
     let active = true;
@@ -127,8 +141,21 @@ export default function LoginPage() {
     setFormError('');
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function markWelcome(shouldRemember: boolean) {
+    try {
+      if (shouldRemember) window.sessionStorage.setItem(WELCOME_FLAG, '1');
+    } catch {
+      // ignore session storage errors
+    }
+  }
+
+  function completeLogin(user: Awaited<ReturnType<typeof loginPortal>>, shouldRemember = remember) {
+    savePortalUser(user);
+    markWelcome(shouldRemember);
+    navigate(redirect, { replace: true });
+  }
+
+  function validateCredentials(): { account: string; password: string } | null {
     clearErrors();
     const a = account.trim();
     const p = password;
@@ -141,28 +168,40 @@ export default function LoginPage() {
       setPasswordError('请输入密码');
       bad = true;
     }
-    if (bad) return;
+    if (bad) return null;
+    return { account: a, password: p };
+  }
+
+  async function performPasswordLogin(forceLogin = false) {
+    const credentials = validateCredentials();
+    if (!credentials) return;
 
     setSubmitting(true);
     try {
       const user = await loginPortal({
-        account: a,
-        password: p,
+        account: credentials.account,
+        password: credentials.password,
         remember,
+        forceLogin,
       });
-      savePortalUser(user);
-      try {
-        if (remember) window.sessionStorage.setItem(WELCOME_FLAG, '1');
-      } catch {
-        // ignore session storage errors
-      }
-      navigate(redirect, { replace: true });
+      completeLogin(user);
     } catch (err) {
+      if (err instanceof ApiRequestError && err.code === MULTI_LOGIN_CONFLICT_CODE && !forceLogin) {
+        setMultiLoginMode('password');
+        setFormError('');
+        return;
+      }
       const message = err instanceof Error ? err.message : '登录失败，请重试。';
       setFormError(message || '登录失败，请重试。');
+      setMultiLoginMode(null);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await performPasswordLogin(false);
   }
 
   function handleUnifiedAuthLogin() {
@@ -170,9 +209,39 @@ export default function LoginPage() {
     window.location.assign(buildUnifiedAuthStartUrl(redirect));
   }
 
+  async function handleConfirmMultiLogin() {
+    if (!multiLoginMode) return;
+    if (multiLoginMode === 'password') {
+      await performPasswordLogin(true);
+      return;
+    }
+
+    setConfirmingMultiLogin(true);
+    setFormError('');
+    try {
+      const user = await confirmUnifiedAuthLogin();
+      completeLogin(user, true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '登录失败，请重试。';
+      setFormError(message || '登录失败，请重试。');
+      setMultiLoginMode(null);
+    } finally {
+      setConfirmingMultiLogin(false);
+    }
+  }
+
+  function handleCancelMultiLogin() {
+    setMultiLoginMode(null);
+    if (unifiedAuthConflict) {
+      const cleanUrl = redirect === '/' ? '/login' : `/login?redirect=${encodeURIComponent(redirect)}`;
+      navigate(cleanUrl, { replace: true });
+    }
+  }
+
   const unifiedAuthAvailable = unifiedAuthConfig?.enabled === true;
   const unifiedAuthLabel = unifiedAuthConfig?.label?.trim() || '统一身份认证';
   const unifiedAuthDisabled = unifiedAuthLoading || !unifiedAuthAvailable || unifiedAuthStarting;
+  const multiLoginBusy = submitting || confirmingMultiLogin;
 
   if (isInIframe) return null;
 
@@ -281,6 +350,7 @@ export default function LoginPage() {
                       setAccount(e.target.value);
                       if (accountError) setAccountError('');
                       if (formError) setFormError('');
+                      if (multiLoginMode === 'password') setMultiLoginMode(null);
                     }}
                   />
                 </div>
@@ -307,6 +377,7 @@ export default function LoginPage() {
                       setPassword(e.target.value);
                       if (passwordError) setPasswordError('');
                       if (formError) setFormError('');
+                      if (multiLoginMode === 'password') setMultiLoginMode(null);
                     }}
                   />
                   <button
@@ -362,6 +433,44 @@ export default function LoginPage() {
           </div>
         </section>
       </main>
+
+      {multiLoginMode ? (
+        <div className={s.modalBackdrop}>
+          <div
+            className={s.confirmDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="multi-login-title"
+          >
+            <div className={s.confirmIcon}>
+              <AlertCircle size={22} />
+            </div>
+            <h3 id="multi-login-title" className={s.confirmTitle}>登录确认</h3>
+            <p className={s.confirmText}>
+              该用户已在其它设备登录，是否继续登录？继续登录后，另一设备的登录状态将失效。
+            </p>
+            <div className={s.confirmActions}>
+              <button
+                type="button"
+                className={s.confirmCancel}
+                disabled={multiLoginBusy}
+                onClick={handleCancelMultiLogin}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className={s.confirmPrimary}
+                disabled={multiLoginBusy}
+                onClick={handleConfirmMultiLogin}
+              >
+                {multiLoginBusy ? <span className={s.spinner} /> : null}
+                <span>{multiLoginBusy ? '登录中' : '继续登录'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

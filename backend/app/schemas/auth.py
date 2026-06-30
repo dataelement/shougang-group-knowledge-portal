@@ -7,6 +7,7 @@ class PortalLoginRequest(BaseModel):
     remember: bool = True
     captcha_key: str = ""
     captcha: str = ""
+    force_login: bool = False
 
 
 class PortalUserView(BaseModel):

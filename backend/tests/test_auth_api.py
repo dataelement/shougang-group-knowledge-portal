@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -61,6 +63,18 @@ class FakeAuthFailureBishengClient(FakeAuthBishengClient):
         raise AssertionError(f"Unexpected post path: {path}")
 
 
+class FakeAuthConflictBishengClient(FakeAuthBishengClient):
+    async def post_json(self, path: str, json=None):
+        if path == "/api/v1/user/login":
+            FakeAuthBishengClient.login_payload = json
+            return {
+                "status_code": 10612,
+                "status_message": "该用户已在其它设备登录，是否继续登录？",
+                "data": {},
+            }
+        raise AssertionError(f"Unexpected post path: {path}")
+
+
 def make_auth_service() -> PortalAuthService:
     return PortalAuthService(
         runtime_service=FakeRuntimeService(),
@@ -79,6 +93,17 @@ def make_failing_auth_service() -> PortalAuthService:
         ttl_seconds=7 * 24 * 60 * 60,
         cookie_secure=False,
         client_factory=FakeAuthFailureBishengClient,
+        password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+    )
+
+
+def make_conflict_auth_service() -> PortalAuthService:
+    return PortalAuthService(
+        runtime_service=FakeRuntimeService(),
+        cookie_name="test_portal_session",
+        ttl_seconds=7 * 24 * 60 * 60,
+        cookie_secure=False,
+        client_factory=FakeAuthConflictBishengClient,
         password_encryptor=lambda _public_key, password: f"encrypted-{password}",
     )
 
@@ -106,6 +131,7 @@ def test_login_me_logout_roundtrip_sets_httponly_session_cookie():
         "password": "encrypted-secret",
         "captcha_key": "captcha-demo",
         "captcha": "",
+        "force_login": False,
     }
     user = login_response.json()["data"]["user"]
     assert user["name"] == "王工"
@@ -150,3 +176,54 @@ def test_login_failure_maps_upstream_english_message_to_chinese():
 
     assert response.status_code == 401
     assert response.json()["detail"] == "账号或密码错误，请检查后重试"
+
+
+def test_login_multi_login_conflict_returns_business_code():
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = make_conflict_auth_service()
+        try:
+            response = client.post(
+                "/api/v1/auth/login",
+                json={"account": "bisheng-user", "password": "secret", "remember": True},
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["status_code"] == 10612
+    assert payload["data"]["code"] == 10612
+
+
+def test_login_force_login_is_forwarded_to_bisheng():
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = make_auth_service()
+        try:
+            response = client.post(
+                "/api/v1/auth/login",
+                json={"account": "bisheng-user", "password": "secret", "remember": True, "force_login": True},
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert FakeAuthBishengClient.login_payload["force_login"] is True
+
+
+def test_force_login_replaces_existing_portal_session_for_same_account():
+    service = make_auth_service()
+
+    first = asyncio.run(
+        service.login(account="bisheng-user", password="secret", remember=True)
+    )
+    second = asyncio.run(
+        service.login(account="bisheng-user", password="secret", remember=True, force_login=True)
+    )
+
+    assert first.session_id != second.session_id
+    assert first.session_id not in service._sessions
+    assert service._sessions[second.session_id] is second

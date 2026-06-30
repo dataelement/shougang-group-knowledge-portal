@@ -212,11 +212,13 @@ interface ApiEnvelope<T> {
 
 export class ApiRequestError extends Error {
   status: number;
+  code?: number;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: number) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -607,7 +609,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
       '请求失败，请稍后重试。',
       response.status,
     );
-    throw new ApiRequestError(message, response.status);
+    throw new ApiRequestError(message, response.status, payload?.status_code);
   }
   if (!payload) {
     throw new Error('响应内容为空');
@@ -1282,13 +1284,13 @@ async function consumeChatStream(
   onConversationId?: (conversationId: string) => void,
 ): Promise<void> {
   if (!response.ok) {
-    const payload = await response.clone().json().catch(() => null) as { detail?: string; status_message?: string } | null;
+    const payload = await response.clone().json().catch(() => null) as { detail?: string; status_code?: number; status_message?: string } | null;
     const message = normalizeUserFacingMessage(
       payload?.status_message || payload?.detail,
       '问答请求失败，请稍后重试。',
       response.status,
     );
-    throw new ApiRequestError(message, response.status);
+    throw new ApiRequestError(message, response.status, payload?.status_code);
   }
   if (!response.body) {
     throw new Error('问答请求失败');

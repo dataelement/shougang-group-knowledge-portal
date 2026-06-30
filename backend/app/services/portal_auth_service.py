@@ -25,6 +25,13 @@ class PortalAuthError(Exception):
         self.status_code = status_code
 
 
+class PortalMultiLoginConflictError(PortalAuthError):
+    code = 10612
+
+    def __init__(self):
+        super().__init__("该用户已在其它设备登录，是否继续登录？", status_code=409)
+
+
 @dataclass
 class PortalSession:
     session_id: str
@@ -58,6 +65,7 @@ class PortalAuthService:
         self._client_factory = client_factory
         self._password_encryptor = password_encryptor
         self._sessions: dict[str, PortalSession] = {}
+        self._session_by_account: dict[str, str] = {}
 
     @property
     def cookie_name(self) -> str:
@@ -71,6 +79,7 @@ class PortalAuthService:
         remember: bool,
         captcha_key: str = "",
         captcha: str = "",
+        force_login: bool = False,
     ) -> PortalSession:
         base_url, timeout_seconds = self._runtime_service.get_connection_settings()
         access_token = await self._login_to_bisheng(
@@ -80,6 +89,7 @@ class PortalAuthService:
             password=password,
             captcha_key=captcha_key,
             captcha=captcha,
+            force_login=force_login,
         )
         user = await self._fetch_user(
             base_url=base_url,
@@ -97,9 +107,9 @@ class PortalAuthService:
             expires_at=expires_at,
         )
         self._cleanup_expired()
-        self._sessions[session.session_id] = session
         if not remember:
             session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
+        self._store_session(session, replace_existing=force_login)
         return session
 
     async def create_session_from_access_token(
@@ -110,6 +120,7 @@ class PortalAuthService:
         fallback_account: str = "",
         auth_source: str = "",
         auth_trace_id: str = "",
+        replace_existing: bool = False,
     ) -> PortalSession:
         base_url, timeout_seconds = self._runtime_service.get_connection_settings()
         user = await self._fetch_user(
@@ -133,9 +144,9 @@ class PortalAuthService:
             auth_trace_id=auth_trace_id,
         )
         self._cleanup_expired()
-        self._sessions[session.session_id] = session
         if not remember:
             session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
+        self._store_session(session, replace_existing=replace_existing)
         return session
 
     def attach_session_cookie(self, response: Response, session: PortalSession, remember: bool) -> None:
@@ -209,6 +220,7 @@ class PortalAuthService:
             return None
         if session.expires_at <= time.time():
             self._sessions.pop(session_id, None)
+            self._remove_session_index(session)
             return None
         return session
 
@@ -249,13 +261,15 @@ class PortalAuthService:
             auth_source=request.cookies.get(self._auth_source_cookie_name, "").strip(),
         )
         self._cleanup_expired()
-        self._sessions[session.session_id] = session
+        self._store_session(session, replace_existing=False)
         return session, True
 
     def logout(self, request: Request) -> None:
         session_id = request.cookies.get(self._cookie_name, "")
         if session_id:
-            self._sessions.pop(session_id, None)
+            session = self._sessions.pop(session_id, None)
+            if session is not None:
+                self._remove_session_index(session)
 
     def create_bisheng_client(self, session: PortalSession) -> BishengClient:
         return self._client_factory(session.base_url, session.timeout_seconds, session.access_token)
@@ -269,6 +283,7 @@ class PortalAuthService:
         password: str,
         captcha_key: str,
         captcha: str,
+        force_login: bool,
     ) -> str:
         client = self._client_factory(base_url, timeout_seconds, None)
         try:
@@ -291,8 +306,11 @@ class PortalAuthService:
                     "password": encrypted_password,
                     "captcha_key": captcha_key or str(captcha_data.get("captcha_key") or ""),
                     "captcha": captcha or "",
+                    "force_login": force_login,
                 },
             )
+            if login_response.get("status_code") == PortalMultiLoginConflictError.code:
+                raise PortalMultiLoginConflictError()
             login_data = _unwrap_bisheng_payload(login_response)
             access_token = str(login_data.get("access_token") or "").strip()
             if not access_token:
@@ -369,7 +387,28 @@ class PortalAuthService:
         now = time.time()
         expired = [session_id for session_id, session in self._sessions.items() if session.expires_at <= now]
         for session_id in expired:
-            self._sessions.pop(session_id, None)
+            session = self._sessions.pop(session_id, None)
+            if session is not None:
+                self._remove_session_index(session)
+
+    def _store_session(self, session: PortalSession, *, replace_existing: bool) -> None:
+        account_key = self._session_account_key(session.user.account)
+        if replace_existing and account_key:
+            old_session_id = self._session_by_account.get(account_key)
+            if old_session_id and old_session_id != session.session_id:
+                self._sessions.pop(old_session_id, None)
+        self._sessions[session.session_id] = session
+        if account_key:
+            self._session_by_account[account_key] = session.session_id
+
+    def _remove_session_index(self, session: PortalSession) -> None:
+        account_key = self._session_account_key(session.user.account)
+        if account_key and self._session_by_account.get(account_key) == session.session_id:
+            self._session_by_account.pop(account_key, None)
+
+    @staticmethod
+    def _session_account_key(account: str | None) -> str:
+        return (account or "").strip().lower()
 
     @staticmethod
     def _first_str(data: dict, *keys: str) -> str:

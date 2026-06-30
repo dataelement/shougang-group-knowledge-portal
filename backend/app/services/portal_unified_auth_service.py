@@ -24,8 +24,10 @@ logger = logging.getLogger(__name__)
 GROUP_OAUTH_BASE_URL = "https://amdev.shougang.com.cn/idp/oauth2"
 STOCK_OAUTH_BASE_URL = "https://10.68.27.111/idp/oauth2"
 STATE_COOKIE_NAME = "sg_unified_auth_state"
+PENDING_LOGIN_COOKIE_NAME = "sg_unified_auth_pending"
 LOGIN_SYNC_PATH = "/api/v1/internal/sso/login-sync"
 BISHENG_SSO_USER_NOT_FOUND_CODE = 19319
+BISHENG_MULTI_LOGIN_CONFLICT_CODE = 10612
 SAFE_ERROR_MESSAGES = {
     "invalid_callback": "统一认证回调参数缺失",
     "invalid_state": "登录请求已失效，请重新认证",
@@ -35,6 +37,7 @@ SAFE_ERROR_MESSAGES = {
     "invalid_account": "账号无效，请联系管理员开通账号",
     "permission_denied": "账号已认证但暂未开通知库权限",
     "oauth_unavailable": "统一认证暂不可用",
+    "multi_login_conflict": "该用户已在其它设备登录，是否继续登录",
 }
 
 
@@ -49,6 +52,17 @@ class UnifiedAuthFailure(Exception):
         super().__init__(auth_error)
         self.auth_error = auth_error
         self.redirect = normalize_redirect(redirect)
+
+
+class UnifiedAuthLoginConflict(Exception):
+    pass
+
+
+class UnifiedAuthPendingConfirmation(Exception):
+    def __init__(self, redirect: str, pending_id: str):
+        super().__init__("multi_login_conflict")
+        self.redirect = normalize_redirect(redirect)
+        self.pending_id = pending_id
 
 
 @dataclass(frozen=True)
@@ -88,6 +102,14 @@ class UnifiedAuthResult:
     session: PortalSession
     redirect: str
     trace_id: str
+
+
+@dataclass(frozen=True)
+class PendingUnifiedLogin:
+    mapped_user: "MappedUnifiedUser"
+    redirect: str
+    trace_id: str
+    expires_at: float
 
 
 @dataclass(frozen=True)
@@ -279,6 +301,7 @@ class PortalUnifiedAuthService:
         self._http_client_factory = http_client_factory
         self._clock = clock
         self._nonce_factory = nonce_factory
+        self._pending_logins: dict[str, PendingUnifiedLogin] = {}
 
     def get_public_config(self) -> PortalUnifiedAuthConfigData:
         runtime_config = self._read_runtime_config()
@@ -480,7 +503,17 @@ class PortalUnifiedAuthService:
             },
         )
 
-        bisheng_token = await self._login_sync(config, mapped_user, redirect, trace_id)
+        try:
+            bisheng_token = await self._login_sync(config, mapped_user, redirect, trace_id)
+        except UnifiedAuthLoginConflict as err:
+            pending_id = self._store_pending_login(mapped_user, redirect, trace_id, config.state_ttl_seconds)
+            log_unified_auth_trace(
+                trace_id,
+                "login_sync",
+                "multi_login_confirmation_required",
+                {"redirect": redirect},
+            )
+            raise UnifiedAuthPendingConfirmation(redirect, pending_id) from err
         try:
             session = await self._auth_service.create_session_from_access_token(
                 access_token=bisheng_token,
@@ -543,6 +576,107 @@ class PortalUnifiedAuthService:
             samesite="lax",
             path="/",
         )
+
+    def set_pending_login_cookie(self, response: Response, pending_id: str) -> None:
+        response.set_cookie(
+            key=PENDING_LOGIN_COOKIE_NAME,
+            value=pending_id,
+            httponly=True,
+            secure=self._cookie_secure,
+            samesite="lax",
+            max_age=300,
+            path="/",
+        )
+
+    def clear_pending_login_cookie(self, response: Response) -> None:
+        response.delete_cookie(
+            key=PENDING_LOGIN_COOKIE_NAME,
+            httponly=True,
+            secure=self._cookie_secure,
+            samesite="lax",
+            path="/",
+        )
+
+    def _store_pending_login(
+        self,
+        mapped_user: MappedUnifiedUser,
+        redirect: str,
+        trace_id: str,
+        ttl_seconds: int,
+    ) -> str:
+        self._cleanup_pending_logins()
+        pending_id = self._nonce_factory(32)
+        self._pending_logins[pending_id] = PendingUnifiedLogin(
+            mapped_user=mapped_user,
+            redirect=normalize_redirect(redirect),
+            trace_id=trace_id,
+            expires_at=self._clock() + max(1, ttl_seconds),
+        )
+        return pending_id
+
+    def _consume_pending_login(self, pending_id: str | None) -> PendingUnifiedLogin:
+        self._cleanup_pending_logins()
+        if not pending_id:
+            raise UnifiedAuthFailure("invalid_state", "/")
+        pending = self._pending_logins.pop(pending_id, None)
+        if pending is None or pending.expires_at <= self._clock():
+            raise UnifiedAuthFailure("invalid_state", "/")
+        return pending
+
+    def _cleanup_pending_logins(self) -> None:
+        now = self._clock()
+        expired = [key for key, pending in self._pending_logins.items() if pending.expires_at <= now]
+        for key in expired:
+            self._pending_logins.pop(key, None)
+
+    async def confirm_pending_login(self, pending_id: str | None) -> UnifiedAuthResult:
+        pending = self._consume_pending_login(pending_id)
+        config = self._resolve_config()
+        bisheng_token = await self._login_sync(
+            config,
+            pending.mapped_user,
+            pending.redirect,
+            pending.trace_id,
+            force_login=True,
+        )
+        try:
+            session = await self._auth_service.create_session_from_access_token(
+                access_token=bisheng_token,
+                remember=True,
+                fallback_account=pending.mapped_user.external_user_id,
+                auth_source="unified_auth",
+                auth_trace_id=pending.trace_id,
+                replace_existing=True,
+            )
+        except PortalAuthError as err:
+            logger.warning("统一认证确认登录后创建门户 session 失败: %s", err.message)
+            log_unified_auth_failure(
+                pending.trace_id,
+                "permission_denied",
+                pending.redirect,
+                "pending_session_create_failed",
+                {
+                    "error": err.message,
+                    "status_code": err.status_code,
+                    "fallback_account": pending.mapped_user.external_user_id,
+                },
+            )
+            raise UnifiedAuthFailure("permission_denied", pending.redirect) from err
+        log_unified_auth_trace(
+            pending.trace_id,
+            "session",
+            "pending_session_created",
+            {
+                "redirect": pending.redirect,
+                "session_id": session.session_id,
+                "access_token": session.access_token,
+                "user": session.user.model_dump(),
+                "expires_at": session.expires_at,
+                "auth_source": session.auth_source,
+                "auth_trace_id": session.auth_trace_id,
+            },
+        )
+        return UnifiedAuthResult(session=session, redirect=pending.redirect, trace_id=pending.trace_id)
 
     def _read_runtime_config(self) -> UnifiedAuthRuntimeConfig:
         if self._config_service is not None:
@@ -887,6 +1021,7 @@ class PortalUnifiedAuthService:
         mapped_user: MappedUnifiedUser,
         redirect: str,
         trace_id: str,
+        force_login: bool = False,
     ) -> str:
         base_url, _ = self._runtime_service.get_connection_settings()
         url = f"{base_url.rstrip('/')}{LOGIN_SYNC_PATH}"
@@ -898,6 +1033,8 @@ class PortalUnifiedAuthService:
             "ts": int(self._clock()),
             "account_disabled": False,
         }
+        if force_login:
+            request_payload["force_login"] = True
         if mapped_user.primary_dept_external_id:
             request_payload["primary_dept_external_id"] = mapped_user.primary_dept_external_id
         raw_body = json.dumps(request_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -976,6 +1113,8 @@ class PortalUnifiedAuthService:
             raise UnifiedAuthFailure("permission_denied", redirect)
         status_code = payload.get("status_code")
         if status_code not in (None, 200):
+            if str(status_code) == str(BISHENG_MULTI_LOGIN_CONFLICT_CODE):
+                raise UnifiedAuthLoginConflict()
             auth_error = self._map_login_sync_failure(payload)
             logger.warning("BiSheng login-sync 返回业务错误 status_code=%s", status_code)
             log_unified_auth_failure(
