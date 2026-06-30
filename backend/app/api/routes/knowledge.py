@@ -264,23 +264,12 @@ async def get_home_content(
 @router.get("/home/stats")
 async def get_home_stats(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
-    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     try:
         counts = await PortalTelemetryService(bisheng_client).fetch_home_stats_counts()
     except PortalTelemetryStatsError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
-    config = portal_config_service.get_config()
-    live_space_data = await _fetch_shougang_portal_space_info(
-        bisheng_client,
-        [space.id for space in config.spaces],
-    )
-    runtime_config = portal_config_service.with_live_space_data(config, live_space_data)
-    total_documents = sum(
-        space.file_count
-        for space in runtime_config.spaces
-        if space.enabled
-    )
+    total_documents = counts.pop("total_files", 0)
     return response_ok(HomeStatsData(total_documents=total_documents, **counts))
 
 

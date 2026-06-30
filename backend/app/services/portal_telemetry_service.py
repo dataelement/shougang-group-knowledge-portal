@@ -121,6 +121,7 @@ class PortalTelemetryService:
                 "read_count": int(data["read_count"]),
                 "favorite_count": int(data["favorite_count"]),
                 "qa_count": int(data["qa_count"]),
+                "total_files": int(data.get("total_files") or 0),
             }
         except (TypeError, ValueError) as exc:
             raise PortalTelemetryStatsError(
