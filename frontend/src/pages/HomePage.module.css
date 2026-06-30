@@ -380,7 +380,8 @@
 
 .heroStatsPanel {
   position: relative;
-  flex: 0 0 216px;
+  flex: 0 0 auto;
+  min-width: 200px;
   padding: 1px 0 1px 18px;
   border-left: 1px solid rgba(255, 255, 255, 0.74);
   color: #fff;
@@ -388,16 +389,16 @@
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, max-content);
   column-gap: 23px;
   row-gap: 16px;
 }
 
 .statCard {
-  display: inline-flex;
+  display: flex;
   align-items: baseline;
   gap: 4px;
-  min-width: 0;
+  white-space: nowrap;
   color: rgba(255, 255, 255, 0.9);
   text-shadow: 0 2px 8px rgba(20, 76, 151, 0.3);
 }
