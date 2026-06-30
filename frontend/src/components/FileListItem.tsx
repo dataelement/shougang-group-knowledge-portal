@@ -163,14 +163,14 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
                 <button
                   type="button"
                   className={s.actionButton}
-                  title="智能问答"
+                  title="辅助阅读"
                   onClick={(event) => {
                     event.stopPropagation();
                     onAsk?.(file);
                   }}
                 >
                   <img className={s.actionIcon} src={iconAi} alt="" aria-hidden="true" />
-                  智能问答
+                  辅助阅读
                 </button>
               ) : null}
             </div>
