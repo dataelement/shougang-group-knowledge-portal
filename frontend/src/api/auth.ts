@@ -90,6 +90,14 @@ async function parseResponse<T>(response: Response): Promise<T> {
   if (!payload) {
     throw new Error('响应内容为空');
   }
+  if (payload.status_code !== 200) {
+    const message = normalizeUserFacingMessage(
+      payload.status_message || payload.detail,
+      '请求失败，请稍后重试。',
+      response.status,
+    );
+    throw new ApiRequestError(message, response.status, payload.status_code);
+  }
   return payload.data;
 }
 

@@ -7,8 +7,10 @@ import {
   fetchPortalMe,
   getUnifiedAuthErrorMessage,
   loginPortal,
+  MULTI_LOGIN_CONFLICT_CODE,
   normalizePortalRedirect,
 } from '../src/api/auth';
+import { ApiRequestError } from '../src/api/content';
 
 const loginSource = readFileSync('src/pages/LoginPage.tsx', 'utf8');
 const authApiSource = readFileSync('src/api/auth.ts', 'utf8');
@@ -90,4 +92,35 @@ test('password login maps upstream English auth failures to Chinese copy', async
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('password login preserves multi-login business conflict when response is HTTP 200', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    status_code: MULTI_LOGIN_CONFLICT_CODE,
+    status_message: '该用户已在其它设备登录，是否继续登录？',
+    data: { code: MULTI_LOGIN_CONFLICT_CODE },
+  }), { status: 200 })) as typeof fetch;
+  try {
+    await assert.rejects(
+      loginPortal({ account: 'demo', password: 'secret', remember: true }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiRequestError);
+        assert.equal(err.message, '该用户已在其它设备登录，是否继续登录？');
+        assert.equal(err.code, MULTI_LOGIN_CONFLICT_CODE);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('login page renders multi-login confirmation dialog and force-login action', () => {
+  assert.match(loginSource, /setMultiLoginMode\('password'\)/);
+  assert.match(loginSource, /setFormError\(''\)/);
+  assert.match(loginSource, /aria-modal="true"/);
+  assert.match(loginSource, /登录确认/);
+  assert.match(loginSource, /继续登录后，另一设备的登录状态将失效/);
+  assert.match(loginSource, /performPasswordLogin\(true\)/);
 });

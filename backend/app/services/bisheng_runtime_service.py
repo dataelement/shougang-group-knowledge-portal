@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_REFRESH_INTERVAL_SECONDS = 30 * 60
 DEFAULT_REFRESH_THRESHOLD_SECONDS = 60 * 60
+PORTAL_RUNTIME_TOKEN_PURPOSE = "portal_runtime"
 
 
 def encrypt_bisheng_password(public_key_pem: str, password: str) -> str:
@@ -327,6 +328,7 @@ class BishengRuntimeService:
                     "password": encrypted_password,
                     "captcha_key": str(captcha_data.get("captcha_key") or ""),
                     "captcha": "",
+                    "token_purpose": PORTAL_RUNTIME_TOKEN_PURPOSE,
                 },
             )
             login_data = _unwrap_bisheng_payload(login_response)

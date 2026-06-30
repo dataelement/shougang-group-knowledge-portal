@@ -7,6 +7,7 @@ from pathlib import Path
 from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
 from app.services.bisheng_runtime_service import (
     BishengRuntimeService,
+    PORTAL_RUNTIME_TOKEN_PURPOSE,
     _decode_jwt_exp,
 )
 
@@ -210,6 +211,7 @@ def test_auth_failure_refresh_uses_saved_plaintext_password(tmp_path: Path):
     assert state["login_calls"] == 2
     assert state["last_login_payload"]["user_name"] == "portal-admin"
     assert state["last_login_payload"]["password"] == "encrypted-super-secret"
+    assert state["last_login_payload"]["token_purpose"] == PORTAL_RUNTIME_TOKEN_PURPOSE
 
 
 def test_auth_failure_refresh_reuses_token_refreshed_by_another_request(tmp_path: Path):
@@ -534,6 +536,7 @@ def test_initialize_does_not_deadlock_when_runtime_account_info_refreshes_token(
     assert state["refresh_attempts"] == 1
     assert state["login_calls"] == 1
     assert state["last_login_payload"]["user_name"] == "portal-admin"
+    assert state["last_login_payload"]["token_purpose"] == PORTAL_RUNTIME_TOKEN_PURPOSE
     assert saved.api_token == refreshed_token
     assert view.connected is True
     assert view.auth_user is not None
@@ -581,6 +584,7 @@ def test_refresh_relogins_when_token_near_expiry(tmp_path: Path):
 
     assert state["login_calls"] == 1
     assert state["last_login_payload"]["user_name"] == "admin"
+    assert state["last_login_payload"]["token_purpose"] == PORTAL_RUNTIME_TOKEN_PURPOSE
     saved = service._read_config()
     assert saved.api_token == new_token
     assert saved.last_auth_at != ""
@@ -604,6 +608,7 @@ def test_refresh_falls_back_to_default_username(tmp_path: Path):
 
     assert state["login_calls"] == 1
     assert state["last_login_payload"]["user_name"] == "env-admin"
+    assert state["last_login_payload"]["token_purpose"] == PORTAL_RUNTIME_TOKEN_PURPOSE
 
 
 def test_refresh_skipped_without_default_password(tmp_path: Path):
