@@ -197,7 +197,7 @@ export default function ListPage() {
             {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
           <select className={s.filterSelect} value={documentType} onChange={(e) => setFilter('document_type', e.target.value)}>
-            <option value="">文档类型</option>
+            <option value="">文件分类</option>
             {documentTypes.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
           </select>
           <select className={s.filterSelect} value={tagParam} onChange={(e) => setFilter('tag', e.target.value)}>

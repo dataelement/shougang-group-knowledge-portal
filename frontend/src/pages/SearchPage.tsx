@@ -390,7 +390,7 @@ export default function SearchPage() {
               {resultFileExtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
             <select className={s.filterSelect} value={documentType} onChange={(e) => setFilter('document_type', e.target.value, false)}>
-              <option value="">文档类型</option>
+              <option value="">文件分类</option>
               {documentTypes.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
             </select>
             <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
