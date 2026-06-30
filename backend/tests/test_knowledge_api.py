@@ -2069,6 +2069,16 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
         def __init__(self):
             super().__init__()
             self.calls = []
+            self.agent_workflow_calls = []
+
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/workstation/app/portal-agent-workflows":
+                self.agent_workflow_calls.append(json)
+                return {
+                    "status_code": 200,
+                    "data": {"workflows": [{"id": "wf-a", "tags": []}]},
+                }
+            return await super().post_json(path, json=json, headers=headers)
 
         async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/workstation/app/conversations":
@@ -2133,6 +2143,7 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
                 client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
+    assert user_bisheng.agent_workflow_calls == [{"workflow_ids": ["wf-a"]}]
     assert user_bisheng.calls == [{"flow_id": "wf-a", "page": 1, "limit": 20}]
     body = response.json()["data"]
     assert body[0]["chat_id"] == "chat-wf-a"
@@ -2140,8 +2151,103 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
     assert body[0]["workflow_id"] == "wf-a"
 
 
+def test_chat_proxy_lists_visible_agent_workflows_with_bisheng_tags(tmp_path: Path):
+    class WorkflowAgentBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.agent_workflow_calls = []
+
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/workstation/app/portal-agent-workflows":
+                self.agent_workflow_calls.append(json)
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "workflows": [
+                            {
+                                "id": "wf-b",
+                                "tags": [{"name": "AI写作"}, {"name": "AI写作"}],
+                            },
+                            {
+                                "id": "wf-a",
+                                "tags": [{"name": "制度"}, {"tag_name": "合规"}],
+                            },
+                        ]
+                    },
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_service.update_agent_config(
+        AgentConfig(
+            categories=[{"id": "general", "name": "通用"}],
+            agents=[
+                {
+                    "id": "agent-a",
+                    "workflow_id": "wf-a",
+                    "name": "智能体 A",
+                    "desc": "门户描述 A",
+                    "category_id": "general",
+                    "tags": ["本地标签"],
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                },
+                {
+                    "id": "agent-b",
+                    "workflow_id": "wf-b",
+                    "name": "智能体 B",
+                    "category_id": "general",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                },
+                {
+                    "id": "agent-disabled",
+                    "workflow_id": "wf-disabled",
+                    "name": "停用智能体",
+                    "category_id": "general",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": False,
+                },
+            ],
+        )
+    )
+    user_bisheng = WorkflowAgentBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            response = client.get("/api/v1/workstation/workflow/agents")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert user_bisheng.agent_workflow_calls == [{"workflow_ids": ["wf-a", "wf-b"]}]
+    body = response.json()["data"]
+    assert [agent["id"] for agent in body] == ["agent-a", "agent-b"]
+    assert body[0]["name"] == "智能体 A"
+    assert body[0]["desc"] == "门户描述 A"
+    assert body[0]["tags"] == ["制度", "合规"]
+    assert body[1]["tags"] == ["AI写作"]
+
+
 def test_chat_proxy_maps_workflow_conversation_upstream_error_to_chinese(tmp_path: Path):
     class WorkflowConversationFailureBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/workstation/app/portal-agent-workflows":
+                return {
+                    "status_code": 200,
+                    "data": {"workflows": [{"id": "wf-a", "tags": []}]},
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
         async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/workstation/app/conversations":
                 return {

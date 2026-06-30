@@ -36,6 +36,7 @@ import {
   favoriteAgentWorkflow,
   fetchAgentFavoriteWorkflowIds,
   fetchAgentWorkflowConversations,
+  fetchAgentWorkflows,
   removeAgentWorkflowFavorite,
   type AgentWorkflowConversation,
 } from '../api/content';
@@ -224,6 +225,9 @@ export default function AppsPage() {
   const { config, loading: configLoading, error: configError } = usePortalConfig();
   const [activeTab, setActiveTab] = useState<AppsMainTab>(() => resolveAppsTab(location.search));
   const [activeAgentFilter, setActiveAgentFilter] = useState<AgentFilter>('all');
+  const [agentWorkflows, setAgentWorkflows] = useState<AgentItemConfig[]>([]);
+  const [loadingAgentWorkflows, setLoadingAgentWorkflows] = useState(false);
+  const [agentWorkflowsError, setAgentWorkflowsError] = useState('');
   const [favoriteWorkflowIds, setFavoriteWorkflowIds] = useState<Set<string>>(() => new Set());
   const [updatingFavoriteWorkflowIds, setUpdatingFavoriteWorkflowIds] = useState<Set<string>>(() => new Set());
   const [selectedAgentId, setSelectedAgentId] = useState('');
@@ -235,19 +239,59 @@ export default function AppsPage() {
   const [iframeLoading, setIframeLoading] = useState(false);
   const [iframeLoadTimedOut, setIframeLoadTimedOut] = useState(false);
   const iframeLoadTimerRef = useRef<number | null>(null);
+  const agentConfig = config?.agent_config ?? { categories: [], agents: [] };
+  const agentConfigSignature = useMemo(
+    () => agentConfig.agents
+      .map((agent) => `${agent.id}:${agent.workflow_id}:${agent.enabled ? '1' : '0'}`)
+      .join('|'),
+    [agentConfig.agents],
+  );
 
   useEffect(() => {
     setActiveTab(resolveAppsTab(location.search));
   }, [location.search]);
 
-  const agentConfig = config?.agent_config ?? { categories: [], agents: [] };
+  useEffect(() => {
+    if (configLoading) {
+      setAgentWorkflows([]);
+      setLoadingAgentWorkflows(true);
+      setAgentWorkflowsError('');
+      return undefined;
+    }
+    if (configError) {
+      setAgentWorkflows([]);
+      setLoadingAgentWorkflows(false);
+      setAgentWorkflowsError(configError);
+      return undefined;
+    }
+    let active = true;
+    setAgentWorkflows([]);
+    setLoadingAgentWorkflows(true);
+    setAgentWorkflowsError('');
+    void fetchAgentWorkflows()
+      .then((items) => {
+        if (active) setAgentWorkflows(items);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setAgentWorkflows([]);
+        setAgentWorkflowsError(error instanceof Error ? error.message : '智能体列表加载失败');
+      })
+      .finally(() => {
+        if (active) setLoadingAgentWorkflows(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [configLoading, configError, agentConfigSignature]);
+
   const enabledCategories = useMemo(
     () => agentConfig.categories.filter((category) => category.enabled),
     [agentConfig.categories],
   );
   const enabledAgents = useMemo(
-    () => agentConfig.agents.filter((agent) => agent.enabled),
-    [agentConfig.agents],
+    () => agentWorkflows.filter((agent) => agent.enabled),
+    [agentWorkflows],
   );
   const selectedAgent = useMemo(
     () => enabledAgents.find((agent) => agent.id === selectedAgentId) ?? null,
@@ -285,7 +329,7 @@ export default function AppsPage() {
     : '';
 
   useEffect(() => {
-    if (configLoading || configError) return undefined;
+    if (configLoading || configError || loadingAgentWorkflows || agentWorkflowsError) return undefined;
     if (!enabledAgents.length) {
       setAgentWorkflowConversations([]);
       setLoadingAgentWorkflowConversations(false);
@@ -306,7 +350,7 @@ export default function AppsPage() {
     return () => {
       active = false;
     };
-  }, [configLoading, configError, enabledAgents]);
+  }, [configLoading, configError, loadingAgentWorkflows, agentWorkflowsError, enabledAgents]);
 
   useEffect(() => {
     let active = true;
@@ -422,6 +466,8 @@ export default function AppsPage() {
         const showTopComposer = !hasSelectedAgentWorkflow && (activeTab === 'agent' || !hasQaConversation);
         const showMainTabs = !hasSelectedAgentWorkflow && !hasQaConversation;
         const showAgentList = !hasSelectedAgentWorkflow;
+        const agentListLoading = configLoading || loadingAgentWorkflows;
+        const agentListError = configError || agentWorkflowsError;
 
         return (
           <PageShell hideFooter>
@@ -508,19 +554,19 @@ export default function AppsPage() {
                           ))}
                         </div>
 
-                        {configLoading ? (
+                        {agentListLoading ? (
                           <div className={s.agentEmpty}>
                             <Loader2 className={s.spinner} size={24} />
-                            <span>正在加载智能体配置...</span>
+                            <span>正在加载智能体...</span>
                           </div>
                         ) : null}
-                        {configError ? (
+                        {agentListError ? (
                           <div className={s.agentEmpty}>
                             <AlertCircle size={24} />
-                            <span>{configError}</span>
+                            <span>{agentListError}</span>
                           </div>
                         ) : null}
-                        {!configLoading && !configError && visibleAgents.length === 0 ? (
+                        {!agentListLoading && !agentListError && visibleAgents.length === 0 ? (
                           <div className={s.agentEmpty}>
                             <Bot size={24} />
                             <span>{activeAgentFilter === 'favorite' ? '暂无我的收藏智能体' : '暂无可用智能体'}</span>

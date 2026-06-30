@@ -35,6 +35,10 @@ test('agent config API types and clients are exposed', () => {
 
 test('apps agent tab uses dynamic config data without static mock fallback', () => {
   assert.match(appsPageSource, /config\?\.agent_config/);
+  assert.match(contentApiSource, /fetchAgentWorkflows/);
+  assert.match(contentApiSource, /\/api\/v1\/workstation\/workflow\/agents/);
+  assert.match(appsPageSource, /fetchAgentWorkflows\(\)/);
+  assert.match(appsPageSource, /agentWorkflows/);
   assert.match(appsPageSource, /enabledAgents/);
   assert.match(appsPageSource, /agentEmpty/);
   assert.doesNotMatch(appsPageSource, /const AGENTS:\s*Agent\[\]/);

@@ -1,4 +1,4 @@
-import type { PortalConfig } from './adminConfig';
+import type { AgentItemConfig, PortalConfig } from './adminConfig';
 import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../utils/userFacingErrors';
 
 export interface FileTag {
@@ -463,6 +463,19 @@ interface AgentWorkflowConversationDto {
 interface AgentFavoriteWorkflowsDto {
   workflow_ids?: string[];
   workflowIds?: string[];
+}
+
+interface AgentWorkflowItemDto {
+  id?: string;
+  workflow_id?: string;
+  name?: string;
+  desc?: string;
+  category_id?: string;
+  tags?: string[];
+  icon?: string;
+  color?: string;
+  bg?: string;
+  enabled?: boolean;
 }
 
 interface WorkstationMessageDto {
@@ -1042,6 +1055,21 @@ function normalizeWorkflowIds(dto: AgentFavoriteWorkflowsDto): string[] {
   return workflowIds;
 }
 
+function mapAgentWorkflowItem(dto: AgentWorkflowItemDto): AgentItemConfig {
+  return {
+    id: String(dto.id ?? ''),
+    workflow_id: String(dto.workflow_id ?? ''),
+    name: String(dto.name ?? ''),
+    desc: String(dto.desc ?? ''),
+    category_id: String(dto.category_id ?? ''),
+    tags: Array.isArray(dto.tags) ? dto.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
+    icon: String(dto.icon ?? 'Bot'),
+    color: String(dto.color ?? '#2563eb'),
+    bg: String(dto.bg ?? '#dbeafe'),
+    enabled: dto.enabled !== false,
+  };
+}
+
 function parseMaybeJsonMessage(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
@@ -1132,6 +1160,11 @@ export async function fetchAgentWorkflowConversations(params: {
     `/api/v1/workstation/workflow/conversations?${query.toString()}`,
   );
   return data.map(mapAgentWorkflowConversation).filter((item) => item.conversationId && item.agentId && item.workflowId);
+}
+
+export async function fetchAgentWorkflows(): Promise<AgentItemConfig[]> {
+  const data = await request<AgentWorkflowItemDto[]>('/api/v1/workstation/workflow/agents');
+  return data.map(mapAgentWorkflowItem).filter((item) => item.id && item.workflow_id);
 }
 
 export async function fetchAgentFavoriteWorkflowIds(): Promise<string[]> {
