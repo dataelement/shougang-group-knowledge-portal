@@ -325,11 +325,12 @@
 
 .appShortcutList {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
 }
 
 .appShortcut {
