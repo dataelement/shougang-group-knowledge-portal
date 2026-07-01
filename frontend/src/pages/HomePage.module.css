@@ -964,12 +964,18 @@
   cursor: pointer;
 }
 
-.qaComposerBubble:disabled,
-.qaUserBubble:disabled {
+.qaComposerBubble:disabled {
   color: inherit;
   cursor: default;
   opacity: 1;
   -webkit-text-fill-color: currentColor;
+}
+
+.qaUserBubble:disabled {
+  color: #fff;
+  cursor: default;
+  opacity: 1;
+  -webkit-text-fill-color: #fff;
 }
 
 .qaComposerButton {
