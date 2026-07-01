@@ -67,7 +67,7 @@ type SmartAppsRecord =
   };
 
 const MAIN_TABS: { id: AppsMainTab; label: string }[] = [
-  { id: 'qa', label: '智能协作' },
+  { id: 'qa', label: '智能写作' },
   { id: 'agent', label: 'Agent 智能体' },
 ];
 
