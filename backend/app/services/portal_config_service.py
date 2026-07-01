@@ -30,10 +30,8 @@ from app.schemas.portal_config import (
     SpaceFoldersResponse,
     SpaceOption,
     SpaceOptionsResponse,
-    SpacesConfigUpdate,
     DisplayConfig,
     SiteConfig,
-    SpaceConfig,
 )
 from app.services.config_store import SQLiteConfigStore
 
@@ -111,31 +109,8 @@ class PortalConfigService:
                 self._write_data(data)
         return PortalConfig.model_validate(data)
 
-    def with_live_space_data(
-        self,
-        config: PortalConfig,
-        space_data: dict[int, dict[str, Any]],
-    ) -> PortalConfig:
-        updated_spaces = [
-            SpaceConfig(
-                **{
-                    **space.model_dump(),
-                    "name": str(space_data.get(space.id, {}).get("name") or space.name),
-                    "file_count": int(space_data.get(space.id, {}).get("file_num") or space.file_count),
-                    "space_level": str(space_data.get(space.id, {}).get("space_level") or space.space_level),
-                }
-            )
-            for space in config.spaces
-        ]
-        return config.model_copy(update={"spaces": updated_spaces})
-
     def replace_config(self, payload: PortalConfig) -> PortalConfig:
         return self._write_config(payload)
-
-    def update_spaces(self, payload: SpacesConfigUpdate) -> PortalConfig:
-        data = self.get_config().model_dump()
-        data["spaces"] = payload.model_dump()["spaces"]
-        return self._write_config(PortalConfig.model_validate(data))
 
     def update_domains(self, payload: DomainsConfigUpdate) -> PortalConfig:
         data = self.get_config().model_dump()

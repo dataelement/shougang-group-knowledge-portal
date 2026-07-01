@@ -43,12 +43,11 @@ export function resolveListContext(
 
   const spaceId = parseSpaceId(spaceIdParam);
   if (spaceId) {
-    const space = config.spaces.find((item) => item.id === spaceId);
     return {
       mode: 'space',
       spaceId,
       spaceIds: [spaceId],
-      pageTitle: space?.name || '知识库',
+      pageTitle: titleParam || '知识库',
     };
   }
 

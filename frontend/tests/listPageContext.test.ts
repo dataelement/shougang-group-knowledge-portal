@@ -4,10 +4,6 @@ import type { PortalConfig } from '../src/api/adminConfig';
 import { resolveListContext } from '../src/utils/listPageContext';
 
 const config = {
-  spaces: [
-    { id: 12, name: '设备知识库', file_count: 0, tag_count: 0, enabled: true },
-    { id: 18, name: '安全知识库', file_count: 0, tag_count: 0, enabled: true },
-  ],
   domains: [
     {
       name: '设备',
@@ -35,12 +31,19 @@ test('domain list context keeps all bound space ids', () => {
 });
 
 test('space list context keeps the single space route behavior', () => {
-  const context = resolveListContext(config, undefined, '12');
+  const context = resolveListContext(config, undefined, '12', undefined, '设备知识库');
 
   assert.equal(context.mode, 'space');
   assert.equal(context.spaceId, 12);
   assert.deepEqual(context.spaceIds, [12]);
   assert.equal(context.pageTitle, '设备知识库');
+});
+
+test('space list context falls back to generic title without URL title', () => {
+  const context = resolveListContext(config, undefined, '12');
+
+  assert.equal(context.mode, 'space');
+  assert.equal(context.pageTitle, '知识库');
 });
 
 test('tag list context keeps configured section title', () => {

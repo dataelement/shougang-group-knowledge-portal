@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  FolderOpen, Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare,
+  Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -36,7 +36,6 @@ import {
   type SectionConfig,
   type SiteConfig,
   type SpaceOption,
-  type SpaceConfig,
   type QAConfig,
   updateAppsConfig,
   updateAgentConfig,
@@ -53,7 +52,6 @@ import {
   updateRecommendationConfig,
   updateSectionsConfig,
   updateSiteConfig,
-  updateSpacesConfig,
   uploadBannerImage,
 } from '../api/adminConfig';
 import {
@@ -105,7 +103,6 @@ import {
 } from '../utils/adminAgentConfig';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
-import { canDeleteSpace, getSpaceBindingState, getSpaceUsage, getSpaceUsageSummary, setSpaceEnabled, upsertSpace } from '../utils/adminSpaces';
 import s from './AdminPage.module.css';
 
 const APP_ICON_OPTIONS = [
@@ -120,7 +117,6 @@ const APP_ICON_OPTIONS = [
 ] as const;
 
 const NAV_ITEMS = [
-  { key: 'spaces', label: '知识空间', icon: FolderOpen },
   { key: 'domains', label: '业务域', icon: Building },
   { key: 'sections', label: '首页分区', icon: Tag },
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
@@ -163,7 +159,6 @@ type DisplayItem = {
 };
 
 type QaDialogMode =
-  | 'spaces'
   | 'welcome_message'
   | 'hot_questions'
   | 'ai_search_system_prompt'
@@ -257,17 +252,14 @@ interface SiteDraft {
 }
 
 export default function AdminPage() {
-  const [active, setActive] = useState<NavKey>('spaces');
+  const [active, setActive] = useState<NavKey>('domains');
   const [config, setConfig] = useState<PortalConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [spacePickerOpen, setSpacePickerOpen] = useState(false);
   const [spaceOptions, setSpaceOptions] = useState<SpaceOption[]>([]);
   const [spaceOptionsLoading, setSpaceOptionsLoading] = useState(false);
   const [spaceOptionsError, setSpaceOptionsError] = useState('');
-  const [spaceQuery, setSpaceQuery] = useState('');
-  const [spaceDeleteIndex, setSpaceDeleteIndex] = useState<number | null>(null);
   const [domainEditorOpen, setDomainEditorOpen] = useState(false);
   const [domainEditorIndex, setDomainEditorIndex] = useState<number | null>(null);
   const [domainDraft, setDomainDraft] = useState<DomainDraft>(createDomainDraft());
@@ -296,7 +288,6 @@ export default function AdminPage() {
   const [unifiedAuthFormError, setUnifiedAuthFormError] = useState('');
   const [qaDialogMode, setQaDialogMode] = useState<QaDialogMode>(null);
   const [qaTextDraft, setQaTextDraft] = useState('');
-  const [qaSpacesDraft, setQaSpacesDraft] = useState<number[]>([]);
   const [qaDialogError, setQaDialogError] = useState('');
   const [qaModelDialogOpen, setQaModelDialogOpen] = useState(false);
   const [qaModelOptions, setQaModelOptions] = useState<QAModelOption[]>([]);
@@ -415,9 +406,7 @@ export default function AdminPage() {
     }
   }
 
-  async function openSpacePicker() {
-    setSpacePickerOpen(true);
-    setSpaceQuery('');
+  async function loadSpaceOptions() {
     setSpaceOptionsLoading(true);
     setSpaceOptionsError('');
     try {
@@ -435,6 +424,7 @@ export default function AdminPage() {
     setDomainEditorIndex(null);
     setDomainDraft(createDomainDraft());
     setDomainFormError('');
+    void loadSpaceOptions();
   }
 
   function openEditDomainDialog(domain: DomainConfig, index: number) {
@@ -442,6 +432,7 @@ export default function AdminPage() {
     setDomainEditorIndex(index);
     setDomainDraft(createDomainDraft(domain));
     setDomainFormError('');
+    void loadSpaceOptions();
   }
 
   function openCreateSectionDialog() {
@@ -516,12 +507,6 @@ export default function AdminPage() {
     setUnifiedAuthEditorOpen(true);
     setUnifiedAuthDraft(createUnifiedAuthDraft(current ?? undefined));
     setUnifiedAuthFormError('');
-  }
-
-  function openQaSpacesDialog(qa: QAConfig) {
-    setQaDialogMode('spaces');
-    setQaSpacesDraft(qa.knowledge_space_ids);
-    setQaDialogError('');
   }
 
   async function openQaModelDialog(qa: QAConfig) {
@@ -609,11 +594,16 @@ export default function AdminPage() {
   }, [active, config, searchRerankModelOptions.length]);
 
   useEffect(() => {
+    if (active !== 'domains' || !config || spaceOptions.length || spaceOptionsLoading) return;
+    void loadSpaceOptions();
+  }, [active, config, spaceOptions.length, spaceOptionsLoading]);
+
+  useEffect(() => {
     if (active !== 'agentConfig' || !config || agentWorkflowLoaded || agentWorkflowLoading) return;
     void loadAgentWorkflowOptions('');
   }, [active, config, agentWorkflowLoaded, agentWorkflowLoading]);
 
-  function openQaTextDialog(mode: Exclude<QaDialogMode, 'spaces' | null>, value: string) {
+  function openQaTextDialog(mode: Exclude<QaDialogMode, null>, value: string) {
     setQaDialogMode(mode);
     setQaTextDraft(value);
     setQaDialogError('');
@@ -779,7 +769,6 @@ export default function AdminPage() {
   }
 
   const displayItems = config ? getDisplayItems(config.display) : [];
-  const deletingSpace = config && spaceDeleteIndex !== null ? config.spaces[spaceDeleteIndex] : null;
   const deletingApp = config && appDeleteIndex !== null ? config.apps[appDeleteIndex] : null;
   const deletingBanner = config && bannerDeleteIndex !== null ? config.banners[bannerDeleteIndex] : null;
 
@@ -836,21 +825,10 @@ export default function AdminPage() {
           {!config && !loading ? (
             <div className={s.emptyState}>配置暂时不可用</div>
           ) : null}
-          {config && active === 'spaces' && (
-            <SpacesTable
-              spaces={config.spaces}
-              domains={config.domains}
-              qa={config.qa}
-              saving={saving}
-              onAdd={() => void openSpacePicker()}
-              onToggleEnabled={(index, enabled) => void handleToggleSpaceEnabled(config.spaces, index, enabled, runSave, setConfig)}
-              onDelete={(index) => setSpaceDeleteIndex(index)}
-            />
-          )}
           {config && active === 'domains' && (
             <DomainsTable
               domains={config.domains}
-              spaces={config.spaces}
+              spaces={spaceOptions}
               saving={saving}
               onAdd={openCreateDomainDialog}
               onEdit={(index) => openEditDomainDialog(config.domains[index], index)}
@@ -915,12 +893,10 @@ export default function AdminPage() {
           {config && active === 'qa' && (
             <QAConfigTable
               qa={config.qa}
-              spaces={config.spaces}
               saving={saving}
               modelOptions={qaModelOptions}
               modelLoading={qaModelLoading}
               modelError={qaModelError}
-              onEditSpaces={() => openQaSpacesDialog(config.qa)}
               onEditWelcomeMessage={() => openQaTextDialog('welcome_message', config.qa.welcome_message)}
               onEditQuestions={() => openQaTextDialog('hot_questions', config.qa.hot_questions.join('\n'))}
               onEditModel={() => void openQaModelDialog(config.qa)}
@@ -1101,21 +1077,6 @@ export default function AdminPage() {
           )}
         </main>
       </div>
-      {config ? (
-        <SpacePickerDialog
-          open={spacePickerOpen}
-          saving={saving}
-          loading={spaceOptionsLoading}
-          error={spaceOptionsError}
-          options={spaceOptions}
-          query={spaceQuery}
-          onClose={() => setSpacePickerOpen(false)}
-          onRefresh={() => void openSpacePicker()}
-          onQueryChange={setSpaceQuery}
-          spaces={config.spaces}
-          onToggle={(option) => void handleAddSpace(config.spaces, option, runSave, setConfig)}
-        />
-      ) : null}
       {configImportConfirmOpen && configImportFile ? (
         <ConfigImportConfirmDialog
           file={configImportFile}
@@ -1129,36 +1090,23 @@ export default function AdminPage() {
           onConfirm={() => void handleConfirmImportConfig()}
         />
       ) : null}
-      {config && deletingSpace ? (
-        <SpaceDeleteDialog
-          open
-          space={deletingSpace}
-          usage={getSpaceUsage(deletingSpace.id, config.domains, config.qa)}
-          saving={saving}
-          onClose={() => setSpaceDeleteIndex(null)}
-          onConfirm={() => {
-            if (spaceDeleteIndex === null) return;
-            void handleDeleteSpace(config.spaces, spaceDeleteIndex, runSave, setConfig, {
-              confirm: false,
-              onSuccess: () => setSpaceDeleteIndex(null),
-            });
-          }}
-        />
-      ) : null}
       {config && domainEditorOpen ? (
         <DomainEditorDialog
           open
-          spaces={config.spaces}
+          spaces={spaceOptions}
+          spacesLoading={spaceOptionsLoading}
+          spacesError={spaceOptionsError}
           draft={domainDraft}
           saving={saving}
           error={domainFormError}
           onClose={() => setDomainEditorOpen(false)}
+          onRefreshSpaces={() => void loadSpaceOptions()}
           onChange={(patch) => {
             setDomainDraft((current) => ({ ...current, ...patch }));
             setDomainFormError('');
           }}
           onSubmit={() => {
-            const result = validateDomainDraft(domainDraft, config.spaces);
+            const result = validateDomainDraft(domainDraft, spaceOptions);
             if (!result.domain) {
               setDomainFormError(result.error || '业务域配置无效');
               return;
@@ -1179,7 +1127,7 @@ export default function AdminPage() {
         <DomainDeleteDialog
           open
           domain={config.domains[domainDeleteIndex]}
-          spaceName={config.spaces.find((space) => space.id === config.domains[domainDeleteIndex].space_ids[0])?.name}
+          spaceName={spaceOptions.find((space) => space.id === config.domains[domainDeleteIndex].space_ids[0])?.name}
           saving={saving}
           onClose={() => setDomainDeleteIndex(null)}
           onConfirm={() => {
@@ -1334,35 +1282,7 @@ export default function AdminPage() {
           }}
         />
       ) : null}
-      {config && qaDialogMode === 'spaces' ? (
-        <QaSpacesDialog
-          open
-          spaces={config.spaces}
-          selectedIds={qaSpacesDraft}
-          saving={saving}
-          error={qaDialogError}
-          onClose={() => setQaDialogMode(null)}
-          onToggle={(spaceId) => {
-            setQaDialogError('');
-            setQaSpacesDraft((current) => (
-              current.includes(spaceId)
-                ? current.filter((id) => id !== spaceId)
-                : [...current, spaceId]
-            ));
-          }}
-          onSubmit={() => {
-            if (!qaSpacesDraft.length) {
-              setQaDialogError('请至少选择一个知识空间');
-              return;
-            }
-            void runSave(async () => {
-              await persistQa({ ...config.qa, knowledge_space_ids: qaSpacesDraft }, setConfig);
-              setQaDialogMode(null);
-            });
-          }}
-        />
-      ) : null}
-      {config && qaDialogMode && qaDialogMode !== 'spaces' ? (
+      {config && qaDialogMode ? (
         <TextEditorDialog
           open
           title={getQaDialogTitle(qaDialogMode)}
@@ -1872,191 +1792,6 @@ export default function AdminPage() {
   );
 }
 
-function SpacesTable({
-  spaces,
-  domains,
-  qa,
-  saving,
-  onAdd,
-  onToggleEnabled,
-  onDelete,
-}: {
-  spaces: SpaceConfig[];
-  domains: DomainConfig[];
-  qa: QAConfig;
-  saving: boolean;
-  onAdd: () => void;
-  onToggleEnabled: (index: number, enabled: boolean) => void;
-  onDelete: (index: number) => void;
-}) {
-  return (
-    <>
-      <div className={s.titleBar}>
-        <h2 className={s.pageTitle}>知识空间管理</h2>
-        <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
-      </div>
-      <p className={s.pageNote}>
-        已绑定的空间决定门户可见范围。停用会立即从前台隐藏，删除前需要先解除业务域和问答范围里的引用。
-      </p>
-      <table className={s.table}>
-        <colgroup>
-          <col className={s.displayGroupCol} />
-          <col />
-          <col className={s.displayValueCol} />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>空间名称</th>
-            <th>状态</th>
-            <th>文件数</th>
-            <th>关联配置</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {spaces.map((sp, index) => {
-            const usage = getSpaceUsage(sp.id, domains, qa);
-            const deletable = canDeleteSpace(usage);
-            return (
-              <tr key={sp.id}>
-                <td>
-                  <div className={s.spaceNameCell}>
-                    <span>{sp.name}</span>
-                    <span className={s.inlineHint}>ID {sp.id}</span>
-                  </div>
-                </td>
-                <td>
-                  <span className={sp.enabled ? s.stateEnabled : s.stateDisabled}>
-                    {sp.enabled ? '已启用' : '已停用'}
-                  </span>
-                </td>
-                <td>{sp.file_count}</td>
-                <td>{getSpaceUsageSummary(usage)}</td>
-                <td>
-                  <div className={s.actionGroup}>
-                    <button
-                      className={s.inlineBtn}
-                      onClick={() => onToggleEnabled(index, !sp.enabled)}
-                      disabled={saving}
-                    >
-                      {sp.enabled ? '停用' : '启用'}
-                    </button>
-                    <button
-                      className={deletable ? s.inlineDangerBtn : s.inlineMutedBtn}
-                      onClick={() => onDelete(index)}
-                      disabled={saving || !deletable}
-                      title={deletable ? '删除该知识空间绑定' : '请先解除业务域和问答范围里的引用'}
-                    >
-                      删除
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </>
-  );
-}
-
-function SpacePickerDialog({
-  open,
-  spaces,
-  options,
-  query,
-  saving,
-  loading,
-  error,
-  onClose,
-  onRefresh,
-  onQueryChange,
-  onToggle,
-}: {
-  open: boolean;
-  spaces: SpaceConfig[];
-  options: SpaceOption[];
-  query: string;
-  saving: boolean;
-  loading: boolean;
-  error: string;
-  onClose: () => void;
-  onRefresh: () => void;
-  onQueryChange: (value: string) => void;
-  onToggle: (option: SpaceOption) => void;
-}) {
-  if (!open) return null;
-
-  const filteredOptions = options.filter((option) => {
-    const keyword = query.trim().toLowerCase();
-    if (!keyword) return true;
-    return (
-      option.name.toLowerCase().includes(keyword)
-      || option.description.toLowerCase().includes(keyword)
-    );
-  });
-
-  return (
-    <div className={s.modalBackdrop} onClick={onClose}>
-      <div className={`${s.modalCard} ${s.qaTemplateModal}`} onClick={(event) => event.stopPropagation()}>
-        <div className={s.modalHeader}>
-          <div>
-            <h3 className={s.modalTitle}>添加知识空间</h3>
-            <p className={s.modalNote}>从大模型应用平台现有知识空间里选择，不向用户展示空间 ID。</p>
-          </div>
-          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
-        </div>
-        <div className={s.modalActions}>
-          <input
-            className={s.optionSearch}
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="搜索知识空间名称或描述"
-          />
-          <button className={s.subtleBtn} onClick={onRefresh} disabled={loading || saving}>
-            <RefreshCw size={14} />
-            刷新候选项
-          </button>
-        </div>
-        {error ? <div className={s.errorBox}>{error}</div> : null}
-        {!error && !loading ? (
-          <div className={s.modalHint}>
-            当前候选数：{options.length}，筛选后：{filteredOptions.length}
-          </div>
-        ) : null}
-        <div className={s.optionList}>
-          {loading ? <div className={s.emptyState}>正在加载候选空间...</div> : null}
-          {!loading && !options.length ? <div className={s.emptyState}>暂未获取到候选空间</div> : null}
-          {!loading && !!options.length && !filteredOptions.length ? <div className={s.emptyState}>没有匹配的知识空间</div> : null}
-          {!loading && filteredOptions.map((option) => {
-            const bindingState = getSpaceBindingState(spaces, option);
-            return (
-              <div key={option.id} className={s.optionRow}>
-                <div className={s.optionMain}>
-                  <div className={s.optionName}>{option.name}</div>
-                  <div className={s.optionMeta}>
-                    {option.description || '未配置描述'}
-                  </div>
-                </div>
-                <div className={s.optionSide}>
-                  <span className={s.optionCount}>{option.file_count} 个文件</span>
-                  <button
-                    className={bindingState === 'new' ? s.addBtn : s.subtleBtn}
-                    onClick={() => onToggle(option)}
-                    disabled={saving || bindingState === 'enabled'}
-                  >
-                    {bindingState === 'new' ? '添加' : bindingState === 'disabled' ? '重新启用' : '已绑定'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ConfigImportConfirmDialog({
   file,
   saving,
@@ -2099,47 +1834,6 @@ function ConfigImportConfirmDialog({
   );
 }
 
-function SpaceDeleteDialog({
-  open,
-  space,
-  usage,
-  saving,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean;
-  space: SpaceConfig;
-  usage: ReturnType<typeof getSpaceUsage>;
-  saving: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className={s.modalBackdrop} onClick={onClose}>
-      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
-        <div className={s.modalHeader}>
-          <div>
-            <h3 className={s.modalTitle}>删除知识空间</h3>
-            <p className={s.modalNote}>这只会移除门户绑定，不会删除大模型应用平台里的原始知识空间。</p>
-          </div>
-          <button className={s.subtleBtn} onClick={onClose}>取消</button>
-        </div>
-        <div className={s.confirmBody}>
-          <div className={s.confirmLine}><strong>空间名称：</strong>{space.name}</div>
-          <div className={s.confirmLine}><strong>文件数：</strong>{space.file_count}</div>
-          <div className={s.confirmLine}><strong>关联配置：</strong>{getSpaceUsageSummary(usage)}</div>
-        </div>
-        <div className={s.confirmActions}>
-          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
-          <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function DomainsTable({
   domains,
   spaces,
@@ -2151,7 +1845,7 @@ function DomainsTable({
   onMoveDown,
 }: {
   domains: DomainConfig[];
-  spaces: SpaceConfig[];
+  spaces: SpaceOption[];
   saving: boolean;
   onAdd: () => void;
   onEdit: (index: number) => void;
@@ -2255,19 +1949,25 @@ function AdminIconCell({
 function DomainEditorDialog({
   open,
   spaces,
+  spacesLoading,
+  spacesError,
   draft,
   saving,
   error,
   onClose,
+  onRefreshSpaces,
   onChange,
   onSubmit,
 }: {
   open: boolean;
-  spaces: SpaceConfig[];
+  spaces: SpaceOption[];
+  spacesLoading: boolean;
+  spacesError: string;
   draft: DomainDraft;
   saving: boolean;
   error: string;
   onClose: () => void;
+  onRefreshSpaces: () => void;
   onChange: (patch: Partial<DomainDraft>) => void;
   onSubmit: () => void;
 }) {
@@ -2318,12 +2018,21 @@ function DomainEditorDialog({
               onChange={(event) => onChange({ spaceId: event.target.value })}
             >
               <option value="">未绑定（暂不上首页）</option>
+              {spacesLoading ? <option value="" disabled>正在加载候选空间...</option> : null}
               {getPublicSpaceOptions(spaces).map((space) => (
                 <option key={space.id} value={space.id}>
-                  {space.name}{space.enabled ? '' : '（已停用）'}
+                  {space.name}
                 </option>
               ))}
             </select>
+            {spacesError ? (
+              <span className={s.fieldHint}>
+                {spacesError}
+                <button type="button" className={s.inlineBtn} onClick={onRefreshSpaces} disabled={spacesLoading}>
+                  重新加载
+                </button>
+              </span>
+            ) : null}
             <span className={s.fieldHint}>未绑定的业务域只在后台可见，绑定知识空间后会按数组顺序出现在首页业务域导航。</span>
           </label>
           <div className={`${s.formField} ${s.formFieldWide}`}>
@@ -2973,12 +2682,10 @@ function UnifiedAuthEditorDialog({
 
 function QAConfigTable({
   qa,
-  spaces,
   saving,
   modelOptions,
   modelLoading,
   modelError,
-  onEditSpaces,
   onEditWelcomeMessage,
   onEditQuestions,
   onEditModel,
@@ -2989,12 +2696,10 @@ function QAConfigTable({
   onEditExpertPrompt,
 }: {
   qa: QAConfig;
-  spaces: SpaceConfig[];
   saving: boolean;
   modelOptions: QAModelOption[];
   modelLoading: boolean;
   modelError: string;
-  onEditSpaces: () => void;
   onEditWelcomeMessage: () => void;
   onEditQuestions: () => void;
   onEditModel: () => void;
@@ -3026,22 +2731,6 @@ function QAConfigTable({
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td>知识空间范围</td>
-            <td>
-              <div className={s.valueStack}>
-                <span className={s.valueTitle}>{qa.knowledge_space_ids.length ? `${qa.knowledge_space_ids.length} 个空间` : '未配置'}</span>
-                {qa.knowledge_space_ids.length ? (
-                  <span className={s.valueMeta}>{qa.knowledge_space_ids.map((id) => spaces.find((sp) => sp.id === id)?.name || id).join('、')}</span>
-                ) : null}
-              </div>
-            </td>
-            <td>
-              <div className={s.actionGroup}>
-                <button className={s.inlineBtn} onClick={onEditSpaces} disabled={saving}>{saving ? '保存中...' : '编辑'}</button>
-              </div>
-            </td>
-          </tr>
           <tr>
             <td>欢迎语</td>
             <td><div className={s.valueStack}><span className={s.valueTitle}>{qa.welcome_message || '未配置'}</span></div></td>
@@ -4517,75 +4206,6 @@ function SiteEditorDialog({
   );
 }
 
-function QaSpacesDialog({
-  open,
-  spaces,
-  selectedIds,
-  saving,
-  error,
-  onClose,
-  onToggle,
-  onSubmit,
-}: {
-  open: boolean;
-  spaces: SpaceConfig[];
-  selectedIds: number[];
-  saving: boolean;
-  error?: string;
-  onClose: () => void;
-  onToggle: (spaceId: number) => void;
-  onSubmit: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className={s.modalBackdrop} onClick={onClose}>
-      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
-        <div className={s.modalHeader}>
-          <div>
-            <h3 className={s.modalTitle}>编辑知识空间范围</h3>
-            <p className={s.modalNote}>勾选后会同时影响首页问答入口和问答页实际可用的知识空间。</p>
-          </div>
-          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
-        </div>
-        {error ? <div className={s.errorBox}>{error}</div> : null}
-        <div className={s.modalHint}>当前已选 {selectedIds.length} 个知识空间</div>
-        <div className={s.optionList}>
-          <div className={s.checkboxList}>
-            {spaces.map((space) => {
-              const checked = selectedIds.includes(space.id);
-              return (
-                <button
-                  key={space.id}
-                  type="button"
-                  className={`${s.optionRow} ${checked ? s.optionRowActive : ''}`}
-                  onClick={() => onToggle(space.id)}
-                >
-                  <span className={s.optionMain}>
-                    <span className={s.optionName}>{space.name}</span>
-                    <span className={s.optionMeta}>
-                      <span className={s.optionMetaItem}>ID {space.id}</span>
-                      <span className={s.optionMetaItem}>{space.file_count} 个文件</span>
-                    </span>
-                  </span>
-                  <span className={s.optionSide}>
-                    <span className={s.optionCount}>{space.enabled ? '已启用' : '已停用'}</span>
-                    <span className={`${s.checkboxMark} ${checked ? s.checkboxMarkActive : ''}`}>{checked ? '已选' : '选择'}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className={s.confirmActions}>
-          <button className={s.subtleBtn} onClick={onClose}>取消</button>
-          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function QaModelDialog({
   open,
   models,
@@ -5011,7 +4631,7 @@ function AppDeleteDialog({
   );
 }
 
-function getQaDialogTitle(mode: Exclude<QaDialogMode, 'spaces' | null>) {
+function getQaDialogTitle(mode: Exclude<QaDialogMode, null>) {
   switch (mode) {
     case 'welcome_message':
       return '编辑欢迎语';
@@ -5030,7 +4650,7 @@ function getQaDialogTitle(mode: Exclude<QaDialogMode, 'spaces' | null>) {
   }
 }
 
-function getQaDialogNote(mode: Exclude<QaDialogMode, 'spaces' | null>) {
+function getQaDialogNote(mode: Exclude<QaDialogMode, null>) {
   switch (mode) {
     case 'welcome_message':
       return '首页 QA 卡片和问答页新会话首条消息都会共用这句欢迎语。';
@@ -5049,7 +4669,7 @@ function getQaDialogNote(mode: Exclude<QaDialogMode, 'spaces' | null>) {
   }
 }
 
-function getQaDialogLabel(mode: Exclude<QaDialogMode, 'spaces' | null>) {
+function getQaDialogLabel(mode: Exclude<QaDialogMode, null>) {
   switch (mode) {
     case 'welcome_message':
       return '欢迎语';
@@ -5068,7 +4688,7 @@ function getQaDialogLabel(mode: Exclude<QaDialogMode, 'spaces' | null>) {
   }
 }
 
-function getQaDialogPlaceholder(mode: Exclude<QaDialogMode, 'spaces' | null>) {
+function getQaDialogPlaceholder(mode: Exclude<QaDialogMode, null>) {
   switch (mode) {
     case 'welcome_message':
       return '例如：你好，我是首钢股份知库智能助手，请问有什么可以帮您？';
@@ -5147,11 +4767,6 @@ function getDisplayItems(display: DisplayConfig): DisplayItem[] {
   ];
 }
 
-async function persistSpaces(spaces: SpaceConfig[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
-  const data = await updateSpacesConfig(spaces);
-  setConfig((current) => (current ? { ...current, spaces: data.spaces } : current));
-}
-
 async function persistDomains(domains: DomainConfig[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
   const data = await updateDomainsConfig(domains);
   setConfig((current) => (current ? { ...current, domains: data.domains } : current));
@@ -5214,44 +4829,6 @@ async function persistSite(site: SiteConfig, setConfig: Dispatch<SetStateAction<
 
 type SaveRunner = (task: () => Promise<void>) => Promise<void>;
 type ConfigSetter = Dispatch<SetStateAction<PortalConfig | null>>;
-
-async function handleAddSpace(
-  spaces: SpaceConfig[],
-  option: SpaceOption,
-  runSave: SaveRunner,
-  setConfig: ConfigSetter,
-  onSuccess?: () => void,
-) {
-  await runSave(async () => {
-    await persistSpaces(upsertSpace(spaces, option), setConfig);
-    onSuccess?.();
-  });
-}
-
-async function handleToggleSpaceEnabled(
-  spaces: SpaceConfig[],
-  index: number,
-  enabled: boolean,
-  runSave: SaveRunner,
-  setConfig: ConfigSetter,
-) {
-  if (spaces[index]?.enabled === enabled) return;
-  await runSave(() => persistSpaces(setSpaceEnabled(spaces, index, enabled), setConfig));
-}
-
-async function handleDeleteSpace(
-  spaces: SpaceConfig[],
-  index: number,
-  runSave: SaveRunner,
-  setConfig: ConfigSetter,
-  options?: { confirm?: boolean; onSuccess?: () => void },
-) {
-  if (options?.confirm !== false && !window.confirm(`确定删除知识空间“${spaces[index].name}”吗？`)) return;
-  await runSave(async () => {
-    await persistSpaces(spaces.filter((_, i) => i !== index), setConfig);
-    options?.onSuccess?.();
-  });
-}
 
 async function handleAddDomain(
   domains: DomainConfig[],

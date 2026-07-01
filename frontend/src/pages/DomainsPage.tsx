@@ -7,7 +7,7 @@ import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { getEnabledDomains, getEnabledSpaces, getPrimarySpaceId } from '../utils/portalConfig';
+import { getEnabledDomains, getPrimarySpaceId } from '../utils/portalConfig';
 import { buildSpaceSearchPath } from '../utils/searchParams';
 import s from './DomainsPage.module.css';
 
@@ -38,8 +38,7 @@ export default function DomainsPage() {
       root.style.scrollBehavior = previousScrollBehavior;
     });
   }, [navigate]);
-  const spaces = config ? getEnabledSpaces(config.spaces) : [];
-  const domains = config ? getEnabledDomains(config.domains, config.spaces) : [];
+  const domains = config ? getEnabledDomains(config.domains) : [];
 
   return (
     <PageShell>
@@ -52,7 +51,7 @@ export default function DomainsPage() {
         <div className={s.grid}>
           {domains.map((domain) => {
             const Icon = DOMAIN_ICONS[domain.icon] || Settings;
-            const space = spaces.find((item) => item.id === getPrimarySpaceId(domain.space_ids));
+            const targetSpaceId = getPrimarySpaceId(domain.space_ids);
             const visualPreset = getDomainVisualPreset(domain);
             const domainBackground = visualPreset.backgroundImage;
             const usesBannerThumb = Boolean(domainBackground);
@@ -64,7 +63,6 @@ export default function DomainsPage() {
                 className={`${s.card} ${usesBannerThumb ? s.cardImage : ''}`}
                 style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
                 onClick={() => {
-                  const targetSpaceId = getPrimarySpaceId(domain.space_ids);
                   if (targetSpaceId) navigateToTop(buildSpaceSearchPath(targetSpaceId));
                 }}
               >
@@ -75,7 +73,7 @@ export default function DomainsPage() {
                 )}
                 <div className={s.cardBody}>
                   <div className={s.name}>{domain.name}</div>
-                  <div className={s.meta}>{space?.name || `空间 ${domain.space_ids.join(', ')}`}</div>
+                  <div className={s.meta}>{targetSpaceId ? `空间 ${targetSpaceId}` : '未绑定空间'}</div>
                 </div>
               </button>
             );

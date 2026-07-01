@@ -491,7 +491,7 @@ export default function HomePage() {
       scene: 'qa',
       entryPoint: 'home_qa',
       text,
-      knowledgeSpaceIds: config?.qa.knowledge_space_ids ?? [],
+      knowledgeSpaceIds: [],
       onUpdate(currentText) {
         setQaMessages((prev) => {
           const next = [...prev];
@@ -512,7 +512,7 @@ export default function HomePage() {
     }).finally(() => {
       setQaStreaming(false);
     });
-  }, [config?.qa.knowledge_space_ids, qaDraft, qaStreaming]);
+  }, [qaDraft, qaStreaming]);
 
   const handleKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
@@ -522,7 +522,7 @@ export default function HomePage() {
     if (e.key === 'Enter') handleSearch();
   };
 
-  const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains, config.spaces) : []), [config]);
+  const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains) : []), [config]);
   const enabledSections = useMemo(() => (config ? getEnabledSections(config.sections) : []), [config]);
 
   useEffect(() => {

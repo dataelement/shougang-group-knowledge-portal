@@ -1,4 +1,4 @@
-import type { DomainConfig, SpaceConfig } from '../api/adminConfig';
+import type { DomainConfig, SpaceOption } from '../api/adminConfig';
 
 export const DOMAIN_ICON_OPTIONS = [
   'Settings',
@@ -64,7 +64,7 @@ export function createDomainDraft(current?: DomainConfig): DomainDraft {
   };
 }
 
-export function validateDomainDraft(draft: DomainDraft, spaces: SpaceConfig[]): { domain?: DomainConfig; error?: string } {
+export function validateDomainDraft(draft: DomainDraft, spaces: SpaceOption[]): { domain?: DomainConfig; error?: string } {
   const name = draft.name.trim();
   if (!name) return { error: '请输入业务域名称' };
 
@@ -113,6 +113,6 @@ export function isSelectedDomainColor(
   return draft.color === option.color && draft.bg === option.bg;
 }
 
-export function getPublicSpaceOptions(spaces: SpaceConfig[]): SpaceConfig[] {
+export function getPublicSpaceOptions(spaces: SpaceOption[]): SpaceOption[] {
   return spaces.filter((space) => (space.space_level ?? '').trim().toLowerCase() === 'public');
 }

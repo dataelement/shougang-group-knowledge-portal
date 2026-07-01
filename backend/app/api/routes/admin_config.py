@@ -33,7 +33,6 @@ from app.schemas.portal_config import (
     SearchConfig,
     SectionsConfigUpdate,
     SiteConfig,
-    SpacesConfigUpdate,
 )
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.error_messages import normalize_user_facing_message
@@ -83,15 +82,8 @@ async def _fetch_shougang_portal_space_info(
 @router.get("")
 async def get_portal_config(
     service: PortalConfigService = Depends(get_portal_config_service),
-    bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
-    config = service.get_config()
-    live_space_data = await _fetch_shougang_portal_space_info(
-        bisheng_client,
-        [space.id for space in config.spaces],
-    )
-    live_config = service.with_live_space_data(config, live_space_data)
-    return response_ok(live_config)
+    return response_ok(service.get_config())
 
 
 @router.get("/export")
@@ -170,21 +162,6 @@ async def replace_portal_config(
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
     return response_ok(service.replace_config(payload))
-
-
-@router.get("/spaces")
-async def get_spaces_config(
-    service: PortalConfigService = Depends(get_portal_config_service),
-):
-    return response_ok({"spaces": service.get_config().spaces})
-
-
-@router.post("/spaces")
-async def update_spaces_config(
-    payload: SpacesConfigUpdate,
-    service: PortalConfigService = Depends(get_portal_config_service),
-):
-    return response_ok({"spaces": service.update_spaces(payload).spaces})
 
 
 @router.get("/space-options")

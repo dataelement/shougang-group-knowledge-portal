@@ -8,7 +8,6 @@ from app.api.dependencies import require_admin_session
 from app.main import app
 from app.schemas.auth import PortalUserView
 from app.schemas.bisheng_runtime import BishengRuntimeConfig
-from app.schemas.portal_config import SpacesConfigUpdate
 from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthError
@@ -354,9 +353,6 @@ def test_import_admin_config_replaces_portal_and_non_sensitive_runtime_config(tm
         "version": 1,
         "portal": {
             **current.model_dump(mode="json"),
-            "spaces": [
-                {"id": 88, "name": "导入空间", "file_count": 5, "tag_count": 0, "space_level": "department", "enabled": True}
-            ],
             "site": {
                 **current.site.model_dump(mode="json"),
                 "browser_title": "导入后的门户",
@@ -385,7 +381,7 @@ def test_import_admin_config_replaces_portal_and_non_sensitive_runtime_config(tm
     body = response.json()
     assert body["status_code"] == 200
     assert body["data"]["portal"]["site"]["browser_title"] == "导入后的门户"
-    assert service.get_config().spaces[0].name == "导入空间"
+    assert "spaces" not in service.get_config().model_dump(mode="json")
     assert str(runtime_service._read_config().base_url) == "http://imported-bisheng.example.com/"
     assert runtime_service._read_config().asset_base_url == "http://imported-assets.example.com"
     assert runtime_service._read_config().username == "import-admin"
@@ -685,13 +681,6 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
 
 def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
-    service.update_spaces(
-        SpacesConfigUpdate(
-            spaces=[
-                {"id": 12, "name": "占位", "file_count": 0, "tag_count": 0, "enabled": True},
-            ]
-        )
-    )
     runtime_service = create_runtime_service(tmp_path)
     bisheng_client = FakeBishengClient()
 
@@ -704,7 +693,7 @@ def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
     assert response.status_code == 200
     body = response.json()
     assert body["status_code"] == 200
-    assert "spaces" in body["data"]
+    assert "spaces" not in body["data"]
     assert "domains" in body["data"]
     assert "welcome_message" in body["data"]["qa"]
     assert "ai_search_system_prompt" in body["data"]["qa"]
@@ -716,11 +705,7 @@ def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
     assert "template_categories" in body["data"]["qa"]
     assert "templates" in body["data"]["qa"]
     assert body["data"]["search"] == {"rerank_model_id": ""}
-    assert body["data"]["spaces"][0]["name"] == "空间12"
-    assert body["data"]["spaces"][0]["file_count"] == 13
-    assert bisheng_client.post_calls == [
-        ("/api/v1/knowledge/shougang-portal/spaces/info", {"space_ids": [12]})
-    ]
+    assert bisheng_client.post_calls == []
 
 
 def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
@@ -764,7 +749,6 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
         response = client.post(
             "/api/v1/admin/config/qa",
             json={
-                "knowledge_space_ids": [12, 18],
                 "welcome_message": "你好，我是首钢设备诊断助手，请问有什么可以帮您？",
                 "hot_questions": ["振动纹通常如何排查？"],
                 "ai_search_system_prompt": "搜索提示词",
@@ -1108,8 +1092,8 @@ def test_post_admin_banners_rejects_missing_required_fields(tmp_path: Path):
 def test_get_admin_banners_seeds_defaults_when_missing(tmp_path: Path):
     config_path = tmp_path / "portal_config.json"
     config_path.write_text(
-        '{"spaces": [], "domains": [], "sections": [], '
-        '"qa": {"knowledge_space_ids": [], "welcome_message": "", '
+        '{"domains": [], "sections": [], '
+        '"qa": {"welcome_message": "", '
         '"hot_questions": [], "ai_search_system_prompt": "", "qa_system_prompt": "", "selected_model": ""}, '
         '"recommendation": {"provider": "tag_feed", "home_strategy": "x", "detail_strategy": "y"}, '
         '"display": {"home": {}, "list": {}, "search": {}, "detail": {}}, '
@@ -1230,8 +1214,8 @@ def test_post_admin_integrations_accepts_empty_to_clear(tmp_path: Path):
 def test_get_admin_config_seeds_integrations_when_missing_from_legacy_json(tmp_path: Path):
     config_path = tmp_path / "portal_config.json"
     config_path.write_text(
-        '{"spaces": [], "domains": [], "sections": [], '
-        '"qa": {"knowledge_space_ids": [], "welcome_message": "", '
+        '{"domains": [], "sections": [], '
+        '"qa": {"welcome_message": "", '
         '"hot_questions": [], "ai_search_system_prompt": "", "qa_system_prompt": "", "selected_model": ""}, '
         '"recommendation": {"provider": "tag_feed", "home_strategy": "x", "detail_strategy": "y"}, '
         '"display": {"home": {}, "list": {}, "search": {}, "detail": {}}, '
@@ -1257,8 +1241,8 @@ def test_get_admin_config_seeds_integrations_when_missing_from_legacy_json(tmp_p
 def test_get_admin_config_backfills_missing_integration_keys(tmp_path: Path):
     config_path = tmp_path / "portal_config.json"
     config_path.write_text(
-        '{"spaces": [], "domains": [], "sections": [], '
-        '"qa": {"knowledge_space_ids": [], "welcome_message": "", '
+        '{"domains": [], "sections": [], '
+        '"qa": {"welcome_message": "", '
         '"hot_questions": [], "ai_search_system_prompt": "", "qa_system_prompt": "", "selected_model": ""}, '
         '"recommendation": {"provider": "tag_feed", "home_strategy": "x", "detail_strategy": "y"}, '
         '"display": {"home": {}, "list": {}, "search": {}, "detail": {}}, '
@@ -1330,8 +1314,8 @@ def test_post_admin_site_persists_brand_values(tmp_path: Path):
 def test_get_admin_config_backfills_missing_site_from_legacy_json(tmp_path: Path):
     config_path = tmp_path / "portal_config.json"
     config_path.write_text(
-        '{"spaces": [], "domains": [], "sections": [], '
-        '"qa": {"knowledge_space_ids": [], "welcome_message": "", '
+        '{"domains": [], "sections": [], '
+        '"qa": {"welcome_message": "", '
         '"hot_questions": [], "ai_search_system_prompt": "", "qa_system_prompt": "", "selected_model": ""}, '
         '"recommendation": {"provider": "tag_feed", "home_strategy": "x", "detail_strategy": "y"}, '
         '"display": {"home": {}, "list": {}, "search": {}, "detail": {}}, '

@@ -1,4 +1,4 @@
-import type { AppConfig, BannerSlide, DisplayConfig, DomainConfig, SectionConfig, SpaceConfig } from '../api/adminConfig';
+import type { AppConfig, BannerSlide, DisplayConfig, DomainConfig, SectionConfig } from '../api/adminConfig';
 import { DISPLAY_CONFIG } from '../config/display';
 
 export interface RuntimeBanner {
@@ -95,16 +95,10 @@ export function toRuntimeDisplayConfig(display?: DisplayConfig): RuntimeDisplayC
   };
 }
 
-export function getEnabledSpaces(spaces: SpaceConfig[]): SpaceConfig[] {
-  return spaces.filter((space) => space.enabled);
-}
-
-export function getEnabledDomains(domains: DomainConfig[], spaces?: SpaceConfig[]): DomainConfig[] {
-  const enabledSpaceIds = spaces ? new Set(getEnabledSpaces(spaces).map((space) => space.id)) : null;
+export function getEnabledDomains(domains: DomainConfig[]): DomainConfig[] {
   return domains.filter((domain) => {
     if (!domain.enabled || !domain.space_ids.length) return false;
-    if (!enabledSpaceIds) return true;
-    return domain.space_ids.some((spaceId) => enabledSpaceIds.has(spaceId));
+    return true;
   });
 }
 

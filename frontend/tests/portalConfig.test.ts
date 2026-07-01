@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FALLBACK_HOME_BANNERS, getEnabledApps, getEnabledDomains, getEnabledSections, getEnabledSpaces, getPrimarySpaceId, resolveHomeBanners, toRuntimeDisplayConfig } from '../src/utils/portalConfig';
+import { FALLBACK_HOME_BANNERS, getEnabledApps, getEnabledDomains, getEnabledSections, getPrimarySpaceId, resolveHomeBanners, toRuntimeDisplayConfig } from '../src/utils/portalConfig';
 
 test('toRuntimeDisplayConfig maps API display config fields to runtime keys', () => {
   const runtime = toRuntimeDisplayConfig({
@@ -50,16 +50,13 @@ test('toRuntimeDisplayConfig maps API display config fields to runtime keys', ()
   });
 });
 
-test('enabled helpers filter disabled records and orphaned domains', () => {
-  const spaces = getEnabledSpaces([
-    { id: 12, name: '轧线', file_count: 1, tag_count: 1, enabled: true },
-    { id: 18, name: '冷轧', file_count: 1, tag_count: 1, enabled: false },
-  ]);
+test('enabled helpers filter disabled records and unbound domains', () => {
   const domains = getEnabledDomains([
     { name: '设备', space_ids: [12], color: '#111', bg: '#eee', icon: 'Factory', background_image: '', enabled: true, code: '' },
     { name: '冷轧', space_ids: [18], color: '#111', bg: '#eee', icon: 'Snowflake', background_image: '', enabled: true, code: '' },
     { name: '安全', space_ids: [12], color: '#111', bg: '#eee', icon: 'Shield', background_image: '', enabled: false, code: '' },
-  ], spaces);
+    { name: '未绑定', space_ids: [], color: '#111', bg: '#eee', icon: 'Factory', background_image: '', enabled: true, code: '' },
+  ]);
   const sections = getEnabledSections([
     { title: '精选', tag: '最新精选', link: '/list?tag=最新精选', icon: 'Star', color: '#2563eb', bg: '#eff6ff', enabled: true },
     { title: '案例', tag: '典型案例', link: '/list?tag=典型案例', icon: 'AlertTriangle', color: '#dc2626', bg: '#fee2e2', enabled: false },
@@ -69,8 +66,7 @@ test('enabled helpers filter disabled records and orphaned domains', () => {
     { id: 2, name: '报告', icon: 'FileText', desc: 'desc', color: '#111', bg: '#eee', url: '/report', enabled: false },
   ]);
 
-  assert.deepEqual(spaces.map((space) => space.id), [12]);
-  assert.deepEqual(domains.map((domain) => domain.name), ['设备']);
+  assert.deepEqual(domains.map((domain) => domain.name), ['设备', '冷轧']);
   assert.deepEqual(sections.map((section) => section.tag), ['最新精选']);
   assert.deepEqual(apps.map((app) => app.id), [1]);
 });

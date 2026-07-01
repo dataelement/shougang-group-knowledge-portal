@@ -37,7 +37,7 @@ test('validateDomainDraft returns a domain config incl. uppercased code', () => 
     enabled: true,
     code: 'pp',
   }, [
-    { id: 18, name: '冷轧技术手册', file_count: 10, tag_count: 0, enabled: true, space_level: 'public' },
+    { id: 18, name: '冷轧技术手册', description: '', file_count: 10, space_level: 'public' },
   ]);
 
   assert.deepEqual(result, {
@@ -65,7 +65,7 @@ test('validateDomainDraft rejects binding to a non-public space', () => {
     enabled: true,
     code: 'EM',
   }, [
-    { id: 20, name: '部门库', file_count: 0, tag_count: 0, enabled: true, space_level: 'department' },
+    { id: 20, name: '部门库', description: '', file_count: 0, space_level: 'department' },
   ]);
   assert.equal(result.error, '绑定空间必须是公共知识空间');
 });
@@ -97,7 +97,7 @@ test('validateDomainDraft still rejects unknown spaces', () => {
     enabled: true,
     code: '',
   }, [
-    { id: 12, name: '轧线技术案例库', file_count: 10, tag_count: 0, enabled: true },
+    { id: 12, name: '轧线技术案例库', description: '', file_count: 10 },
   ]);
 
   assert.equal(unknown.error, '绑定空间不存在');
@@ -115,9 +115,9 @@ test('isSelectedDomainColor matches preset color pairs exactly', () => {
 
 test('getPublicSpaceOptions keeps only public spaces', () => {
   const result = getPublicSpaceOptions([
-    { id: 1, name: '营销', file_count: 0, tag_count: 0, enabled: true, space_level: 'public' },
-    { id: 2, name: '我的库', file_count: 0, tag_count: 0, enabled: true, space_level: 'personal' },
-    { id: 3, name: '部门库', file_count: 0, tag_count: 0, enabled: true, space_level: 'department' },
+    { id: 1, name: '营销', description: '', file_count: 0, space_level: 'public' },
+    { id: 2, name: '我的库', description: '', file_count: 0, space_level: 'personal' },
+    { id: 3, name: '部门库', description: '', file_count: 0, space_level: 'department' },
   ]);
   assert.deepEqual(result.map((s) => s.id), [1]);
 });

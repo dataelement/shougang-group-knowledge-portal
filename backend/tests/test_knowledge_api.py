@@ -6,75 +6,18 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.schemas.portal_config import AgentConfig, SpacesConfigUpdate
+from app.schemas.portal_config import AgentConfig
 from app.services.portal_config_service import PortalConfigService
 
 
 def _seed_test_spaces(service: PortalConfigService) -> None:
-    """Inject the space ids most knowledge-route tests rely on (12 / 18 / 25)."""
-    service.update_spaces(
-        SpacesConfigUpdate(
-            spaces=[
-                {
-                    "id": 12,
-                    "name": "轧线技术案例库",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "department",
-                    "enabled": True,
-                },
-                {
-                    "id": 18,
-                    "name": "冷轧技术手册",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "department",
-                    "enabled": True,
-                },
-                {
-                    "id": 25,
-                    "name": "设备维修规范",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "department",
-                    "enabled": True,
-                },
-            ]
-        )
-    )
+    """兼容旧测试调用；空间范围现在由 FakeBishengClient 的公共空间返回。"""
+    service.get_config()
 
 
 def _seed_anonymous_qa_spaces(service: PortalConfigService) -> None:
-    service.update_spaces(
-        SpacesConfigUpdate(
-            spaces=[
-                {
-                    "id": 9101,
-                    "name": "门户公共制度库",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "public",
-                    "enabled": True,
-                },
-                {
-                    "id": 9102,
-                    "name": "部门内部知识库",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "department",
-                    "enabled": True,
-                },
-                {
-                    "id": 9103,
-                    "name": "停用公共知识库",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "public",
-                    "enabled": False,
-                },
-            ]
-        )
-    )
+    """兼容旧测试调用；匿名问答公共空间现在来自 BiSheng 运行时空间。"""
+    service.get_config()
 
 
 class FakeBishengClient:
@@ -198,10 +141,14 @@ class FakeBishengClient:
                     "total": 1,
                 }
             }
+        if path == "/api/v1/knowledge/space/25/search":
+            return {"data": {"data": [], "total": 0}}
         if path == "/api/v1/knowledge/space/12/tag":
             return {"data": [{"id": 101, "name": "热轧"}, {"id": 103, "name": "振动纹"}]}
         if path == "/api/v1/knowledge/space/18/tag":
             return {"data": [{"id": 205, "name": "板面缺陷"}]}
+        if path == "/api/v1/knowledge/space/25/tag":
+            return {"data": []}
         if path == "/api/v1/knowledge/file/info/1580":
             return {
                 "data": {
@@ -276,11 +223,27 @@ class FakeBishengClient:
                     ],
                     "public_spaces": [
                         {
-                            "id": 7105,
-                            "name": "公开制度库",
+                            "id": 12,
+                            "name": "轧线技术案例库",
                             "auth_type": "public",
                             "space_level": "public",
-                            "file_num": 12,
+                            "file_num": 2,
+                            "update_time": "2026-04-20T09:20:00",
+                        },
+                        {
+                            "id": 18,
+                            "name": "冷轧技术手册",
+                            "auth_type": "public",
+                            "space_level": "public",
+                            "file_num": 1,
+                            "update_time": "2026-04-20T09:20:00",
+                        },
+                        {
+                            "id": 25,
+                            "name": "设备维修规范",
+                            "auth_type": "public",
+                            "space_level": "public",
+                            "file_num": 0,
                             "update_time": "2026-04-20T09:20:00",
                         }
                     ],
@@ -468,7 +431,7 @@ class FakeBishengClient:
                 "q": "振动纹",
                 "tag": None,
                 "space_ids": [12, 18, 25],
-                "space_level": "department",
+                "space_level": "public",
                 "file_ext": "pdf",
                 "sort": "relevance",
                 "page": 1,
@@ -1467,7 +1430,6 @@ def test_chat_proxy_uses_portal_prompt_and_disables_rag_for_search_summary(tmp_p
         try:
             qa_config = config_service.get_config().qa.model_copy(
                 update={
-                    "knowledge_space_ids": [12, 18, 999],
                     "ai_search_system_prompt": "搜索提示词",
                     "qa_system_prompt": "问答提示词",
                 }
@@ -1670,7 +1632,7 @@ def test_chat_proxy_allows_qa_without_selected_spaces(tmp_path: Path):
     assert fake_bisheng.chat_payload is not None
     assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
     assert fake_bisheng.chat_payload["json"]["text"] == "没有选知识库时也可以对话"
-    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == []
+    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [12, 18, 25, 7101, 7102, 7103]
 
 
 def test_chat_proxy_allows_uploaded_files_without_selected_spaces(tmp_path: Path):
@@ -1712,7 +1674,7 @@ def test_chat_proxy_allows_uploaded_files_without_selected_spaces(tmp_path: Path
     assert response.status_code == 200
     assert fake_bisheng.chat_payload is not None
     assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
-    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == []
+    assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [12, 18, 25, 7101, 7102, 7103]
     assert fake_bisheng.chat_payload["json"]["files"] == [
         {
             "file_id": "server-file-001",
@@ -1842,7 +1804,7 @@ def test_chat_proxy_allows_anonymous_qa_with_public_spaces(tmp_path: Path):
                     "answer_mode": "normal",
                     "text": "未登录也要能问公共知识库",
                     "use_knowledge_base": {
-                        "knowledge_space_ids": [9101],
+                        "knowledge_space_ids": [12],
                     },
                 },
             )
@@ -1856,7 +1818,7 @@ def test_chat_proxy_allows_anonymous_qa_with_public_spaces(tmp_path: Path):
     assert system_bisheng.chat_payload is not None
     assert system_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
     assert system_bisheng.chat_payload["json"]["system_prompt"] == "匿名普通提示词"
-    assert system_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [9101]
+    assert system_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [12]
 
 
 def test_chat_proxy_rejects_anonymous_qa_non_public_spaces(tmp_path: Path):
@@ -1882,7 +1844,7 @@ def test_chat_proxy_rejects_anonymous_qa_non_public_spaces(tmp_path: Path):
                     "answer_mode": "normal",
                     "text": "不能问部门空间",
                     "use_knowledge_base": {
-                        "knowledge_space_ids": [9102],
+                        "knowledge_space_ids": [7103],
                     },
                 },
             )
@@ -2676,25 +2638,12 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
             return await super().post_json(path, json=json)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
-    config_service.update_spaces(
-        SpacesConfigUpdate(
-            spaces=[
-                {
-                    "id": 12,
-                    "name": "轧线技术案例库",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "department",
-                    "enabled": True,
-                }
-            ]
-        )
-    )
+    _seed_test_spaces(config_service)
     fake_bisheng = SemanticOnlyBishengClient()
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance")
+        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance&space_ids=12")
 
     assert response.status_code == 200
     body = response.json()["data"]
@@ -2750,26 +2699,13 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
             return await super().post_json(path, json=json)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
-    config_service.update_spaces(
-        SpacesConfigUpdate(
-            spaces=[
-                {
-                    "id": 12,
-                    "name": "轧线技术案例库",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "department",
-                    "enabled": True,
-                }
-            ]
-        )
-    )
+    _seed_test_spaces(config_service)
     config_service.update_search(config_service.get_config().search.model_copy(update={"rerank_model_id": "5"}))
     fake_bisheng = RerankConfigBishengClient()
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance")
+        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance&space_ids=12")
 
     assert response.status_code == 200
     assert response.json()["data"]["total"] == 0
@@ -2800,26 +2736,13 @@ def test_search_files_logs_shougang_portal_fallback(tmp_path: Path, caplog):
             return await super().post_json(path, json=json)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
-    config_service.update_spaces(
-        SpacesConfigUpdate(
-            spaces=[
-                {
-                    "id": 12,
-                    "name": "轧线技术案例库",
-                    "file_count": 0,
-                    "tag_count": 0,
-                    "space_level": "department",
-                    "enabled": True,
-                }
-            ]
-        )
-    )
+    _seed_test_spaces(config_service)
     fake_bisheng = FailingPortalBishengClient()
     caplog.set_level(logging.WARNING, logger="app.services.knowledge_service")
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance")
+        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance&space_ids=12")
 
     assert response.status_code == 200
     body = response.json()["data"]
@@ -3007,7 +2930,7 @@ def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path)
 
 def test_search_files_passes_space_level_to_shougang_portal_search(tmp_path: Path):
     for client, _, fake_bisheng in make_client(tmp_path):
-        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&space_level=department&file_ext=pdf")
+        response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&space_level=public&file_ext=pdf")
 
     assert response.status_code == 200
     body = response.json()["data"]
@@ -3020,7 +2943,7 @@ def test_search_files_passes_space_level_to_shougang_portal_search(tmp_path: Pat
                 "q": "振动纹",
                 "tag": None,
                 "space_ids": [12, 18, 25],
-                "space_level": "department",
+                "space_level": "public",
                 "file_ext": "pdf",
                 "sort": "relevance",
                 "page": 1,

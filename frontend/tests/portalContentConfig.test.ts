@@ -11,10 +11,9 @@ import {
 const portalConfigPayload = {
   site: {},
   integrations: {},
-  spaces: [],
   domains: [],
   sections: [],
-  qa: { knowledge_space_ids: [], hot_questions: [] },
+  qa: { hot_questions: [] },
   apps: [],
   banners: [],
   recommendation: {},

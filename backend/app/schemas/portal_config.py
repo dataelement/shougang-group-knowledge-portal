@@ -15,15 +15,6 @@ DEFAULT_EXPERT_MODE_SYSTEM_PROMPT = (
 )
 
 
-class SpaceConfig(BaseModel):
-    id: int
-    name: str
-    file_count: int = 0
-    tag_count: int = 0
-    space_level: str = "personal"
-    enabled: bool = True
-
-
 class DomainConfig(BaseModel):
     name: str
     space_ids: list[int] = Field(default_factory=list)
@@ -103,7 +94,6 @@ class QATemplateConfig(BaseModel):
 
 
 class QAConfig(BaseModel):
-    knowledge_space_ids: list[int] = Field(default_factory=list)
     welcome_message: str = "你好，我是首钢股份知库智能助手，请问有什么可以帮您？"
     hot_questions: list[str] = Field(default_factory=list)
     ai_search_system_prompt: str = ""
@@ -416,7 +406,6 @@ DEFAULT_DOCUMENT_TYPES: list[dict[str, str]] = [
 
 
 class PortalConfig(BaseModel):
-    spaces: list[SpaceConfig] = Field(default_factory=list)
     domains: list[DomainConfig] = Field(default_factory=list)
     sections: list[SectionConfig] = Field(default_factory=list)
     document_types: list[DocumentTypeConfig] = Field(default_factory=list)
@@ -430,10 +419,6 @@ class PortalConfig(BaseModel):
     banners: list[BannerSlide] = Field(default_factory=list)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
     site: SiteConfig = Field(default_factory=SiteConfig)
-
-
-class SpacesConfigUpdate(BaseModel):
-    spaces: list[SpaceConfig]
 
 
 class DomainsConfigUpdate(BaseModel):

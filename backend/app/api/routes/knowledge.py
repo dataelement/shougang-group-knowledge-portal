@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Annotated, Any, Optional
 from urllib.parse import quote
@@ -66,32 +65,6 @@ def get_domain_file_count_service(
 def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
     status_code = 403 if err.status_code in {_BISHENG_PERMISSION_DENIED_CODE, 404} else 502
     raise HTTPException(status_code=status_code, detail=err.status_message)
-
-
-async def _fetch_shougang_portal_space_info(
-    bisheng_client: BishengClient,
-    space_ids: list[int],
-) -> dict[int, dict]:
-    if not space_ids:
-        return {}
-    try:
-        response = await bisheng_client.post_json(
-            "/api/v1/knowledge/shougang-portal/spaces/info",
-            json={"space_ids": space_ids},
-        )
-    except Exception:
-        return {}
-    data = response.get("data") or {}
-    raw_spaces = data.get("spaces") if isinstance(data, dict) else []
-    if not isinstance(raw_spaces, list):
-        return {}
-    live_space_data: dict[int, dict] = {}
-    for item in raw_spaces:
-        if not isinstance(item, dict) or item.get("id") is None:
-            continue
-        item_data = item.get("data") or {}
-        live_space_data[int(item["id"])] = item_data if isinstance(item_data, dict) else {}
-    return live_space_data
 
 
 def _normalize_document_types(raw_items: Any) -> list[dict[str, str]]:
@@ -247,11 +220,30 @@ async def search_files(
 
 @router.get("/tags")
 async def get_aggregated_tags(
+    request: Request,
     space_ids: Annotated[Optional[list[int]], Query()] = None,
     space_level: Optional[str] = None,
-    service: KnowledgeService = Depends(get_knowledge_service),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok(await service.get_aggregated_tags(requested_space_ids=space_ids, space_level=space_level))
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request=request,
+        auth_service=auth_service,
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+    )
+    try:
+        return response_ok(
+            await service.get_aggregated_tags(
+                requested_space_ids=space_ids,
+                space_level=space_level,
+                extra_space_ids=extra_space_ids,
+            )
+        )
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/home")
@@ -280,19 +272,9 @@ async def get_portal_config(
 ):
     config = portal_config_service.get_config()
     if config.document_types:
-        live_space_data = await _fetch_shougang_portal_space_info(
-            bisheng_client,
-            [space.id for space in config.spaces],
-        )
         document_types = [dt.model_dump() for dt in config.document_types]
     else:
-        live_space_data, bisheng_document_types = await asyncio.gather(
-            _fetch_shougang_portal_space_info(
-                bisheng_client,
-                [space.id for space in config.spaces],
-            ),
-            _fetch_shougang_document_types(bisheng_client),
-        )
+        bisheng_document_types = await _fetch_shougang_document_types(bisheng_client)
         document_types = bisheng_document_types or DEFAULT_DOCUMENT_TYPES
 
     business_domain_options = (
@@ -301,9 +283,8 @@ async def get_portal_config(
         else DEFAULT_BUSINESS_DOMAIN_OPTIONS
     )
 
-    runtime_config = portal_config_service.with_live_space_data(config, live_space_data)
     return response_ok(PortalConfig.model_validate({
-        **runtime_config.model_dump(mode="json"),
+        **config.model_dump(mode="json"),
         "document_types": document_types,
         "business_domain_options": business_domain_options,
     }))
@@ -357,7 +338,7 @@ async def list_qa_tree_spaces(
             bisheng_client=get_bisheng_client(request),
             portal_config_service=portal_config_service,
         )
-        return response_ok(service.list_public_config_spaces())
+        return response_ok(await service.list_public_spaces())
 
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
@@ -386,7 +367,7 @@ async def list_qa_tree_children(
             bisheng_client=get_bisheng_client(request),
             portal_config_service=portal_config_service,
         )
-        public_space_ids = {space.id for space in service.list_public_config_spaces().data}
+        public_space_ids = {space.id for space in (await service.list_public_spaces()).data}
         if space_id not in public_space_ids:
             raise HTTPException(status_code=403, detail="未登录仅可浏览公共知识库目录")
         return response_ok(
@@ -434,7 +415,7 @@ async def search_qa_files_by_name(
             bisheng_client=get_bisheng_client(request),
             portal_config_service=portal_config_service,
         )
-        space_ids = [space.id for space in service.list_public_config_spaces().data]
+        space_ids = [space.id for space in (await service.list_public_spaces()).data]
         return response_ok(
             await service.search_qa_files_by_name(
                 q=q,

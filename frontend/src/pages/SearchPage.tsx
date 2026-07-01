@@ -131,7 +131,7 @@ export default function SearchPage() {
     setDraft(displayKeyword);
   }, [displayKeyword]);
 
-  // 登录后拉取个人可见空间；未登录则清空（二级仅用启用库）
+  // 登录后拉取个人可见空间；未登录由后端按公共空间限制范围。
   useEffect(() => {
     if (!user) {
       setVisibleSpaces([]);
@@ -151,17 +151,14 @@ export default function SearchPage() {
     };
   }, [user]);
 
-  // 搜索页空间元数据：未登录=后台启用库；登录=启用库 ∪ 个人可见库；按 id 去重。
+  // 搜索页空间元数据来自登录用户可见空间；未登录时从结果里补充来源名称。
   const searchSpaces = useMemo<SpaceOption[]>(() => {
     const byId = new Map<number, SpaceOption>();
-    for (const sp of config?.spaces ?? []) {
-      if (sp.enabled) byId.set(sp.id, { id: sp.id, name: sp.name, spaceLevel: sp.space_level ?? '' });
-    }
     for (const sp of visibleSpaces) {
       if (!byId.has(sp.id)) byId.set(sp.id, sp);
     }
     return [...byId.values()];
-  }, [config, visibleSpaces]);
+  }, [visibleSpaces]);
 
   const spaceById = useMemo(() => new Map(searchSpaces.map((sp) => [sp.id, sp])), [searchSpaces]);
   const selectedSpaceId = Number(spaceId);

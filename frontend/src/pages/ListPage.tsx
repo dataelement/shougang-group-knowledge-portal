@@ -30,7 +30,7 @@ import {
   resolveFileDownloadUrl,
 } from '../utils/fileDownload';
 import { recordFileDownloadEvent } from '../api/content';
-import { getEnabledSpaces, toRuntimeDisplayConfig } from '../utils/portalConfig';
+import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import s from './ListPage.module.css';
 
 const EMPTY_SPACE_IDS: number[] = [];
@@ -154,7 +154,7 @@ export default function ListPage() {
               page,
               pageSize: displayConfig.list.pageSize,
             }),
-            fetchAggregatedTags(getEnabledSpaces(config.spaces).map((item) => item.id)),
+            fetchAggregatedTags(),
           ]);
           if (!active) return;
           setFiles(result.data);

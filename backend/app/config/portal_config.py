@@ -226,7 +226,6 @@ DEFAULT_QA_TEMPLATES = [
 
 
 DEFAULT_PORTAL_CONFIG = {
-    "spaces": [],
     "domains": [
         {"name": "营销", "space_ids": [], "color": "#d97706", "bg": "#fef3c7", "icon": "CheckCircle", "background_image": "/domain-covers/marketing.png", "enabled": True, "code": "SD"},
         {"name": "财务", "space_ids": [], "color": "#2563eb", "bg": "#eff6ff", "icon": "Settings", "background_image": "/domain-covers/finance.png", "enabled": True, "code": "FI"},
@@ -260,7 +259,6 @@ DEFAULT_PORTAL_CONFIG = {
         },
     ],
     "qa": {
-        "knowledge_space_ids": [],
         "welcome_message": "你好，我是首钢股份知库智能助手，请问有什么可以帮您？",
         "hot_questions": [
             "振动纹通常如何排查？",

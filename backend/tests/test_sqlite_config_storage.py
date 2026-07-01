@@ -51,7 +51,6 @@ def test_config_services_use_distinct_tables_in_shared_sqlite_database(tmp_path:
 def test_config_services_migrate_legacy_document_rows_to_distinct_tables(tmp_path: Path):
     database_path = tmp_path / "portal.sqlite3"
     portal_payload = {
-        "spaces": [],
         "domains": [
             {
                 "name": "旧表业务域",
@@ -65,7 +64,6 @@ def test_config_services_migrate_legacy_document_rows_to_distinct_tables(tmp_pat
         ],
         "sections": [],
         "qa": {
-            "knowledge_space_ids": [],
             "welcome_message": "旧表欢迎语",
             "hot_questions": [],
             "ai_search_system_prompt": "",

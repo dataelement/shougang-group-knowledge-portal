@@ -3,7 +3,6 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.schemas.portal_config import SpacesConfigUpdate
 from app.services.portal_config_service import PortalConfigService
 from test_knowledge_api import (
     FakeBishengClient,
@@ -143,12 +142,10 @@ class QaScopeBishengClient(FakeBishengClient):
 
     async def post_json(self, path: str, json=None, headers=None):
         if path == "/api/v1/knowledge/shougang-portal/qa/files/search":
-            assert json == {
-                "q": "流程",
-                "space_ids": [7101, 7102, 7103, 7105],
-                "page": 1,
-                "page_size": 20,
-            }
+            assert json["q"] == "流程"
+            assert set(json["space_ids"]) == {12, 18, 25, 7101, 7102, 7103}
+            assert json["page"] == 1
+            assert json["page_size"] == 20
             self.post_calls.append((path, json))
             return {
                 "data": {
@@ -203,7 +200,7 @@ def test_qa_tree_spaces_and_children_use_current_user_visible_scope(tmp_path: Pa
 
     assert spaces_response.status_code == 200
     spaces = spaces_response.json()["data"]["data"]
-    assert {item["id"] for item in spaces} >= {7101, 7102, 7103, 7105}
+    assert {item["id"] for item in spaces} >= {12, 18, 25, 7101, 7102, 7103}
 
     assert children_response.status_code == 200
     nodes = children_response.json()["data"]["data"]
@@ -234,7 +231,7 @@ def test_qa_file_search_uses_all_current_user_visible_spaces(tmp_path: Path):
     assert fake_bisheng.post_calls[-1][0] == "/api/v1/knowledge/shougang-portal/qa/files/search"
 
 
-def test_qa_tree_anonymous_scope_is_limited_to_public_configured_spaces(tmp_path: Path):
+def test_qa_tree_anonymous_scope_is_limited_to_public_bisheng_spaces(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_anonymous_qa_spaces(config_service)
     system_bisheng = QaScopeBishengClient()
@@ -247,7 +244,7 @@ def test_qa_tree_anonymous_scope_is_limited_to_public_configured_spaces(tmp_path
         client.app.state.portal_auth_service = NoSessionPortalAuthService(FakeBishengClient())
         try:
             spaces_response = client.get("/api/v1/knowledge/qa/tree/spaces")
-            forbidden_response = client.get("/api/v1/knowledge/qa/tree/spaces/9102/children")
+            forbidden_response = client.get("/api/v1/knowledge/qa/tree/spaces/7103/children")
         finally:
             if previous_auth is not None:
                 client.app.state.portal_auth_service = previous_auth
@@ -255,7 +252,7 @@ def test_qa_tree_anonymous_scope_is_limited_to_public_configured_spaces(tmp_path
                 client.app.state.bisheng_client = previous_bisheng
 
     assert spaces_response.status_code == 200
-    assert [item["id"] for item in spaces_response.json()["data"]["data"]] == [9101]
+    assert {item["id"] for item in spaces_response.json()["data"]["data"]} == {12, 18, 25}
     assert forbidden_response.status_code == 403
     assert "公共" in forbidden_response.json()["detail"]
 

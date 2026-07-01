@@ -1,14 +1,5 @@
 import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../utils/userFacingErrors';
 
-export interface SpaceConfig {
-  id: number;
-  name: string;
-  file_count: number;
-  tag_count: number;
-  space_level?: string;
-  enabled: boolean;
-}
-
 export interface DomainConfig {
   name: string;
   space_ids: number[];
@@ -31,7 +22,6 @@ export interface SectionConfig {
 }
 
 export interface QAConfig {
-  knowledge_space_ids: number[];
   welcome_message: string;
   hot_questions: string[];
   ai_search_system_prompt: string;
@@ -268,7 +258,6 @@ export interface SiteConfig {
 }
 
 export interface PortalConfig {
-  spaces: SpaceConfig[];
   domains: DomainConfig[];
   sections: SectionConfig[];
   document_types: DocumentTypeConfig[];
@@ -381,13 +370,6 @@ export async function importAdminConfig(file: File): Promise<AdminConfigImportRe
   } catch (error) {
     throw new Error(normalizeUserFacingErrorMessage(error, '导入配置失败，请稍后重试。'));
   }
-}
-
-export function updateSpacesConfig(spaces: SpaceConfig[]) {
-  return request<{ spaces: SpaceConfig[] }>('/api/v1/admin/config/spaces', {
-    method: 'POST',
-    body: JSON.stringify({ spaces }),
-  });
 }
 
 export function fetchSpaceOptions() {

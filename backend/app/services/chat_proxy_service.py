@@ -53,7 +53,6 @@ class ChatProxyService:
 
         if scene == "search":
             docs = payload.search_results[: self._SEARCH_SUMMARY_FILE_LIMIT]
-            space_name_map = self._get_config_space_name_map()
 
             request_body["use_knowledge_base"] = {
                 "personal_knowledge_enabled": False,
@@ -67,17 +66,22 @@ class ChatProxyService:
                 payload.text,
                 docs,
             )
-            trailing_events = self._build_citation_events(docs, space_name_map)
+            trailing_events = self._build_citation_events(docs)
             return "/api/v1/workstation/chat/completions", request_body, trailing_events
 
         requested_space_ids, normalized_scope = self._normalize_qa_knowledge_scope(use_knowledge_base)
-        if requested_space_ids:
+        visible_space_ids: set[int] | None = None
+        if requested_space_ids or normalized_scope is None:
             visible_space_ids = (
-                self._get_anonymous_public_space_ids()
+                await self._get_anonymous_public_space_ids()
                 if self._is_anonymous
                 else await self._get_current_user_visible_space_ids()
             )
-            invisible_space_ids = [space_id for space_id in requested_space_ids if space_id not in visible_space_ids]
+        if not requested_space_ids and normalized_scope is None:
+            requested_space_ids = sorted(visible_space_ids or set())
+        if requested_space_ids:
+            allowed_space_ids = visible_space_ids or set()
+            invisible_space_ids = [space_id for space_id in requested_space_ids if space_id not in allowed_space_ids]
             if invisible_space_ids:
                 if self._is_anonymous:
                     raise PermissionError("未登录仅可使用公共知识库")
@@ -146,7 +150,6 @@ class ChatProxyService:
     @staticmethod
     def _build_citation_events(
         docs: list[KnowledgeFileItem],
-        space_name_map: dict[int, str],
     ) -> list[bytes]:
         if not docs:
             return []
@@ -156,7 +159,7 @@ class ChatProxyService:
                 "itemId": str(doc.id),
                 "sourcePayload": {
                     "knowledgeId": doc.space_id,
-                    "knowledgeName": space_name_map.get(doc.space_id, doc.source),
+                    "knowledgeName": doc.source,
                     "documentId": doc.id,
                     "documentName": doc.title,
                     "fileType": doc.file_ext,
@@ -169,10 +172,6 @@ class ChatProxyService:
         event = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
         return [event]
 
-    def _get_config_space_name_map(self) -> dict[int, str]:
-        config = self._config_service.get_config()
-        return {space.id: space.name for space in config.spaces}
-
     async def _get_current_user_visible_space_ids(self) -> set[int]:
         from app.services.knowledge_service import KnowledgeService
 
@@ -183,13 +182,15 @@ class ChatProxyService:
         spaces = await service.list_visible_spaces()
         return {space.id for space in spaces.data}
 
-    def _get_anonymous_public_space_ids(self) -> set[int]:
-        config = self._config_service.get_config()
-        return {
-            space.id
-            for space in config.spaces
-            if space.enabled and (space.space_level or "").strip().lower() == "public"
-        }
+    async def _get_anonymous_public_space_ids(self) -> set[int]:
+        from app.services.knowledge_service import KnowledgeService
+
+        service = KnowledgeService(
+            bisheng_client=self._bisheng,
+            portal_config_service=self._config_service,
+        )
+        spaces = await service.list_public_spaces()
+        return {space.id for space in spaces.data}
 
     @staticmethod
     def _normalize_space_ids(space_ids: list[int]) -> list[int]:

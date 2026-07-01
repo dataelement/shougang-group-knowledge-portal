@@ -159,47 +159,48 @@ class KnowledgeService:
         self._page_size_limit = page_size_limit
         self._default_model = default_model or ""
 
-    def get_enabled_space_ids(self) -> list[int]:
-        config = self._config_service.get_config()
-        return [space.id for space in config.spaces if space.enabled]
+    @staticmethod
+    def _is_public_space(space: KnowledgeSpaceItem) -> bool:
+        return (
+            (space.space_level or "").strip().lower() == "public"
+            or (space.auth_type or "").strip().lower() == "public"
+            or "public" in space.sources
+        )
 
-    def _allowed_detail_space_ids(self, extra_space_ids: Optional[list[int]] = None) -> set[int]:
-        allowed = set(self.get_enabled_space_ids())
-        if extra_space_ids:
-            allowed |= set(extra_space_ids)
-        return allowed
-
-    def get_enabled_space_ids_by_level(self, space_level: Optional[str]) -> list[int]:
-        config = self._config_service.get_config()
-        normalized_level = (space_level or "").strip()
-        return [
-            space.id
-            for space in config.spaces
-            if space.enabled and (not normalized_level or space.space_level == normalized_level)
-        ]
-
-    def get_space_name_map(self) -> dict[int, str]:
-        config = self._config_service.get_config()
-        return {space.id: space.name for space in config.spaces}
-
-    def list_public_config_spaces(self) -> KnowledgeSpaceListData:
-        spaces = [
-            KnowledgeSpaceItem(
-                id=space.id,
-                name=space.name,
-                description="",
-                auth_type="public",
-                space_level=space.space_level,
-                file_count=space.file_count,
-            )
-            for space in self._config_service.get_config().spaces
-            if space.enabled and (space.space_level or "").strip().lower() == "public"
-        ]
+    async def list_public_spaces(self) -> KnowledgeSpaceListData:
+        visible_spaces = await self.list_visible_spaces()
+        spaces = [space for space in visible_spaces.data if self._is_public_space(space)]
         return KnowledgeSpaceListData(data=spaces, total=len(spaces))
+
+    async def _allowed_spaces(
+        self,
+        space_level: Optional[str] = None,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[KnowledgeSpaceItem]:
+        visible_spaces = await self.list_visible_spaces()
+        normalized_level = (space_level or "").strip().lower()
+        allowed_ids = set(extra_space_ids or [])
+        spaces: list[KnowledgeSpaceItem] = []
+        for space in visible_spaces.data:
+            if extra_space_ids is None:
+                if not self._is_public_space(space):
+                    continue
+            elif not self._is_public_space(space) and space.id not in allowed_ids:
+                continue
+            if normalized_level and (space.space_level or "").strip().lower() != normalized_level:
+                continue
+            spaces.append(space)
+        return spaces
+
+    async def _allowed_detail_space_ids(self, extra_space_ids: Optional[list[int]] = None) -> set[int]:
+        return {space.id for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)}
+
+    async def get_space_name_map(self, extra_space_ids: Optional[list[int]] = None) -> dict[int, str]:
+        return {space.id: space.name for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)}
 
     async def get_home_content(self) -> HomeKnowledgeData:
         config = self._config_service.get_config()
-        space_ids = self.resolve_requested_space_ids()
+        space_ids = await self.resolve_requested_space_ids()
         sections = [section for section in config.sections if section.enabled and section.tag]
         if not space_ids or not sections:
             return HomeKnowledgeData(
@@ -444,7 +445,7 @@ class KnowledgeService:
         space_id: int,
         extra_space_ids: Optional[list[int]] = None,
     ) -> list[str]:
-        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
+        if space_id not in await self._allowed_detail_space_ids(extra_space_ids):
             return []
         tag_lookup = await self._get_space_tag_lookup(space_id)
         return sorted(tag_lookup.keys())
@@ -453,10 +454,12 @@ class KnowledgeService:
         self,
         requested_space_ids: Optional[list[int]] = None,
         space_level: Optional[str] = None,
+        extra_space_ids: Optional[list[int]] = None,
     ) -> list[str]:
-        space_ids = self.resolve_requested_space_ids(
+        space_ids = await self.resolve_requested_space_ids(
             requested_space_ids,
             space_level,
+            extra_space_ids,
         )
         if not space_ids:
             return []
@@ -469,16 +472,16 @@ class KnowledgeService:
         tags = {tag_name for lookup in lookups for tag_name in lookup.keys()}
         return sorted(tags)
 
-    def resolve_requested_space_ids(
+    async def resolve_requested_space_ids(
         self,
         requested_space_ids: Optional[list[int]] = None,
         space_level: Optional[str] = None,
         extra_space_ids: Optional[list[int]] = None,
     ) -> list[int]:
-        base_space_ids = set(self.get_enabled_space_ids_by_level(space_level))
-        if extra_space_ids:
-            # 登录用户的个人可见库并入（不在 config 中、无 space_level 信息，故不按级别过滤）
-            base_space_ids |= set(extra_space_ids)
+        base_space_ids = {
+            space.id
+            for space in await self._allowed_spaces(space_level=space_level, extra_space_ids=extra_space_ids)
+        }
         if requested_space_ids:
             return sorted(base_space_ids.intersection(requested_space_ids))
         return sorted(base_space_ids)
@@ -504,7 +507,7 @@ class KnowledgeService:
         page_size: int,
         extra_space_ids: Optional[list[int]] = None,
     ) -> PagedKnowledgeFileData:
-        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
+        if space_id not in await self._allowed_detail_space_ids(extra_space_ids):
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
         search_result = await self._fetch_space_files(space_id=space_id, keyword=None, tag_name=tag)
@@ -515,7 +518,8 @@ class KnowledgeService:
             document_type=document_type,
         )
         sorted_items = self._sort_items(filtered, sort="updated_at", keyword=None)
-        mapped = self._map_items(sorted_items)
+        space_name_map = await self.get_space_name_map(extra_space_ids)
+        mapped = self._map_items(sorted_items, space_name_map)
         return self._paginate(mapped, page=page, page_size=page_size)
 
     async def search_files(
@@ -535,7 +539,7 @@ class KnowledgeService:
         if not q and not has_filter:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
-        space_ids = self.resolve_requested_space_ids(requested_space_ids, space_level, extra_space_ids)
+        space_ids = await self.resolve_requested_space_ids(requested_space_ids, space_level, extra_space_ids)
         if not space_ids:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
@@ -571,7 +575,8 @@ class KnowledgeService:
             document_type=document_type,
         )
         sorted_items = self._sort_items(filtered, sort=sort, keyword=q)
-        mapped = self._map_items(sorted_items)
+        space_name_map = await self.get_space_name_map(extra_space_ids)
+        mapped = self._map_items(sorted_items, space_name_map)
         return self._paginate(mapped, page=page, page_size=page_size)
 
     async def get_qa_tree_children(
@@ -722,7 +727,7 @@ class KnowledgeService:
         file_id: int,
         extra_space_ids: Optional[list[int]] = None,
     ) -> Optional[KnowledgeFileDetail]:
-        if space_id not in self._allowed_detail_space_ids(extra_space_ids):
+        if space_id not in await self._allowed_detail_space_ids(extra_space_ids):
             return None
 
         file_info_resp = await self._bisheng.get_json(f"/api/v1/knowledge/file/info/{file_id}")
@@ -737,7 +742,7 @@ class KnowledgeService:
         )
         tags = self._extract_file_tag_infos(search_item or {})
         tag_infos = self._extract_file_tag_infos(search_item or {})
-        source = self.get_space_name_map().get(space_id, str(space_id))
+        source = (await self.get_space_name_map(extra_space_ids)).get(space_id, str(space_id))
         return KnowledgeFileDetail(
             id=file_id,
             space_id=space_id,
@@ -1118,13 +1123,14 @@ class KnowledgeService:
             return RelatedKnowledgeFileData(data=[], total=0)
 
         candidate_map: dict[int, dict[str, Any]] = {}
+        space_name_map = await self.get_space_name_map(extra_space_ids)
         for tag in detail.tags:
             search_result = await self._fetch_space_files(
                 space_id=space_id,
                 keyword=None,
                 tag_name=tag.tag_name,
             )
-            for item in self._map_items(search_result.items):
+            for item in self._map_items(search_result.items, space_name_map):
                 if item.id == file_id:
                     continue
                 entry = candidate_map.setdefault(
@@ -1252,8 +1258,12 @@ class KnowledgeService:
     def _matches_document_type(cls, item: dict[str, Any], document_type: str) -> bool:
         return cls._extract_document_type_code(item) == document_type
 
-    def _map_items(self, items: list[dict[str, Any]]) -> list[KnowledgeFileItem]:
-        space_name_map = self.get_space_name_map()
+    def _map_items(
+        self,
+        items: list[dict[str, Any]],
+        space_name_map: Optional[dict[int, str]] = None,
+    ) -> list[KnowledgeFileItem]:
+        space_name_map = space_name_map or {}
         mapped: list[KnowledgeFileItem] = []
         for item in items:
             space_id = int(item.get("knowledge_id", 0))
