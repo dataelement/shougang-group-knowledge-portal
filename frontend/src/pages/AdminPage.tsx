@@ -83,6 +83,7 @@ import {
   createQaTemplateCategoryDraft,
   createQaTemplateDraft,
   QA_TEMPLATE_ICON_OPTIONS,
+  QA_TEMPLATE_HOME_ICON_OPTIONS,
   validateQaTemplateCategoryDraft,
   validateQaTemplateDraft,
   type QaTemplateCategoryDraft,

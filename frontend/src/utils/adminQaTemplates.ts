@@ -13,6 +13,7 @@ export interface QaTemplateDraft {
   categoryId: string;
   prompt: string;
   icon: string;
+  homeIcon: string;
   color: string;
   bg: string;
   enabled: boolean;
@@ -56,6 +57,16 @@ export const QA_TEMPLATE_ICON_OPTIONS = [
   'Bot',
 ] as const;
 
+/** 首页快捷入口图标（6 张图，值即图片路径） */
+export const QA_TEMPLATE_HOME_ICON_OPTIONS: { value: string; label: string }[] = [
+  { value: '/app-shortcuts/office-writing.png', label: '办公写作' },
+  { value: '/app-shortcuts/hero-semantic-search.png', label: '语义检索' },
+  { value: '/app-shortcuts/hero-open-qa.png', label: '开放问答' },
+  { value: '/app-shortcuts/hero-doc-translate.png', label: '文档翻译' },
+  { value: '/app-shortcuts/summary-report.png', label: '总结报告' },
+  { value: '/app-shortcuts/work-plan.png', label: '工作计划' },
+];
+
 export function createQaTemplateCategoryDraft(current?: QATemplateCategoryConfig): QaTemplateCategoryDraft {
   return {
     id: current?.id ?? '',
@@ -95,6 +106,7 @@ export function createQaTemplateDraft(current?: QATemplateConfig): QaTemplateDra
     categoryId: current?.category_id ?? '',
     prompt: current?.prompt ?? '',
     icon: current?.icon ?? 'FileText',
+    homeIcon: current?.home_icon ?? '',
     color: current?.color ?? '#2563eb',
     bg: current?.bg ?? '#eff6ff',
     enabled: current?.enabled ?? true,
@@ -132,6 +144,7 @@ export function validateQaTemplateDraft(
       category_id: categoryId,
       prompt,
       icon,
+      home_icon: draft.showOnHome ? draft.homeIcon.trim() : '',
       color,
       bg,
       enabled: draft.enabled,

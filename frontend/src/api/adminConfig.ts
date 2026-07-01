@@ -59,6 +59,7 @@ export interface QATemplateConfig {
   category_id: string;
   prompt: string;
   icon: string;
+  home_icon: string;
   color: string;
   bg: string;
   enabled: boolean;

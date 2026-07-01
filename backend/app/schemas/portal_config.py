@@ -68,6 +68,7 @@ class QATemplateConfig(BaseModel):
     category_id: str
     prompt: str
     icon: str
+    home_icon: str = ""
     color: str
     bg: str
     enabled: bool = True
@@ -81,6 +82,7 @@ class QATemplateConfig(BaseModel):
         self.category_id = self.category_id.strip()
         self.prompt = self.prompt.strip()
         self.icon = self.icon.strip()
+        self.home_icon = self.home_icon.strip()
         self.color = self.color.strip()
         self.bg = self.bg.strip()
         if not self.id:

@@ -66,6 +66,21 @@ const APP_SHORTCUT_IMAGES: Record<string, string> = {
   'hero-open-qa': '/app-shortcuts/work-plan.png',
 };
 
+// 后台图标名 → 兜底图片(id 未命中时按图标名从 6 张图里选一张最贴切的）
+const APP_ICON_IMAGES: Record<string, string> = {
+  PenLine: '/app-shortcuts/office-writing.png',
+  Search: '/app-shortcuts/hero-semantic-search.png',
+  MessageSquare: '/app-shortcuts/hero-open-qa.png',
+  Globe: '/app-shortcuts/hero-doc-translate.png',
+  BarChart3: '/app-shortcuts/summary-report.png',
+  FileText: '/app-shortcuts/summary-report.png',
+  ScrollText: '/app-shortcuts/summary-report.png',
+  Network: '/app-shortcuts/work-plan.png',
+  Layers3: '/app-shortcuts/work-plan.png',
+  BriefcaseBusiness: '/app-shortcuts/work-plan.png',
+  Bot: '/app-shortcuts/hero-open-qa.png',
+};
+
 type HomeQaMessage = {
   role: 'bot' | 'user';
   text: string;
@@ -675,7 +690,10 @@ export default function HomePage() {
           <div className={s.heroBottomRow} onClick={(event) => event.stopPropagation()}>
             <div className={s.appShortcutList}>
               {appEntryItems.map((template) => {
-                const iconImage = APP_SHORTCUT_IMAGES[template.id];
+                const iconImage =
+                  template.home_icon ||
+                  APP_SHORTCUT_IMAGES[template.id] ||
+                  APP_ICON_IMAGES[template.icon];
                 const AppIcon = APP_ICONS[template.icon] || Bot;
        
                 return (
