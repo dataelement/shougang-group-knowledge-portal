@@ -755,7 +755,7 @@ export default function HomePage() {
           <div className={s.domainCarousel}>
             <div
               className={s.domainGrid}
-              style={homeDomains.length > 0 ? { gridTemplateColumns: `repeat(${Math.ceil(homeDomains.length / 2)}, minmax(0, 1fr))` } : undefined}
+              style={homeDomains.length > 0 ? { gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' } : undefined}
             >
               {homeDomains.map((d) => {
                 const Icon = DOMAIN_ICONS[d.icon] || Settings;
