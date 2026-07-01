@@ -400,12 +400,16 @@ DEFAULT_BUSINESS_DOMAIN_OPTIONS: list[dict[str, str]] = [
 
 
 DEFAULT_DOCUMENT_TYPES: list[dict[str, str]] = [
-    {"code": "ZC", "label": "政策制度"},
-    {"code": "BZ", "label": "标准规范"},
-    {"code": "ZD", "label": "指导文件"},
-    {"code": "SJ", "label": "设计文件"},
-    {"code": "WH", "label": "文化资料"},
-    {"code": "QT", "label": "其他"},
+    {"code": "POL", "label": "政策制度"},
+    {"code": "STD", "label": "标准规范"},
+    {"code": "PRO", "label": "流程与程序"},
+    {"code": "SPC", "label": "技术规程与诀窍"},
+    {"code": "RPT", "label": "报告"},
+    {"code": "CAS", "label": "案例"},
+    {"code": "DGN", "label": "设计资产"},
+    {"code": "PAT", "label": "专利与知识产权"},
+    {"code": "TRN", "label": "培训资源"},
+    {"code": "NEW", "label": "行业情报"},
 ]
 
 
