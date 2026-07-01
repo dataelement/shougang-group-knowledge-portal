@@ -7,7 +7,7 @@
   height: 44px;
   width: calc(100% - 48px);
   max-width: 960px;
-  background: rgba(0, 20, 60, 0.72);
+  background: rgba(0, 20, 60, 0.45);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.15);
