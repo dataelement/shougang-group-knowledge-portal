@@ -3837,6 +3837,28 @@ function QaTemplateDialog({
         {error ? <div className={s.errorBox}>{error}</div> : null}
         <div className={s.modalScrollBody}>
           <div className={s.formGrid}>
+            {draft.showOnHome ? (
+              <div className={`${s.formField} ${s.formFieldWide}`}>
+                <span className={s.fieldLabel}>首页图标</span>
+                <div className={s.optionPickerRow}>
+                  {QA_TEMPLATE_HOME_ICON_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`${s.iconOptionBtn} ${draft.homeIcon === opt.value ? s.iconOptionBtnActive : ''}`}
+                      onClick={() => onChange({ homeIcon: opt.value })}
+                    >
+                      <img
+                        src={opt.value}
+                        alt=""
+                        style={{ width: 32, height: 32, objectFit: 'contain' }}
+                      />
+                      <span className={s.optionLabel}>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <label className={s.formField}>
               <span className={s.fieldLabel}>模板名称</span>
               <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：工作计划" />
