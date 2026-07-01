@@ -50,7 +50,8 @@ async def main() -> None:
     print(f"Refreshing file counts for {len(space_ids)} spaces: {space_ids}")
 
     # Fetch live file counts from bisheng
-    client = BishengClient(base_url=base_url, api_token=api_token)
+    timeout_seconds: float = float(runtime.get("timeout_seconds") or 30)
+    client = BishengClient(base_url=base_url, timeout_seconds=timeout_seconds, api_token=api_token)
     try:
         resp = await client.post_json(
             "/api/v1/knowledge/shougang-portal/spaces/info",
