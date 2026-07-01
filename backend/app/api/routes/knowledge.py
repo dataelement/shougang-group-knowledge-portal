@@ -120,15 +120,7 @@ async def _fetch_shougang_document_types(bisheng_client: BishengClient) -> list[
     data = response.get("data") if isinstance(response, dict) else {}
     shougang = data.get("shougang") if isinstance(data, dict) else {}
     file_encoding = shougang.get("file_encoding") if isinstance(shougang, dict) else {}
-    types = _normalize_document_types(file_encoding.get("document_types") if isinstance(file_encoding, dict) else [])
-    # Merge in any DEFAULT_DOCUMENT_TYPES entries whose codes are absent from the
-    # workstation config. This ensures all LLM-valid codes (e.g. NEW) are always
-    # resolvable even if the admin hasn't added them to the workstation config yet.
-    existing_codes = {item["code"] for item in types}
-    for default in DEFAULT_DOCUMENT_TYPES:
-        if default["code"] not in existing_codes:
-            types.append(default)
-    return types
+    return _normalize_document_types(file_encoding.get("document_types") if isinstance(file_encoding, dict) else [])
 
 
 async def _scoped_service_and_extra_ids(
