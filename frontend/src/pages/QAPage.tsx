@@ -336,6 +336,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return params.get('templateId')?.trim() || '';
   });
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [modelChoices, setModelChoices] = useState<ConfiguredQaModelChoice[]>([]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -641,6 +642,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   };
 
   const chooseTemplate = (template: QATemplateConfig) => {
+    setSelectedTemplateId(template.id);
     applyWritingTemplate(template);
   };
 
@@ -759,17 +761,34 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                 <button
                   key={template.id}
                   type="button"
-                  className={`${s.templateCard} ${isSmartAppsMode ? s.smartAppTemplateCard : ''}`}
+                  className={`${s.templateCard} ${isSmartAppsMode ? s.smartAppTemplateCard : ''} ${isSmartAppsMode && selectedTemplateId === template.id ? s.smartAppTemplateCardActive : ''}`}
                   onClick={() => chooseTemplate(template)}
                 >
-                  <span className={`${s.templateIcon} ${isSmartAppsMode ? s.smartAppTemplateIcon : ''}`} style={{ background: template.color }}>
-                    <TemplateIcon size={17} />
-                  </span>
-                  <span className={`${s.templateText} ${isSmartAppsMode ? s.smartAppTemplateText : ''}`}>
-                    <strong>{template.name}</strong>
-                    <span>{template.desc}</span>
-                  </span>
-                  <span className={`${s.templateLines} ${isSmartAppsMode ? s.smartAppTemplateLines : ''}`} aria-hidden="true" />
+                  {isSmartAppsMode ? (
+                    <>
+                      <span className={s.smartAppTemplateTop}>
+                        <span
+                          className={s.smartAppTemplateIcon}
+                          style={{ background: template.bg, color: template.color }}
+                        >
+                          <TemplateIcon size={24} />
+                        </span>
+                        <strong className={s.smartAppTemplateName}>{template.name}</strong>
+                      </span>
+                      <span className={s.smartAppTemplateDesc}>{template.desc}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={s.templateIcon} style={{ background: template.color }}>
+                        <TemplateIcon size={17} />
+                      </span>
+                      <span className={s.templateText}>
+                        <strong>{template.name}</strong>
+                        <span>{template.desc}</span>
+                      </span>
+                      <span className={s.templateLines} aria-hidden="true" />
+                    </>
+                  )}
                 </button>
               );
             })}
