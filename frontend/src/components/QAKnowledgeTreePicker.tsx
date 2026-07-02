@@ -65,6 +65,7 @@ export default function QAKnowledgeTreePicker({
   const [searchResults, setSearchResults] = useState<FileItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [inlineTip, setInlineTip] = useState('');
 
   const selectedFileKeys = useMemo(() => {
     if (scope.mode !== 'files') return new Set<string>();
@@ -132,7 +133,11 @@ export default function QAKnowledgeTreePicker({
     };
   }, [onSearchFiles, searchQuery]);
 
-  const notify = (message: string) => onTip?.(message);
+  const notify = (message: string) => {
+    onTip?.(message);
+    setInlineTip(message);
+    window.setTimeout(() => setInlineTip(''), 2500);
+  };
 
   const loadChildren = async (spaceId: number, parentId?: number | null) => {
     const key = nodeChildrenKey(spaceId, parentId);
@@ -312,6 +317,8 @@ export default function QAKnowledgeTreePicker({
         </button>
       </div>
     </div>
+
+      {inlineTip ? <div className={s.inlineTip}>{inlineTip}</div> : null}
 
       <label className={s.searchBox}>
         <Search size={15} />
