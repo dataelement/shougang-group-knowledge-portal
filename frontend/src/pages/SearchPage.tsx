@@ -49,10 +49,10 @@ type SpaceOption = {
 };
 
 const SPACE_LEVEL_OPTIONS = [
-  { value: 'public', label: '公共空间' },
-  { value: 'department', label: '部门空间' },
-  { value: 'team', label: '团队空间' },
-  { value: 'personal', label: '个人空间' },
+  { value: 'public', label: '公共知识库' },
+  { value: 'department', label: '部门知识库' },
+  { value: 'team', label: '团队知识库' },
+  { value: 'personal', label: '个人知识库' },
 ];
 
 function normalizeFileExt(value: string): string {
