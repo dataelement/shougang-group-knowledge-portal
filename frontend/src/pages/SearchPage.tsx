@@ -356,6 +356,12 @@ export default function SearchPage() {
           ) : null}
         </div>
 
+        {hasSearch && !user && (
+          <div className={s.guestNotice} role="note">
+            您当前为访客身份，仅可查阅公共库内容，内部资料无访问权限
+          </div>
+        )}
+
         {hasSearch && (
           <div className={s.resultBar}>
             <div className={s.resultCount}>
