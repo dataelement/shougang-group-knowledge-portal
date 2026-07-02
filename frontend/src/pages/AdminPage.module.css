@@ -818,6 +818,91 @@
   color: var(--neutral-500);
 }
 
+.spaceMultiPicker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-height: 164px;
+  padding: 10px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.spacePickerGroup {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 6px;
+}
+
+.spacePickerGroupTitle {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--neutral-600);
+}
+
+.spacePickerOption {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--neutral-100);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--neutral-700);
+  font-size: 0.82rem;
+}
+
+.spacePickerOption input {
+  width: 15px;
+  height: 15px;
+}
+
+.spacePickerName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacePickerMeta {
+  font-size: 0.7rem;
+  color: var(--neutral-400);
+}
+
+.spacePickerEmpty {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 8px;
+  color: var(--neutral-400);
+  font-size: 0.78rem;
+}
+
+.selectedSpaceChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 30px;
+}
+
+.selectedSpaceChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: var(--neutral-50);
+  color: var(--neutral-700);
+  font-size: 0.78rem;
+}
+
 .formInput {
   width: 100%;
   min-width: 0;
@@ -1020,6 +1105,10 @@
   }
 
   .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .spaceMultiPicker {
     grid-template-columns: 1fr;
   }
 

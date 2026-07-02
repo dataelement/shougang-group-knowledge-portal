@@ -112,6 +112,24 @@ class BishengClient:
         response.raise_for_status()
         return response
 
+    async def put(
+        self,
+        path: str,
+        json: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+        *,
+        retry_auth: bool = True,
+    ) -> httpx.Response:
+        response = await self._request(
+            "PUT",
+            path,
+            retry_auth=retry_auth,
+            json=json,
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response
+
     async def post_multipart(self, path: str, *, data: Optional[dict] = None, files: Optional[dict] = None) -> dict:
         file_positions = self._snapshot_file_positions(files)
         response = await self._request(
@@ -148,6 +166,19 @@ class BishengClient:
         payload = response.json()
         if self._is_auth_payload(payload) and await self._refresh_auth_token():
             response = await self.post(path, json=json, headers=headers, retry_auth=False)
+            payload = response.json()
+        return payload
+
+    async def put_json(
+        self,
+        path: str,
+        json: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> dict:
+        response = await self.put(path, json=json, headers=headers)
+        payload = response.json()
+        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+            response = await self.put(path, json=json, headers=headers, retry_auth=False)
             payload = response.json()
         return payload
 

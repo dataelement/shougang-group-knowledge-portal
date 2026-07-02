@@ -8,7 +8,9 @@ from app.clients.bisheng import BishengAuthRefreshError
 from app.schemas.common import response_error
 from app.services.error_messages import normalize_user_facing_message
 from app.services.bisheng_runtime_service import BishengRuntimeService
+from app.services.config_store import InMemoryConfigStore
 from app.services.portal_auth_service import PortalAuthService
+from app.services.portal_admin_config_store import RemotePortalAdminConfigStore
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
@@ -29,9 +31,13 @@ async def lifespan(app: FastAPI):
             settings.bisheng_password.get_secret_value() if settings.bisheng_password else None
         ),
         default_asset_base_url=settings.bisheng_asset_base_url,
-        database_path=settings.portal_database_path,
+        store=InMemoryConfigStore(),
     )
     await app.state.bisheng_runtime_service.initialize()
+    app.state.portal_admin_config_store = RemotePortalAdminConfigStore(
+        runtime_service=app.state.bisheng_runtime_service,
+        database_path=settings.portal_database_path,
+    )
     app.state.portal_auth_service = PortalAuthService(
         runtime_service=app.state.bisheng_runtime_service,
         cookie_name=settings.portal_session_cookie_name,
@@ -41,6 +47,7 @@ async def lifespan(app: FastAPI):
     app.state.unified_auth_runtime_service = UnifiedAuthRuntimeService(
         database_path=settings.portal_database_path,
         settings=settings,
+        store=app.state.portal_admin_config_store,
     )
     app.state.portal_unified_auth_service = PortalUnifiedAuthService(
         settings=settings,
@@ -52,6 +59,7 @@ async def lifespan(app: FastAPI):
     app.state.portal_config_service = PortalConfigService(
         config_path=settings.portal_config_path,
         database_path=settings.portal_database_path,
+        store=app.state.portal_admin_config_store,
     )
     yield
     await app.state.bisheng_runtime_service.aclose()

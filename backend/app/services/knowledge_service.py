@@ -455,11 +455,13 @@ class KnowledgeService:
         requested_space_ids: Optional[list[int]] = None,
         space_level: Optional[str] = None,
         extra_space_ids: Optional[list[int]] = None,
+        fallback_to_public_spaces: bool = False,
     ) -> list[str]:
         space_ids = await self.resolve_requested_space_ids(
             requested_space_ids,
             space_level,
             extra_space_ids,
+            fallback_to_public_spaces=fallback_to_public_spaces,
         )
         if not space_ids:
             return []
@@ -477,13 +479,17 @@ class KnowledgeService:
         requested_space_ids: Optional[list[int]] = None,
         space_level: Optional[str] = None,
         extra_space_ids: Optional[list[int]] = None,
+        fallback_to_public_spaces: bool = False,
     ) -> list[int]:
         base_space_ids = {
             space.id
             for space in await self._allowed_spaces(space_level=space_level, extra_space_ids=extra_space_ids)
         }
         if requested_space_ids:
-            return sorted(base_space_ids.intersection(requested_space_ids))
+            scoped_space_ids = base_space_ids.intersection(requested_space_ids)
+            if scoped_space_ids or not fallback_to_public_spaces:
+                return sorted(scoped_space_ids)
+            return sorted(base_space_ids)
         return sorted(base_space_ids)
 
     def _resolve_document_chat_model_id(self, requested_model: str = "") -> int:
@@ -534,12 +540,18 @@ class KnowledgeService:
         page_size: int,
         extra_space_ids: Optional[list[int]] = None,
         document_type: Optional[str] = None,
+        fallback_to_public_spaces: bool = False,
     ) -> PagedKnowledgeFileData:
         has_filter = bool(tag or requested_space_ids or space_level or file_ext or document_type)
         if not q and not has_filter:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
-        space_ids = await self.resolve_requested_space_ids(requested_space_ids, space_level, extra_space_ids)
+        space_ids = await self.resolve_requested_space_ids(
+            requested_space_ids,
+            space_level,
+            extra_space_ids,
+            fallback_to_public_spaces=fallback_to_public_spaces,
+        )
         if not space_ids:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
@@ -1548,6 +1560,7 @@ class KnowledgeService:
                 self._first_value(row, "updated_at", "update_time", "updateTime", "gmt_modified", "modify_time")
             ),
             sources=[source],
+            business_domain_codes=self._str_list_value(row, "business_domain_codes", "businessDomainCodes"),
         )
 
     def _merge_space(self, current: KnowledgeSpaceItem, incoming: KnowledgeSpaceItem) -> None:
@@ -1569,6 +1582,9 @@ class KnowledgeService:
             current.space_kind = incoming.space_kind
         if not current.space_level and incoming.space_level:
             current.space_level = incoming.space_level
+        for code in incoming.business_domain_codes:
+            if code not in current.business_domain_codes:
+                current.business_domain_codes.append(code)
 
     @staticmethod
     def _sort_spaces(spaces: list[KnowledgeSpaceItem]) -> list[KnowledgeSpaceItem]:
@@ -1625,6 +1641,13 @@ class KnowledgeService:
     def _str_value(row: dict[str, Any], *keys: str) -> str:
         value = KnowledgeService._first_value(row, *keys)
         return str(value).strip() if value not in (None, "") else ""
+
+    @staticmethod
+    def _str_list_value(row: dict[str, Any], *keys: str) -> list[str]:
+        value = KnowledgeService._first_value(row, *keys)
+        if isinstance(value, list):
+            return [str(item).strip().upper() for item in value if str(item).strip()]
+        return []
 
     @staticmethod
     def _int_value(row: dict[str, Any], *keys: str) -> int:

@@ -268,6 +268,7 @@ class SpaceOption(BaseModel):
     description: str = ""
     file_count: int = 0
     space_level: str = "personal"
+    business_domain_codes: list[str] = Field(default_factory=list)
 
 
 class SpaceOptionsResponse(BaseModel):

@@ -8,7 +8,7 @@ import SectionHeader from '../components/SectionHeader';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { getEnabledDomains, getPrimarySpaceId } from '../utils/portalConfig';
-import { buildSpaceSearchPath } from '../utils/searchParams';
+import { buildDomainSearchPath } from '../utils/searchParams';
 import s from './DomainsPage.module.css';
 
 const DOMAIN_ICONS: Record<string, LucideIcon> = {
@@ -63,7 +63,7 @@ export default function DomainsPage() {
                 className={`${s.card} ${usesBannerThumb ? s.cardImage : ''}`}
                 style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
                 onClick={() => {
-                  if (targetSpaceId) navigateToTop(buildSpaceSearchPath(targetSpaceId));
+                  navigateToTop(buildDomainSearchPath(domain.name));
                 }}
               >
                 {usesBannerThumb ? null : (

@@ -171,6 +171,7 @@ export interface SpaceOption {
   description: string;
   file_count: number;
   space_level?: string;
+  business_domain_codes?: string[];
 }
 
 export interface SpaceFileItem {

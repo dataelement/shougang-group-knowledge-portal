@@ -22,11 +22,13 @@ class UnifiedAuthRuntimeService:
         database_path: Path,
         settings: Settings,
         state_secret_factory: Callable[[], str] | None = None,
+        store=None,
     ):
-        self._store = SQLiteConfigStore(database_path)
+        self._store = store or SQLiteConfigStore(database_path)
         self._settings = settings
         self._state_secret_factory = state_secret_factory or (lambda: secrets.token_urlsafe(32))
-        self._ensure_seeded()
+        if not getattr(self._store, "skip_startup_seed", False):
+            self._ensure_seeded()
 
     def get_config(self) -> UnifiedAuthRuntimeConfig:
         data = self._store.get_document(self._TABLE_NAME)

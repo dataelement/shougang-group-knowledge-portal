@@ -56,6 +56,7 @@ TECHNICAL_MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"preview_content_not_found", re.I), "未找到可预览内容"),
     (re.compile(r"unexpected rsa public key format", re.I), "登录加密配置异常，请联系管理员"),
     (re.compile(r"knowledge_space scope requires knowledge_space_id", re.I), "知识库范围参数异常，请重新选择知识库"),
+    (re.compile(r"invalid business domain code", re.I), "业务域编码无效，请从业务域编码候选中选择"),
     (re.compile(r"telemetry query failed", re.I), "统计数据加载失败，请稍后重试"),
     (re.compile(r"telemetry status invalid", re.I), "统计数据状态异常，请稍后重试"),
 )

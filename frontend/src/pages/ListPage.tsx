@@ -120,8 +120,9 @@ export default function ListPage() {
               sort: 'updated_at_desc',
               page,
               pageSize: displayConfig.list.pageSize,
+              fallbackPublic: true,
             }),
-            fetchAggregatedTags(spaceIds),
+            fetchAggregatedTags(spaceIds, undefined, true),
           ]);
           if (!active) return;
           setFiles(result.data);

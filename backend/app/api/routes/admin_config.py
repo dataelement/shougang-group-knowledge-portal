@@ -1,8 +1,9 @@
 import json
+import logging
 from datetime import UTC, datetime
-from typing import Final
+from typing import Any, Final
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -25,6 +26,7 @@ from app.schemas.portal_config import (
     BusinessDomainOptionsConfigUpdate,
     DisplayConfig,
     DocumentTypesConfigUpdate,
+    DomainConfig,
     DomainsConfigUpdate,
     IntegrationsConfig,
     PortalConfig,
@@ -36,8 +38,11 @@ from app.schemas.portal_config import (
 )
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.error_messages import normalize_user_facing_message
+from app.services.knowledge_service import KnowledgeService
 from app.services.portal_config_service import PortalConfigService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/admin/config",
@@ -51,32 +56,79 @@ ALLOWED_CONFIG_IMPORT_MIME: Final[set[str]] = {
     "text/json",
     "application/octet-stream",
 }
+DOMAIN_BINDABLE_SPACE_LEVELS: Final[set[str]] = {"public", "department"}
+SYNC_SPACE_BUSINESS_DOMAIN_CODES_PATH: Final[str] = (
+    "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes"
+)
 
 
-async def _fetch_shougang_portal_space_info(
+def _runtime_config_store(request: Request, runtime_service: BishengRuntimeService):
+    store = getattr(request.app.state, "portal_admin_config_store", None)
+    if store is None or getattr(store, "runtime_service", None) is not runtime_service:
+        return None
+    return store
+
+
+async def _load_domain_bindable_space_rows(
+    service: PortalConfigService,
     bisheng_client: BishengClient,
-    space_ids: list[int],
-) -> dict[int, dict]:
-    if not space_ids:
-        return {}
-    try:
-        response = await bisheng_client.post_json(
-            "/api/v1/knowledge/shougang-portal/spaces/info",
-            json={"space_ids": space_ids},
-        )
-    except Exception:
-        return {}
-    data = response.get("data") or {}
-    raw_spaces = data.get("spaces") if isinstance(data, dict) else []
-    if not isinstance(raw_spaces, list):
-        return {}
-    live_space_data: dict[int, dict] = {}
-    for item in raw_spaces:
-        if not isinstance(item, dict) or item.get("id") is None:
+) -> list[dict[str, Any]]:
+    knowledge_service = KnowledgeService(
+        bisheng_client=bisheng_client,
+        portal_config_service=service,
+    )
+    spaces = await knowledge_service.list_visible_spaces()
+    return [
+        space.model_dump()
+        for space in spaces.data
+        if (space.space_level or "").strip().lower() in DOMAIN_BINDABLE_SPACE_LEVELS
+    ]
+
+
+def _collect_domain_space_ids(domains: list[DomainConfig]) -> set[int]:
+    space_ids: set[int] = set()
+    for domain in domains:
+        for raw_space_id in domain.space_ids:
+            space_id = int(raw_space_id)
+            if space_id > 0:
+                space_ids.add(space_id)
+    return space_ids
+
+
+def _build_space_business_domain_code_bindings(
+    domains: list[DomainConfig],
+    sync_space_ids: set[int],
+) -> list[dict[str, Any]]:
+    codes_by_space_id: dict[int, list[str]] = {space_id: [] for space_id in sync_space_ids}
+    for domain in domains:
+        code = (domain.code or "").strip().upper()
+        if not code:
             continue
-        item_data = item.get("data") or {}
-        live_space_data[int(item["id"])] = item_data if isinstance(item_data, dict) else {}
-    return live_space_data
+        for raw_space_id in domain.space_ids:
+            space_id = int(raw_space_id)
+            if space_id not in codes_by_space_id:
+                continue
+            if code not in codes_by_space_id[space_id]:
+                codes_by_space_id[space_id].append(code)
+    return [
+        {"space_id": space_id, "business_domain_codes": codes}
+        for space_id, codes in sorted(codes_by_space_id.items())
+    ]
+
+
+async def _sync_space_business_domain_codes(
+    bisheng_client: BishengClient,
+    bindings: list[dict[str, Any]],
+) -> None:
+    if not bindings:
+        return
+    response = await bisheng_client.put_json(
+        SYNC_SPACE_BUSINESS_DOMAIN_CODES_PATH,
+        json={"bindings": bindings},
+    )
+    status_code = response.get("status_code")
+    if status_code not in (None, 200):
+        raise RuntimeError(str(response.get("status_message") or "BiSheng 空间业务域同步失败"))
 
 
 @router.get("")
@@ -107,6 +159,7 @@ async def export_admin_config(
 
 @router.post("/import")
 async def import_admin_config(
+    request: Request,
     file: UploadFile = File(...),
     service: PortalConfigService = Depends(get_portal_config_service),
     runtime_service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
@@ -135,6 +188,12 @@ async def import_admin_config(
     try:
         updated_portal = service.replace_config(payload.portal)
         updated_runtime = await runtime_service.replace_importable_config(payload.bisheng)
+        store = _runtime_config_store(request, runtime_service)
+        if store is not None:
+            store.upsert_document(
+                "bisheng_runtime_config",
+                runtime_service.get_persistent_config().model_dump(mode="json"),
+            )
         updated_unified_auth = (
             unified_auth_service.replace_importable_config(payload.unified_auth)
             if payload.unified_auth is not None
@@ -156,6 +215,20 @@ async def import_admin_config(
     )
 
 
+@router.post("/migrate-sqlite")
+async def migrate_sqlite_admin_config(request: Request, overwrite: bool = False):
+    store = getattr(request.app.state, "portal_admin_config_store", None)
+    if store is None or not hasattr(store, "migrate_from_sqlite"):
+        return response_error("门户远程配置存储未初始化", status_code=500)
+
+    try:
+        result = store.migrate_from_sqlite(overwrite=overwrite)
+    except Exception as err:
+        logger.exception("portal sqlite config migration failed")
+        return response_error(f"配置迁移失败：{err}", status_code=500)
+    return response_ok(result)
+
+
 @router.post("")
 async def replace_portal_config(
     payload: PortalConfig,
@@ -170,37 +243,10 @@ async def get_space_options(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
     try:
-        response = await bisheng_client.get_json(
-            "/api/v1/knowledge",
-            params={"page_num": 1, "page_size": 100, "type": 3},
-        )
+        bindable_spaces = await _load_domain_bindable_space_rows(service, bisheng_client)
     except Exception:
         return response_ok(service.build_space_options([]))
-    data = response.get("data") or {}
-    raw_spaces = data.get("data") if isinstance(data, dict) else []
-    if not isinstance(raw_spaces, list):
-        raw_spaces = []
-
-    live_space_data = await _fetch_shougang_portal_space_info(
-        bisheng_client,
-        [int(item["id"]) for item in raw_spaces if item.get("id") is not None],
-    )
-    enriched_spaces = []
-    for item in raw_spaces:
-        space_id = item.get("id")
-        info = live_space_data.get(int(space_id)) if space_id is not None else None
-        if not isinstance(info, dict) or not info:
-            enriched_spaces.append(item)
-            continue
-        enriched_item = {
-            **item,
-            "name": info.get("name") or item.get("name"),
-            "description": info.get("description") or item.get("description"),
-            "file_num": info.get("file_num") or item.get("file_num") or 0,
-            "space_level": info.get("space_level") or item.get("space_level") or "personal",
-        }
-        enriched_spaces.append(enriched_item)
-    return response_ok(service.build_space_options(enriched_spaces))
+    return response_ok(service.build_space_options(bindable_spaces))
 
 
 @router.get("/spaces/{space_id}/files")
@@ -267,8 +313,58 @@ async def get_domains_config(
 async def update_domains_config(
     payload: DomainsConfigUpdate,
     service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
-    return response_ok({"domains": service.update_domains(payload).domains})
+    current_config = service.get_config()
+    try:
+        bindable_spaces = await _load_domain_bindable_space_rows(service, bisheng_client)
+    except Exception as err:
+        return response_error(
+            normalize_user_facing_message(
+                err,
+                fallback="绑定空间同步失败，请检查 BiSheng 数据源后重试",
+                status_code=502,
+            ),
+            status_code=502,
+        )
+
+    bindable_space_ids = {int(space["id"]) for space in bindable_spaces if space.get("id") is not None}
+    requested_space_ids = _collect_domain_space_ids(payload.domains)
+    invalid_space_ids = sorted(requested_space_ids - bindable_space_ids)
+    if invalid_space_ids:
+        return response_error(
+            f"绑定空间必须是公共或部门知识空间：{', '.join(str(space_id) for space_id in invalid_space_ids)}",
+            status_code=400,
+        )
+
+    old_space_ids = _collect_domain_space_ids(current_config.domains)
+    sync_space_ids = old_space_ids | requested_space_ids
+    new_bindings = _build_space_business_domain_code_bindings(payload.domains, sync_space_ids)
+    old_bindings = _build_space_business_domain_code_bindings(current_config.domains, sync_space_ids)
+
+    try:
+        await _sync_space_business_domain_codes(bisheng_client, new_bindings)
+    except Exception as err:
+        return response_error(
+            normalize_user_facing_message(
+                err,
+                fallback="BiSheng 知识空间业务域同步失败，业务域配置未保存",
+                status_code=502,
+            ),
+            status_code=502,
+        )
+
+    try:
+        updated = service.update_domains(payload)
+    except Exception as err:
+        logger.exception("portal domains save failed after BiSheng sync")
+        try:
+            await _sync_space_business_domain_codes(bisheng_client, old_bindings)
+        except Exception:
+            logger.exception("failed to restore BiSheng business domain codes after portal save failure")
+        return response_error(f"业务域配置保存失败，已阻止保存：{err}", status_code=500)
+
+    return response_ok({"domains": updated.domains})
 
 
 @router.get("/sections")
@@ -515,11 +611,18 @@ async def get_bisheng_runtime_config(
 
 @router.post("/bisheng")
 async def update_bisheng_runtime_config(
+    request: Request,
     payload: BishengRuntimeConfigUpdate,
     service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
 ):
     try:
         config = await service.update_config(payload)
+        store = _runtime_config_store(request, service)
+        if store is not None:
+            store.upsert_document(
+                "bisheng_runtime_config",
+                service.get_persistent_config().model_dump(mode="json"),
+            )
     except ValueError as err:
         return response_error(normalize_user_facing_message(err, status_code=400), status_code=400)
     return response_ok(config)

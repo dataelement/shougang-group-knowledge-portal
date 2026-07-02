@@ -163,6 +163,7 @@ async def search_files(
     sort: str = "relevance",
     page: int = 1,
     page_size: int = 20,
+    fallback_public: bool = False,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
@@ -187,6 +188,7 @@ async def search_files(
                 page=page,
                 page_size=page_size,
                 extra_space_ids=None,
+                fallback_to_public_spaces=fallback_public,
             )
         )
 
@@ -212,6 +214,7 @@ async def search_files(
                 page=page,
                 page_size=page_size,
                 extra_space_ids=extra_space_ids,
+                fallback_to_public_spaces=False,
             )
         )
     finally:
@@ -223,10 +226,12 @@ async def get_aggregated_tags(
     request: Request,
     space_ids: Annotated[Optional[list[int]], Query()] = None,
     space_level: Optional[str] = None,
+    fallback_public: bool = False,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
+    is_anonymous = auth_service.get_session(request) is None
     service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
         request=request,
         auth_service=auth_service,
@@ -239,6 +244,7 @@ async def get_aggregated_tags(
                 requested_space_ids=space_ids,
                 space_level=space_level,
                 extra_space_ids=extra_space_ids,
+                fallback_to_public_spaces=fallback_public and is_anonymous,
             )
         )
     finally:

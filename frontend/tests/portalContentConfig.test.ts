@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  fetchAggregatedTags,
   fetchSpaceFiles,
   fetchHomeContent,
   fetchPortalContentConfig,
@@ -136,6 +137,54 @@ test('file search sends document type query parameter', async () => {
     });
 
     assert.equal(result.total, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('domain file search can request public fallback', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(
+      String(input),
+      '/api/v1/knowledge/files?sort=updated_at_desc&page=1&page_size=10&fallback_public=1&space_ids=7103',
+    );
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { data: [], total: 0, page: 1, page_size: 10 },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await searchFiles({
+      spaceIds: [7103],
+      sort: 'updated_at_desc',
+      page: 1,
+      pageSize: 10,
+      fallbackPublic: true,
+    });
+
+    assert.equal(result.total, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('domain tag aggregation can request public fallback', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(String(input), '/api/v1/knowledge/tags?space_ids=7103&fallback_public=1');
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: ['公共标签'],
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const tags = await fetchAggregatedTags([7103], undefined, true);
+    assert.deepEqual(tags, ['公共标签']);
   } finally {
     globalThis.fetch = originalFetch;
   }

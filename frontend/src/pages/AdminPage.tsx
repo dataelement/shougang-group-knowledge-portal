@@ -61,7 +61,7 @@ import {
   DOMAIN_ICON_OPTIONS,
   isSelectedDomainColor,
   validateDomainDraft,
-  getPublicSpaceOptions,
+  getDomainBindableSpaceGroups,
   type DomainDraft,
 } from '../utils/adminDomains';
 import {
@@ -258,6 +258,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [spaceOptions, setSpaceOptions] = useState<SpaceOption[]>([]);
+  const [spaceOptionsLoaded, setSpaceOptionsLoaded] = useState(false);
   const [spaceOptionsLoading, setSpaceOptionsLoading] = useState(false);
   const [spaceOptionsError, setSpaceOptionsError] = useState('');
   const [domainEditorOpen, setDomainEditorOpen] = useState(false);
@@ -415,6 +416,7 @@ export default function AdminPage() {
     } catch (err) {
       setSpaceOptionsError(err instanceof Error ? err.message : '候选空间加载失败');
     } finally {
+      setSpaceOptionsLoaded(true);
       setSpaceOptionsLoading(false);
     }
   }
@@ -594,9 +596,9 @@ export default function AdminPage() {
   }, [active, config, searchRerankModelOptions.length]);
 
   useEffect(() => {
-    if (active !== 'domains' || !config || spaceOptions.length || spaceOptionsLoading) return;
+    if (active !== 'domains' || !config || spaceOptionsLoaded || spaceOptionsLoading) return;
     void loadSpaceOptions();
-  }, [active, config, spaceOptions.length, spaceOptionsLoading]);
+  }, [active, config, spaceOptionsLoaded, spaceOptionsLoading]);
 
   useEffect(() => {
     if (active !== 'agentConfig' || !config || agentWorkflowLoaded || agentWorkflowLoading) return;
@@ -1127,7 +1129,7 @@ export default function AdminPage() {
         <DomainDeleteDialog
           open
           domain={config.domains[domainDeleteIndex]}
-          spaceName={spaceOptions.find((space) => space.id === config.domains[domainDeleteIndex].space_ids[0])?.name}
+          spaceName={formatDomainBoundSpaceText(config.domains[domainDeleteIndex], spaceOptions)}
           saving={saving}
           onClose={() => setDomainDeleteIndex(null)}
           onConfirm={() => {
@@ -1875,7 +1877,7 @@ function DomainsTable({
         </thead>
         <tbody>
           {domains.map((d, index) => {
-            const sp = spaces.find((ss) => ss.id === d.space_ids[0]);
+            const boundSpaceText = formatDomainBoundSpaceText(d, spaces);
             const visualPreset = getDomainVisualPreset(d);
             const backgroundImage = visualPreset.backgroundImage;
             return (
@@ -1890,8 +1892,8 @@ function DomainsTable({
                   )}
                 </td>
                 <td>
-                  {sp?.name
-                    ? sp.name
+                  {boundSpaceText
+                    ? boundSpaceText
                     : d.space_ids.length > 0
                       ? d.space_ids.join(', ')
                       : <span className={s.unboundBadge} title="未绑定的业务域不会显示在前台首页">未绑定 · 待补绑定</span>}
@@ -1973,13 +1975,36 @@ function DomainEditorDialog({
 }) {
   if (!open) return null;
 
+  const selectedSpaceIds = new Set(draft.spaceIds);
+  const selectedSpaces = draft.spaceIds.map((spaceId) => {
+    const numericId = Number(spaceId);
+    return spaces.find((space) => space.id === numericId) ?? {
+      id: numericId,
+      name: spaceId,
+      description: '',
+      file_count: 0,
+      space_level: '',
+      business_domain_codes: [],
+    };
+  });
+  const toggleSpace = (spaceId: string) => {
+    if (selectedSpaceIds.has(spaceId)) {
+      onChange({ spaceIds: draft.spaceIds.filter((id) => id !== spaceId) });
+      return;
+    }
+    onChange({ spaceIds: [...draft.spaceIds, spaceId] });
+  };
+  const removeSpace = (spaceId: string) => {
+    onChange({ spaceIds: draft.spaceIds.filter((id) => id !== spaceId) });
+  };
+
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
       <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
         <div className={s.modalHeader}>
           <div>
             <h3 className={s.modalTitle}>{draft.name.trim() ? `编辑业务域 · ${draft.name}` : '新增业务域'}</h3>
-            <p className={s.modalNote}>一个业务域绑定一个知识空间，前台按数组顺序展示。需要下线时直接删除该业务域。</p>
+            <p className={s.modalNote}>一个业务域可绑定多个公共或部门知识空间，前台按数组顺序展示。需要下线时直接删除该业务域。</p>
           </div>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
@@ -2010,21 +2035,49 @@ function DomainEditorDialog({
             </datalist>
             <span className={s.fieldHint}>对应文件编码第 3 段（如 SGGF-STD-PP-… 中的 PP）。可从候选快速选择，也可手动填写；留空则该业务域知识数量按 0 计。保存时统一转大写。</span>
           </label>
-          <label className={s.formField}>
+          <div className={s.formField}>
             <span className={s.fieldLabel}>绑定空间</span>
-            <select
-              className={s.formInput}
-              value={draft.spaceId}
-              onChange={(event) => onChange({ spaceId: event.target.value })}
-            >
-              <option value="">未绑定（暂不上首页）</option>
-              {spacesLoading ? <option value="" disabled>正在加载候选空间...</option> : null}
-              {getPublicSpaceOptions(spaces).map((space) => (
-                <option key={space.id} value={space.id}>
-                  {space.name}
-                </option>
+            <div className={s.spaceMultiPicker}>
+              {spacesLoading ? <div className={s.spacePickerEmpty}>正在加载候选空间...</div> : null}
+              {getDomainBindableSpaceGroups(spaces).map((group) => (
+                <div key={group.level} className={s.spacePickerGroup}>
+                  <div className={s.spacePickerGroupTitle}>{group.label}</div>
+                  {group.options.length ? (
+                    group.options.map((space) => (
+                      <label key={space.id} className={s.spacePickerOption}>
+                        <input
+                          type="checkbox"
+                          checked={selectedSpaceIds.has(String(space.id))}
+                          onChange={() => toggleSpace(String(space.id))}
+                        />
+                        <span className={s.spacePickerName}>{space.name}</span>
+                        {(space.business_domain_codes ?? []).length ? (
+                          <span className={s.spacePickerMeta}>{space.business_domain_codes?.join(' / ')}</span>
+                        ) : null}
+                      </label>
+                    ))
+                  ) : (
+                    <div className={s.spacePickerEmpty}>暂无{group.label}</div>
+                  )}
+                </div>
               ))}
-            </select>
+            </div>
+            <div className={s.selectedSpaceChips}>
+              {selectedSpaces.length ? selectedSpaces.map((space) => (
+                <button
+                  key={space.id}
+                  type="button"
+                  className={s.selectedSpaceChip}
+                  onClick={() => removeSpace(String(space.id))}
+                  title="取消绑定"
+                >
+                  <span>{space.name}</span>
+                  <X size={13} />
+                </button>
+              )) : (
+                <span className={s.unboundBadge} title="未绑定的业务域不会显示在前台首页">未绑定 · 待补绑定</span>
+              )}
+            </div>
             {spacesError ? (
               <span className={s.fieldHint}>
                 {spacesError}
@@ -2034,7 +2087,7 @@ function DomainEditorDialog({
               </span>
             ) : null}
             <span className={s.fieldHint}>未绑定的业务域只在后台可见，绑定知识空间后会按数组顺序出现在首页业务域导航。</span>
-          </label>
+          </div>
           <div className={`${s.formField} ${s.formFieldWide}`}>
             <span className={s.fieldLabel}>首页统计口径</span>
             <div className={s.emptyState}>首页业务域卡片「知识数量」来自全部知识库中文件编码第 3 段等于该业务域编码、且解析成功的文档数。</div>
@@ -2097,6 +2150,14 @@ function DomainEditorDialog({
       </div>
     </div>
   );
+}
+
+function formatDomainBoundSpaceText(domain: DomainConfig, spaces: SpaceOption[]): string {
+  if (!domain.space_ids.length) return '';
+  const spaceNameById = new Map(spaces.map((space) => [space.id, space.name]));
+  return domain.space_ids
+    .map((spaceId) => spaceNameById.get(spaceId) || String(spaceId))
+    .join('、');
 }
 
 function DomainDeleteDialog({

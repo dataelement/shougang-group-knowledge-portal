@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import UTC, datetime, timezone
 from pathlib import Path
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 import httpx
 
@@ -17,6 +17,7 @@ from app.schemas.bisheng_runtime import (
     BishengRuntimeConfigUpdate,
     BishengRuntimeConfigView,
 )
+from app.schemas.portal_admin_config import PortalBishengPersistentConfig
 from app.services.config_store import SQLiteConfigStore
 from app.services.error_messages import normalize_user_facing_message
 
@@ -54,9 +55,10 @@ class BishengRuntimeService:
         refresh_threshold_seconds: float = DEFAULT_REFRESH_THRESHOLD_SECONDS,
         sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
         database_path: Path | None = None,
+        store: Any | None = None,
     ):
         self._config_path = config_path
-        self._store = SQLiteConfigStore(database_path or config_path.parent / "portal.sqlite3")
+        self._store = store or SQLiteConfigStore(database_path or config_path.parent / "portal.sqlite3")
         self._default_base_url = default_base_url
         self._default_timeout_seconds = default_timeout_seconds
         self._default_api_token = default_api_token or ""
@@ -154,6 +156,20 @@ class BishengRuntimeService:
     def get_connection_settings(self) -> tuple[str, float]:
         config = self._read_config()
         return str(config.base_url), config.timeout_seconds
+
+    def get_runtime_config_snapshot(self) -> BishengRuntimeConfig:
+        return self._read_config()
+
+    def get_persistent_config(self) -> PortalBishengPersistentConfig:
+        config = self._read_config()
+        return PortalBishengPersistentConfig(
+            base_url=config.base_url,
+            asset_base_url=config.asset_base_url,
+            username=config.username,
+            timeout_seconds=config.timeout_seconds,
+            saved_password=config.saved_password,
+            last_auth_at=config.last_auth_at,
+        )
 
     async def update_config(self, payload: BishengRuntimeConfigUpdate) -> BishengRuntimeConfigView:
         async with self._lock:

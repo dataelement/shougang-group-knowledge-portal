@@ -71,6 +71,7 @@ class KnowledgeSpaceItem(BaseModel):
     is_pinned: bool = False
     updated_at: str = ""
     sources: list[str] = Field(default_factory=list)
+    business_domain_codes: list[str] = Field(default_factory=list)
 
 
 class KnowledgeSpaceListData(BaseModel):

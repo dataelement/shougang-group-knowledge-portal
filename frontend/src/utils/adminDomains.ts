@@ -40,9 +40,14 @@ export const DOMAIN_CODE_OPTIONS = [
   { code: 'AD', label: '管理' },
 ] as const;
 
+export const DOMAIN_BINDABLE_SPACE_GROUPS = [
+  { level: 'public', label: '公共空间' },
+  { level: 'department', label: '部门空间' },
+] as const;
+
 export interface DomainDraft {
   name: string;
-  spaceId: string;
+  spaceIds: string[];
   icon: string;
   backgroundImage: string;
   color: string;
@@ -54,7 +59,7 @@ export interface DomainDraft {
 export function createDomainDraft(current?: DomainConfig): DomainDraft {
   return {
     name: current?.name ?? '',
-    spaceId: current?.space_ids[0] === undefined ? '' : String(current.space_ids[0]),
+    spaceIds: (current?.space_ids ?? []).map((spaceId) => String(spaceId)),
     icon: current?.icon ?? 'Factory',
     backgroundImage: current?.background_image ?? '',
     color: current?.color ?? '#2563eb',
@@ -68,17 +73,17 @@ export function validateDomainDraft(draft: DomainDraft, spaces: SpaceOption[]): 
   const name = draft.name.trim();
   if (!name) return { error: '请输入业务域名称' };
 
-  const spaceIdRaw = draft.spaceId.trim();
   let spaceIds: number[] = [];
-  if (spaceIdRaw) {
+  for (const spaceIdRaw of draft.spaceIds) {
+    if (!spaceIdRaw.trim()) continue;
     const spaceId = Number(spaceIdRaw);
     if (!Number.isInteger(spaceId) || spaceId <= 0) return { error: '绑定空间格式有误' };
     const boundSpace = spaces.find((space) => space.id === spaceId);
     if (!boundSpace) return { error: '绑定空间不存在' };
-    if ((boundSpace.space_level ?? '').trim().toLowerCase() !== 'public') {
-      return { error: '绑定空间必须是公共知识空间' };
+    if (!isDomainBindableSpace(boundSpace)) {
+      return { error: '绑定空间必须是公共或部门知识空间' };
     }
-    spaceIds = [spaceId];
+    if (!spaceIds.includes(spaceId)) spaceIds.push(spaceId);
   }
 
   const icon = draft.icon.trim();
@@ -113,6 +118,17 @@ export function isSelectedDomainColor(
   return draft.color === option.color && draft.bg === option.bg;
 }
 
-export function getPublicSpaceOptions(spaces: SpaceOption[]): SpaceOption[] {
-  return spaces.filter((space) => (space.space_level ?? '').trim().toLowerCase() === 'public');
+export function getDomainBindableSpaceGroups(spaces: SpaceOption[]) {
+  return DOMAIN_BINDABLE_SPACE_GROUPS.map((group) => ({
+    ...group,
+    options: spaces.filter((space) => normalizeSpaceLevel(space) === group.level),
+  }));
+}
+
+function isDomainBindableSpace(space: SpaceOption): boolean {
+  return DOMAIN_BINDABLE_SPACE_GROUPS.some((group) => group.level === normalizeSpaceLevel(space));
+}
+
+function normalizeSpaceLevel(space: SpaceOption): string {
+  return (space.space_level ?? '').trim().toLowerCase();
 }

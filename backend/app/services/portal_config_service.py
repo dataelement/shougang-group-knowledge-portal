@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -41,10 +42,11 @@ class PortalConfigService:
     _DOMAIN_COUNT_CACHE_TABLE = "domain_count_cache"
     _LEGACY_CONFIG_KEY = "portal_config"
 
-    def __init__(self, config_path: Path, database_path: Path | None = None):
+    def __init__(self, config_path: Path, database_path: Path | None = None, store: Any | None = None):
         self._config_path = config_path
-        self._store = SQLiteConfigStore(database_path or config_path.parent / "portal.sqlite3")
-        self._ensure_seeded()
+        self._store = store or SQLiteConfigStore(database_path or config_path.parent / "portal.sqlite3")
+        if not getattr(self._store, "skip_startup_seed", False):
+            self._ensure_seeded()
 
     def get_config(self) -> PortalConfig:
         data = self._read_data()
@@ -345,8 +347,13 @@ class PortalConfigService:
                 id=int(item["id"]),
                 name=str(item.get("name") or ""),
                 description=str(item.get("description") or ""),
-                file_count=int(item.get("file_num") or 0),
+                file_count=int(item.get("file_count") or item.get("file_num") or 0),
                 space_level=str(item.get("space_level") or "personal"),
+                business_domain_codes=[
+                    str(code).strip().upper()
+                    for code in (item.get("business_domain_codes") or item.get("businessDomainCodes") or [])
+                    if str(code).strip()
+                ],
             )
             for item in raw_spaces
             if item.get("id") is not None and item.get("name")
@@ -439,12 +446,14 @@ class PortalConfigService:
         if self._config_path.exists():
             self._store.upsert_document(self._TABLE_NAME, self._read_legacy_json())
             return
-        self._store.upsert_document(self._TABLE_NAME, DEFAULT_PORTAL_CONFIG)
+        self._store.upsert_document(self._TABLE_NAME, deepcopy(DEFAULT_PORTAL_CONFIG))
 
     def _read_data(self) -> dict[str, Any]:
         data = self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY)
         if data is not None:
             return data
+        if getattr(self._store, "skip_startup_seed", False):
+            return deepcopy(DEFAULT_PORTAL_CONFIG)
         self._ensure_seeded()
         data = self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY)
         if data is None:

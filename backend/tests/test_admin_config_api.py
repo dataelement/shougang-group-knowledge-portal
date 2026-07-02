@@ -19,6 +19,7 @@ from app.settings import Settings
 class FakeBishengClient:
     def __init__(self):
         self.post_calls: list[tuple[str, dict | None]] = []
+        self.put_calls: list[tuple[str, dict | None]] = []
 
     async def get_json(self, path: str, params=None):
         if path == "/api/v1/workstation/config":
@@ -116,6 +117,49 @@ class FakeBishengClient:
                     "file_num": space_id + 1,
                 }
             }
+        if path == "/api/v1/knowledge/space/grouped":
+            return {
+                "data": {
+                    "personal_spaces": [
+                        {
+                            "id": 21,
+                            "name": "个人知识空间",
+                            "description": "个人空间",
+                            "file_count": 3,
+                            "updated_at": "2026-01-03T00:00:00",
+                        }
+                    ],
+                    "team_spaces": [
+                        {
+                            "id": 22,
+                            "name": "团队知识空间",
+                            "description": "团队空间",
+                            "file_count": 4,
+                            "updated_at": "2026-01-03T00:00:00",
+                        }
+                    ],
+                    "department_spaces": [
+                        {
+                            "id": 20,
+                            "name": "部门知识空间",
+                            "description": "部门空间",
+                            "file_count": 30,
+                            "updated_at": "2026-01-01T00:00:00",
+                            "business_domain_codes": ["QM"],
+                        }
+                    ],
+                    "public_spaces": [
+                        {
+                            "id": 19,
+                            "name": "公共知识空间",
+                            "description": "测试空间",
+                            "file_count": 20,
+                            "updated_at": "2026-01-02T00:00:00",
+                            "business_domain_codes": [],
+                        }
+                    ],
+                }
+            }
         if path == "/api/v1/knowledge":
             return {
                 "data": {
@@ -168,6 +212,12 @@ class FakeBishengClient:
                 }
             }
         raise AssertionError(f"Unexpected post path: {path}")
+
+    async def put_json(self, path: str, json=None):
+        self.put_calls.append((path, json))
+        if path == "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes":
+            return {"status_code": 200, "status_message": "SUCCESS", "data": {"updated": len((json or {}).get("bindings", []))}}
+        raise AssertionError(f"Unexpected put path: {path}")
 
     async def aclose(self):
         return None
@@ -610,6 +660,50 @@ def test_import_admin_config_rolls_back_all_sections_when_unified_auth_write_fai
     assert unified_auth_service.get_config() == original_unified_auth
 
 
+def test_migrate_sqlite_admin_config_uses_remote_store_without_overwrite():
+    class FakeMigrationStore:
+        def __init__(self):
+            self.overwrite_values: list[bool] = []
+
+        def migrate_from_sqlite(self, *, overwrite: bool = False):
+            self.overwrite_values.append(overwrite)
+            return {"migrated": False, "skipped": True, "reason": "remote_config_exists"}
+
+    store = FakeMigrationStore()
+
+    with TestClient(app) as client:
+        client.app.state.portal_admin_config_store = store
+        response = client.post("/api/v1/admin/config/migrate-sqlite")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status_code"] == 200
+    assert body["data"]["skipped"] is True
+    assert store.overwrite_values == [False]
+
+
+def test_migrate_sqlite_admin_config_supports_overwrite():
+    class FakeMigrationStore:
+        def __init__(self):
+            self.overwrite_values: list[bool] = []
+
+        def migrate_from_sqlite(self, *, overwrite: bool = False):
+            self.overwrite_values.append(overwrite)
+            return {"migrated": True, "skipped": False, "version": 1}
+
+    store = FakeMigrationStore()
+
+    with TestClient(app) as client:
+        client.app.state.portal_admin_config_store = store
+        response = client.post("/api/v1/admin/config/migrate-sqlite?overwrite=true")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status_code"] == 200
+    assert body["data"]["migrated"] is True
+    assert store.overwrite_values == [True]
+
+
 def test_admin_config_requires_login(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     app.dependency_overrides.pop(require_admin_session, None)
@@ -711,22 +805,25 @@ def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
 def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
 
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
         response = client.post(
             "/api/v1/admin/config/domains",
             json={
                 "domains": [
                     {
                         "name": "炼钢",
-                        "space_ids": [25],
+                        "space_ids": [19, 20],
                         "color": "#111111",
                         "bg": "#eeeeee",
                         "icon": "Factory",
                         "background_image": "/steel.png",
                         "enabled": True,
+                        "code": "PP",
                     }
                 ]
             },
@@ -736,7 +833,57 @@ def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
     body = response.json()
     assert body["data"]["domains"][0]["name"] == "炼钢"
     assert body["data"]["domains"][0]["background_image"] == "/steel.png"
+    assert body["data"]["domains"][0]["space_ids"] == [19, 20]
     assert service.get_config().domains[0].name == "炼钢"
+    assert bisheng_client.put_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes",
+            {
+                "bindings": [
+                    {"space_id": 19, "business_domain_codes": ["PP"]},
+                    {"space_id": 20, "business_domain_codes": ["PP"]},
+                ]
+            },
+        )
+    ]
+
+
+def test_post_admin_domains_does_not_persist_when_bisheng_sync_fails(tmp_path: Path):
+    class FailingSyncBishengClient(FakeBishengClient):
+        async def put_json(self, path: str, json=None):
+            self.put_calls.append((path, json))
+            return {"status_code": 18026, "status_message": "Invalid business domain code", "data": {}}
+
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FailingSyncBishengClient()
+    before = service.get_config().domains
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
+        response = client.post(
+            "/api/v1/admin/config/domains",
+            json={
+                "domains": [
+                    {
+                        "name": "炼钢",
+                        "space_ids": [19],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "/steel.png",
+                        "enabled": True,
+                        "code": "PP",
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "业务域编码无效，请从业务域编码候选中选择"
+    assert service.get_config().domains == before
 
 
 def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
@@ -956,7 +1103,7 @@ def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path:
     ]
 
 
-def test_get_admin_space_options_uses_bisheng_knowledge_list(tmp_path: Path):
+def test_get_admin_space_options_uses_bisheng_visible_space_list(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
     bisheng_client = FakeBishengClient()
@@ -972,16 +1119,23 @@ def test_get_admin_space_options_uses_bisheng_knowledge_list(tmp_path: Path):
         "options": [
             {
                 "id": 19,
-                "name": "空间19",
+                "name": "公共知识空间",
                 "description": "测试空间",
                 "file_count": 20,
+                "space_level": "public",
+                "business_domain_codes": [],
+            },
+            {
+                "id": 20,
+                "name": "部门知识空间",
+                "description": "部门空间",
+                "file_count": 30,
                 "space_level": "department",
+                "business_domain_codes": ["QM"],
             }
         ]
     }
-    assert bisheng_client.post_calls == [
-        ("/api/v1/knowledge/shougang-portal/spaces/info", {"space_ids": [19]})
-    ]
+    assert bisheng_client.post_calls == []
 
 
 def test_get_admin_space_files_uses_bisheng_file_list(tmp_path: Path):
@@ -1008,6 +1162,7 @@ def test_admin_config_endpoints_fail_soft_when_bisheng_is_unauthorized(tmp_path:
     class UnauthorizedBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None):
             if path in {
+                "/api/v1/knowledge/space/grouped",
                 "/api/v1/knowledge",
                 "/api/v1/llm",
                 "/api/v1/knowledge/file_list/19",
