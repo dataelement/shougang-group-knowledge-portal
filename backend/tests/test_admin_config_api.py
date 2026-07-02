@@ -995,8 +995,8 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
                 "selected_model": "1",
                 "general_model": "1",
                 "reasoning_model": "2",
-                "general_model_display_name": "DeepSeek Chat",
-                "reasoning_model_display_name": "DeepSeek Reasoner",
+                "general_model_display_name": "deepseek-chat",
+                "reasoning_model_display_name": "deepseek-reasoner",
                 "template_categories": [
                     {"id": "report", "name": "工作汇报", "enabled": True},
                     {"id": "plan", "name": "方案策划", "enabled": True},
@@ -1029,8 +1029,8 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert body["data"]["selected_model"] == "1"
     assert body["data"]["general_model"] == "1"
     assert body["data"]["reasoning_model"] == "2"
-    assert body["data"]["general_model_display_name"] == "DeepSeek Chat"
-    assert body["data"]["reasoning_model_display_name"] == "DeepSeek Reasoner"
+    assert body["data"]["general_model_display_name"] == "deepseek-chat"
+    assert body["data"]["reasoning_model_display_name"] == "deepseek-reasoner"
     assert body["data"]["template_categories"][1]["name"] == "方案策划"
     assert body["data"]["templates"][0]["show_on_home"] is True
     assert service.get_config().qa.welcome_message == "你好，我是首钢设备诊断助手，请问有什么可以帮您？"
@@ -1042,8 +1042,8 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert service.get_config().qa.selected_model == "1"
     assert service.get_config().qa.general_model == "1"
     assert service.get_config().qa.reasoning_model == "2"
-    assert service.get_config().qa.general_model_display_name == "DeepSeek Chat"
-    assert service.get_config().qa.reasoning_model_display_name == "DeepSeek Reasoner"
+    assert service.get_config().qa.general_model_display_name == "deepseek-chat"
+    assert service.get_config().qa.reasoning_model_display_name == "deepseek-reasoner"
     assert service.get_config().qa.templates[0].id == "work-plan"
 
 
@@ -1180,10 +1180,10 @@ def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path:
     assert body["selected_model"] == "1"
     assert body["general_model"] == "1"
     assert body["reasoning_model"] == "2"
-    assert body["general_model_display_name"] == "DeepSeek Chat"
-    assert body["reasoning_model_display_name"] == "DeepSeek Reasoner"
-    assert service.get_config().qa.general_model_display_name == "DeepSeek Chat"
-    assert service.get_config().qa.reasoning_model_display_name == "DeepSeek Reasoner"
+    assert body["general_model_display_name"] == "deepseek-chat"
+    assert body["reasoning_model_display_name"] == "deepseek-reasoner"
+    assert service.get_config().qa.general_model_display_name == "deepseek-chat"
+    assert service.get_config().qa.reasoning_model_display_name == "deepseek-reasoner"
     assert body["models"] == [
         {
             "key": "1",
@@ -1221,8 +1221,8 @@ def test_get_admin_qa_model_options_keeps_saved_display_names_when_model_list_fa
                 "selected_model": "1",
                 "general_model": "1",
                 "reasoning_model": "2",
-                "general_model_display_name": "DeepSeek Chat",
-                "reasoning_model_display_name": "DeepSeek Reasoner",
+                "general_model_display_name": "deepseek-chat",
+                "reasoning_model_display_name": "deepseek-reasoner",
             }
         )
     )
@@ -1237,8 +1237,8 @@ def test_get_admin_qa_model_options_keeps_saved_display_names_when_model_list_fa
     body = response.json()["data"]
     assert body["general_model"] == "1"
     assert body["reasoning_model"] == "2"
-    assert body["general_model_display_name"] == "DeepSeek Chat"
-    assert body["reasoning_model_display_name"] == "DeepSeek Reasoner"
+    assert body["general_model_display_name"] == "deepseek-chat"
+    assert body["reasoning_model_display_name"] == "deepseek-reasoner"
     assert body["models"] == []
 
 

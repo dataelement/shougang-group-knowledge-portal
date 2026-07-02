@@ -104,7 +104,7 @@ function getWelcomeMessage(welcomeMessage?: string) {
 }
 
 function getQaModelNameLabel(model: QAModelOption): string {
-  return model.display_name || model.name || model.id;
+  return model.name || model.display_name || model.id;
 }
 
 function buildConfiguredQaModelChoices(

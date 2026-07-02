@@ -226,7 +226,7 @@ class PortalConfigService:
 
     @staticmethod
     def _qa_model_display_name(model: QAModelOption) -> str:
-        return model.display_name or model.name or ""
+        return model.name or model.display_name or ""
 
     def build_search_rerank_model_options(self, raw_models: list[dict[str, Any]]) -> SearchRerankModelOptionsResponse:
         search_config = self.get_config().search

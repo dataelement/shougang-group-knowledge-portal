@@ -38,6 +38,10 @@ test('admin qa model dialog uses provider grouped model selectors', () => {
 
 test('admin qa model selector shows model name and identifiers in options', () => {
   assert.match(adminPageSource, /function getQaModelOptionLabel/);
+  assert.match(adminPageSource, /return model\.name \|\| model\.display_name \|\| model\.id/);
+  assert.match(adminPageSource, /labelParts\.push\(model\.display_name\)/);
+  assert.doesNotMatch(adminPageSource, /labelParts\.push\(model\.name\)/);
+  assert.match(adminPageSource, /function formatQaModelLabel[\s\S]*model\.name \|\| model\.display_name \|\| model\.id/);
   assert.match(adminPageSource, /ID \$\{model\.id\}/);
   assert.match(adminPageSource, /Key \$\{model\.key\}/);
   assert.match(adminPageSource, /getQaModelOptionLabel\(model\)/);

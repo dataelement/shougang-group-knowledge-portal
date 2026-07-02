@@ -4368,7 +4368,7 @@ function getQaModelProviderName(model: QAModelOption): string {
 }
 
 function getQaModelDisplayName(model: QAModelOption): string {
-  return model.display_name || model.name || model.id;
+  return model.name || model.display_name || model.id;
 }
 
 function resolveQaModelDisplayNameSnapshot(
@@ -4386,8 +4386,8 @@ function resolveQaModelDisplayNameSnapshot(
 
 function getQaModelOptionLabel(model: QAModelOption): string {
   const labelParts = [getQaModelDisplayName(model)];
-  if (model.name && model.name !== model.display_name) {
-    labelParts.push(model.name);
+  if (model.display_name && model.display_name !== model.name) {
+    labelParts.push(model.display_name);
   }
   labelParts.push(`ID ${model.id}`);
   if (model.key && model.key !== model.id) {
@@ -5005,7 +5005,7 @@ function formatFileSize(size: number): string {
 function formatQaModelLabel(models: QAModelOption[], modelId: string): string {
   if (!modelId) return '';
   const model = models.find((item) => item.id === modelId);
-  return model ? (model.display_name || model.name || model.id) : modelId;
+  return model ? (model.name || model.display_name || model.id) : modelId;
 }
 
 
