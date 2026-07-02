@@ -7,6 +7,7 @@ import {
   FileText,
   Folder,
   Loader2,
+  Minus,
   Search,
   X
 } from 'lucide-react';
@@ -250,10 +251,11 @@ export default function QAKnowledgeTreePicker({
     const loadingNode = loadingKeys.has(key);
     const errored = errorKeys.has(key);
     const children = childrenByKey[key] ?? [];
+    const spaceWhole = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === node.spaceId;
     const isFolderSelected = selectedFolderKeys.has(folderRefKey(node.spaceId, node.id));
-    const selected = node.type === 'file'
+    const selected = spaceWhole || (node.type === 'file'
       ? isFileSelected(node.spaceId, node.id)
-      : isFolderSelected;
+      : isFolderSelected);
     return (
       <div key={`${node.spaceId}-${node.id}`} className={s.treeNode}>
         <div className={s.nodeRow} style={{ paddingLeft: 12 + depth * 18 }}>
@@ -273,9 +275,9 @@ export default function QAKnowledgeTreePicker({
           <button
             type="button"
             className={`${s.checkBox} ${selected ? s.checkBoxActive : ''}`}
-            disabled={!node.selectable}
+            disabled={!node.selectable || spaceWhole}
             onClick={() => (node.type === 'file' ? toggleFileRef({ spaceId: node.spaceId, id: node.id }) : toggleFolderRef(node))}
-            title={node.disabledReason || ''}
+            title={spaceWhole ? '已按整库选择，取消整库后可单独选择' : (node.disabledReason || '')}
           >
             {selected ? <Check size={13} /> : null}
           </button>
@@ -299,11 +301,21 @@ export default function QAKnowledgeTreePicker({
   return (
     <div className={s.panel}>
     <div className={s.header}>
-      <div>
+      <div className={s.headerInfo}>
         <strong>知识库范围</strong>
         <span>整库限选 1 个，文件最多 20 个</span>
       </div>
       <div className={s.headerActions}>
+        {scope.mode !== 'none' ? (
+          <button
+            type="button"
+            className={s.clearButton}
+            onClick={() => onChange({ mode: 'none' })}
+            title="清空已选"
+          >
+            清空选择
+          </button>
+        ) : null}
         <span className={s.headerStatus}>
           {scope.mode === 'knowledge_space' ? '整库' : scope.mode === 'files' ? `${getScopeFileCount(scope)} 文件` : '未选择'}
         </span>
@@ -377,20 +389,28 @@ export default function QAKnowledgeTreePicker({
             {spaces.map((space) => {
           const rootKey = nodeChildrenKey(space.id);
           const expanded = expandedKeys.has(rootKey);
-          const checked = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === space.id;
+          const wholeSelected = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === space.id;
+          const spaceSelectedCount = scope.mode === 'files'
+            ? scope.fileRefs.filter((ref) => ref.knowledgeSpaceId === space.id).length
+              + scope.folderRefs
+                  .filter((ref) => ref.knowledgeSpaceId === space.id)
+                  .reduce((sum, ref) => sum + (ref.resolvedFileCount || 0), 0)
+            : 0;
+          const full = wholeSelected || (space.fileCount > 0 && spaceSelectedCount >= space.fileCount);
+          const indeterminate = !full && spaceSelectedCount > 0;
           const children = childrenByKey[rootKey] ?? [];
           const loadingRoot = loadingKeys.has(rootKey);
           const erroredRoot = errorKeys.has(rootKey);
           return (
             <section key={space.id} className={s.spaceBlock}>
-              <div className={`${s.spaceRow} ${checked ? s.spaceRowActive : ''}`}>
+              <div className={`${s.spaceRow} ${full ? s.spaceRowActive : ''}`}>
                 <button
                   type="button"
-                  className={`${s.checkBox} ${checked ? s.checkBoxActive : ''}`}
+                  className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
                   onClick={() => toggleWholeSpace(space)}
                   aria-label={`选择知识库 ${space.name}`}
                 >
-                  {checked ? <Check size={13} /> : null}
+                  {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
                 </button>
                 <Database size={16} className={s.spaceIcon} />
                 <div className={s.spaceContent}>

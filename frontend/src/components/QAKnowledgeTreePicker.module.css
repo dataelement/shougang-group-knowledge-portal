@@ -8,13 +8,15 @@
 
 .header {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   color: #1e293b;
 }
 
-.header div {
+.headerInfo {
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -36,6 +38,8 @@
   align-items: center;
   gap: 8px;
   flex-direction: row;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 
 .headerStatus {
@@ -55,6 +59,20 @@
 
 .closeButton:hover {
   color: #64748b;
+}
+
+.clearButton {
+  flex: 0 0 auto;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.74rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .inlineTip {
@@ -307,6 +325,13 @@
   cursor: not-allowed;
   border-color: #cbd5e1;
   background: #f8fafc;
+}
+
+.checkBoxActive:disabled {
+  cursor: not-allowed;
+  border-color: #2563eb;
+  background: #2563eb;
+  opacity: 0.85;
 }
 
 .expandButton {
