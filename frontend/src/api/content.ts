@@ -1397,10 +1397,12 @@ export async function streamChatCompletion(params: {
   onUpdate: (text: string) => void;
   onCitations?: (citations: Citation[]) => void;
   onConversationId?: (conversationId: string) => void;
+  signal?: AbortSignal;
 }): Promise<void> {
   try {
     const response = await fetch('/api/v1/workstation/chat/completions', {
       method: 'POST',
+      signal: params.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clientTimestamp: new Date().toISOString(),
@@ -1422,6 +1424,7 @@ export async function streamChatCompletion(params: {
     });
     await consumeChatStream(response, params.onUpdate, params.onCitations, params.onConversationId);
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') return;
     if (error instanceof ApiRequestError) throw error;
     throw new Error(normalizeUserFacingErrorMessage(error, '问答请求失败，请稍后重试。'));
   }

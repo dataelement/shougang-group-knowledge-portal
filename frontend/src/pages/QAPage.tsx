@@ -18,6 +18,7 @@ import {
   ScrollText,
   Search,
   Send,
+  Square,
   User,
   X,
 } from 'lucide-react';
@@ -347,6 +348,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const msgEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
 
@@ -572,6 +574,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     setStreaming(true);
     setModelMenuOpen(false);
     setKnowledgePickerOpen(false);
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     setSessions((prev) =>
       prev.map((ss) =>
@@ -588,6 +592,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     void streamChatCompletion({
       scene: 'qa',
       entryPoint: 'qa_page',
+      signal: abortController.signal,
       text: finalText,
       knowledgeSpaceIds: [],
       knowledgeScope: selectedKnowledgeScope,
@@ -621,7 +626,14 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       }));
     }).finally(() => {
       setStreaming(false);
+      abortControllerRef.current = null;
     });
+  };
+
+  const stopStreaming = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setStreaming(false);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -959,15 +971,26 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
             ) : null}
           </div>
           <div className={s.smartAppToolbarSpacer} />
-          <button
-            type="button"
-            className={s.smartAppSendButton}
-            onClick={sendMessage}
-            disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
-            aria-label="发送智能问答"
-          >
-            {streaming ? <Loader2 size={17} className={s.spinner} /> : <Send size={17} />}
-          </button>
+          {streaming ? (
+            <button
+              type="button"
+              className={s.smartAppStopButton}
+              onClick={stopStreaming}
+              aria-label="停止生成"
+            >
+              <Square size={14} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={s.smartAppSendButton}
+              onClick={sendMessage}
+              disabled={uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
+              aria-label="发送智能问答"
+            >
+              <Send size={17} />
+            </button>
+          )}
         </div>
         {composerTip ? <div className={s.smartAppComposerTip}>{composerTip}</div> : null}
       </div>

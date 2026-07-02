@@ -1333,6 +1333,23 @@
   opacity: 0.86;
 }
 
+.smartAppStopButton {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background: #3662E3;
+  color: #fff;
+  transition: opacity 0.15s;
+}
+
+.smartAppStopButton:hover {
+  opacity: 0.86;
+}
+
 .smartAppToolbar {
   display: flex;
   align-items: center;
