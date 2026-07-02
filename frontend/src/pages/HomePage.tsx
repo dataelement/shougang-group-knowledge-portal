@@ -825,7 +825,7 @@ export default function HomePage() {
                         <div className={s.itemTitle}>{f.title}</div>
                         <div className={s.itemSubRow}>
                           <span className={s.itemSummary}>
-                            {f.summary ? `【摘要】${f.summary}` : ''}
+                            {f.summary ?? ''}
                           </span>
                           {f.date ? (
                             <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
