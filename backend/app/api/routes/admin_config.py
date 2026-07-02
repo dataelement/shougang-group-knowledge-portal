@@ -191,10 +191,13 @@ async def import_admin_config(
         updated_runtime = await runtime_service.replace_importable_config(payload.bisheng)
         store = _runtime_config_store(request, runtime_service)
         if store is not None:
-            store.upsert_document(
-                "bisheng_runtime_config",
-                runtime_service.get_persistent_config().model_dump(mode="json"),
-            )
+            try:
+                store.upsert_document(
+                    "bisheng_runtime_config",
+                    runtime_service.get_persistent_config().model_dump(mode="json"),
+                )
+            except Exception as store_err:
+                logger.warning("portal admin config store sync failed during import: %s", store_err)
         updated_unified_auth = (
             unified_auth_service.replace_importable_config(payload.unified_auth)
             if payload.unified_auth is not None
