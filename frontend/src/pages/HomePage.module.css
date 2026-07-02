@@ -654,6 +654,7 @@
 .sectionList {
   flex: 1;
   min-height: 0;
+  max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-width: thin;
