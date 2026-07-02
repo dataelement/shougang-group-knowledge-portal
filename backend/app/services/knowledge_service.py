@@ -241,6 +241,7 @@ class KnowledgeService:
                         requested_space_ids=space_ids,
                         space_level=None,
                         file_ext=None,
+                        business_domain_code=None,
                         sort="updated_at",
                         page=1,
                         page_size=config.display.home.section_page_size,
@@ -454,9 +455,11 @@ class KnowledgeService:
         self,
         requested_space_ids: Optional[list[int]] = None,
         space_level: Optional[str] = None,
+        business_domain_code: Optional[str] = None,
         extra_space_ids: Optional[list[int]] = None,
         fallback_to_public_spaces: bool = False,
     ) -> list[str]:
+        normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         space_ids = await self.resolve_requested_space_ids(
             requested_space_ids,
             space_level,
@@ -465,11 +468,16 @@ class KnowledgeService:
         )
         if not space_ids:
             return []
-        if len(space_ids) > 1 or space_level:
+        if len(space_ids) > 1 or space_level or normalized_business_domain_code:
             try:
-                return await self._fetch_shougang_portal_tags(space_ids=space_ids, space_level=space_level)
+                return await self._fetch_shougang_portal_tags(
+                    space_ids=space_ids,
+                    space_level=space_level,
+                    business_domain_code=normalized_business_domain_code,
+                )
             except Exception:
-                pass
+                if normalized_business_domain_code:
+                    return []
         lookups = await asyncio.gather(*[self._get_space_tag_lookup(space_id) for space_id in space_ids])
         tags = {tag_name for lookup in lookups for tag_name in lookup.keys()}
         return sorted(tags)
@@ -540,9 +548,18 @@ class KnowledgeService:
         page_size: int,
         extra_space_ids: Optional[list[int]] = None,
         document_type: Optional[str] = None,
+        business_domain_code: Optional[str] = None,
         fallback_to_public_spaces: bool = False,
     ) -> PagedKnowledgeFileData:
-        has_filter = bool(tag or requested_space_ids or space_level or file_ext or document_type)
+        normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
+        has_filter = bool(
+            tag
+            or requested_space_ids
+            or space_level
+            or file_ext
+            or document_type
+            or normalized_business_domain_code
+        )
         if not q and not has_filter:
             return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
 
@@ -563,6 +580,7 @@ class KnowledgeService:
                 space_level=space_level,
                 file_ext=file_ext,
                 document_type=document_type,
+                business_domain_code=normalized_business_domain_code,
                 sort=sort,
                 page=page,
                 page_size=page_size,
@@ -585,6 +603,7 @@ class KnowledgeService:
             allowed_space_ids=set(space_ids),
             file_ext=file_ext,
             document_type=document_type,
+            business_domain_code=normalized_business_domain_code,
         )
         sorted_items = self._sort_items(filtered, sort=sort, keyword=q)
         space_name_map = await self.get_space_name_map(extra_space_ids)
@@ -655,13 +674,17 @@ class KnowledgeService:
         self,
         space_ids: list[int],
         space_level: Optional[str],
+        business_domain_code: Optional[str],
     ) -> list[str]:
+        request_body = {
+            "space_ids": space_ids,
+            "space_level": space_level,
+        }
+        if business_domain_code:
+            request_body["business_domain_code"] = business_domain_code
         response = await self._bisheng.post_json(
             "/api/v1/knowledge/shougang-portal/tags/search",
-            json={
-                "space_ids": space_ids,
-                "space_level": space_level,
-            },
+            json=request_body,
         )
         data = response.get("data") or {}
         tags = data.get("tags") if isinstance(data, dict) else []
@@ -677,6 +700,7 @@ class KnowledgeService:
         space_level: Optional[str],
         file_ext: Optional[str],
         document_type: Optional[str],
+        business_domain_code: Optional[str],
         sort: str,
         page: int,
         page_size: int,
@@ -694,6 +718,9 @@ class KnowledgeService:
         normalized_document_type = self._normalize_document_type_code(document_type)
         if normalized_document_type:
             request_body["document_type"] = normalized_document_type
+        normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
+        if normalized_business_domain_code:
+            request_body["business_domain_code"] = normalized_business_domain_code
         rerank_model_id = str(self._config_service.get_config().search.rerank_model_id or "").strip()
         request_body["rerank_model_id"] = rerank_model_id
         response = await self._bisheng.post_json(
@@ -1223,8 +1250,10 @@ class KnowledgeService:
         allowed_space_ids: set[int],
         file_ext: Optional[str],
         document_type: Optional[str],
+        business_domain_code: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         normalized_document_type = self._normalize_document_type_code(document_type)
+        normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         filtered: list[dict[str, Any]] = []
         for item in items:
             if int(item.get("knowledge_id", 0)) not in allowed_space_ids:
@@ -1237,6 +1266,11 @@ class KnowledgeService:
             if file_ext and self._get_file_ext(file_name) != file_ext:
                 continue
             if normalized_document_type and not self._matches_document_type(item, normalized_document_type):
+                continue
+            if normalized_business_domain_code and not self._matches_business_domain_code(
+                item,
+                normalized_business_domain_code,
+            ):
                 continue
             filtered.append(item)
         return filtered
@@ -1269,6 +1303,10 @@ class KnowledgeService:
     @classmethod
     def _matches_document_type(cls, item: dict[str, Any], document_type: str) -> bool:
         return cls._extract_document_type_code(item) == document_type
+
+    @classmethod
+    def _matches_business_domain_code(cls, item: dict[str, Any], business_domain_code: str) -> bool:
+        return cls._extract_business_domain_code(item) == business_domain_code
 
     def _map_items(
         self,
@@ -1424,8 +1462,20 @@ class KnowledgeService:
             return ""
         return cls._normalize_document_type_code(parts[1])
 
+    @classmethod
+    def _extract_business_domain_code(cls, *items: dict[str, Any] | None) -> str:
+        file_encoding = cls._extract_file_encoding(*items)
+        parts = [part.strip() for part in file_encoding.split("-")]
+        if len(parts) < 4 or not parts[2]:
+            return ""
+        return cls._normalize_business_domain_code(parts[2])
+
     @staticmethod
     def _normalize_document_type_code(value: Any) -> str:
+        return str(value or "").strip().upper()
+
+    @staticmethod
+    def _normalize_business_domain_code(value: Any) -> str:
         return str(value or "").strip().upper()
 
     @staticmethod

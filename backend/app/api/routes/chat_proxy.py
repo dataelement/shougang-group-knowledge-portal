@@ -240,7 +240,7 @@ async def upload_chat_attachment(
 ):
     session = auth_service.get_session(request)
     is_anonymous = session is None
-    bisheng_client = get_bisheng_client(request) if is_anonymous else auth_service.create_bisheng_client(session)
+    bisheng_client = await get_bisheng_client(request) if is_anonymous else auth_service.create_bisheng_client(session)
     temp_file_id = file_id.strip() or uuid4().hex
     filename = file.filename or "attachment"
     try:
@@ -269,7 +269,7 @@ async def chat_completions(
     is_anonymous = session is None
     if is_anonymous:
         # 未登录：系统客户端（常驻单例，请求结束后勿关闭）
-        bisheng_client = get_bisheng_client(request)
+        bisheng_client = await get_bisheng_client(request)
     else:
         # 已登录：个人 token 客户端，用完需关闭
         bisheng_client = auth_service.create_bisheng_client(session)

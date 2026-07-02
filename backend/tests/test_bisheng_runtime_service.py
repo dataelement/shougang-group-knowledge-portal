@@ -3,7 +3,10 @@ import base64
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
+from app.api.dependencies import get_bisheng_client
+from app.schemas.portal_admin_config import PortalBishengPersistentConfig
 from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
 from app.services.bisheng_runtime_service import (
     BishengRuntimeService,
@@ -212,6 +215,93 @@ def test_auth_failure_refresh_uses_saved_plaintext_password(tmp_path: Path):
     assert state["last_login_payload"]["user_name"] == "portal-admin"
     assert state["last_login_payload"]["password"] == "encrypted-super-secret"
     assert state["last_login_payload"]["token_purpose"] == PORTAL_RUNTIME_TOKEN_PURPOSE
+
+
+def test_apply_persistent_config_logs_in_with_remote_password(tmp_path: Path):
+    config_path = tmp_path / "rt.json"
+    factory, state = _make_scripted_factory(login_tokens=["remote-token"])
+
+    service = BishengRuntimeService(
+        config_path=config_path,
+        default_base_url="http://bootstrap.example.com",
+        default_timeout_seconds=30.0,
+        client_factory=factory,
+        password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+    )
+
+    async def _run():
+        view = await service.apply_persistent_config(
+            PortalBishengPersistentConfig(
+                base_url="http://example.com",
+                asset_base_url="http://assets.example.com",
+                username="portal-admin",
+                timeout_seconds=15,
+                saved_password="remote-password",
+                last_auth_at="2026-06-01T00:00:00+00:00",
+            )
+        )
+        saved = service._read_config()
+        await service.aclose()
+        return view, saved
+
+    view, saved = asyncio.run(_run())
+
+    assert view.connected is True
+    assert saved.api_token == "remote-token"
+    assert saved.username == "portal-admin"
+    assert saved.saved_password == "remote-password"
+    assert state["login_calls"] == 1
+    assert state["last_login_payload"]["user_name"] == "portal-admin"
+    assert state["last_login_payload"]["password"] == "encrypted-remote-password"
+    assert state["last_login_payload"]["token_purpose"] == PORTAL_RUNTIME_TOKEN_PURPOSE
+
+
+def test_get_bisheng_client_applies_remote_runtime_config(tmp_path: Path):
+    config_path = tmp_path / "rt.json"
+    factory, state = _make_scripted_factory(login_tokens=["remote-token"])
+    service = BishengRuntimeService(
+        config_path=config_path,
+        default_base_url="http://bootstrap.example.com",
+        default_timeout_seconds=30.0,
+        client_factory=factory,
+        password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+    )
+
+    class Store:
+        runtime_service = service
+
+        def get_document(self, table_name: str):
+            assert table_name == "bisheng_runtime_config"
+            return {
+                "base_url": "http://example.com",
+                "asset_base_url": "",
+                "username": "portal-admin",
+                "timeout_seconds": 30.0,
+                "saved_password": "remote-password",
+                "last_auth_at": "",
+            }
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                bisheng_runtime_service=service,
+                portal_admin_config_store=Store(),
+            )
+        )
+    )
+
+    async def _run():
+        client = await get_bisheng_client(request)
+        saved = service._read_config()
+        await service.aclose()
+        return client, saved
+
+    client, saved = asyncio.run(_run())
+
+    assert client is not None
+    assert saved.api_token == "remote-token"
+    assert saved.saved_password == "remote-password"
+    assert state["login_calls"] == 1
 
 
 def test_auth_failure_refresh_reuses_token_refreshed_by_another_request(tmp_path: Path):

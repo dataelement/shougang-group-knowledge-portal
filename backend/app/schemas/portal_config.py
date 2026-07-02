@@ -104,6 +104,8 @@ class QAConfig(BaseModel):
     selected_model: str = ""
     general_model: str = ""
     reasoning_model: str = ""
+    general_model_display_name: str = ""
+    reasoning_model_display_name: str = ""
     template_categories: list[QATemplateCategoryConfig] = Field(default_factory=list)
     templates: list[QATemplateConfig] = Field(default_factory=list)
 
@@ -146,6 +148,8 @@ class QAModelOptionsResponse(BaseModel):
     selected_model: str = ""
     general_model: str = ""
     reasoning_model: str = ""
+    general_model_display_name: str = ""
+    reasoning_model_display_name: str = ""
     models: list[QAModelOption] = Field(default_factory=list)
 
 
@@ -369,29 +373,6 @@ class SiteConfig(BaseModel):
     domain_count_cache_ttl_seconds: int = 43200
 
 
-class BusinessDomainOption(BaseModel):
-    code: str = ""
-    name: str = ""
-
-
-DEFAULT_BUSINESS_DOMAIN_OPTIONS: list[dict[str, str]] = [
-    {"code": "PP", "name": "生产"},
-    {"code": "QM", "name": "质量"},
-    {"code": "PM", "name": "设备"},
-    {"code": "EM", "name": "能源"},
-    {"code": "SA", "name": "安全"},
-    {"code": "EN", "name": "环保"},
-    {"code": "IM", "name": "投资"},
-    {"code": "RD", "name": "研发"},
-    {"code": "MM", "name": "采购"},
-    {"code": "SD", "name": "营销"},
-    {"code": "FI", "name": "财务"},
-    {"code": "HR", "name": "人力"},
-    {"code": "IT", "name": "信息"},
-    {"code": "AD", "name": "管理"},
-]
-
-
 DEFAULT_DOCUMENT_TYPES: list[dict[str, str]] = [
     {"code": "POL", "label": "政策制度"},
     {"code": "STD", "label": "标准规范"},
@@ -410,7 +391,6 @@ class PortalConfig(BaseModel):
     domains: list[DomainConfig] = Field(default_factory=list)
     sections: list[SectionConfig] = Field(default_factory=list)
     document_types: list[DocumentTypeConfig] = Field(default_factory=list)
-    business_domain_options: list[BusinessDomainOption] = Field(default_factory=list)
     qa: QAConfig
     agent_config: AgentConfig = Field(default_factory=AgentConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
@@ -440,7 +420,3 @@ class BannersConfigUpdate(BaseModel):
 
 class DocumentTypesConfigUpdate(BaseModel):
     document_types: list[DocumentTypeConfig]
-
-
-class BusinessDomainOptionsConfigUpdate(BaseModel):
-    business_domain_options: list[BusinessDomainOption]

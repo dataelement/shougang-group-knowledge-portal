@@ -28,6 +28,7 @@ test('domain list context keeps all bound space ids', () => {
   assert.equal(context.pageTitle, '设备');
   assert.equal(context.spaceId, undefined);
   assert.deepEqual(context.spaceIds, [12, 18]);
+  assert.equal(context.businessDomainCode, 'PM');
 });
 
 test('space list context keeps the single space route behavior', () => {

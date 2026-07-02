@@ -652,12 +652,12 @@ export async function fetchPortalContentConfig(): Promise<PortalConfig> {
 export async function fetchAggregatedTags(
   spaceIds?: number[],
   spaceLevel?: string,
-  fallbackPublic?: boolean,
+  businessDomainCode?: string,
 ): Promise<string[]> {
   const params = new URLSearchParams();
   spaceIds?.forEach((id) => params.append('space_ids', String(id)));
   if (spaceLevel) params.set('space_level', spaceLevel);
-  if (fallbackPublic) params.set('fallback_public', '1');
+  if (businessDomainCode) params.set('business_domain_code', businessDomainCode);
   const query = params.toString();
   return request<string[]>(`/api/v1/knowledge/tags${query ? `?${query}` : ''}`);
 }
@@ -701,7 +701,7 @@ export async function searchFiles(params: {
   sort?: string;
   page?: number;
   pageSize?: number;
-  fallbackPublic?: boolean;
+  businessDomainCode?: string;
 }): Promise<{ data: FileItem[]; total: number; page: number; pageSize: number }> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
@@ -709,10 +709,10 @@ export async function searchFiles(params: {
   if (params.spaceLevel) query.set('space_level', params.spaceLevel);
   if (params.fileExt) query.set('file_ext', params.fileExt);
   if (params.documentType) query.set('document_type', params.documentType);
+  if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
   if (params.sort) query.set('sort', params.sort);
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('page_size', String(params.pageSize));
-  if (params.fallbackPublic) query.set('fallback_public', '1');
   params.spaceIds?.forEach((id) => query.append('space_ids', String(id)));
 
   const data = await request<PagedKnowledgeFileDataDto>(`/api/v1/knowledge/files?${query.toString()}`);

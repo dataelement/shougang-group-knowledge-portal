@@ -1,6 +1,7 @@
 from fastapi import HTTPException, Request
 
 from app.clients.bisheng import BishengClient
+from app.schemas.portal_admin_config import PortalBishengPersistentConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService, PortalSession
 from app.services.portal_config_service import PortalConfigService
@@ -32,10 +33,33 @@ def get_unified_auth_runtime_service(request: Request) -> UnifiedAuthRuntimeServ
     return request.app.state.unified_auth_runtime_service
 
 
-def get_bisheng_client(request: Request) -> BishengClient:
+async def get_bisheng_client(request: Request) -> BishengClient:
     if hasattr(request.app.state, "bisheng_client"):
         return request.app.state.bisheng_client
-    return request.app.state.bisheng_runtime_service.get_client()
+    runtime_service = request.app.state.bisheng_runtime_service
+    await _apply_remote_bisheng_runtime_config_if_needed(request, runtime_service)
+    return runtime_service.get_client()
+
+
+async def _apply_remote_bisheng_runtime_config_if_needed(
+    request: Request,
+    runtime_service: BishengRuntimeService,
+) -> None:
+    current = runtime_service.get_runtime_config_snapshot()
+    if current.api_token and current.saved_password and not runtime_service.is_bootstrap_required():
+        return
+
+    store = getattr(request.app.state, "portal_admin_config_store", None)
+    if store is None or getattr(store, "runtime_service", None) is not runtime_service:
+        return
+
+    remote_runtime = store.get_document("bisheng_runtime_config")
+    if not remote_runtime:
+        return
+
+    await runtime_service.apply_persistent_config(
+        PortalBishengPersistentConfig.model_validate(remote_runtime),
+    )
 
 
 def _normalize_identity(value: str | None) -> str:

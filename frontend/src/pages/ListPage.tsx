@@ -63,6 +63,7 @@ export default function ListPage() {
   const pageTitle = listContext?.pageTitle ?? '知识列表';
   const spaceId = listContext?.spaceId;
   const spaceIds = listContext?.spaceIds ?? EMPTY_SPACE_IDS;
+  const businessDomainCode = listContext?.businessDomainCode ?? '';
   const isDomainList = listContext?.mode === 'domain';
   const documentTypes = useMemo(() => getRuntimeDocumentTypes(config?.document_types), [config?.document_types]);
 
@@ -103,7 +104,7 @@ export default function ListPage() {
     void (async () => {
       try {
         if (isDomainList) {
-          if (spaceIds.length === 0) {
+          if (spaceIds.length === 0 || !businessDomainCode) {
             if (!active) return;
             setFiles([]);
             setTotal(0);
@@ -116,13 +117,13 @@ export default function ListPage() {
               spaceIds,
               fileExt: fileExt || undefined,
               documentType: documentType || undefined,
+              businessDomainCode: businessDomainCode || undefined,
               tag: tagParam || undefined,
               sort: 'updated_at_desc',
               page,
               pageSize: displayConfig.list.pageSize,
-              fallbackPublic: true,
             }),
-            fetchAggregatedTags(spaceIds, undefined, true),
+            fetchAggregatedTags(spaceIds, undefined, businessDomainCode || undefined),
           ]);
           if (!active) return;
           setFiles(result.data);
@@ -173,7 +174,7 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [config, displayConfig.list.pageSize, documentType, fileExt, isDomainList, listContext, page, spaceId, spaceIds, tagParam]);
+  }, [businessDomainCode, config, displayConfig.list.pageSize, documentType, fileExt, isDomainList, listContext, page, spaceId, spaceIds, tagParam]);
 
   useEffect(() => {
     if (canFavorite && files.length) void loadStatuses(files);

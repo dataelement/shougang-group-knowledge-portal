@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchNotificationSummary, type NotificationSummary } from '../api/notifications';
+import { PORTAL_NOTIFICATION_SUMMARY_REFRESH_EVENT } from '../utils/portalApprovalBridge';
 
 const EMPTY_SUMMARY: NotificationSummary = { todo: 0, messages: 0, total: 0 };
 const POLL_INTERVAL_MS = 60_000;
@@ -31,10 +32,15 @@ export function useNotificationSummary(enabled: boolean): NotificationSummary {
     const onVisible = () => {
       if (!document.hidden) void refresh();
     };
+    const onSummaryRefresh = () => {
+      void refresh();
+    };
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener(PORTAL_NOTIFICATION_SUMMARY_REFRESH_EVENT, onSummaryRefresh);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener(PORTAL_NOTIFICATION_SUMMARY_REFRESH_EVENT, onSummaryRefresh);
     };
   }, [enabled, refresh]);
 

@@ -6,6 +6,7 @@ export interface ListPageContext {
   mode: ListPageContextMode;
   spaceId?: number;
   spaceIds: number[];
+  businessDomainCode?: string;
   pageTitle: string;
 }
 
@@ -37,6 +38,7 @@ export function resolveListContext(
     return {
       mode: 'domain',
       spaceIds: normalizeSpaceIds(matchedDomain.space_ids),
+      businessDomainCode: matchedDomain.code.trim().toUpperCase(),
       pageTitle: matchedDomain.name || '知识列表',
     };
   }

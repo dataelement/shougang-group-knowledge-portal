@@ -23,27 +23,15 @@ export const DOMAIN_COLOR_OPTIONS = [
   { label: '设备灰', color: '#475569', bg: '#e2e8f0' },
 ] as const;
 
-export const DOMAIN_CODE_OPTIONS = [
-  { code: 'PP', label: '生产' },
-  { code: 'QM', label: '质量' },
-  { code: 'PM', label: '设备' },
-  { code: 'EM', label: '能源' },
-  { code: 'SA', label: '安全' },
-  { code: 'EN', label: '环保' },
-  { code: 'IM', label: '投资' },
-  { code: 'RD', label: '研发' },
-  { code: 'MM', label: '采购' },
-  { code: 'SD', label: '营销' },
-  { code: 'FI', label: '财务' },
-  { code: 'HR', label: '人力' },
-  { code: 'IT', label: '信息' },
-  { code: 'AD', label: '管理' },
-] as const;
-
 export const DOMAIN_BINDABLE_SPACE_GROUPS = [
   { level: 'public', label: '公共空间' },
   { level: 'department', label: '部门空间' },
 ] as const;
+
+export interface DomainCodeOption {
+  code: string;
+  label: string;
+}
 
 export interface DomainDraft {
   name: string;
@@ -67,6 +55,16 @@ export function createDomainDraft(current?: DomainConfig): DomainDraft {
     enabled: current?.enabled ?? true,
     code: current?.code ?? '',
   };
+}
+
+export function buildDomainCodeOptions(domains: DomainConfig[]): DomainCodeOption[] {
+  const options: DomainCodeOption[] = [];
+  domains.forEach((domain) => {
+    const code = domain.code.trim().toUpperCase();
+    if (!code) return;
+    options.push({ code, label: domain.name });
+  });
+  return options;
 }
 
 export function validateDomainDraft(draft: DomainDraft, spaces: SpaceOption[]): { domain?: DomainConfig; error?: string } {

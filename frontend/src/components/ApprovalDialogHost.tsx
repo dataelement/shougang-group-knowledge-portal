@@ -7,6 +7,7 @@ import {
   PORTAL_APPROVAL_EVENT,
   PORTAL_DIALOG_CLOSED_MESSAGE,
   PORTAL_DIALOG_READY_MESSAGE,
+  PORTAL_NOTIFICATION_SUMMARY_REFRESH_EVENT,
   type PortalApprovalAction,
   isPortalApprovalAction,
   postPortalApprovalMessageToFrame,
@@ -124,7 +125,10 @@ export default function ApprovalDialogHost() {
         if (action) sendActionToReadyFrame(action);
         return;
       }
-      if (event.data?.type === PORTAL_DIALOG_CLOSED_MESSAGE) setOpen(false);
+      if (event.data?.type === PORTAL_DIALOG_CLOSED_MESSAGE) {
+        setOpen(false);
+        window.dispatchEvent(new Event(PORTAL_NOTIFICATION_SUMMARY_REFRESH_EVENT));
+      }
     }
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);

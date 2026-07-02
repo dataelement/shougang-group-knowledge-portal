@@ -32,6 +32,8 @@ export interface QAConfig {
   selected_model: string;
   general_model: string;
   reasoning_model: string;
+  general_model_display_name: string;
+  reasoning_model_display_name: string;
   template_categories: QATemplateCategoryConfig[];
   templates: QATemplateConfig[];
 }
@@ -70,6 +72,8 @@ export interface QAModelOptionsResponse {
   selected_model: string;
   general_model: string;
   reasoning_model: string;
+  general_model_display_name: string;
+  reasoning_model_display_name: string;
   models: QAModelOption[];
 }
 
@@ -123,11 +127,6 @@ export interface SearchRerankModelOptionsResponse {
 export interface DocumentTypeConfig {
   code: string;
   label: string;
-}
-
-export interface BusinessDomainOption {
-  code: string;
-  name: string;
 }
 
 export interface BishengRuntimeConfig {
@@ -262,7 +261,6 @@ export interface PortalConfig {
   domains: DomainConfig[];
   sections: SectionConfig[];
   document_types: DocumentTypeConfig[];
-  business_domain_options: BusinessDomainOption[];
   qa: QAConfig;
   agent_config: AgentConfig;
   search: SearchConfig;
@@ -534,13 +532,6 @@ export function updateDocumentTypesConfig(document_types: DocumentTypeConfig[]) 
   return request<{ document_types: DocumentTypeConfig[] }>('/api/v1/admin/config/document-types', {
     method: 'POST',
     body: JSON.stringify({ document_types }),
-  });
-}
-
-export function updateBusinessDomainOptionsConfig(business_domain_options: BusinessDomainOption[]) {
-  return request<{ business_domain_options: BusinessDomainOption[] }>('/api/v1/admin/config/business-domain-options', {
-    method: 'POST',
-    body: JSON.stringify({ business_domain_options }),
   });
 }
 

@@ -23,7 +23,6 @@ from app.schemas.portal_config import (
     AgentConfig,
     AppsConfigUpdate,
     BannersConfigUpdate,
-    BusinessDomainOptionsConfigUpdate,
     DisplayConfig,
     DocumentTypesConfigUpdate,
     DomainConfig,
@@ -101,6 +100,8 @@ def _build_space_business_domain_code_bindings(
 ) -> list[dict[str, Any]]:
     codes_by_space_id: dict[int, list[str]] = {space_id: [] for space_id in sync_space_ids}
     for domain in domains:
+        if not domain.enabled:
+            continue
         code = (domain.code or "").strip().upper()
         if not code:
             continue
@@ -395,21 +396,6 @@ async def update_document_types_config(
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
     return response_ok({"document_types": service.update_document_types(payload).document_types})
-
-
-@router.get("/business-domain-options")
-async def get_business_domain_options_config(
-    service: PortalConfigService = Depends(get_portal_config_service),
-):
-    return response_ok({"business_domain_options": service.get_config().business_domain_options})
-
-
-@router.post("/business-domain-options")
-async def update_business_domain_options_config(
-    payload: BusinessDomainOptionsConfigUpdate,
-    service: PortalConfigService = Depends(get_portal_config_service),
-):
-    return response_ok({"business_domain_options": service.update_business_domain_options(payload).business_domain_options})
 
 
 @router.get("/qa")

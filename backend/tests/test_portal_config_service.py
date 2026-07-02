@@ -22,6 +22,8 @@ def test_portal_config_service_seeds_default_config(tmp_path: Path):
     assert all(domain.background_image for domain in config.domains)
     assert config.qa.general_model == ""
     assert config.qa.reasoning_model == ""
+    assert config.qa.general_model_display_name == ""
+    assert config.qa.reasoning_model_display_name == ""
     assert config.qa.quick_mode_system_prompt
     assert config.qa.normal_mode_system_prompt
     assert config.qa.expert_mode_system_prompt
@@ -54,6 +56,8 @@ def test_portal_config_service_imports_legacy_json_once(tmp_path: Path):
     assert service.get_config().domains[0].name == "旧业务域"
     assert service.get_config().qa.general_model == "legacy-model"
     assert service.get_config().qa.selected_model == "legacy-model"
+    assert service.get_config().qa.general_model_display_name == ""
+    assert service.get_config().qa.reasoning_model_display_name == ""
     assert service.get_config().qa.quick_mode_system_prompt
     assert service.get_config().qa.normal_mode_system_prompt
     assert service.get_config().qa.expert_mode_system_prompt

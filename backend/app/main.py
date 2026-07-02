@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -6,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.clients.bisheng import BishengAuthRefreshError
 from app.schemas.common import response_error
+from app.schemas.portal_admin_config import PortalBishengPersistentConfig
 from app.services.error_messages import normalize_user_facing_message
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.config_store import InMemoryConfigStore
@@ -15,6 +17,8 @@ from app.services.portal_config_service import PortalConfigService
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 from app.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -38,6 +42,16 @@ async def lifespan(app: FastAPI):
         runtime_service=app.state.bisheng_runtime_service,
         database_path=settings.portal_database_path,
     )
+    try:
+        remote_runtime = app.state.portal_admin_config_store.get_document(
+            "bisheng_runtime_config",
+        )
+        if remote_runtime:
+            await app.state.bisheng_runtime_service.apply_persistent_config(
+                PortalBishengPersistentConfig.model_validate(remote_runtime),
+            )
+    except Exception:
+        logger.exception("BiSheng 远程门户运行时配置加载失败")
     app.state.portal_auth_service = PortalAuthService(
         runtime_service=app.state.bisheng_runtime_service,
         cookie_name=settings.portal_session_cookie_name,

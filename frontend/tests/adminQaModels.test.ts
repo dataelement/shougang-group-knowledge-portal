@@ -8,6 +8,8 @@ const adminPageSource = readFileSync('src/pages/AdminPage.tsx', 'utf8');
 test('admin qa config exposes general and reasoning model fields', () => {
   assert.match(adminConfigSource, /general_model:\s*string/);
   assert.match(adminConfigSource, /reasoning_model:\s*string/);
+  assert.match(adminConfigSource, /general_model_display_name:\s*string/);
+  assert.match(adminConfigSource, /reasoning_model_display_name:\s*string/);
   assert.match(adminConfigSource, /quick_mode_system_prompt:\s*string/);
   assert.match(adminConfigSource, /normal_mode_system_prompt:\s*string/);
   assert.match(adminConfigSource, /expert_mode_system_prompt:\s*string/);
@@ -20,6 +22,9 @@ test('admin qa model dialog edits both general and reasoning models', () => {
   assert.match(adminPageSource, /推理模型/);
   assert.match(adminPageSource, /general_model:\s*qaModelDraft\.general_model/);
   assert.match(adminPageSource, /reasoning_model:\s*qaModelDraft\.reasoning_model/);
+  assert.match(adminPageSource, /general_model_display_name:\s*generalModelDisplayName/);
+  assert.match(adminPageSource, /reasoning_model_display_name:\s*reasoningModelDisplayName/);
+  assert.match(adminPageSource, /function resolveQaModelDisplayNameSnapshot/);
 });
 
 test('admin qa model dialog uses provider grouped model selectors', () => {

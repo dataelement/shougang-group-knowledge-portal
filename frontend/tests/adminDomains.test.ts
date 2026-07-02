@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDomainDraft, isSelectedDomainColor, validateDomainDraft, getDomainBindableSpaceGroups, DOMAIN_CODE_OPTIONS } from '../src/utils/adminDomains';
+import { buildDomainCodeOptions, createDomainDraft, isSelectedDomainColor, validateDomainDraft, getDomainBindableSpaceGroups } from '../src/utils/adminDomains';
 
 test('createDomainDraft maps existing domain values incl. code', () => {
   const draft = createDomainDraft({
@@ -141,9 +141,44 @@ test('validateDomainDraft supports multiple bindable spaces and deduplicates ids
   assert.deepEqual(result.domain?.space_ids, [20, 21]);
 });
 
-test('DOMAIN_CODE_OPTIONS covers the 14 business-domain codes', () => {
-  assert.equal(DOMAIN_CODE_OPTIONS.length, 14);
-  assert.ok(DOMAIN_CODE_OPTIONS.some((o) => o.code === 'PP' && o.label === '生产'));
+test('buildDomainCodeOptions derives code options from configured domains', () => {
+  const options = buildDomainCodeOptions([
+    {
+      name: '生产',
+      space_ids: [],
+      color: '#059669',
+      bg: '#d1fae5',
+      icon: 'Factory',
+      background_image: '',
+      enabled: true,
+      code: 'pp',
+    },
+    {
+      name: '未编码业务域',
+      space_ids: [],
+      color: '#2563eb',
+      bg: '#eff6ff',
+      icon: 'Settings',
+      background_image: '',
+      enabled: true,
+      code: '',
+    },
+    {
+      name: '质量',
+      space_ids: [],
+      color: '#6366f1',
+      bg: '#ede9fe',
+      icon: 'CheckCircle',
+      background_image: '',
+      enabled: true,
+      code: 'QM',
+    },
+  ]);
+
+  assert.deepEqual(options, [
+    { code: 'PP', label: '生产' },
+    { code: 'QM', label: '质量' },
+  ]);
 });
 
 test('isSelectedDomainColor matches preset color pairs exactly', () => {

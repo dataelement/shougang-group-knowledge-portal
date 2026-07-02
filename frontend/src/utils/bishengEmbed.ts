@@ -3,7 +3,10 @@ const DEFAULT_BISHENG_PORTAL_WORKFLOW_CHAT_PATH = '/workspace/portal-chat/workfl
 const LEGACY_BISHENG_KNOWLEDGE_PATH = '/workspace/knowledge';
 const EMBED_PARAM = 'portal_embed';
 const DEEP_LINK_SPACE_PARAM = 'spaceId';
+const DEEP_LINK_FOLDER_PARAM = 'folderId';
+const DEEP_LINK_FOLDER_NAME_PARAM = 'folderName';
 const DEEP_LINK_FILE_PARAM = 'fileId';
+const DEEP_LINK_FILE_NAME_PARAM = 'fileName';
 const DEEP_LINK_OPEN_CHAT_PARAM = 'openChat';
 
 export type EmbedLocation = Pick<Location, 'protocol' | 'hostname' | 'origin'>;
@@ -70,16 +73,27 @@ export function mergeKnowledgeDeepLinkParams(
   locationOverride?: EmbedLocation,
 ): string {
   const spaceId = searchParams.get(DEEP_LINK_SPACE_PARAM)?.trim();
+  if (!spaceId) return rawUrl;
+
+  const folderId = searchParams.get(DEEP_LINK_FOLDER_PARAM)?.trim();
+  const folderName = searchParams.get(DEEP_LINK_FOLDER_NAME_PARAM)?.trim();
   const fileId = searchParams.get(DEEP_LINK_FILE_PARAM)?.trim();
-  if (!spaceId || !fileId) return rawUrl;
+  const fileName = searchParams.get(DEEP_LINK_FILE_NAME_PARAM)?.trim();
 
   try {
     const current = getCurrentLocation(locationOverride);
     const parsed = new URL(rawUrl, current.origin);
     parsed.searchParams.set(DEEP_LINK_SPACE_PARAM, spaceId);
-    parsed.searchParams.set(DEEP_LINK_FILE_PARAM, fileId);
+    if (folderId) {
+      parsed.searchParams.set(DEEP_LINK_FOLDER_PARAM, folderId);
+      if (folderName) parsed.searchParams.set(DEEP_LINK_FOLDER_NAME_PARAM, folderName);
+    }
+    if (fileId) {
+      parsed.searchParams.set(DEEP_LINK_FILE_PARAM, fileId);
+      if (fileName) parsed.searchParams.set(DEEP_LINK_FILE_NAME_PARAM, fileName);
+    }
     const openChat = searchParams.get(DEEP_LINK_OPEN_CHAT_PARAM)?.trim();
-    if (openChat) {
+    if (fileId && openChat) {
       parsed.searchParams.set(DEEP_LINK_OPEN_CHAT_PARAM, openChat);
     }
     return parsed.toString();

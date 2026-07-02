@@ -104,31 +104,43 @@ function getWelcomeMessage(welcomeMessage?: string) {
 }
 
 function getQaModelNameLabel(model: QAModelOption): string {
-  return model.name || model.display_name || model.id;
+  return model.display_name || model.name || model.id;
 }
 
 function buildConfiguredQaModelChoices(
-  qa: Pick<QAConfig, 'selected_model' | 'general_model' | 'reasoning_model'>,
+  qa: Pick<
+    QAConfig,
+    'selected_model'
+    | 'general_model'
+    | 'reasoning_model'
+    | 'general_model_display_name'
+    | 'reasoning_model_display_name'
+  >,
   models: QAModelOption[],
 ): ConfiguredQaModelChoice[] {
   const optionById = new Map(models.map((model) => [model.id, model]));
   const choices: ConfiguredQaModelChoice[] = [];
   const seen = new Set<string>();
 
-  const appendChoice = (typeLabel: ConfiguredQaModelChoice['typeLabel'], rawModelId: string) => {
+  const appendChoice = (
+    typeLabel: ConfiguredQaModelChoice['typeLabel'],
+    rawModelId: string,
+    savedDisplayName?: string,
+  ) => {
     const modelId = rawModelId.trim();
     if (!modelId || seen.has(modelId)) return;
     const option = optionById.get(modelId);
+    const fallbackLabel = savedDisplayName?.trim() || modelId;
     choices.push({
       id: modelId,
-      label: option ? getQaModelNameLabel(option) : modelId,
+      label: option ? getQaModelNameLabel(option) : fallbackLabel,
       typeLabel,
     });
     seen.add(modelId);
   };
 
-  appendChoice('通用模型', qa.general_model || qa.selected_model || '');
-  appendChoice('推理模型', qa.reasoning_model || '');
+  appendChoice('通用模型', qa.general_model || qa.selected_model || '', qa.general_model_display_name);
+  appendChoice('推理模型', qa.reasoning_model || '', qa.reasoning_model_display_name);
   return choices;
 }
 
@@ -435,6 +447,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
           selected_model: config.qa.selected_model,
           general_model: config.qa.general_model,
           reasoning_model: config.qa.reasoning_model,
+          general_model_display_name: config.qa.general_model_display_name,
+          reasoning_model_display_name: config.qa.reasoning_model_display_name,
         };
         const choices = buildConfiguredQaModelChoices(qaModelConfig, modelOptions);
         setAssistantGreeting(getWelcomeMessage(config.qa.welcome_message));

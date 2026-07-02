@@ -275,6 +275,8 @@ DEFAULT_PORTAL_CONFIG = {
         "selected_model": "",
         "general_model": "",
         "reasoning_model": "",
+        "general_model_display_name": "",
+        "reasoning_model_display_name": "",
         "template_categories": DEFAULT_QA_TEMPLATE_CATEGORIES,
         "templates": DEFAULT_QA_TEMPLATES,
     },

@@ -8,6 +8,47 @@ import { applyEmbedOriginOverride, mergeKnowledgeDeepLinkParams, resolveKnowledg
 import s from './KnowledgeSpacesPage.module.css';
 
 const OPEN_DOCUMENT_CHAT_MESSAGE = 'shougang-portal:open-document-chat';
+const KNOWLEDGE_LOCATION_MESSAGE = 'shougang-portal:knowledge-location';
+
+function getMessageString(data: Record<string, unknown>, key: string): string {
+  const value = data[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function updateKnowledgeLocationUrl(data: Record<string, unknown>) {
+  const spaceId = getMessageString(data, 'spaceId');
+  if (!spaceId) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const folderId = getMessageString(data, 'folderId');
+  const folderName = getMessageString(data, 'folderName');
+  const fileId = getMessageString(data, 'fileId');
+  const fileName = getMessageString(data, 'fileName');
+
+  params.set('spaceId', spaceId);
+  if (folderId) {
+    params.set('folderId', folderId);
+    if (folderName) params.set('folderName', folderName);
+  } else {
+    params.delete('folderId');
+    params.delete('folderName');
+  }
+  if (fileId) {
+    params.set('fileId', fileId);
+    if (fileName) params.set('fileName', fileName);
+  } else {
+    params.delete('fileId');
+    params.delete('fileName');
+  }
+  params.delete('openChat');
+
+  const nextSearch = params.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextUrl !== currentUrl) {
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }
+}
 
 export default function KnowledgeSpacesPage() {
   const { config } = usePortalConfig();
@@ -33,6 +74,19 @@ export default function KnowledgeSpacesPage() {
         openChatTimerRef.current = null;
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.source !== frameRef.current?.contentWindow) return;
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+      const message = data as Record<string, unknown>;
+      if (message.type !== KNOWLEDGE_LOCATION_MESSAGE) return;
+      updateKnowledgeLocationUrl(message);
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   useEffect(() => {

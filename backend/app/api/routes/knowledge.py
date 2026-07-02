@@ -19,7 +19,7 @@ from app.schemas.knowledge import (
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
-from app.schemas.portal_config import DEFAULT_BUSINESS_DOMAIN_OPTIONS, DEFAULT_DOCUMENT_TYPES, PortalConfig
+from app.schemas.portal_config import DEFAULT_DOCUMENT_TYPES, PortalConfig
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
@@ -39,6 +39,18 @@ logger = logging.getLogger(__name__)
 
 _BISHENG_DUPLICATE_FAVORITE_CODE = 18021
 _BISHENG_PERMISSION_DENIED_CODE = 18040
+
+
+def _build_business_domain_options(config: PortalConfig) -> list[dict[str, str]]:
+    options: list[dict[str, str]] = []
+    for domain in config.domains:
+        if not domain.enabled:
+            continue
+        code = (domain.code or "").strip().upper()
+        if not code:
+            continue
+        options.append({"code": code, "name": domain.name})
+    return options
 
 
 def get_knowledge_service(
@@ -160,10 +172,10 @@ async def search_files(
     space_level: Optional[str] = None,
     file_ext: Optional[str] = None,
     document_type: Optional[str] = None,
+    business_domain_code: Optional[str] = None,
     sort: str = "relevance",
     page: int = 1,
     page_size: int = 20,
-    fallback_public: bool = False,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
@@ -172,7 +184,7 @@ async def search_files(
     # 未登录：系统客户端（常驻单例，勿关闭），范围 = 后台启用库
     if session is None:
         service = KnowledgeService(
-            bisheng_client=get_bisheng_client(request),
+            bisheng_client=await get_bisheng_client(request),
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
@@ -184,11 +196,12 @@ async def search_files(
                 space_level=space_level,
                 file_ext=file_ext,
                 document_type=document_type,
+                business_domain_code=business_domain_code,
                 sort=sort,
                 page=page,
                 page_size=page_size,
                 extra_space_ids=None,
-                fallback_to_public_spaces=fallback_public,
+                fallback_to_public_spaces=False,
             )
         )
 
@@ -210,6 +223,7 @@ async def search_files(
                 space_level=space_level,
                 file_ext=file_ext,
                 document_type=document_type,
+                business_domain_code=business_domain_code,
                 sort=sort,
                 page=page,
                 page_size=page_size,
@@ -226,12 +240,11 @@ async def get_aggregated_tags(
     request: Request,
     space_ids: Annotated[Optional[list[int]], Query()] = None,
     space_level: Optional[str] = None,
-    fallback_public: bool = False,
+    business_domain_code: Optional[str] = None,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    is_anonymous = auth_service.get_session(request) is None
     service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
         request=request,
         auth_service=auth_service,
@@ -243,8 +256,9 @@ async def get_aggregated_tags(
             await service.get_aggregated_tags(
                 requested_space_ids=space_ids,
                 space_level=space_level,
+                business_domain_code=business_domain_code,
                 extra_space_ids=extra_space_ids,
-                fallback_to_public_spaces=fallback_public and is_anonymous,
+                fallback_to_public_spaces=False,
             )
         )
     finally:
@@ -283,17 +297,13 @@ async def get_portal_config(
         bisheng_document_types = await _fetch_shougang_document_types(bisheng_client)
         document_types = bisheng_document_types or DEFAULT_DOCUMENT_TYPES
 
-    business_domain_options = (
-        [opt.model_dump() for opt in config.business_domain_options]
-        if config.business_domain_options
-        else DEFAULT_BUSINESS_DOMAIN_OPTIONS
-    )
+    business_domain_options = _build_business_domain_options(config)
 
-    return response_ok(PortalConfig.model_validate({
+    return response_ok({
         **config.model_dump(mode="json"),
         "document_types": document_types,
         "business_domain_options": business_domain_options,
-    }))
+    })
 
 
 @router.get("/domain-file-counts")
@@ -341,7 +351,7 @@ async def list_qa_tree_spaces(
     session = auth_service.get_session(request)
     if session is None:
         service = KnowledgeService(
-            bisheng_client=get_bisheng_client(request),
+            bisheng_client=await get_bisheng_client(request),
             portal_config_service=portal_config_service,
         )
         return response_ok(await service.list_public_spaces())
@@ -370,7 +380,7 @@ async def list_qa_tree_children(
     session = auth_service.get_session(request)
     if session is None:
         service = KnowledgeService(
-            bisheng_client=get_bisheng_client(request),
+            bisheng_client=await get_bisheng_client(request),
             portal_config_service=portal_config_service,
         )
         public_space_ids = {space.id for space in (await service.list_public_spaces()).data}
@@ -418,7 +428,7 @@ async def search_qa_files_by_name(
     session = auth_service.get_session(request)
     if session is None:
         service = KnowledgeService(
-            bisheng_client=get_bisheng_client(request),
+            bisheng_client=await get_bisheng_client(request),
             portal_config_service=portal_config_service,
         )
         space_ids = [space.id for space in (await service.list_public_spaces()).data]

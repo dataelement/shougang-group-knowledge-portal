@@ -111,7 +111,10 @@ test('qa workspace uploads temporary attachments for chat', () => {
 
 test('qa workspace model selector only shows model names', () => {
   assert.match(qaPageSource, /function getQaModelNameLabel/);
-  assert.match(qaPageSource, /model\.name \|\| model\.display_name \|\| model\.id/);
+  assert.match(qaPageSource, /model\.display_name \|\| model\.name \|\| model\.id/);
+  assert.match(qaPageSource, /general_model_display_name/);
+  assert.match(qaPageSource, /reasoning_model_display_name/);
+  assert.match(qaPageSource, /savedDisplayName\?\.trim\(\) \|\| modelId/);
   assert.doesNotMatch(qaPageSource, /ID \$\{model\.id\}/);
   assert.doesNotMatch(qaPageSource, /Key \$\{model\.key\}/);
   assert.doesNotMatch(qaPageSource, /choice\.fullLabel/);

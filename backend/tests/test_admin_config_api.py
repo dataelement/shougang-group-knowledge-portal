@@ -8,6 +8,7 @@ from app.api.dependencies import require_admin_session
 from app.main import app
 from app.schemas.auth import PortalUserView
 from app.schemas.bisheng_runtime import BishengRuntimeConfig
+from app.schemas.portal_config import PortalConfig
 from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthError
@@ -373,6 +374,7 @@ def test_export_admin_config_includes_non_sensitive_runtime_config(tmp_path: Pat
     assert body["version"] == 1
     assert "exported_at" in body
     assert "portal" in body
+    assert "business_domain_options" not in body["portal"]
     assert body["bisheng"] == {
         "base_url": "http://bisheng.example.com/",
         "asset_base_url": "http://assets.example.com",
@@ -403,6 +405,7 @@ def test_import_admin_config_replaces_portal_and_non_sensitive_runtime_config(tm
         "version": 1,
         "portal": {
             **current.model_dump(mode="json"),
+            "business_domain_options": [{"code": "OLD", "name": "旧字段"}],
             "site": {
                 **current.site.model_dump(mode="json"),
                 "browser_title": "导入后的门户",
@@ -431,7 +434,9 @@ def test_import_admin_config_replaces_portal_and_non_sensitive_runtime_config(tm
     body = response.json()
     assert body["status_code"] == 200
     assert body["data"]["portal"]["site"]["browser_title"] == "导入后的门户"
+    assert "business_domain_options" not in body["data"]["portal"]
     assert "spaces" not in service.get_config().model_dump(mode="json")
+    assert "business_domain_options" not in service.get_config().model_dump(mode="json")
     assert str(runtime_service._read_config().base_url) == "http://imported-bisheng.example.com/"
     assert runtime_service._read_config().asset_base_url == "http://imported-assets.example.com"
     assert runtime_service._read_config().username == "import-admin"
@@ -757,6 +762,50 @@ def test_admin_config_allows_admin_account_fallback(tmp_path: Path):
 
 def test_public_portal_config_does_not_require_admin(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_data = service.get_config().model_dump()
+    config_data["domains"] = [
+        {
+            "name": "生产",
+            "space_ids": [],
+            "color": "#059669",
+            "bg": "#d1fae5",
+            "icon": "Factory",
+            "background_image": "",
+            "enabled": True,
+            "code": "pp",
+        },
+        {
+            "name": "未编码业务域",
+            "space_ids": [],
+            "color": "#2563eb",
+            "bg": "#eff6ff",
+            "icon": "Settings",
+            "background_image": "",
+            "enabled": True,
+            "code": "",
+        },
+        {
+            "name": "质量",
+            "space_ids": [],
+            "color": "#6366f1",
+            "bg": "#ede9fe",
+            "icon": "CheckCircle",
+            "background_image": "",
+            "enabled": True,
+            "code": "QM",
+        },
+        {
+            "name": "安全",
+            "space_ids": [],
+            "color": "#f97316",
+            "bg": "#fff7ed",
+            "icon": "Shield",
+            "background_image": "",
+            "enabled": False,
+            "code": "SA",
+        },
+    ]
+    service.replace_config(PortalConfig.model_validate(config_data))
     app.dependency_overrides.pop(require_admin_session, None)
 
     with TestClient(app) as client:
@@ -770,6 +819,10 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
     assert data["document_types"] == [
         {"code": "RPT", "label": "报告"},
         {"code": "STD", "label": "标准规范"},
+    ]
+    assert data["business_domain_options"] == [
+        {"code": "PP", "name": "生产"},
+        {"code": "QM", "name": "质量"},
     ]
 
 
@@ -848,6 +901,42 @@ def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
     ]
 
 
+def test_post_admin_domains_sync_ignores_disabled_domain_bindings(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
+        response = client.post(
+            "/api/v1/admin/config/domains",
+            json={
+                "domains": [
+                    {
+                        "name": "安全",
+                        "space_ids": [19],
+                        "color": "#f97316",
+                        "bg": "#fff7ed",
+                        "icon": "Shield",
+                        "background_image": "",
+                        "enabled": False,
+                        "code": "SA",
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 200
+    assert bisheng_client.put_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes",
+            {"bindings": [{"space_id": 19, "business_domain_codes": []}]},
+        )
+    ]
+
+
 def test_post_admin_domains_does_not_persist_when_bisheng_sync_fails(tmp_path: Path):
     class FailingSyncBishengClient(FakeBishengClient):
         async def put_json(self, path: str, json=None):
@@ -906,6 +995,8 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
                 "selected_model": "1",
                 "general_model": "1",
                 "reasoning_model": "2",
+                "general_model_display_name": "DeepSeek Chat",
+                "reasoning_model_display_name": "DeepSeek Reasoner",
                 "template_categories": [
                     {"id": "report", "name": "工作汇报", "enabled": True},
                     {"id": "plan", "name": "方案策划", "enabled": True},
@@ -938,6 +1029,8 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert body["data"]["selected_model"] == "1"
     assert body["data"]["general_model"] == "1"
     assert body["data"]["reasoning_model"] == "2"
+    assert body["data"]["general_model_display_name"] == "DeepSeek Chat"
+    assert body["data"]["reasoning_model_display_name"] == "DeepSeek Reasoner"
     assert body["data"]["template_categories"][1]["name"] == "方案策划"
     assert body["data"]["templates"][0]["show_on_home"] is True
     assert service.get_config().qa.welcome_message == "你好，我是首钢设备诊断助手，请问有什么可以帮您？"
@@ -949,6 +1042,8 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert service.get_config().qa.selected_model == "1"
     assert service.get_config().qa.general_model == "1"
     assert service.get_config().qa.reasoning_model == "2"
+    assert service.get_config().qa.general_model_display_name == "DeepSeek Chat"
+    assert service.get_config().qa.reasoning_model_display_name == "DeepSeek Reasoner"
     assert service.get_config().qa.templates[0].id == "work-plan"
 
 
@@ -1066,7 +1161,11 @@ def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path:
     runtime_service = create_runtime_service(tmp_path)
     service.update_qa(
         service.get_config().qa.model_copy(
-            update={"selected_model": "1", "general_model": "1", "reasoning_model": "2"}
+            update={
+                "selected_model": "1",
+                "general_model": "1",
+                "reasoning_model": "2",
+            }
         )
     )
 
@@ -1081,6 +1180,10 @@ def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path:
     assert body["selected_model"] == "1"
     assert body["general_model"] == "1"
     assert body["reasoning_model"] == "2"
+    assert body["general_model_display_name"] == "DeepSeek Chat"
+    assert body["reasoning_model_display_name"] == "DeepSeek Reasoner"
+    assert service.get_config().qa.general_model_display_name == "DeepSeek Chat"
+    assert service.get_config().qa.reasoning_model_display_name == "DeepSeek Reasoner"
     assert body["models"] == [
         {
             "key": "1",
@@ -1101,6 +1204,42 @@ def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path:
             "status": 0,
         },
     ]
+
+
+def test_get_admin_qa_model_options_keeps_saved_display_names_when_model_list_fails(tmp_path: Path):
+    class FailingModelListBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/llm":
+                raise RuntimeError("model list unavailable")
+            return await super().get_json(path, params)
+
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    service.update_qa(
+        service.get_config().qa.model_copy(
+            update={
+                "selected_model": "1",
+                "general_model": "1",
+                "reasoning_model": "2",
+                "general_model_display_name": "DeepSeek Chat",
+                "reasoning_model_display_name": "DeepSeek Reasoner",
+            }
+        )
+    )
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_client = FailingModelListBishengClient()
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.get("/api/v1/admin/config/qa/model-options")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["general_model"] == "1"
+    assert body["reasoning_model"] == "2"
+    assert body["general_model_display_name"] == "DeepSeek Chat"
+    assert body["reasoning_model_display_name"] == "DeepSeek Reasoner"
+    assert body["models"] == []
 
 
 def test_get_admin_space_options_uses_bisheng_visible_space_list(tmp_path: Path):

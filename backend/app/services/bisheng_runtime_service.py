@@ -83,7 +83,7 @@ class BishengRuntimeService:
             await self._replace_client(self._read_config())
         if self._can_auto_refresh():
             await self._refresh_token_if_due()
-            self._refresh_task = asyncio.create_task(self._refresh_loop())
+            self._ensure_refresh_task()
         await self._refresh_runtime_account_info()
 
     async def aclose(self) -> None:
@@ -125,6 +125,50 @@ class BishengRuntimeService:
         async with self._lock:
             self._write_config(config)
             await self._replace_client(config)
+        await self._refresh_runtime_account_info()
+        return self.get_public_config()
+
+    async def apply_persistent_config(
+        self,
+        config: PortalBishengPersistentConfig,
+    ) -> BishengRuntimeConfigView:
+        async with self._lock:
+            current = self._read_config()
+            username = config.username.strip()
+            endpoint_changed = (
+                str(config.base_url) != str(current.base_url)
+                or username != current.username
+            )
+            next_token = "" if endpoint_changed else current.api_token
+            last_auth_at = config.last_auth_at if not endpoint_changed else ""
+            should_login = bool(username and config.saved_password) and (
+                not next_token or self._is_token_due_for_refresh(next_token)
+            )
+            if should_login:
+                try:
+                    next_token = await self._login_and_get_token(
+                        base_url=str(config.base_url),
+                        username=username,
+                        password=config.saved_password,
+                        timeout_seconds=config.timeout_seconds,
+                    )
+                    last_auth_at = _utc_now()
+                except ValueError as err:
+                    logger.warning("BiSheng 远程配置服务账号登录失败：%s", err)
+
+            updated = BishengRuntimeConfig(
+                base_url=config.base_url,
+                asset_base_url=config.asset_base_url,
+                username=username,
+                timeout_seconds=config.timeout_seconds,
+                api_token=next_token,
+                saved_password=config.saved_password,
+                last_auth_at=last_auth_at,
+            )
+            self._write_config(updated)
+            await self._replace_client(updated)
+            if self._can_auto_refresh():
+                self._ensure_refresh_task()
         await self._refresh_runtime_account_info()
         return self.get_public_config()
 
@@ -283,6 +327,10 @@ class BishengRuntimeService:
     def _can_auto_refresh(self) -> bool:
         current = self._read_config()
         return bool(self._default_password or current.saved_password)
+
+    def _ensure_refresh_task(self) -> None:
+        if self._refresh_task is None or self._refresh_task.done():
+            self._refresh_task = asyncio.create_task(self._refresh_loop())
 
     async def refresh_token_after_auth_failure(self, failed_token: str = "") -> str:
         async with self._lock:

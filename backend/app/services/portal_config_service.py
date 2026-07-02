@@ -10,7 +10,6 @@ from app.schemas.portal_config import (
     AgentWorkflowOptionsResponse,
     AppsConfigUpdate,
     BannersConfigUpdate,
-    BusinessDomainOptionsConfigUpdate,
     DocumentTypesConfigUpdate,
     DomainsConfigUpdate,
     IntegrationsConfig,
@@ -135,11 +134,6 @@ class PortalConfigService:
         data["document_types"] = payload.model_dump()["document_types"]
         return self._write_config(PortalConfig.model_validate(data))
 
-    def update_business_domain_options(self, payload: BusinessDomainOptionsConfigUpdate) -> PortalConfig:
-        data = self.get_config().model_dump()
-        data["business_domain_options"] = payload.model_dump()["business_domain_options"]
-        return self._write_config(PortalConfig.model_validate(data))
-
     def update_qa(self, payload: QAConfig) -> PortalConfig:
         data = self.get_config().model_dump()
         qa_data = payload.model_dump()
@@ -198,12 +192,41 @@ class PortalConfigService:
                         status=int(item.get("status") or 0),
                     )
                 )
+        qa_config = self._refresh_qa_model_display_names(qa_config, models)
         return QAModelOptionsResponse(
             selected_model=qa_config.selected_model,
             general_model=qa_config.general_model,
             reasoning_model=qa_config.reasoning_model,
+            general_model_display_name=qa_config.general_model_display_name,
+            reasoning_model_display_name=qa_config.reasoning_model_display_name,
             models=models,
         )
+
+    def _refresh_qa_model_display_names(self, qa_config: QAConfig, models: list[QAModelOption]) -> QAConfig:
+        if not models:
+            return qa_config
+        option_by_id = {model.id: model for model in models}
+        updates: dict[str, str] = {}
+
+        general_model = (qa_config.general_model or qa_config.selected_model).strip()
+        if general_model in option_by_id:
+            display_name = self._qa_model_display_name(option_by_id[general_model])
+            if display_name and display_name != qa_config.general_model_display_name:
+                updates["general_model_display_name"] = display_name
+
+        reasoning_model = qa_config.reasoning_model.strip()
+        if reasoning_model in option_by_id:
+            display_name = self._qa_model_display_name(option_by_id[reasoning_model])
+            if display_name and display_name != qa_config.reasoning_model_display_name:
+                updates["reasoning_model_display_name"] = display_name
+
+        if not updates:
+            return qa_config
+        return self.update_qa(qa_config.model_copy(update=updates)).qa
+
+    @staticmethod
+    def _qa_model_display_name(model: QAModelOption) -> str:
+        return model.display_name or model.name or ""
 
     def build_search_rerank_model_options(self, raw_models: list[dict[str, Any]]) -> SearchRerankModelOptionsResponse:
         search_config = self.get_config().search
@@ -293,6 +316,12 @@ class PortalConfigService:
             changed = True
         if "reasoning_model" not in qa_data:
             qa_data["reasoning_model"] = ""
+            changed = True
+        if "general_model_display_name" not in qa_data:
+            qa_data["general_model_display_name"] = ""
+            changed = True
+        if "reasoning_model_display_name" not in qa_data:
+            qa_data["reasoning_model_display_name"] = ""
             changed = True
         if "selected_model" not in qa_data:
             qa_data["selected_model"] = str(qa_data.get("general_model") or "")

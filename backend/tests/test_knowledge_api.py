@@ -2463,27 +2463,41 @@ def test_get_tags_uses_shougang_portal_batch_endpoint(tmp_path: Path):
     ]
 
 
-def test_get_tags_falls_back_to_public_spaces_when_anonymous_domain_space_is_not_public(tmp_path: Path):
-    class PublicFallbackBishengClient(FakeBishengClient):
-        async def post_json(self, path: str, json=None, headers=None):
-            self.post_calls.append((path, json))
-            if path == "/api/v1/knowledge/shougang-portal/tags/search":
-                assert json == {"space_ids": [12, 18, 25], "space_level": None}
-                return {"data": {"tags": ["公共标签"]}}
-            return await super().post_json(path, json=json)
-
+def test_get_tags_does_not_fallback_to_public_spaces_when_flag_is_present(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
-    fake_bisheng = PublicFallbackBishengClient()
+    fake_bisheng = FakeBishengClient()
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         response = client.get("/api/v1/knowledge/tags?space_ids=7103&fallback_public=1")
 
     assert response.status_code == 200
-    assert response.json()["data"] == ["公共标签"]
+    assert response.json()["data"] == []
+    assert fake_bisheng.post_calls == []
+
+
+def test_get_tags_passes_business_domain_code_to_shougang_portal_batch_endpoint(tmp_path: Path):
+    class BusinessDomainBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/tags/search":
+                assert json == {"space_ids": [12], "space_level": None, "business_domain_code": "PM"}
+                return {"data": {"tags": ["设备标签"]}}
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = BusinessDomainBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/tags?space_ids=12&business_domain_code=pm")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == ["设备标签"]
     assert fake_bisheng.post_calls == [
-        ("/api/v1/knowledge/shougang-portal/tags/search", {"space_ids": [12, 18, 25], "space_level": None})
+        ("/api/v1/knowledge/shougang-portal/tags/search", {"space_ids": [12], "space_level": None, "business_domain_code": "PM"})
     ]
 
 
@@ -2563,46 +2577,10 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
     ]
 
 
-def test_search_files_falls_back_to_public_spaces_when_anonymous_domain_space_is_not_public(tmp_path: Path):
-    class PublicFallbackBishengClient(FakeBishengClient):
-        async def post_json(self, path: str, json=None, headers=None):
-            self.post_calls.append((path, json))
-            if path == "/api/v1/knowledge/shougang-portal/files/search":
-                assert json == {
-                    "q": None,
-                    "tag": None,
-                    "space_ids": [12, 18, 25],
-                    "space_level": None,
-                    "file_ext": None,
-                    "sort": "relevance",
-                    "page": 1,
-                    "page_size": 10,
-                    "rerank_model_id": "",
-                }
-                return {
-                    "data": {
-                        "data": [
-                            {
-                                "id": 1580,
-                                "space_id": 12,
-                                "title": "公共知识",
-                                "summary": "公共范围兜底",
-                                "source": "轧线技术案例库",
-                                "updated_at": "2026-04-13T10:30:00",
-                                "tags": ["公共标签"],
-                                "file_ext": "pdf",
-                            }
-                        ],
-                        "total": 1,
-                        "page": 1,
-                        "page_size": 10,
-                    }
-                }
-            return await super().post_json(path, json=json)
-
+def test_search_files_does_not_fallback_to_public_spaces_when_flag_is_present(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
-    fake_bisheng = PublicFallbackBishengClient()
+    fake_bisheng = FakeBishengClient()
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
@@ -2610,24 +2588,9 @@ def test_search_files_falls_back_to_public_spaces_when_anonymous_domain_space_is
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 1
-    assert body["data"][0]["space_id"] == 12
-    assert fake_bisheng.post_calls == [
-        (
-            "/api/v1/knowledge/shougang-portal/files/search",
-            {
-                "q": None,
-                "tag": None,
-                "space_ids": [12, 18, 25],
-                "space_level": None,
-                "file_ext": None,
-                "sort": "relevance",
-                "page": 1,
-                "page_size": 10,
-                "rerank_model_id": "",
-            },
-        )
-    ]
+    assert body["total"] == 0
+    assert body["data"] == []
+    assert fake_bisheng.post_calls == []
 
 
 def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain_flag(tmp_path: Path):
@@ -2646,7 +2609,7 @@ def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain
     assert fake_bisheng.post_calls == []
 
 
-def test_search_files_passes_document_type_to_shougang_portal_search(tmp_path: Path):
+def test_search_files_passes_document_type_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):
     class DocumentTypeBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
@@ -2661,6 +2624,7 @@ def test_search_files_passes_document_type_to_shougang_portal_search(tmp_path: P
                     "page": 1,
                     "page_size": 10,
                     "document_type": "RPT",
+                    "business_domain_code": "PM",
                     "rerank_model_id": "",
                 }
                 return {
@@ -2692,7 +2656,9 @@ def test_search_files_passes_document_type_to_shougang_portal_search(tmp_path: P
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?space_ids=12&document_type=rpt&sort=updated_at_desc&page=1&page_size=10")
+        response = client.get(
+            "/api/v1/knowledge/files?space_ids=12&document_type=rpt&business_domain_code=pm&sort=updated_at_desc&page=1&page_size=10"
+        )
 
     assert response.status_code == 200
     body = response.json()["data"]
