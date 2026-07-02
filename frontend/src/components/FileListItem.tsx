@@ -180,8 +180,7 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
         {view.summaryText ? (
           <section className={s.textBlock}>
             <div className={s.summaryBox}>
-              <div className={s.blockTitle}>文档摘要</div>
-              <div
+<div
                 ref={summaryRef}
                 className={`${s.summary} ${summaryExpanded ? s.summaryExpanded : ''}`}
               >
