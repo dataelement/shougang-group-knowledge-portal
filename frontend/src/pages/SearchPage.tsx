@@ -96,7 +96,7 @@ export default function SearchPage() {
   const requestSeq = useRef(0);
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
   // const { openShare, shareModalProps } = useShareDocument();
-  const { openDocumentQa, documentQaModalProps } = useDocumentQa();
+  const { documentQaModalProps } = useDocumentQa();
   const canDownload = Boolean(user);
   const canFavorite = Boolean(user);
 
