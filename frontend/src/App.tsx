@@ -115,6 +115,12 @@ function RedirectToSmartQa() {
   return <Navigate to={`/apps?${params.toString()}`} replace />;
 }
 
+function ConditionalFloatingQaButton() {
+  const location = useLocation();
+  if (location.pathname === '/search') return null;
+  return <FloatingQaButton />;
+}
+
 export default function App() {
   return (
     <>
@@ -146,7 +152,7 @@ export default function App() {
         <Route path="/bootstrap/bisheng" element={<BootstrapBishengPage />} />
       </Routes>
       <LoginBanner />
-      <FloatingQaButton />
+      <ConditionalFloatingQaButton />
       <ApprovalDialogHost />
     </>
   );

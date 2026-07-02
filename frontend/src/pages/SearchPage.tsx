@@ -497,7 +497,6 @@ export default function SearchPage() {
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload ? handleDownload : undefined}
             // onShare={openShare}
-            onAsk={openDocumentQa}
             onOpen={setPreviewFile}
           />
         ))}
