@@ -2,40 +2,63 @@
 
 /* ─── Hero banner ──────────────────────────────────────────── */
 .heroStrip {
-  background-color: #dce7fb;
+  height: 200px;
   background-size: cover;
-  background-position: right center;
+  background-position: center;
   background-repeat: no-repeat;
-  min-height: 200px;
-  display: flex;
-  align-items: flex-start;
+  position: relative;
+  overflow: hidden;
 }
 
 .heroInner {
-  max-width: 1328px;
   width: 100%;
+  max-width: 1328px;
+  height: 100%;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 40px 24px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  position: relative;
+  z-index: 1;
 }
 
 .heroTitle {
-  font-size: 1.6rem;
+  flex-shrink: 0;
+  font-size: 24px;
   font-weight: 700;
-  color: #333;
-  margin-bottom: 6px;
+  color: #333333;
 }
 
 .heroSub {
-  font-size: 0.92rem;
+  flex-shrink: 0;
+  font-size: 14px;
   color: #273142;
-  margin-bottom: 22px;
+  margin-top: 8px;
+}
+
+.heroBtn {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 16px;
+  margin-top: 24px;
+  border-radius: 5px;
+  background: #3662E3;
+  color: #fff;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.heroBtn:hover {
+  background: #2c52c4;
 }
 
 /* ─── Container ──────────────────────────────────────────────── */
 .container {
+  width: 100%;
   max-width: 1328px;
   margin: 0 auto;
   padding: 18px 24px 24px;

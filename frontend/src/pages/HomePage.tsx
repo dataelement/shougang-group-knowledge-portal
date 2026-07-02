@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from 'r
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search,
-  ArrowUp, BarChart3, Bot, ChevronRight, FileText,
+  Send, BarChart3, Bot, ChevronRight, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Sparkles,
@@ -940,7 +940,7 @@ export default function HomePage() {
                     disabled={qaStreaming}
                   />
                   <button type="submit" className={s.qaPromptSend} aria-label="发送问题" disabled={qaStreaming}>
-                    <ArrowUp size={14} />
+                    <Send size={17} />
                   </button>
                 </form>
               </div>

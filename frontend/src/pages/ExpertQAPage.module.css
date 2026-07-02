@@ -9,10 +9,11 @@
 }
 
 .heroInner {
-  max-width: var(--max-w);
+  width: 100%;
+  max-width: 1328px;
   margin: 0 auto;
   height: 100%;
-  padding: 40px 80px;
+  padding: 40px 24px;
   display: flex;
   align-items: flex-start;
   position: relative;
@@ -57,7 +58,8 @@
 
 /* === Container & breadcrumbs === */
 .container {
-  max-width: var(--max-w);
+  width: 100%;
+  max-width: 1328px;
   margin: 0 auto;
   padding: 24px;
   flex: 1;
@@ -90,7 +92,6 @@
   grid-template-columns: 224px minmax(0, 704px) 304px;
   gap: 24px;
   align-items: start;
-  justify-content: center;
 }
 
 @media (max-width: 1080px) {

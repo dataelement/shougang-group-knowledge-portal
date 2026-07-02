@@ -534,7 +534,7 @@ export default function ExpertManagePage() {
           {isAdmin && (
             <button
               type="button"
-              className={s.btnPrimary}
+              className={s.heroBtn}
               onClick={() => setModal({ type: 'create' })}
             >
               新增专家

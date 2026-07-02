@@ -1024,10 +1024,10 @@
 }
 
 .qaPromptSend {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--primary-600);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #3662E3;
   color: #fff;
   display: flex;
   align-items: center;
