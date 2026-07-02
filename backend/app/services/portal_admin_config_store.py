@@ -69,7 +69,12 @@ class RemotePortalAdminConfigStore:
         next_data = aggregate.model_dump(mode="json")
         next_data[section] = payload
         next_aggregate = PortalAdminAggregateConfig.model_validate(next_data)
-        self._save_remote_aggregate(next_aggregate)
+        try:
+            self._save_remote_aggregate(next_aggregate)
+        except Exception:
+            # Remote sync failed (e.g. bisheng unreachable or token expired).
+            # Fall back to memory-only so local config writes still succeed.
+            logger.warning("Remote portal config sync failed; falling back to in-memory store", exc_info=True)
         self._set_memory_document(table_name, payload)
 
     def migrate_from_sqlite(self, *, overwrite: bool = False) -> dict[str, Any]:
