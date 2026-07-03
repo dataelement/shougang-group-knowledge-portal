@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, type MouseEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, MessageSquarePlus } from 'lucide-react';
 import { fetchExpertQuestions } from '../api/expertQa';
+import { useAuth } from '../hooks/useAuth';
+import { buildGuestLoginPath } from '../utils/guestAccess';
 import iconExpert from '../assets/icon-expert@2x.png';
 import s from './ExpertQuestions.module.css';
 
@@ -28,9 +30,17 @@ interface ExpertQuestionsProps {
  * @returns Expert question list panel with loading, error, and empty-slot states.
  */
 export default function ExpertQuestions({ className = '' }: ExpertQuestionsProps) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [questions, setQuestions] = useState<ExpertQuestionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const guardLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (user) return;
+    event.preventDefault();
+    navigate(buildGuestLoginPath(path));
+  };
 
   useEffect(() => {
     let active = true;
@@ -83,12 +93,12 @@ export default function ExpertQuestions({ className = '' }: ExpertQuestionsProps
           <img src={iconExpert} alt="" className={s.panelIconImg} />
           <span className={s.panelTitle}>专家问答</span>
         </div>
-        <Link to={EXPERT_QA_PATH} className={s.panelMore}>
+        <Link to={EXPERT_QA_PATH} className={s.panelMore} onClick={guardLink(EXPERT_QA_PATH)}>
           进入 <ChevronRight size={16} />
         </Link>
       </div>
 
-      <Link to={EXPERT_QA_ASK_PATH} className={s.cta}>
+      <Link to={EXPERT_QA_ASK_PATH} className={s.cta} onClick={guardLink(EXPERT_QA_ASK_PATH)}>
         <span className={s.ctaIcon}>
           <MessageSquarePlus size={20} />
         </span>
@@ -108,7 +118,12 @@ export default function ExpertQuestions({ className = '' }: ExpertQuestionsProps
         <>
           <div className={s.list}>
             {questions.map((question) => (
-              <Link key={question.id} to={`${EXPERT_QA_PATH}/${question.id}`} className={s.item}>
+              <Link
+                key={question.id}
+                to={`${EXPERT_QA_PATH}/${question.id}`}
+                className={s.item}
+                onClick={guardLink(`${EXPERT_QA_PATH}/${question.id}`)}
+              >
                 <span className={s.badge}>Q</span>
                 <span className={s.text}>{question.title}</span>
               </Link>

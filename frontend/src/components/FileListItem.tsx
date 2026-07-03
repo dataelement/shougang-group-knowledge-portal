@@ -14,6 +14,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { buildFileListItemView } from '../utils/fileListItemView';
+import { highlightMatches } from '../utils/highlightText';
 import iconFavorite from '../assets/icon-favorite.svg';
 import iconDownload from '../assets/icon-download.svg';
 import iconAi from '../assets/icon-ai.svg';
@@ -31,9 +32,10 @@ interface Props {
   onAsk?: (file: FileItem) => void;
   onOpen?: (file: FileItem) => void;
   visibleTagCount?: number;
+  highlightQuery?: string;
 }
 
-export default function FileListItem({ file, onFavorite, favorited, favoritePending, onDownload, onShare, onAsk, onOpen, visibleTagCount = 2 }: Props) {
+export default function FileListItem({ file, onFavorite, favorited, favoritePending, onDownload, onShare, onAsk, onOpen, visibleTagCount = 2, highlightQuery }: Props) {
   const view = buildFileListItemView(file, {
     visibleTagCount,
     canFavorite: Boolean(onFavorite),
@@ -86,10 +88,12 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
                   onOpen(file);
                 }}
               >
-                {file.title}
+                {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
               </button>
             ) : (
-              <div className={s.title}>{file.title}</div>
+              <div className={s.title}>
+                {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
+              </div>
             )}
             <div className={s.meta}>
               <span className={s.metaItem}>
@@ -184,7 +188,7 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
                 ref={summaryRef}
                 className={`${s.summary} ${summaryExpanded ? s.summaryExpanded : ''}`}
               >
-                {view.summaryText}
+                {highlightQuery ? highlightMatches(view.summaryText, highlightQuery, s.highlight) : view.summaryText}
               </div>
             </div>
             {summaryOverflowing || summaryExpanded ? (

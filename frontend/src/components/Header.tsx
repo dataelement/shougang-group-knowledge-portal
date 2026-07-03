@@ -14,6 +14,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { isPortalAdmin } from '../utils/adminAccess';
+import { buildGuestLoginPath } from '../utils/guestAccess';
 import {
   PORTAL_APPROVAL_EVENT,
   postPortalApprovalMessageToFrame,
@@ -23,14 +24,14 @@ import adminIcon from '../assets/admin-icon.svg';
 import s from './Header.module.css';
 
 type HeaderNavItem =
-  | { label: string; to: string; placeholder?: false }
+  | { label: string; to: string; placeholder?: false; requiresAuth?: boolean }
   | { label: string; placeholder: true };
 
 const NAV_ITEMS: HeaderNavItem[] = [
   { label: '首页', to: '/' },
-  { label: '知识库', to: '/knowledge-spaces' },
-  { label: '专家问答', to: '/expert-qa' },
-  { label: '智能应用', to: '/apps' },
+  { label: '知识库', to: '/knowledge-spaces', requiresAuth: true },
+  { label: '专家问答', to: '/expert-qa', requiresAuth: true },
+  { label: '智能应用', to: '/apps', requiresAuth: true },
 ];
 
 function formatBadgeCount(count: number): string {
@@ -123,6 +124,12 @@ export default function Header() {
                 className={({ isActive }) =>
                   `${s.navLink} ${isActive ? s.navLinkActive : ''}`
                 }
+                onClick={(event) => {
+                  if (item.requiresAuth && !user) {
+                    event.preventDefault();
+                    navigate(buildGuestLoginPath(item.to));
+                  }
+                }}
               >
                 {item.label}
               </NavLink>

@@ -262,13 +262,13 @@ function getKnowledgePickerLabel(
   return '选择知识库';
 }
 
-function CitationList({ items }: { items: Citation[] }) {
+function CitationList({ items, hideBackLink }: { items: Citation[]; hideBackLink?: boolean }) {
   return (
     <ol className={s.citations}>
       {items.map((c, idx) => {
         const sp = c.sourcePayload ?? {};
         const href = sp.knowledgeId && sp.documentId
-          ? `/space/${sp.knowledgeId}/file/${sp.documentId}`
+          ? `/space/${sp.knowledgeId}/file/${sp.documentId}${hideBackLink ? '?hideBack=1' : ''}`
           : undefined;
         const label = sp.documentName || c.key;
         return (
@@ -871,7 +871,9 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                     ) : (
                       <div
                         className={`${s.msgBubble} ${s.msgBot} ${s.botContent}`}
-                        dangerouslySetInnerHTML={{ __html: renderChatMarkdown(msg.text, msg.citations ?? []) }}
+                        dangerouslySetInnerHTML={{
+                          __html: renderChatMarkdown(msg.text, msg.citations ?? [], { hideBackLink: isSmartAppsMode }),
+                        }}
                       />
                     )
                   ) : (
@@ -881,7 +883,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                     <AttachmentChips files={msg.files} className={s.messageAttachments} />
                   ) : null}
                   {msg.role === 'bot' && referenced.length > 0 ? (
-                    <CitationList items={referenced} />
+                    <CitationList items={referenced} hideBackLink={isSmartAppsMode} />
                   ) : null}
                 </div>
               </div>

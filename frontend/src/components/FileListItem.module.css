@@ -178,6 +178,14 @@
   overflow: visible;
 }
 
+.highlight {
+  color: inherit;
+  font-weight: 700;
+  background: #FFE58F;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .summaryToggle {
   display: inline-flex;
   align-items: center;

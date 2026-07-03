@@ -116,6 +116,7 @@ function injectCitationLinks(
   sentinelKeys: string[][],
   citationByKey: Map<string, Citation>,
   ordinalsByGroup: Map<string, number>,
+  hideBackLink: boolean,
 ): string {
   const stripped = cleanHtml.replace(CODE_BLOCK_RE, (block) => block.replace(SENTINEL_RE, ''));
   return stripped.replace(SENTINEL_RE, (_match, idxStr: string) => {
@@ -133,7 +134,7 @@ function injectCitationLinks(
       seenOrdinals.add(ordinal);
       const sp = citation.sourcePayload ?? {};
       const href = sp.knowledgeId && sp.documentId
-        ? `/space/${sp.knowledgeId}/file/${sp.documentId}`
+        ? `/space/${sp.knowledgeId}/file/${sp.documentId}${hideBackLink ? '?hideBack=1' : ''}`
         : '#';
       const title = escapeHtml(sp.documentName || key);
       const safeKey = escapeHtml(key);
@@ -150,6 +151,7 @@ export function renderChatMarkdownWithSanitizer(
   text: string,
   citations: Citation[],
   sanitize: (html: string) => string,
+  options: { hideBackLink?: boolean } = {},
 ): string {
   if (!text) return '';
   const safeInput = stripUnclosedPlaceholders(text);
@@ -157,11 +159,15 @@ export function renderChatMarkdownWithSanitizer(
   const { markdown, sentinelKeys, ordinalsByGroup } = buildSentinelMarkdown(safeInput, citationByKey);
   const rendered = renderMarkdown(markdown);
   const clean = sanitize(rendered);
-  return injectCitationLinks(clean, sentinelKeys, citationByKey, ordinalsByGroup);
+  return injectCitationLinks(clean, sentinelKeys, citationByKey, ordinalsByGroup, Boolean(options.hideBackLink));
 }
 
-export function renderChatMarkdown(text: string, citations: Citation[]): string {
+export function renderChatMarkdown(
+  text: string,
+  citations: Citation[],
+  options: { hideBackLink?: boolean } = {},
+): string {
   return renderChatMarkdownWithSanitizer(text, citations, (html) =>
     DOMPurify.sanitize(html, SANITIZE_OPTIONS),
-  );
+  options);
 }

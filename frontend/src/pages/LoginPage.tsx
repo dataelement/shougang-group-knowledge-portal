@@ -29,6 +29,7 @@ import { ApiRequestError } from '../api/content';
 import { fetchBishengBootstrapStatus } from '../api/bootstrap';
 import { loadPortalUser, savePortalUser } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { GUEST_NOTICE_TEXT } from '../utils/guestAccess';
 import s from './LoginPage.module.css';
 
 const WELCOME_FLAG = 'sg_just_logged_in';
@@ -39,6 +40,14 @@ export default function LoginPage() {
   const { config } = usePortalConfig();
   const params = new URLSearchParams(location.search);
   const redirect = normalizePortalRedirect(params.get('redirect'));
+  const isGuestRedirect = params.get('guest') === '1';
+  const [guestToastVisible, setGuestToastVisible] = useState(isGuestRedirect);
+
+  useEffect(() => {
+    if (!guestToastVisible) return;
+    const timer = window.setTimeout(() => setGuestToastVisible(false), 3200);
+    return () => window.clearTimeout(timer);
+  }, [guestToastVisible]);
   const authErrorCode = params.get('auth_error');
   const unifiedAuthConflict = authErrorCode === 'multi_login_conflict';
   const unifiedAuthError = unifiedAuthConflict ? '' : getUnifiedAuthErrorMessage(authErrorCode);
@@ -247,6 +256,11 @@ export default function LoginPage() {
 
   return (
     <div className={s.page}>
+      {guestToastVisible ? (
+        <div className={s.guestToast} role="status" aria-label="登录提示">
+          {GUEST_NOTICE_TEXT}
+        </div>
+      ) : null}
       <header className={s.header}>
         <div className={s.headerInner}>
           <Link to="/" className={s.brand}>

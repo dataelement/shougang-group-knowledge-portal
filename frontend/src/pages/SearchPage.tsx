@@ -491,6 +491,7 @@ export default function SearchPage() {
           <FileListItem
             key={f.id}
             file={f}
+            highlightQuery={q}
             visibleTagCount={displayConfig.search.visibleTagCount}
             onFavorite={canFavorite ? handleToggleFavorite : undefined}
             favorited={isFavorited(f.spaceId, f.id)}

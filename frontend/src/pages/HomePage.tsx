@@ -20,9 +20,11 @@ import {
   type HomeStats,
 } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { useAuth } from '../hooks/useAuth';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
+import { buildGuestLoginPath } from '../utils/guestAccess';
 import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
 import s from './HomePage.module.css';
@@ -381,6 +383,7 @@ function formatCount(value: number): string {
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { config, loading: configLoading, error } = usePortalConfig();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [query, setQuery] = useState('');
@@ -703,7 +706,8 @@ export default function HomePage() {
                     className={s.appShortcut}
                     onClick={(event) => {
                       event.stopPropagation();
-                      navigate(`/apps?tab=qa&templateId=${encodeURIComponent(template.id)}`);
+                      const path = `/apps?tab=qa&templateId=${encodeURIComponent(template.id)}`;
+                      navigate(user ? path : buildGuestLoginPath(path));
                     }}
                   >
                   <span className={s.appShortcutIcon}>
@@ -887,7 +891,15 @@ export default function HomePage() {
                   <img src={iconAiqa} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>智能问答</span>
                 </div>
-                <Link to="/apps?tab=qa" className={s.panelMore}>
+                <Link
+                  to="/apps?tab=qa"
+                  className={s.panelMore}
+                  onClick={(event) => {
+                    if (user) return;
+                    event.preventDefault();
+                    navigate(buildGuestLoginPath('/apps?tab=qa'));
+                  }}
+                >
                   进入 <ChevronRight size={14} />
                 </Link>
               </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
@@ -28,12 +28,15 @@ import {
 } from '../utils/fileDownload';
 import { recordFileDownloadEvent } from '../api/content';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
+import { buildGuestLoginPath } from '../utils/guestAccess';
 import s from './ListPage.module.css';
 
 const EMPTY_SPACE_IDS: number[] = [];
 
 export default function ListPage() {
   const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { params, resultsTopRef, setFilter } = useListControls();
   const { config, error: configError } = usePortalConfig();
   const tagParam = params.get('tag') || '';
@@ -260,8 +263,8 @@ export default function ListPage() {
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload ? handleDownload : undefined}
             // onShare={openShare}
-            onAsk={openDocumentQa}
-            onOpen={setPreviewFile}
+            onAsk={user ? openDocumentQa : () => navigate(buildGuestLoginPath(`${location.pathname}${location.search}`))}
+            onOpen={user ? setPreviewFile : () => navigate(buildGuestLoginPath(`${location.pathname}${location.search}`))}
           />
         ))}
 

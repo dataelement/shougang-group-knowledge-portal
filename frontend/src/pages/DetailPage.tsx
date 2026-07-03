@@ -37,6 +37,9 @@ export default function DetailPage() {
   // When embedded inside an iframe (e.g. the search/list preview modal) we render
   // only the document card without the portal chrome or related recommendations.
   const embed = searchParams.get('embed') === '1';
+  // Documents opened from a chat citation link carry ?hideBack=1 — there is no
+  // list context to return to, so the "返回列表" bar is omitted.
+  const hideBack = searchParams.get('hideBack') === '1';
   const relatedFilesCount = embed || shareToken ? 0 : displayConfig.detail.relatedFilesCount;
   const backTarget = resolveDetailBackTarget(location.state?.returnTo, spaceIdStr);
 
@@ -134,11 +137,13 @@ export default function DetailPage() {
   return wrap(
     <div className={s.container}>
         {embed ? null : (
-          <div className={s.topBar}>
-            <Link to={backTarget} className={s.backLink}>
-              <ArrowLeft size={16} />
-              返回列表
-            </Link>
+          <div className={`${s.topBar} ${hideBack ? s.topBarEnd : ''}`}>
+            {hideBack ? null : (
+              <Link to={backTarget} className={s.backLink}>
+                <ArrowLeft size={16} />
+                返回列表
+              </Link>
+            )}
             <span className={s.sourceLabel}>来源：{detail.space.name}</span>
           </div>
         )}
