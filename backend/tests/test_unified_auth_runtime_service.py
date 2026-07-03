@@ -63,7 +63,6 @@ def make_settings(**overrides) -> Settings:
 
 def make_service(tmp_path: Path, **settings_overrides) -> UnifiedAuthRuntimeService:
     return UnifiedAuthRuntimeService(
-        database_path=tmp_path / "portal.sqlite3",
         settings=make_settings(**settings_overrides),
         state_secret_factory=lambda: "generated-state-secret",
     )

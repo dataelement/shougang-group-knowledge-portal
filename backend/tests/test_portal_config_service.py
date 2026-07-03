@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app.services.config_store import InMemoryConfigStore
 from app.services.portal_config_service import PortalConfigService
 from app.schemas.portal_config import DomainsConfigUpdate
 
@@ -11,7 +12,6 @@ def test_portal_config_service_seeds_default_config(tmp_path: Path):
     config = service.get_config()
 
     assert not config_path.exists()
-    assert (tmp_path / "portal.sqlite3").exists()
     assert len(config.domains) == 10
     assert all(domain.space_ids == [] for domain in config.domains)
     domain_names = [domain.name for domain in config.domains]
@@ -52,7 +52,8 @@ def test_portal_config_service_imports_legacy_json_once(tmp_path: Path):
         encoding="utf-8",
     )
 
-    service = PortalConfigService(config_path=config_path)
+    store = InMemoryConfigStore()
+    service = PortalConfigService(config_path=config_path, store=store)
     assert service.get_config().domains[0].name == "旧业务域"
     assert service.get_config().qa.general_model == "legacy-model"
     assert service.get_config().qa.selected_model == "legacy-model"
@@ -70,13 +71,14 @@ def test_portal_config_service_imports_legacy_json_once(tmp_path: Path):
         encoding="utf-8",
     )
 
-    reloaded = PortalConfigService(config_path=config_path).get_config()
+    reloaded = PortalConfigService(config_path=config_path, store=store).get_config()
     assert reloaded.domains[0].name == "旧业务域"
 
 
 def test_portal_config_service_accepts_unbound_domain(tmp_path: Path):
     config_path = tmp_path / "portal_config.json"
-    service = PortalConfigService(config_path=config_path)
+    store = InMemoryConfigStore()
+    service = PortalConfigService(config_path=config_path, store=store)
 
     updated = service.update_domains(
         DomainsConfigUpdate(
@@ -99,7 +101,8 @@ def test_portal_config_service_accepts_unbound_domain(tmp_path: Path):
 
 def test_portal_config_service_persists_domain_updates(tmp_path: Path):
     config_path = tmp_path / "portal_config.json"
-    service = PortalConfigService(config_path=config_path)
+    store = InMemoryConfigStore()
+    service = PortalConfigService(config_path=config_path, store=store)
 
     updated = service.update_domains(
         DomainsConfigUpdate(
@@ -117,7 +120,7 @@ def test_portal_config_service_persists_domain_updates(tmp_path: Path):
         )
     )
 
-    reloaded = PortalConfigService(config_path=config_path).get_config()
+    reloaded = PortalConfigService(config_path=config_path, store=store).get_config()
 
     assert updated.domains[0].name == "新业务域"
     assert reloaded.domains[0].space_ids == [12, 18]

@@ -49,10 +49,6 @@ class Settings(BaseSettings):
     portal_config_path: Path = Field(
         default=Path(__file__).resolve().parent / "config" / "data" / "portal_config.json"
     )
-    portal_database_path: Path = Field(
-        default=Path(__file__).resolve().parent / "config" / "data" / "portal.sqlite3"
-    )
-
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

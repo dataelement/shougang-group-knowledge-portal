@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
     await app.state.bisheng_runtime_service.initialize()
     app.state.portal_admin_config_store = RemotePortalAdminConfigStore(
         runtime_service=app.state.bisheng_runtime_service,
-        database_path=settings.portal_database_path,
     )
     try:
         remote_runtime = app.state.portal_admin_config_store.get_document(
@@ -59,7 +58,6 @@ async def lifespan(app: FastAPI):
         cookie_secure=settings.portal_session_cookie_secure,
     )
     app.state.unified_auth_runtime_service = UnifiedAuthRuntimeService(
-        database_path=settings.portal_database_path,
         settings=settings,
         store=app.state.portal_admin_config_store,
     )
@@ -72,7 +70,6 @@ async def lifespan(app: FastAPI):
     )
     app.state.portal_config_service = PortalConfigService(
         config_path=settings.portal_config_path,
-        database_path=settings.portal_database_path,
         store=app.state.portal_admin_config_store,
     )
     yield

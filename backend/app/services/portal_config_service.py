@@ -33,7 +33,7 @@ from app.schemas.portal_config import (
     DisplayConfig,
     SiteConfig,
 )
-from app.services.config_store import SQLiteConfigStore
+from app.services.config_store import InMemoryConfigStore
 
 
 class PortalConfigService:
@@ -41,9 +41,9 @@ class PortalConfigService:
     _DOMAIN_COUNT_CACHE_TABLE = "domain_count_cache"
     _LEGACY_CONFIG_KEY = "portal_config"
 
-    def __init__(self, config_path: Path, database_path: Path | None = None, store: Any | None = None):
+    def __init__(self, config_path: Path, store: Any | None = None):
         self._config_path = config_path
-        self._store = store or SQLiteConfigStore(database_path or config_path.parent / "portal.sqlite3")
+        self._store = store or InMemoryConfigStore()
         if not getattr(self._store, "skip_startup_seed", False):
             self._ensure_seeded()
 

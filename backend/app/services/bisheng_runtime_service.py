@@ -18,7 +18,7 @@ from app.schemas.bisheng_runtime import (
     BishengRuntimeConfigView,
 )
 from app.schemas.portal_admin_config import PortalBishengPersistentConfig
-from app.services.config_store import SQLiteConfigStore
+from app.services.config_store import InMemoryConfigStore
 from app.services.error_messages import normalize_user_facing_message
 
 ClientFactory = Callable[..., BishengClient]
@@ -54,11 +54,10 @@ class BishengRuntimeService:
         refresh_interval_seconds: float = DEFAULT_REFRESH_INTERVAL_SECONDS,
         refresh_threshold_seconds: float = DEFAULT_REFRESH_THRESHOLD_SECONDS,
         sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
-        database_path: Path | None = None,
         store: Any | None = None,
     ):
         self._config_path = config_path
-        self._store = store or SQLiteConfigStore(database_path or config_path.parent / "portal.sqlite3")
+        self._store = store or InMemoryConfigStore()
         self._default_base_url = default_base_url
         self._default_timeout_seconds = default_timeout_seconds
         self._default_api_token = default_api_token or ""

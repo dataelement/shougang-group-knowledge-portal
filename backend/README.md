@@ -46,13 +46,14 @@ The current workspace has been verified with Python 3.13. Running tests with the
 
 The app loads `backend/.env` automatically when present.
 
-## Local Persistence
+## Configuration Persistence
 
-Portal-side runtime data is stored in:
+Portal-side admin configuration is stored in the BiSheng `config` table under
+the `shougang_portal_config` key. The legacy local JSON files are only used as
+optional seed inputs in isolated tests.
 
 - `app/config/data/portal_config.json`
 - `app/config/data/bisheng_runtime.json`
-- `app/config/data/portal.sqlite3`
 
 ## BiSheng Auth
 
@@ -67,8 +68,6 @@ The client sends the active token as both:
 - `Authorization: Bearer <token>`
 - Cookie `access_token_cookie=<token>`
 
-When the admin page saves a service account password, the backend stores it in
-plain text inside `app/config/data/portal.sqlite3` so later token refresh and
-automatic relogin can run without extra environment configuration. Restrict file
-permissions for the runtime data directory and do not commit runtime database
-files.
+When the admin page saves a service account password, the backend persists it
+through BiSheng's `shougang_portal_config` entry so later token refresh and
+automatic relogin can run without extra environment configuration.

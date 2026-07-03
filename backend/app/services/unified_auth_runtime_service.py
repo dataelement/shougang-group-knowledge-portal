@@ -1,5 +1,4 @@
 import secrets
-from pathlib import Path
 from typing import Callable
 
 from pydantic import SecretStr
@@ -9,7 +8,7 @@ from app.schemas.unified_auth_runtime import (
     UnifiedAuthRuntimeConfigUpdate,
     UnifiedAuthRuntimeConfigView,
 )
-from app.services.config_store import SQLiteConfigStore
+from app.services.config_store import InMemoryConfigStore
 from app.settings import Settings
 
 
@@ -19,12 +18,11 @@ class UnifiedAuthRuntimeService:
     def __init__(
         self,
         *,
-        database_path: Path,
         settings: Settings,
         state_secret_factory: Callable[[], str] | None = None,
         store=None,
     ):
-        self._store = store or SQLiteConfigStore(database_path)
+        self._store = store or InMemoryConfigStore()
         self._settings = settings
         self._state_secret_factory = state_secret_factory or (lambda: secrets.token_urlsafe(32))
         if not getattr(self._store, "skip_startup_seed", False):

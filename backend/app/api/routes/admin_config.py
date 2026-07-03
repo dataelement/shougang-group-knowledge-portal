@@ -219,20 +219,6 @@ async def import_admin_config(
     )
 
 
-@router.post("/migrate-sqlite")
-async def migrate_sqlite_admin_config(request: Request, overwrite: bool = False):
-    store = getattr(request.app.state, "portal_admin_config_store", None)
-    if store is None or not hasattr(store, "migrate_from_sqlite"):
-        return response_error("门户远程配置存储未初始化", status_code=500)
-
-    try:
-        result = store.migrate_from_sqlite(overwrite=overwrite)
-    except Exception as err:
-        logger.exception("portal sqlite config migration failed")
-        return response_error(f"配置迁移失败：{err}", status_code=500)
-    return response_ok(result)
-
-
 @router.post("")
 async def replace_portal_config(
     payload: PortalConfig,

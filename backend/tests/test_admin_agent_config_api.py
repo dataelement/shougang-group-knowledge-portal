@@ -55,7 +55,6 @@ def allow_admin_access_by_default():
 def setup_client(tmp_path: Path, bisheng_client=None):
     app.state.portal_config_service = PortalConfigService(
         tmp_path / "portal_config.json",
-        database_path=tmp_path / "portal.sqlite3",
     )
     app.state.bisheng_runtime_service = create_runtime_service(tmp_path)
     app.state.bisheng_client = bisheng_client or WorkflowBishengClient()

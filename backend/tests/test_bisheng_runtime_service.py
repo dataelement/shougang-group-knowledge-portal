@@ -13,6 +13,7 @@ from app.services.bisheng_runtime_service import (
     PORTAL_RUNTIME_TOKEN_PURPOSE,
     _decode_jwt_exp,
 )
+from app.services.config_store import InMemoryConfigStore
 
 
 class FakeRuntimeBishengClient:
@@ -73,7 +74,7 @@ class FakeRuntimeBishengClient:
         return None
 
 
-def create_runtime_service(config_path: Path) -> BishengRuntimeService:
+def create_runtime_service(config_path: Path, store=None) -> BishengRuntimeService:
     return BishengRuntimeService(
         config_path=config_path,
         default_base_url="http://example.com",
@@ -81,12 +82,14 @@ def create_runtime_service(config_path: Path) -> BishengRuntimeService:
         default_api_token="",
         client_factory=FakeRuntimeBishengClient,
         password_encryptor=lambda _public_key, _password: "encrypted-password",
+        store=store,
     )
 
 
 def test_runtime_service_logs_in_and_persists_token_without_password(tmp_path: Path):
     config_path = tmp_path / "bisheng_runtime.json"
-    service = create_runtime_service(config_path)
+    store = InMemoryConfigStore()
+    service = create_runtime_service(config_path, store=store)
 
     asyncio.run(service.initialize())
     result = asyncio.run(
@@ -100,12 +103,11 @@ def test_runtime_service_logs_in_and_persists_token_without_password(tmp_path: P
         )
     )
 
-    reloaded = create_runtime_service(config_path).get_public_config()
+    reloaded = create_runtime_service(config_path, store=store).get_public_config()
 
     assert result.username == "portal-admin"
     assert result.has_token is True
     assert not config_path.exists()
-    assert (tmp_path / "portal.sqlite3").exists()
     assert reloaded.username == "portal-admin"
     assert reloaded.has_token is True
     assert reloaded.has_saved_password is True
@@ -127,7 +129,8 @@ def test_runtime_service_imports_legacy_json_once(tmp_path: Path):
         encoding="utf-8",
     )
 
-    service = create_runtime_service(config_path)
+    store = InMemoryConfigStore()
+    service = create_runtime_service(config_path, store=store)
     view = service.get_public_config()
 
     assert str(view.base_url) == "http://legacy.example.com/"
@@ -148,7 +151,7 @@ def test_runtime_service_imports_legacy_json_once(tmp_path: Path):
         encoding="utf-8",
     )
 
-    reloaded = create_runtime_service(config_path).get_public_config()
+    reloaded = create_runtime_service(config_path, store=store).get_public_config()
     assert str(reloaded.base_url) == "http://legacy.example.com/"
     assert reloaded.username == "legacy-admin"
 

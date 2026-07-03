@@ -341,7 +341,6 @@ def create_unified_auth_service(tmp_path: Path, **settings_overrides) -> Unified
     }
     settings_values.update(settings_overrides)
     return UnifiedAuthRuntimeService(
-        database_path=tmp_path / "portal.sqlite3",
         settings=Settings(**settings_values),
         state_secret_factory=lambda: "generated-state-secret",
     )
@@ -600,7 +599,6 @@ def test_import_admin_config_rolls_back_all_sections_when_unified_auth_write_fai
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
     unified_auth_service = FailingUnifiedAuthService(
-        database_path=tmp_path / "portal.sqlite3",
         settings=Settings(
             unified_auth_enabled=True,
             unified_auth_provider="group",
@@ -663,50 +661,6 @@ def test_import_admin_config_rolls_back_all_sections_when_unified_auth_write_fai
     assert runtime_service._read_config() == original_runtime
     assert runtime_service._read_config().api_token == "keep-token"
     assert unified_auth_service.get_config() == original_unified_auth
-
-
-def test_migrate_sqlite_admin_config_uses_remote_store_without_overwrite():
-    class FakeMigrationStore:
-        def __init__(self):
-            self.overwrite_values: list[bool] = []
-
-        def migrate_from_sqlite(self, *, overwrite: bool = False):
-            self.overwrite_values.append(overwrite)
-            return {"migrated": False, "skipped": True, "reason": "remote_config_exists"}
-
-    store = FakeMigrationStore()
-
-    with TestClient(app) as client:
-        client.app.state.portal_admin_config_store = store
-        response = client.post("/api/v1/admin/config/migrate-sqlite")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status_code"] == 200
-    assert body["data"]["skipped"] is True
-    assert store.overwrite_values == [False]
-
-
-def test_migrate_sqlite_admin_config_supports_overwrite():
-    class FakeMigrationStore:
-        def __init__(self):
-            self.overwrite_values: list[bool] = []
-
-        def migrate_from_sqlite(self, *, overwrite: bool = False):
-            self.overwrite_values.append(overwrite)
-            return {"migrated": True, "skipped": False, "version": 1}
-
-    store = FakeMigrationStore()
-
-    with TestClient(app) as client:
-        client.app.state.portal_admin_config_store = store
-        response = client.post("/api/v1/admin/config/migrate-sqlite?overwrite=true")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status_code"] == 200
-    assert body["data"]["migrated"] is True
-    assert store.overwrite_values == [True]
 
 
 def test_admin_config_requires_login(tmp_path: Path):
