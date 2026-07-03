@@ -780,6 +780,32 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
     ]
 
 
+def test_update_document_types_strips_hidden_characters(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        response = client.post(
+            "/api/v1/admin/config/document-types",
+            json={
+                "document_types": [
+                    {"code": "cas\u200b", "label": "案例\u200b"},
+                    {"code": "\ufeffSTD", "label": "\u200c标准规范"},
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["document_types"] == [
+        {"code": "CAS", "label": "案例"},
+        {"code": "STD", "label": "标准规范"},
+    ]
+    assert [item.model_dump() for item in service.get_config().document_types] == [
+        {"code": "CAS", "label": "案例"},
+        {"code": "STD", "label": "标准规范"},
+    ]
+
+
 def test_get_admin_config_uses_portal_config_service(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)

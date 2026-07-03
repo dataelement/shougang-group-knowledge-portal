@@ -1,4 +1,11 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+_HIDDEN_TEXT_CHARS = "\u200b\u200c\u200d\ufeff"
+
+
+def _clean_config_text(value: str) -> str:
+    return str(value or "").translate({ord(char): None for char in _HIDDEN_TEXT_CHARS}).strip()
 
 
 DEFAULT_QUICK_MODE_SYSTEM_PROMPT = (
@@ -264,6 +271,16 @@ class SearchRerankModelOptionsResponse(BaseModel):
 class DocumentTypeConfig(BaseModel):
     code: str = ""
     label: str = ""
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_code(cls, value):
+        return _clean_config_text(value).upper()
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def normalize_label(cls, value):
+        return _clean_config_text(value)
 
 
 class SpaceOption(BaseModel):
