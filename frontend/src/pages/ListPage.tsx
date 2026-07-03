@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import PageShell from '../components/PageShell';
@@ -6,10 +6,8 @@ import FileListItem from '../components/FileListItem';
 // import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
-import Pagination from '../components/Pagination';
 import {
   fetchAggregatedTags,
-  fetchSpaceFiles,
   fetchSpaceTags,
   searchFiles,
   type FileItem,
@@ -21,7 +19,6 @@ import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 // import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
-import { getVisibleRange } from '../utils/listControls';
 import { resolveListContext } from '../utils/listPageContext';
 import { getRuntimeDocumentTypes, normalizeDocumentTypeCode } from '../utils/documentTypes';
 import {
@@ -37,7 +34,7 @@ const EMPTY_SPACE_IDS: number[] = [];
 
 export default function ListPage() {
   const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
-  const { params, page, resultsTopRef, setFilter } = useListControls();
+  const { params, resultsTopRef, setFilter } = useListControls();
   const { config, error: configError } = usePortalConfig();
   const tagParam = params.get('tag') || '';
   const titleParam = params.get('title') || '';
@@ -46,11 +43,14 @@ export default function ListPage() {
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
-  const [total, setTotal] = useState(0);
   const displayConfig = toRuntimeDisplayConfig(config?.display);
-  const [pageSize, setPageSize] = useState<number>(displayConfig.list.pageSize);
+  const pageLimit = displayConfig.list.pageSize;
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { user } = useAuth();
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
   // const { openShare, shareModalProps } = useShareDocument();
@@ -96,74 +96,81 @@ export default function ListPage() {
     setError(configError);
   }, [configError]);
 
+  const fetchFilePage = useCallback((cursor?: string | null) => {
+    const baseParams = {
+      fileExt: fileExt || undefined,
+      documentType: documentType || undefined,
+      tag: tagParam || undefined,
+      sort: 'updated_at_desc',
+      cursor: cursor || undefined,
+      limit: pageLimit,
+    };
+    if (isDomainList) {
+      if (spaceIds.length === 0 || !businessDomainCode) {
+        return Promise.resolve({ data: [], hasMore: false, nextCursor: null });
+      }
+      return searchFiles({
+        ...baseParams,
+        spaceIds,
+        businessDomainCode: businessDomainCode || undefined,
+      });
+    }
+    if (spaceId) {
+      return searchFiles({
+        ...baseParams,
+        spaceIds: [spaceId],
+      });
+    }
+    return searchFiles(baseParams);
+  }, [businessDomainCode, documentType, fileExt, isDomainList, pageLimit, spaceId, spaceIds, tagParam]);
+
   useEffect(() => {
     let active = true;
     if (!config || !listContext) return;
-    setLoading(true);
-    setError('');
     void (async () => {
       try {
         if (isDomainList) {
           if (spaceIds.length === 0 || !businessDomainCode) {
-            if (!active) return;
-            setFiles([]);
-            setTotal(0);
-            setPageSize(displayConfig.list.pageSize);
-            setAvailableTags([]);
+            if (active) setAvailableTags([]);
             return;
           }
-          const [result, tags] = await Promise.all([
-            searchFiles({
-              spaceIds,
-              fileExt: fileExt || undefined,
-              documentType: documentType || undefined,
-              businessDomainCode: businessDomainCode || undefined,
-              tag: tagParam || undefined,
-              sort: 'updated_at_desc',
-              page,
-              pageSize: displayConfig.list.pageSize,
-            }),
-            fetchAggregatedTags(spaceIds, undefined, businessDomainCode || undefined),
-          ]);
-          if (!active) return;
-          setFiles(result.data);
-          setTotal(result.total);
-          setPageSize(result.pageSize);
-          setAvailableTags(tags);
-        } else if (spaceId) {
-          const [result, tags] = await Promise.all([
-            fetchSpaceFiles({
-              spaceId,
-              fileExt: fileExt || undefined,
-              documentType: documentType || undefined,
-              tag: tagParam || undefined,
-              page,
-              pageSize: displayConfig.list.pageSize,
-            }),
-            fetchSpaceTags(spaceId),
-          ]);
-          if (!active) return;
-          setFiles(result.data);
-          setTotal(result.total);
-          setPageSize(result.pageSize);
-          setAvailableTags(tags);
-        } else {
-          const [result, tags] = await Promise.all([
-            searchFiles({
-              tag: tagParam || undefined,
-              fileExt: fileExt || undefined,
-              documentType: documentType || undefined,
-              page,
-              pageSize: displayConfig.list.pageSize,
-            }),
-            fetchAggregatedTags(),
-          ]);
-          if (!active) return;
-          setFiles(result.data);
-          setTotal(result.total);
-          setPageSize(result.pageSize);
-          setAvailableTags(tags);
+          const tags = await fetchAggregatedTags(spaceIds, undefined, businessDomainCode || undefined);
+          if (active) setAvailableTags(tags);
+          return;
         }
+        if (spaceId) {
+          const tags = await fetchSpaceTags(spaceId);
+          if (active) setAvailableTags(tags);
+          return;
+        }
+        const tags = await fetchAggregatedTags();
+        if (active) setAvailableTags(tags);
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : '标签加载失败');
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [businessDomainCode, config, isDomainList, listContext, spaceId, spaceIds]);
+
+  useEffect(() => {
+    let active = true;
+    if (!config || !listContext) return;
+    setLoading(true);
+    setLoadingMore(false);
+    setError('');
+    setFiles([]);
+    setHasMore(false);
+    setNextCursor(null);
+    resultsTopRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    void (async () => {
+      try {
+        const result = await fetchFilePage(null);
+        if (!active) return;
+        setFiles(result.data);
+        setHasMore(result.hasMore);
+        setNextCursor(result.nextCursor);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : '列表加载失败');
@@ -174,13 +181,41 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [businessDomainCode, config, displayConfig.list.pageSize, documentType, fileExt, isDomainList, listContext, page, spaceId, spaceIds, tagParam]);
+  }, [config, fetchFilePage, listContext, resultsTopRef]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (!hasMore || !nextCursor || loading || loadingMore) return;
+    setLoadingMore(true);
+    setError('');
+    try {
+      const result = await fetchFilePage(nextCursor);
+      setFiles((current) => {
+        const seen = new Set(current.map((file) => `${file.spaceId}:${file.id}`));
+        const appended = result.data.filter((file) => !seen.has(`${file.spaceId}:${file.id}`));
+        return [...current, ...appended];
+      });
+      setHasMore(result.hasMore);
+      setNextCursor(result.nextCursor);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载更多失败');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [fetchFilePage, hasMore, loading, loadingMore, nextCursor]);
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !hasMore || loading || loadingMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void handleLoadMore();
+    }, { rootMargin: '240px 0px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [handleLoadMore, hasMore, loading, loadingMore]);
 
   useEffect(() => {
     if (canFavorite && files.length) void loadStatuses(files);
   }, [files, canFavorite, loadStatuses]);
-
-  const visibleRange = getVisibleRange(total, page, pageSize, files.length);
 
   return (
     <PageShell>
@@ -209,8 +244,7 @@ export default function ListPage() {
         </div>
 
         <div className={s.fileCount}>
-          共 {total} 篇文档
-          {total > 0 ? `，当前显示 ${visibleRange.start}-${visibleRange.end} 篇` : ''}
+          已加载 {files.length} 篇文档
         </div>
 
         {error ? <div className={s.fileCount}>{error}</div> : null}
@@ -231,12 +265,10 @@ export default function ListPage() {
           />
         ))}
 
-        <Pagination
-          page={page}
-          total={total}
-          pageSize={pageSize}
-          onChange={(nextPage) => setFilter('page', String(nextPage), false)}
-        />
+        <div ref={loadMoreRef} className={s.fileCount}>
+          {loadingMore ? '正在加载更多...' : null}
+          {!loading && !loadingMore && files.length > 0 && !hasMore ? '已加载全部文档' : null}
+        </div>
         {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
         <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />

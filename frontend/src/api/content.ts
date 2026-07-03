@@ -282,6 +282,12 @@ interface PagedKnowledgeFileDataDto {
   page_size: number;
 }
 
+interface CursorKnowledgeFileDataDto {
+  data: KnowledgeFileItemDto[];
+  has_more: boolean;
+  next_cursor?: string | null;
+}
+
 interface KnowledgeSpaceDto {
   id: number;
   name: string;
@@ -699,10 +705,10 @@ export async function searchFiles(params: {
   fileExt?: string;
   documentType?: string;
   sort?: string;
-  page?: number;
-  pageSize?: number;
+  cursor?: string | null;
+  limit?: number;
   businessDomainCode?: string;
-}): Promise<{ data: FileItem[]; total: number; page: number; pageSize: number }> {
+}): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
   if (params.tag) query.set('tag', params.tag);
@@ -711,16 +717,15 @@ export async function searchFiles(params: {
   if (params.documentType) query.set('document_type', params.documentType);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
   if (params.sort) query.set('sort', params.sort);
-  if (params.page) query.set('page', String(params.page));
-  if (params.pageSize) query.set('page_size', String(params.pageSize));
+  if (params.cursor) query.set('cursor', params.cursor);
+  if (params.limit) query.set('limit', String(params.limit));
   params.spaceIds?.forEach((id) => query.append('space_ids', String(id)));
 
-  const data = await request<PagedKnowledgeFileDataDto>(`/api/v1/knowledge/files?${query.toString()}`);
+  const data = await request<CursorKnowledgeFileDataDto>(`/api/v1/knowledge/files?${query.toString()}`);
   return {
     data: data.data.map(mapKnowledgeFileItem),
-    total: data.total,
-    page: data.page,
-    pageSize: data.page_size,
+    hasMore: Boolean(data.has_more),
+    nextCursor: data.next_cursor || null,
   };
 }
 

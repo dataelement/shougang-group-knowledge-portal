@@ -116,12 +116,12 @@ test('file search sends document type query parameter', async () => {
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     assert.equal(
       String(input),
-      '/api/v1/knowledge/files?space_level=department&file_ext=pdf&document_type=RPT&sort=updated_at_desc&page=1&page_size=10&space_ids=12',
+      '/api/v1/knowledge/files?space_level=department&file_ext=pdf&document_type=RPT&sort=updated_at_desc&limit=10&space_ids=12',
     );
     return new Response(JSON.stringify({
       status_code: 200,
       status_message: 'OK',
-      data: { data: [], total: 0, page: 1, page_size: 10 },
+      data: { data: [], has_more: false, next_cursor: null },
     }), { status: 200 });
   }) as typeof fetch;
 
@@ -132,11 +132,11 @@ test('file search sends document type query parameter', async () => {
       fileExt: 'pdf',
       documentType: 'RPT',
       sort: 'updated_at_desc',
-      page: 1,
-      pageSize: 10,
+      limit: 10,
     });
 
-    assert.equal(result.total, 0);
+    assert.equal(result.hasMore, false);
+    assert.equal(result.nextCursor, null);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -147,12 +147,12 @@ test('domain file search sends business domain code without public fallback', as
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     assert.equal(
       String(input),
-      '/api/v1/knowledge/files?business_domain_code=PM&sort=updated_at_desc&page=1&page_size=10&space_ids=7103',
+      '/api/v1/knowledge/files?business_domain_code=PM&sort=updated_at_desc&limit=10&space_ids=7103',
     );
     return new Response(JSON.stringify({
       status_code: 200,
       status_message: 'OK',
-      data: { data: [], total: 0, page: 1, page_size: 10 },
+      data: { data: [], has_more: false, next_cursor: null },
     }), { status: 200 });
   }) as typeof fetch;
 
@@ -160,12 +160,12 @@ test('domain file search sends business domain code without public fallback', as
     const result = await searchFiles({
       spaceIds: [7103],
       sort: 'updated_at_desc',
-      page: 1,
-      pageSize: 10,
+      limit: 10,
       businessDomainCode: 'PM',
     });
 
-    assert.equal(result.total, 0);
+    assert.equal(result.hasMore, false);
+    assert.equal(result.nextCursor, null);
   } finally {
     globalThis.fetch = originalFetch;
   }

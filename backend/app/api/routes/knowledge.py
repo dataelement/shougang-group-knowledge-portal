@@ -174,8 +174,8 @@ async def search_files(
     document_type: Optional[str] = None,
     business_domain_code: Optional[str] = None,
     sort: str = "relevance",
-    page: int = 1,
-    page_size: int = 20,
+    cursor: Optional[str] = None,
+    limit: int = 20,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
@@ -188,22 +188,25 @@ async def search_files(
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
-        return response_ok(
-            await service.search_files(
-                q=q,
-                tag=tag,
-                requested_space_ids=space_ids,
-                space_level=space_level,
-                file_ext=file_ext,
-                document_type=document_type,
-                business_domain_code=business_domain_code,
-                sort=sort,
-                page=page,
-                page_size=page_size,
-                extra_space_ids=None,
-                fallback_to_public_spaces=False,
+        try:
+            return response_ok(
+                await service.search_files(
+                    q=q,
+                    tag=tag,
+                    requested_space_ids=space_ids,
+                    space_level=space_level,
+                    file_ext=file_ext,
+                    document_type=document_type,
+                    business_domain_code=business_domain_code,
+                    sort=sort,
+                    cursor=cursor,
+                    limit=limit,
+                    extra_space_ids=None,
+                    fallback_to_public_spaces=False,
+                )
             )
-        )
+        except BishengBusinessError as err:
+            _raise_bisheng_business_error(err)
 
     # 已登录：个人 token 客户端，范围 = 后台启用库 ∪ 个人可见库
     bisheng_client = auth_service.create_bisheng_client(session)
@@ -225,12 +228,14 @@ async def search_files(
                 document_type=document_type,
                 business_domain_code=business_domain_code,
                 sort=sort,
-                page=page,
-                page_size=page_size,
+                cursor=cursor,
+                limit=limit,
                 extra_space_ids=extra_space_ids,
                 fallback_to_public_spaces=False,
             )
         )
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
     finally:
         await bisheng_client.aclose()
 

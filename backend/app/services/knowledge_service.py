@@ -38,6 +38,7 @@ from app.schemas.knowledge import (
     KnowledgeSpaceItem,
     KnowledgeSpaceListData,
     PagedKnowledgeFileData,
+    CursorKnowledgeFileData,
     RelatedKnowledgeFileData,
     DocumentFileChatRequest,
     ShareDocumentAccessData,
@@ -241,10 +242,11 @@ class KnowledgeService:
                         requested_space_ids=space_ids,
                         space_level=None,
                         file_ext=None,
+                        document_type=None,
                         business_domain_code=None,
                         sort="updated_at",
-                        page=1,
-                        page_size=config.display.home.section_page_size,
+                        cursor=None,
+                        limit=config.display.home.section_page_size,
                     )
                     for section in sections
                 ],
@@ -544,13 +546,13 @@ class KnowledgeService:
         space_level: Optional[str],
         file_ext: Optional[str],
         sort: str,
-        page: int,
-        page_size: int,
+        cursor: Optional[str],
+        limit: int,
         extra_space_ids: Optional[list[int]] = None,
         document_type: Optional[str] = None,
         business_domain_code: Optional[str] = None,
         fallback_to_public_spaces: bool = False,
-    ) -> PagedKnowledgeFileData:
+    ) -> CursorKnowledgeFileData:
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         has_filter = bool(
             tag
@@ -561,7 +563,7 @@ class KnowledgeService:
             or normalized_business_domain_code
         )
         if not q and not has_filter:
-            return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
+            return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
 
         space_ids = await self.resolve_requested_space_ids(
             requested_space_ids,
@@ -570,45 +572,20 @@ class KnowledgeService:
             fallback_to_public_spaces=fallback_to_public_spaces,
         )
         if not space_ids:
-            return PagedKnowledgeFileData(data=[], total=0, page=page, page_size=page_size)
+            return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
 
-        try:
-            return await self._search_shougang_portal_files(
-                q=q,
-                tag=tag,
-                space_ids=space_ids,
-                space_level=space_level,
-                file_ext=file_ext,
-                document_type=document_type,
-                business_domain_code=normalized_business_domain_code,
-                sort=sort,
-                page=page,
-                page_size=page_size,
-            )
-        except Exception:
-            logger.warning(
-                "fallback to legacy file search after shougang portal search failed",
-                exc_info=True,
-            )
-
-        results = await asyncio.gather(
-            *[
-                self._fetch_space_files(space_id=space_id, keyword=q, tag_name=tag)
-                for space_id in space_ids
-            ]
-        )
-        merged_items = [item for result in results for item in result.items]
-        filtered = self._filter_items(
-            items=merged_items,
-            allowed_space_ids=set(space_ids),
+        return await self._search_shougang_portal_files(
+            q=q,
+            tag=tag,
+            space_ids=space_ids,
+            space_level=space_level,
             file_ext=file_ext,
             document_type=document_type,
             business_domain_code=normalized_business_domain_code,
+            sort=sort,
+            cursor=cursor,
+            limit=limit,
         )
-        sorted_items = self._sort_items(filtered, sort=sort, keyword=q)
-        space_name_map = await self.get_space_name_map(extra_space_ids)
-        mapped = self._map_items(sorted_items, space_name_map)
-        return self._paginate(mapped, page=page, page_size=page_size)
 
     async def get_qa_tree_children(
         self,
@@ -702,9 +679,9 @@ class KnowledgeService:
         document_type: Optional[str],
         business_domain_code: Optional[str],
         sort: str,
-        page: int,
-        page_size: int,
-    ) -> PagedKnowledgeFileData:
+        cursor: Optional[str],
+        limit: int,
+    ) -> CursorKnowledgeFileData:
         request_body = {
             "q": q,
             "tag": tag,
@@ -712,8 +689,8 @@ class KnowledgeService:
             "space_level": space_level,
             "file_ext": file_ext,
             "sort": sort,
-            "page": page,
-            "page_size": page_size,
+            "cursor": cursor,
+            "limit": min(max(int(limit or 20), 1), 100),
         }
         normalized_document_type = self._normalize_document_type_code(document_type)
         if normalized_document_type:
@@ -727,15 +704,15 @@ class KnowledgeService:
             "/api/v1/knowledge/shougang-portal/files/search",
             json=request_body,
         )
-        data = response.get("data") or {}
+        data = self._extract_success_data(response)
         raw_items = data.get("data") if isinstance(data, dict) else []
         if not isinstance(raw_items, list):
             raw_items = []
-        return PagedKnowledgeFileData(
+        next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
+        return CursorKnowledgeFileData(
             data=self._map_shougang_portal_response_items(raw_items),
-            total=int(data.get("total") or 0),
-            page=int(data.get("page") or page),
-            page_size=int(data.get("page_size") or page_size),
+            has_more=bool(data.get("has_more")) if isinstance(data, dict) else False,
+            next_cursor=str(next_cursor) if next_cursor else None,
         )
 
     @staticmethod

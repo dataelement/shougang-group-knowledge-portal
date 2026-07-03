@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -388,8 +387,8 @@ class FakeBishengClient:
                 "space_level": None,
                 "file_ext": None,
                 "sort": "relevance",
-                "page": 1,
-                "page_size": 10,
+                "cursor": None,
+                "limit": 10,
                 "rerank_model_id": "",
             }:
                 return {
@@ -422,9 +421,8 @@ class FakeBishengClient:
                                 "source_path": "轧线技术案例库>热轧/热轧加热炉温度控制.docx",
                             },
                         ],
-                        "total": 2,
-                        "page": 1,
-                        "page_size": 10,
+                        "has_more": False,
+                        "next_cursor": None,
                     }
                 }
             assert json == {
@@ -434,8 +432,8 @@ class FakeBishengClient:
                 "space_level": "public",
                 "file_ext": "pdf",
                 "sort": "relevance",
-                "page": 1,
-                "page_size": 20,
+                "cursor": None,
+                "limit": 20,
                 "rerank_model_id": "",
             }
             return {
@@ -455,9 +453,8 @@ class FakeBishengClient:
                             "source_path": "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf",
                         }
                     ],
-                    "total": 1,
-                    "page": 1,
-                    "page_size": 20,
+                    "has_more": False,
+                    "next_cursor": None,
                 }
             }
         if path == "/api/v1/knowledge/shougang-portal/favorites":
@@ -2518,8 +2515,8 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
                     "space_level": None,
                     "file_ext": None,
                     "sort": "relevance",
-                    "page": 1,
-                    "page_size": 10,
+                    "cursor": None,
+                    "limit": 10,
                     "rerank_model_id": "",
                 }
                 return {
@@ -2539,9 +2536,8 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
                                 "source_path": "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf",
                             }
                         ],
-                        "total": 1,
-                        "page": 1,
-                        "page_size": 10,
+                        "has_more": False,
+                        "next_cursor": None,
                     }
                 }
             return await super().post_json(path, json=json)
@@ -2552,11 +2548,13 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?tag=%E7%83%AD%E8%BD%A7&space_ids=12&space_ids=18&page=1&page_size=10")
+        response = client.get("/api/v1/knowledge/files?tag=%E7%83%AD%E8%BD%A7&space_ids=12&space_ids=18&limit=10")
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 1
+    assert body["has_more"] is False
+    assert body["next_cursor"] is None
+    assert len(body["data"]) == 1
     assert body["data"][0]["space_id"] == 12
     assert body["data"][0]["source_path"] == "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf"
     assert fake_bisheng.post_calls == [
@@ -2569,8 +2567,8 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
                 "space_level": None,
                 "file_ext": None,
                 "sort": "relevance",
-                "page": 1,
-                "page_size": 10,
+                "cursor": None,
+                "limit": 10,
                 "rerank_model_id": "",
             },
         )
@@ -2584,11 +2582,12 @@ def test_search_files_does_not_fallback_to_public_spaces_when_flag_is_present(tm
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?space_ids=7103&fallback_public=1&page=1&page_size=10")
+        response = client.get("/api/v1/knowledge/files?space_ids=7103&fallback_public=1&limit=10")
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 0
+    assert body["has_more"] is False
+    assert body["next_cursor"] is None
     assert body["data"] == []
     assert fake_bisheng.post_calls == []
 
@@ -2600,11 +2599,12 @@ def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?space_ids=7103&page=1&page_size=10")
+        response = client.get("/api/v1/knowledge/files?space_ids=7103&limit=10")
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 0
+    assert body["has_more"] is False
+    assert body["next_cursor"] is None
     assert body["data"] == []
     assert fake_bisheng.post_calls == []
 
@@ -2621,8 +2621,8 @@ def test_search_files_passes_document_type_and_business_domain_code_to_shougang_
                     "space_level": None,
                     "file_ext": None,
                     "sort": "updated_at_desc",
-                    "page": 1,
-                    "page_size": 10,
+                    "cursor": None,
+                    "limit": 10,
                     "document_type": "RPT",
                     "business_domain_code": "PM",
                     "rerank_model_id": "",
@@ -2643,9 +2643,8 @@ def test_search_files_passes_document_type_and_business_domain_code_to_shougang_
                                 "file_encoding": "SGGF-RPT-PP-202604-01201",
                             }
                         ],
-                        "total": 1,
-                        "page": 1,
-                        "page_size": 10,
+                        "has_more": False,
+                        "next_cursor": None,
                     }
                 }
             return await super().post_json(path, json=json)
@@ -2657,12 +2656,13 @@ def test_search_files_passes_document_type_and_business_domain_code_to_shougang_
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         response = client.get(
-            "/api/v1/knowledge/files?space_ids=12&document_type=rpt&business_domain_code=pm&sort=updated_at_desc&page=1&page_size=10"
+            "/api/v1/knowledge/files?space_ids=12&document_type=rpt&business_domain_code=pm&sort=updated_at_desc&limit=10"
         )
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 1
+    assert body["has_more"] is False
+    assert len(body["data"]) == 1
     assert body["data"][0]["file_encoding"] == "SGGF-RPT-PP-202604-01201"
 
 
@@ -2683,8 +2683,8 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                     "space_level": None,
                     "file_ext": None,
                     "sort": "relevance",
-                    "page": 1,
-                    "page_size": 20,
+                    "cursor": None,
+                    "limit": 20,
                     "rerank_model_id": "",
                 }
                 return {
@@ -2703,9 +2703,8 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                                 "file_encoding": "GF-ZD-SC-202604-01201",
                             }
                         ],
-                        "total": 1,
-                        "page": 1,
-                        "page_size": 50,
+                        "has_more": False,
+                        "next_cursor": None,
                     }
                 }
             return await super().post_json(path, json=json)
@@ -2720,7 +2719,8 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 1
+    assert body["has_more"] is False
+    assert len(body["data"]) == 1
     assert body["data"][0]["space_id"] == 12
     assert fake_bisheng.post_calls == [
         (
@@ -2732,8 +2732,8 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                 "space_level": None,
                 "file_ext": None,
                 "sort": "relevance",
-                "page": 1,
-                "page_size": 20,
+                "cursor": None,
+                "limit": 20,
                 "rerank_model_id": "",
             },
         )
@@ -2757,16 +2757,15 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
                     "space_level": None,
                     "file_ext": None,
                     "sort": "relevance",
-                    "page": 1,
-                    "page_size": 20,
+                    "cursor": None,
+                    "limit": 20,
                     "rerank_model_id": "5",
                 }
                 return {
                     "data": {
                         "data": [],
-                        "total": 0,
-                        "page": 1,
-                        "page_size": 50,
+                        "has_more": False,
+                        "next_cursor": None,
                     }
                 }
             return await super().post_json(path, json=json)
@@ -2781,7 +2780,8 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
         response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance&space_ids=12")
 
     assert response.status_code == 200
-    assert response.json()["data"]["total"] == 0
+    assert response.json()["data"]["has_more"] is False
+    assert response.json()["data"]["data"] == []
     assert fake_bisheng.post_calls == [
         (
             "/api/v1/knowledge/shougang-portal/files/search",
@@ -2792,15 +2792,15 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
                 "space_level": None,
                 "file_ext": None,
                 "sort": "relevance",
-                "page": 1,
-                "page_size": 20,
+                "cursor": None,
+                "limit": 20,
                 "rerank_model_id": "5",
             },
         )
     ]
 
 
-def test_search_files_logs_shougang_portal_fallback(tmp_path: Path, caplog):
+def test_search_files_does_not_fallback_when_shougang_portal_search_fails(tmp_path: Path):
     class FailingPortalBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
@@ -2811,59 +2811,75 @@ def test_search_files_logs_shougang_portal_fallback(tmp_path: Path, caplog):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
     fake_bisheng = FailingPortalBishengClient()
-    caplog.set_level(logging.WARNING, logger="app.services.knowledge_service")
-    with TestClient(app) as client:
+    with TestClient(app, raise_server_exceptions=False) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         response = client.get("/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&sort=relevance&space_ids=12")
 
-    assert response.status_code == 200
-    body = response.json()["data"]
-    assert body["total"] == 1
-    assert body["data"][0]["id"] == 1580
+    assert response.status_code == 500
     assert fake_bisheng.post_calls[0][0] == "/api/v1/knowledge/shougang-portal/files/search"
-    assert "fallback to legacy file search after shougang portal search failed" in caplog.text
 
 
-def test_search_files_fallback_filters_by_document_type_before_pagination(tmp_path: Path):
+def test_search_files_propagates_shougang_portal_business_error(tmp_path: Path):
+    class BusinessErrorBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                return {
+                    "status_code": 10991,
+                    "status_message": "Invalid pagination cursor",
+                    "data": {"exception": "cursor context mismatch"},
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = BusinessErrorBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/files?space_ids=12&cursor=bad-cursor")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "BiSheng 请求失败"
+    assert "data" not in response.json()
+    assert fake_bisheng.post_calls[0][0] == "/api/v1/knowledge/shougang-portal/files/search"
+
+
+def test_search_files_document_type_request_uses_cursor_protocol_without_legacy_fallback(tmp_path: Path):
     class FallbackDocumentTypeBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
-                raise httpx.HTTPError("portal search unavailable")
-            return await super().post_json(path, json=json)
-
-        async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/space/12/search":
+                assert json["document_type"] == "RPT"
+                assert json["limit"] == 1
+                assert "page" not in json
+                assert "page_size" not in json
                 return {
                     "data": {
                         "data": [
                             {
                                 "id": 1580,
-                                "knowledge_id": 12,
-                                "file_name": "质量分析报告.pdf",
-                                "abstract": "报告摘要",
-                                "file_type": 1,
-                                "status": 2,
+                                "space_id": 12,
+                                "title": "质量分析报告",
+                                "summary": "报告摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": [],
+                                "file_ext": "pdf",
+                                "file_size": "10KB",
                                 "file_encoding": "SGGF-RPT-PP-202604-01201",
-                                "update_time": "2026-04-13T10:30:00",
-                                "tags": [],
-                            },
-                            {
-                                "id": 1590,
-                                "knowledge_id": 12,
-                                "file_name": "点检标准.pdf",
-                                "abstract": "标准摘要",
-                                "file_type": 1,
-                                "status": 2,
-                                "file_encoding": "SGGF-STD-PP-202604-01202",
-                                "update_time": "2026-04-14T10:30:00",
-                                "tags": [],
-                            },
+                            }
                         ],
-                        "total": 2,
+                        "has_more": True,
+                        "next_cursor": "cursor-1",
                     }
                 }
+            return await super().post_json(path, json=json)
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/space/12/search":
+                raise AssertionError("file search should not call legacy space search")
             return await super().get_json(path, params=params, headers=headers)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
@@ -2872,11 +2888,12 @@ def test_search_files_fallback_filters_by_document_type_before_pagination(tmp_pa
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?space_ids=12&document_type=RPT&page=1&page_size=1")
+        response = client.get("/api/v1/knowledge/files?space_ids=12&document_type=RPT&limit=1")
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 1
+    assert body["has_more"] is True
+    assert body["next_cursor"] == "cursor-1"
     assert [item["id"] for item in body["data"]] == [1580]
 
 
@@ -2972,11 +2989,13 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
 
 def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path):
     for client, _, fake_bisheng in make_client(tmp_path):
-        response = client.get("/api/v1/knowledge/files?space_ids=12&page=1&page_size=10")
+        response = client.get("/api/v1/knowledge/files?space_ids=12&limit=10")
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 2
+    assert body["has_more"] is False
+    assert body["next_cursor"] is None
+    assert len(body["data"]) == 2
     assert [item["space_id"] for item in body["data"]] == [12, 12]
     assert [item["title"] for item in body["data"]] == [
         "热轧1580产线精轧机振动纹治理实践",
@@ -2993,8 +3012,8 @@ def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path)
                 "space_level": None,
                 "file_ext": None,
                 "sort": "relevance",
-                "page": 1,
-                "page_size": 10,
+                "cursor": None,
+                "limit": 10,
                 "rerank_model_id": "",
             },
         )
@@ -3007,7 +3026,8 @@ def test_search_files_passes_space_level_to_shougang_portal_search(tmp_path: Pat
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 1
+    assert body["has_more"] is False
+    assert len(body["data"]) == 1
     assert body["data"][0]["space_id"] == 12
     assert fake_bisheng.post_calls == [
         (
@@ -3019,8 +3039,8 @@ def test_search_files_passes_space_level_to_shougang_portal_search(tmp_path: Pat
                 "space_level": "public",
                 "file_ext": "pdf",
                 "sort": "relevance",
-                "page": 1,
-                "page_size": 20,
+                "cursor": None,
+                "limit": 20,
                 "rerank_model_id": "",
             },
         )
@@ -3050,7 +3070,8 @@ def test_search_and_tags_skip_unauthorized_spaces_instead_of_500(tmp_path: Path)
 
     assert search_response.status_code == 200
     search_data = search_response.json()["data"]
-    assert search_data["total"] == 2
+    assert search_data["has_more"] is False
+    assert len(search_data["data"]) == 2
     assert all(item["space_id"] == 12 for item in search_data["data"])
 
 

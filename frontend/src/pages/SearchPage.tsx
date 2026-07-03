@@ -263,7 +263,7 @@ export default function SearchPage() {
         });
         if (!active) return;
         setRawFiles(result.data);
-        setRawTotal(result.total);
+        setRawTotal(result.data.length);
         setResultsReady(true);
       } catch (err) {
         if (!active) return;

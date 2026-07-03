@@ -40,6 +40,12 @@ class PagedKnowledgeFileData(BaseModel):
     page_size: int = 20
 
 
+class CursorKnowledgeFileData(BaseModel):
+    data: list[KnowledgeFileItem] = Field(default_factory=list)
+    has_more: bool = False
+    next_cursor: Optional[str] = None
+
+
 class RelatedKnowledgeFileData(BaseModel):
     data: list[KnowledgeFileItem] = Field(default_factory=list)
     total: int = 0
