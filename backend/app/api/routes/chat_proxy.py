@@ -29,6 +29,11 @@ class AgentFavoriteWorkflowPayload(BaseModel):
     workflow_id: str
 
 
+class ConversationRenamePayload(BaseModel):
+    conversation_id: str
+    name: str
+
+
 def get_chat_proxy_service(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
@@ -90,6 +95,35 @@ async def list_conversations(
             default_model=get_settings().bisheng_default_model,
         )
         return response_ok(await service.list_conversations(page=page, limit=limit))
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.post("/chat/rename")
+async def rename_conversation(
+    request: Request,
+    payload: ConversationRenamePayload,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    conversation_id = payload.conversation_id.strip()
+    name = payload.name.strip()
+    if not conversation_id:
+        raise HTTPException(status_code=422, detail="conversation_id 不能为空")
+    if not name:
+        raise HTTPException(status_code=422, detail="会话名称不能为空")
+    session = _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = ChatProxyService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        await service.rename_conversation(conversation_id, name)
+        return response_ok({"conversation_id": conversation_id, "name": name})
     except ValueError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     finally:

@@ -129,11 +129,38 @@ button.navRow:hover {
   font-size: 13px;
 }
 
+.historyGroup {
+  margin-bottom: 4px;
+}
+
+.historyGroupLabel {
+  padding: 10px 16px 4px 40px;
+  color: #8B9AB5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.convItemRow {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  transition: background 0.15s;
+}
+
+.convItemRow:hover {
+  background: #F5F7FA;
+}
+
+.convItemRowActive {
+  background: #EAF0FB;
+}
+
 .convItem {
+  flex: 1;
+  min-width: 0;
   display: block;
-  width: 100%;
   height: 40px;
-  padding: 0 16px 0 40px;
+  padding: 0 32px 0 40px;
   text-align: left;
   font-size: 15px;
   color: #545A60;
@@ -142,16 +169,65 @@ button.navRow:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
 }
 
-.convItem:hover {
-  background: #F5F7FA;
-}
-
-.convItemActive {
-  background: #EAF0FB;
+.convItemRowActive .convItem {
   color: #3662E3;
+}
+
+.convItemEditBtn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #8B9AB5;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.convItemRow:hover .convItemEditBtn,
+.convItemRow:focus-within .convItemEditBtn {
+  opacity: 1;
+}
+
+.convItemEditBtn:hover {
+  color: #3662E3;
+  background: #E6ECFA;
+}
+
+.convItemInput {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  margin: 4px 12px 4px 40px;
+  padding: 0 8px;
+  border: 1px solid #3662E3;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #273142;
+  background: #fff;
+}
+
+.convItemRenameError {
+  position: absolute;
+  left: 40px;
+  right: 12px;
+  top: 100%;
+  margin-top: 2px;
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #ef4444;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.12);
+  z-index: 1;
 }
 
 .mainPanel {
