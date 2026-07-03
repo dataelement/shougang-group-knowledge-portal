@@ -261,6 +261,13 @@ class ChatProxyService:
         )
         return self._unwrap_bisheng_data(payload)
 
+    async def rename_conversation(self, conversation_id: str, name: str) -> None:
+        payload = await self._bisheng.post_json(
+            "/api/v1/chat/conversation/rename",
+            json={"conversationId": conversation_id, "name": name},
+        )
+        self._unwrap_bisheng_data(payload)
+
     async def list_agent_workflow_conversations(self, page: int = 1, limit: int = 20):
         agents = await self.list_agent_workflows()
         if not agents:

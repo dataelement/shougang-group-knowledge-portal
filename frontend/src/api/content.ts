@@ -1158,6 +1158,14 @@ export async function fetchWorkstationConversations(params: {
   return data.map(mapWorkstationConversation).filter((item) => item.conversationId);
 }
 
+export async function renameWorkstationConversation(conversationId: string, name: string): Promise<void> {
+  await request('/api/v1/workstation/chat/rename', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation_id: conversationId, name }),
+  });
+}
+
 export async function fetchAgentWorkflowConversations(params: {
   page?: number;
   limit?: number;

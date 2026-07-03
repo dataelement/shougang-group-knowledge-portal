@@ -7,6 +7,7 @@ import {
   Bot,
   CheckCircle2,
   ClipboardList,
+  Edit3,
   Eye,
   FileText,
   Globe,
@@ -38,6 +39,7 @@ import {
   fetchAgentWorkflowConversations,
   fetchAgentWorkflows,
   removeAgentWorkflowFavorite,
+  renameWorkstationConversation,
   type AgentWorkflowConversation,
 } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
@@ -148,6 +150,12 @@ function getRecordTime(record: SmartAppsRecord): number {
   return Number.isNaN(time) ? 0 : time;
 }
 
+const HISTORY_GROUP_ORDER: Session['group'][] = ['今天', '昨天', '7 天内', '30 天内'];
+
+function recordOverrideKey(record: SmartAppsRecord): string {
+  return `${record.kind}:${record.id}`;
+}
+
 function appendWorkflowChatId(url: string, chatId: string): string {
   const safeChatId = chatId.trim();
   if (!safeChatId) return url;
@@ -162,19 +170,57 @@ function SmartAppsSidebar({
   loading,
   onNewQa,
   onSelectRecord,
+  onRenameRecord,
 }: {
   records: SmartAppsRecord[];
   activeRecordId: string;
   loading: boolean;
   onNewQa: () => void;
   onSelectRecord: (record: SmartAppsRecord) => void;
+  onRenameRecord: (record: SmartAppsRecord, name: string) => Promise<void>;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [renamingKey, setRenamingKey] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState('');
+
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const visibleRecords = useMemo(() => {
     if (!normalizedSearchQuery) return records;
     return records.filter((record) => record.title.toLowerCase().includes(normalizedSearchQuery));
   }, [normalizedSearchQuery, records]);
+
+  const startRename = (record: SmartAppsRecord) => {
+    setRenamingKey(recordOverrideKey(record));
+    setRenameDraft(record.title);
+    setRenameError('');
+  };
+
+  const cancelRename = () => {
+    setRenamingKey(null);
+    setRenameDraft('');
+    setRenameError('');
+  };
+
+  const commitRename = async (record: SmartAppsRecord) => {
+    const trimmed = renameDraft.trim();
+    if (!trimmed || trimmed === record.title) {
+      cancelRename();
+      return;
+    }
+    setRenameSaving(true);
+    setRenameError('');
+    try {
+      await onRenameRecord(record, trimmed);
+      setRenamingKey(null);
+      setRenameDraft('');
+    } catch {
+      setRenameError('重命名失败，请重试');
+    } finally {
+      setRenameSaving(false);
+    }
+  };
 
   return (
     <aside className={s.sidebar} aria-label="智能应用会话列表">
@@ -200,17 +246,72 @@ function SmartAppsSidebar({
 
       <div className={s.historyList}>
         {loading ? <div className={s.historyEmpty}>会话加载中...</div> : null}
-        {visibleRecords.map((record) => (
-          <button
-            className={`${s.convItem} ${activeRecordId === record.id ? s.convItemActive : ''}`}
-            key={`${record.kind}-${record.id}`}
-            onClick={() => onSelectRecord(record)}
-            title={record.title}
-            type="button"
-          >
-            {record.title}
-          </button>
-        ))}
+        {!loading && HISTORY_GROUP_ORDER.map((group) => {
+          const groupRecords = visibleRecords.filter((record) => record.group === group);
+          if (groupRecords.length === 0) return null;
+          return (
+            <section key={group} className={s.historyGroup}>
+              <div className={s.historyGroupLabel}>{group}</div>
+              {groupRecords.map((record) => {
+                const key = recordOverrideKey(record);
+                const isActive = activeRecordId === record.id;
+                const isRenaming = renamingKey === key;
+                return (
+                  <div
+                    key={key}
+                    className={`${s.convItemRow} ${isActive ? s.convItemRowActive : ''}`}
+                  >
+                    {isRenaming ? (
+                      <>
+                        <input
+                          autoFocus
+                          disabled={renameSaving}
+                          className={s.convItemInput}
+                          value={renameDraft}
+                          onChange={(event) => setRenameDraft(event.target.value)}
+                          onBlur={() => void commitRename(record)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              void commitRename(record);
+                            } else if (event.key === 'Escape') {
+                              event.preventDefault();
+                              cancelRename();
+                            }
+                          }}
+                        />
+                        {renameError ? <span className={s.convItemRenameError}>{renameError}</span> : null}
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className={s.convItem}
+                          onClick={() => onSelectRecord(record)}
+                          title={record.title}
+                          type="button"
+                        >
+                          {record.title}
+                        </button>
+                        <button
+                          type="button"
+                          className={s.convItemEditBtn}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            startRename(record);
+                          }}
+                          aria-label="重命名会话"
+                          title="重命名会话"
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          );
+        })}
         {!loading && normalizedSearchQuery && !visibleRecords.length ? (
           <div className={s.historyEmpty}>未找到匹配会话</div>
         ) : null}
@@ -461,6 +562,18 @@ export default function AppsPage() {
           updatedAt: conversation.updateAt || conversation.createAt,
         }));
         const records = [...qaRecords, ...agentRecords].sort((left, right) => getRecordTime(right) - getRecordTime(left));
+        const handleRenameRecord = async (record: SmartAppsRecord, name: string) => {
+          if (record.kind === 'qa') {
+            await qaSidebarState.renameSession(record.session, name);
+            return;
+          }
+          await renameWorkstationConversation(record.conversationId, name);
+          setAgentWorkflowConversations((prev) =>
+            prev.map((item) =>
+              item.conversationId === record.conversationId ? { ...item, title: name } : item,
+            ),
+          );
+        };
         const activeRecordId = activeTab === 'agent' ? activeAgentRecordId : qaSidebarState.activeId;
         const hasSelectedAgentWorkflow = activeTab === 'agent' && Boolean(selectedAgent);
         const showTopComposer = !hasSelectedAgentWorkflow && (activeTab === 'agent' || !hasQaConversation);
@@ -477,6 +590,7 @@ export default function AppsPage() {
                   records={records}
                   activeRecordId={activeRecordId}
                   loading={qaSidebarState.loadingSessions || loadingAgentWorkflowConversations}
+                  onRenameRecord={handleRenameRecord}
                   onNewQa={() => {
                     qaSidebarState.newSession();
                     setSelectedAgentId('');
