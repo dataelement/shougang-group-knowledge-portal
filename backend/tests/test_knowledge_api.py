@@ -2724,6 +2724,7 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
                                 "file_ext": "pdf",
                                 "file_size": "949.33KB",
                                 "file_encoding": "GF-ZD-SC-202604-01201",
+                                "file_subcategory_code": "RPT",
                             }
                         ],
                         "has_more": True,
@@ -2747,6 +2748,7 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
     assert body["has_more"] is True
     assert body["next_cursor"] == "cursor-1"
     assert body["data"][0]["space_id"] == 12
+    assert body["data"][0]["file_subcategory_code"] == "RPT"
     assert fake_bisheng.post_calls[0][1]["tag"] is None
 
 

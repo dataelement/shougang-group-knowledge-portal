@@ -86,7 +86,41 @@ class RemotePortalAdminConfigStore:
         data = payload.get("data") if isinstance(payload, dict) else None
         if not data:
             return None
-        return PortalAdminAggregateConfig.model_validate(data)
+        return PortalAdminAggregateConfig.model_validate(
+            self._normalize_remote_aggregate_data(data)
+        )
+
+    def _normalize_remote_aggregate_data(self, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        next_data = deepcopy(data)
+        portal = next_data.get("portal")
+        if isinstance(portal, dict):
+            portal["document_types"] = self._fill_empty_document_type_children(
+                portal.get("document_types")
+            )
+        return next_data
+
+    @staticmethod
+    def _fill_empty_document_type_children(document_types: Any) -> Any:
+        if not isinstance(document_types, list):
+            return document_types
+
+        normalized = []
+        for item in document_types:
+            if not isinstance(item, dict):
+                normalized.append(item)
+                continue
+
+            next_item = dict(item)
+            code = str(next_item.get("code") or "").strip()
+            label = str(next_item.get("label") or "").strip()
+            if next_item.get("children") == [] and code and label:
+                # 兼容早期远端配置：旧文档类型只有一级分类，新模型要求至少一个子类目。
+                next_item["children"] = [{"code": code, "label": label}]
+            normalized.append(next_item)
+        return normalized
 
     def _save_remote_aggregate(self, aggregate: PortalAdminAggregateConfig) -> None:
         payload = self._request(

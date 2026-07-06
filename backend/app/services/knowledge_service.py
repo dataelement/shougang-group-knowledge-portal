@@ -906,7 +906,7 @@ class KnowledgeService:
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
                 file_encoding=str(item.get("file_encoding") or ""),
-                file_subcategory_code=self._extract_file_subcategory_code(item),
+                file_subcategory_code=KnowledgeService._extract_file_subcategory_code(item),
                 folder_path=str(item.get("folder_path") or ""),
                 source_path=str(item.get("source_path") or ""),
             )

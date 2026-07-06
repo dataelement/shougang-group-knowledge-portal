@@ -34,6 +34,15 @@ class MemoryRemotePortalAdminConfigStore(RemotePortalAdminConfigStore):
         self.save_count += 1
 
 
+class RawMemoryRemotePortalAdminConfigStore(RemotePortalAdminConfigStore):
+    def __init__(self, *, remote_data: dict | None = None):
+        super().__init__(runtime_service=FakeRuntimeService())
+        self.remote_data = remote_data
+
+    def _request(self, method: str, path: str, json: dict | None = None) -> dict:
+        return {"data": self.remote_data}
+
+
 def test_get_document_loads_remote_section():
     existing = PortalAdminAggregateConfig(
         portal={
@@ -51,6 +60,38 @@ def test_get_document_loads_remote_section():
 
     assert payload is not None
     assert payload["site"]["browser_title"] == "远程门户标题"
+
+
+def test_get_document_normalizes_legacy_empty_document_type_children():
+    store = RawMemoryRemotePortalAdminConfigStore(
+        remote_data={
+            "portal": {
+                **DEFAULT_PORTAL_CONFIG,
+                "document_types": [
+                    {"code": "POL", "label": "政策制度", "children": []},
+                ],
+            },
+            "bisheng": {
+                "base_url": "http://existing.example.com",
+            },
+            "unified_auth": {
+                "enabled": True,
+                "provider": "stock",
+                "client_id": "portal-client",
+            },
+        }
+    )
+
+    unified_auth_payload = store.get_document("unified_auth_runtime_config")
+    portal_payload = store.get_document("portal_config")
+
+    assert unified_auth_payload is not None
+    assert unified_auth_payload["enabled"] is True
+    assert unified_auth_payload["provider"] == "stock"
+    assert portal_payload is not None
+    assert portal_payload["document_types"][0]["children"] == [
+        {"code": "POL", "label": "政策制度"},
+    ]
 
 
 def test_get_document_returns_none_when_remote_config_is_empty():
