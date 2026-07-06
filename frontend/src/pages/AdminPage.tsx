@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare,
+  Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, Link2,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -11,20 +11,28 @@ import {
   type AgentItemConfig,
   type AgentWorkflowOption,
   type BannerSlide,
+  type BindableSpace,
   type BishengRuntimeConfig,
+  type DeptBinding,
+  type DepartmentOption,
   type DisplayConfig,
   type DocumentTypeConfig,
   type DomainConfig,
   type UnifiedAuthRuntimeConfig,
+  bindDeptSpace,
   fetchAdminConfig,
   fetchAgentWorkflowOptions,
+  fetchBindableSpaces,
+  fetchBindingDepartments,
   fetchBishengRuntimeConfig,
+  fetchDeptBindings,
   fetchSearchRerankModelOptions,
   fetchUnifiedAuthRuntimeConfig,
   fetchQaModelOptions,
   fetchSpaceOptions,
   exportAdminConfig,
   importAdminConfig,
+  unbindDeptSpace,
   type IntegrationsConfig,
   type PortalConfig,
   type QATemplateCategoryConfig,
@@ -100,6 +108,12 @@ import {
   type AgentCategoryDraft,
   type AgentDraft,
 } from '../utils/adminAgentConfig';
+import {
+  createBindingDraft,
+  groupBindingsByDepartment,
+  validateBindingDraft,
+  type BindingDraft,
+} from '../utils/deptKnowledgeBinding';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import s from './AdminPage.module.css';
@@ -133,6 +147,7 @@ const NAV_ITEMS = [
   { key: 'apps', label: '应用市场', icon: LayoutGrid },
   { key: 'bisheng', label: '数据源配置', icon: Server },
   { key: 'unifiedAuth', label: '统一认证', icon: KeyRound },
+  { key: 'deptBinding', label: '科室知识库绑定', icon: Link2 },
   { key: 'integrations', label: '集成配置', icon: Plug },
   { key: 'site', label: '站点配置', icon: Settings },
 ];
@@ -344,6 +359,12 @@ export default function AdminPage() {
   const [siteDialogOpen, setSiteDialogOpen] = useState(false);
   const [siteDraft, setSiteDraft] = useState<SiteDraft>(createSiteDraft());
   const [siteDialogError, setSiteDialogError] = useState('');
+  const [deptBindings, setDeptBindings] = useState<DeptBinding[]>([]);
+  const [bindableSpaces, setBindableSpaces] = useState<BindableSpace[]>([]);
+  const [bindingDepartments, setBindingDepartments] = useState<DepartmentOption[]>([]);
+  const [bindingDraft, setBindingDraft] = useState<BindingDraft>(createBindingDraft());
+  const [bindingDialogOpen, setBindingDialogOpen] = useState(false);
+  const [bindingUnbindTarget, setBindingUnbindTarget] = useState<DeptBinding | null>(null);
   const configImportInputRef = useRef<HTMLInputElement>(null);
   const [configImportFile, setConfigImportFile] = useState<File | null>(null);
   const [configImportConfirmOpen, setConfigImportConfirmOpen] = useState(false);
@@ -418,6 +439,38 @@ export default function AdminPage() {
       setSpaceOptionsLoading(false);
     }
   }
+
+  const refetchBindings = useCallback(async () => {
+    const [bindings, spaces, departments] = await Promise.all([
+      fetchDeptBindings(), fetchBindableSpaces(), fetchBindingDepartments(),
+    ]);
+    setDeptBindings(bindings); setBindableSpaces(spaces); setBindingDepartments(departments);
+  }, []);
+
+  function openBindingDialog() {
+    setBindingDraft(createBindingDraft());
+    setError('');
+    setBindingDialogOpen(true);
+  }
+
+  const handleBindSpace = () => {
+    const err = validateBindingDraft(bindingDraft);
+    if (err) { setError(err); return; }
+    void runSave(async () => {
+      await bindDeptSpace(bindingDraft.spaceId!, bindingDraft.departmentId!);
+      await refetchBindings();
+      setBindingDialogOpen(false);
+      setBindingDraft(createBindingDraft());
+    });
+  };
+
+  const handleUnbindSpace = (spaceId: number, onSuccess?: () => void) => {
+    void runSave(async () => {
+      await unbindDeptSpace(spaceId);
+      await refetchBindings();
+      onSuccess?.();
+    });
+  };
 
   function openCreateDomainDialog() {
     setDomainEditorOpen(true);
@@ -578,6 +631,13 @@ export default function AdminPage() {
     if (active !== 'agentConfig' || !config || agentWorkflowLoaded || agentWorkflowLoading) return;
     void loadAgentWorkflowOptions('');
   }, [active, config, agentWorkflowLoaded, agentWorkflowLoading]);
+
+  useEffect(() => {
+    if (active !== 'deptBinding') return;
+    void refetchBindings().catch((err) => {
+      setError(err instanceof Error ? err.message : '科室知识库绑定列表加载失败');
+    });
+  }, [active, refetchBindings]);
 
   function openQaTextDialog(mode: Exclude<QaDialogMode, null>, value: string) {
     setQaDialogMode(mode);
@@ -977,6 +1037,14 @@ export default function AdminPage() {
               onEdit={() => openUnifiedAuthDialog(unifiedAuthConfig)}
             />
           )}
+          {active === 'deptBinding' && (
+            <DeptBindingTable
+              bindings={groupBindingsByDepartment(deptBindings)}
+              saving={saving}
+              onAdd={openBindingDialog}
+              onUnbind={(binding) => setBindingUnbindTarget(binding)}
+            />
+          )}
           {config && active === 'recommend' && (
             <RecommendConfigTable
               recommendation={config.recommendation}
@@ -1223,6 +1291,31 @@ export default function AdminPage() {
                 setUnifiedAuthFormError(message);
               })
               .finally(() => setSaving(false));
+          }}
+        />
+      ) : null}
+      {bindingDialogOpen ? (
+        <DeptBindingDialog
+          open
+          spaces={bindableSpaces}
+          departments={bindingDepartments}
+          draft={bindingDraft}
+          saving={saving}
+          error={error}
+          onClose={() => setBindingDialogOpen(false)}
+          onChange={(patch) => setBindingDraft((current) => ({ ...current, ...patch }))}
+          onSubmit={handleBindSpace}
+        />
+      ) : null}
+      {bindingUnbindTarget ? (
+        <DeptUnbindConfirmDialog
+          open
+          binding={bindingUnbindTarget}
+          saving={saving}
+          onClose={() => setBindingUnbindTarget(null)}
+          onConfirm={() => {
+            const target = bindingUnbindTarget;
+            handleUnbindSpace(target.space_id, () => setBindingUnbindTarget(null));
           }}
         />
       ) : null}
@@ -2152,6 +2245,166 @@ function DomainDeleteDialog({
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
           <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeptBindingTable({
+  bindings,
+  saving,
+  onAdd,
+  onUnbind,
+}: {
+  bindings: DeptBinding[];
+  saving: boolean;
+  onAdd: () => void;
+  onUnbind: (binding: DeptBinding) => void;
+}) {
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>科室知识库绑定</h2>
+        <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 新增绑定</button>
+      </div>
+      <p className={s.pageNote}>
+        将团队知识库绑定给科室后，该库归属对应科室：删除时需先在此解绑，解绑后方可正常删除。未绑定的自由团队库删除时，若创建者主部门已有绑定库，会自动将文件迁移过去后再清空自身。
+      </p>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>知识库名称</th>
+            <th>所属部门</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bindings.map((binding) => (
+            <tr key={binding.space_id}>
+              <td>{binding.space_name}</td>
+              <td>{binding.department_name}</td>
+              <td>{binding.create_time ? formatDisplayDateTime(binding.create_time) : '-'}</td>
+              <td>
+                <div className={s.actionGroup}>
+                  <button className={s.inlineDangerBtn} onClick={() => onUnbind(binding)} disabled={saving}>解绑</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          {!bindings.length ? (
+            <tr><td colSpan={4}><div className={s.emptyState}>暂无绑定，点击右上角「新增绑定」创建一条。</div></td></tr>
+          ) : null}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function DeptBindingDialog({
+  open,
+  spaces,
+  departments,
+  draft,
+  saving,
+  error,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  spaces: BindableSpace[];
+  departments: DepartmentOption[];
+  draft: BindingDraft;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onChange: (patch: Partial<BindingDraft>) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>新增科室知识库绑定</h3>
+            <p className={s.modalNote}>选择一个尚未绑定的团队知识库，绑定给指定科室。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.formGrid}>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>团队知识库</span>
+            <select
+              className={s.formInput}
+              value={draft.spaceId ?? ''}
+              onChange={(event) => onChange({ spaceId: event.target.value ? Number(event.target.value) : null })}
+            >
+              <option value="">请选择知识库</option>
+              {spaces.map((space) => (
+                <option key={space.space_id} value={space.space_id}>{space.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>科室</span>
+            <select
+              className={s.formInput}
+              value={draft.departmentId ?? ''}
+              onChange={(event) => onChange({ departmentId: event.target.value ? Number(event.target.value) : null })}
+            >
+              <option value="">请选择科室</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>{department.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeptUnbindConfirmDialog({
+  open,
+  binding,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  binding: DeptBinding;
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>解绑知识库</h3>
+            <p className={s.modalNote}>解绑后该知识库将不再归属科室，此后删除不再受科室库限制；解绑不影响库内已有文件。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+        </div>
+        <div className={s.confirmBody}>
+          <div className={s.confirmLine}><strong>知识库：</strong>{binding.space_name}</div>
+          <div className={s.confirmLine}><strong>所属部门：</strong>{binding.department_name}</div>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+          <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认解绑</button>
         </div>
       </div>
     </div>
