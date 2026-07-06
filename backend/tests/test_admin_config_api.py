@@ -1820,3 +1820,79 @@ def test_get_dept_departments_proxies_bisheng():
 
     assert response.status_code == 200
     assert response.json()["data"][0]["id"] == 3
+
+
+def test_get_dept_bindings_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/knowledge/space/department-binding/bindings":
+                raise RuntimeError("dept binding endpoint unreachable")
+            return await super().get_json(path, params=params)
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/bindings")
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
+
+
+def test_get_bindable_spaces_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/knowledge/space/department-binding/bindable-spaces":
+                raise RuntimeError("dept binding endpoint unreachable")
+            return await super().get_json(path, params=params)
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/bindable-spaces")
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
+
+
+def test_get_dept_departments_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/knowledge/space/department-binding/departments":
+                raise RuntimeError("dept binding endpoint unreachable")
+            return await super().get_json(path, params=params)
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/departments")
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
+
+
+def test_post_dept_binding_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None):
+            if path == "/api/v1/knowledge/space/department-binding":
+                raise RuntimeError("dept binding endpoint unreachable")
+            return await super().post_json(path, json=json)
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.post(
+            "/api/v1/admin/config/dept-knowledge-binding",
+            json={"space_id": 10, "department_id": 3},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
+
+
+def test_delete_dept_binding_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def delete_json(self, path: str, json=None):
+            raise RuntimeError("dept binding endpoint unreachable")
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.delete("/api/v1/admin/config/dept-knowledge-binding/10")
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
