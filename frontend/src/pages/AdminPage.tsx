@@ -1312,6 +1312,7 @@ export default function AdminPage() {
           open
           binding={bindingUnbindTarget}
           saving={saving}
+          error={error}
           onClose={() => setBindingUnbindTarget(null)}
           onConfirm={() => {
             const target = bindingUnbindTarget;
@@ -2377,12 +2378,14 @@ function DeptUnbindConfirmDialog({
   open,
   binding,
   saving,
+  error,
   onClose,
   onConfirm,
 }: {
   open: boolean;
   binding: DeptBinding;
   saving: boolean;
+  error: string;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -2402,6 +2405,7 @@ function DeptUnbindConfirmDialog({
           <div className={s.confirmLine}><strong>知识库：</strong>{binding.space_name}</div>
           <div className={s.confirmLine}><strong>所属部门：</strong>{binding.department_name}</div>
         </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
           <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认解绑</button>
