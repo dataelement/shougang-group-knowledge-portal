@@ -6,6 +6,7 @@ import FileListItem from '../components/FileListItem';
 // import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
+import DocumentTypeFilterDropdown from '../components/DocumentTypeFilterDropdown';
 import {
   fetchAggregatedTags,
   fetchSpaceTags,
@@ -20,7 +21,7 @@ import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import { resolveListContext } from '../utils/listPageContext';
-import { getRuntimeDocumentTypes, normalizeDocumentTypeCode } from '../utils/documentTypes';
+import { getRuntimeDocumentTypeGroups, normalizeDocumentTypeCode } from '../utils/documentTypes';
 import {
   buildDownloadFileName,
   openFileDownloadUrl,
@@ -38,13 +39,14 @@ export default function ListPage() {
   const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const { params, resultsTopRef, setFilter } = useListControls();
+  const { params, resultsTopRef, setFilter, setFilters } = useListControls();
   const { config, error: configError } = usePortalConfig();
   const tagParam = params.get('tag') || '';
   const titleParam = params.get('title') || '';
   const recommendationParam = params.get('recommendation') || '';
   const fileExt = params.get('file_ext') || '';
   const documentType = normalizeDocumentTypeCode(params.get('document_type'));
+  const fileSubcategoryCode = normalizeDocumentTypeCode(params.get('file_subcategory_code'));
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
@@ -70,7 +72,10 @@ export default function ListPage() {
   const spaceIds = listContext?.spaceIds ?? EMPTY_SPACE_IDS;
   const businessDomainCode = listContext?.businessDomainCode ?? '';
   const isDomainList = listContext?.mode === 'domain';
-  const documentTypes = useMemo(() => getRuntimeDocumentTypes(config?.document_types), [config?.document_types]);
+  const documentTypeGroups = useMemo(
+    () => getRuntimeDocumentTypeGroups(config?.document_types),
+    [config?.document_types],
+  );
 
   const handleDownload = useCallback(async (file: FileItem) => {
     setError('');
@@ -106,6 +111,7 @@ export default function ListPage() {
     const baseParams = {
       fileExt: fileExt || undefined,
       documentType: documentType || undefined,
+      fileSubcategoryCode: fileSubcategoryCode || undefined,
       tag: isLatestSelectedRecommendation ? undefined : tagParam || undefined,
       recommendation: isLatestSelectedRecommendation ? LATEST_SELECTED_RECOMMENDATION : undefined,
       sort: isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc',
@@ -133,6 +139,7 @@ export default function ListPage() {
     businessDomainCode,
     documentType,
     fileExt,
+    fileSubcategoryCode,
     isDomainList,
     pageLimit,
     recommendationParam,
@@ -250,10 +257,17 @@ export default function ListPage() {
             <option value="">文件格式</option>
             {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select className={s.filterSelect} value={documentType} onChange={(e) => setFilter('document_type', e.target.value)}>
-            <option value="">文件分类</option>
-            {documentTypes.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
-          </select>
+          <DocumentTypeFilterDropdown
+            groups={documentTypeGroups}
+            documentType={documentType}
+            fileSubcategoryCode={fileSubcategoryCode}
+            onChange={(next) => {
+              setFilters({
+                document_type: next.documentType,
+                file_subcategory_code: next.fileSubcategoryCode,
+              });
+            }}
+          />
           <select className={s.filterSelect} value={tagParam} onChange={(e) => setFilter('tag', e.target.value)}>
             <option value="">标签</option>
             {availableTags.map((t) => <option key={t} value={t}>{t}</option>)}

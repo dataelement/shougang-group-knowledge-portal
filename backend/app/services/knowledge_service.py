@@ -631,6 +631,7 @@ class KnowledgeService:
         limit: int,
         extra_space_ids: Optional[list[int]] = None,
         document_type: Optional[str] = None,
+        file_subcategory_code: Optional[str] = None,
         business_domain_code: Optional[str] = None,
         recommendation: Optional[str] = None,
         fallback_to_public_spaces: bool = False,
@@ -642,6 +643,7 @@ class KnowledgeService:
             or space_level
             or file_ext
             or document_type
+            or file_subcategory_code
             or normalized_business_domain_code
             or recommendation
         )
@@ -662,6 +664,7 @@ class KnowledgeService:
             tag=tag,
             file_ext=file_ext,
             document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
             business_domain_code=normalized_business_domain_code,
             recommendation=recommendation,
         ):
@@ -681,6 +684,7 @@ class KnowledgeService:
             space_level=space_level,
             file_ext=file_ext,
             document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
             business_domain_code=normalized_business_domain_code,
             recommendation=recommendation,
             sort=sort,
@@ -695,6 +699,7 @@ class KnowledgeService:
         tag: Optional[str],
         file_ext: Optional[str],
         document_type: Optional[str],
+        file_subcategory_code: Optional[str],
         business_domain_code: Optional[str],
         recommendation: Optional[str],
     ) -> bool:
@@ -703,6 +708,7 @@ class KnowledgeService:
             and not q
             and not file_ext
             and not document_type
+            and not file_subcategory_code
             and not business_domain_code
             and not recommendation
         )
@@ -850,6 +856,7 @@ class KnowledgeService:
         space_level: Optional[str],
         file_ext: Optional[str],
         document_type: Optional[str],
+        file_subcategory_code: Optional[str],
         business_domain_code: Optional[str],
         recommendation: Optional[str],
         sort: str,
@@ -870,7 +877,10 @@ class KnowledgeService:
             request_body["recommendation"] = recommendation
         normalized_document_type = self._normalize_document_type_code(document_type)
         if normalized_document_type:
-            request_body["file_subcategory_code"] = normalized_document_type
+            request_body["document_type"] = normalized_document_type
+        normalized_file_subcategory_code = self._normalize_document_type_code(file_subcategory_code)
+        if normalized_file_subcategory_code:
+            request_body["file_subcategory_code"] = normalized_file_subcategory_code
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         if normalized_business_domain_code:
             request_body["business_domain_code"] = normalized_business_domain_code
@@ -897,6 +907,7 @@ class KnowledgeService:
             KnowledgeFileItem(
                 id=int(item.get("id") or 0),
                 space_id=int(item.get("space_id") or item.get("knowledge_id") or 0),
+                space_level=str(item.get("space_level") or item.get("spaceLevel") or ""),
                 title=str(item.get("title") or item.get("file_name") or ""),
                 summary=str(item.get("summary") or item.get("abstract") or ""),
                 source=str(item.get("source") or ""),
@@ -1477,6 +1488,7 @@ class KnowledgeService:
                 KnowledgeFileItem(
                     id=int(item.get("id", 0)),
                     space_id=space_id,
+                    space_level=str(item.get("space_level") or item.get("spaceLevel") or ""),
                     title=self._clean_title(file_name),
                     summary=item.get("abstract") or "",
                     source=space_name_map.get(space_id, str(space_id)),

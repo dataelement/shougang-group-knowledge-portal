@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  getDocumentTypeFilterLabel,
   getDocumentTypeCodeFromFileEncoding,
+  getRuntimeDocumentTypeGroups,
   getRuntimeDocumentTypes,
   matchesDocumentType,
   normalizeSearchSort,
@@ -28,6 +30,28 @@ test('runtime document types flatten child categories and keep legacy flat items
       { code: 'STD', label: '标准规范', parentCode: 'STD', parentLabel: '标准规范' },
     ],
   );
+});
+
+test('runtime document type groups keep parent and child categories separately', () => {
+  const groups = getRuntimeDocumentTypeGroups([
+    { code: ' pro ', label: '流程与程序', children: [{ code: 'pro-a', label: '流程文件' }] },
+    { code: 'RPT', label: '报告' },
+  ]);
+
+  assert.deepEqual(groups, [
+    {
+      code: 'PRO',
+      label: '流程与程序',
+      children: [{ code: 'PRO-A', label: '流程文件', parentCode: 'PRO', parentLabel: '流程与程序' }],
+    },
+    {
+      code: 'RPT',
+      label: '报告',
+      children: [{ code: 'RPT', label: '报告', parentCode: 'RPT', parentLabel: '报告' }],
+    },
+  ]);
+  assert.equal(getDocumentTypeFilterLabel(groups, 'PRO', ''), '流程与程序');
+  assert.equal(getDocumentTypeFilterLabel(groups, 'PRO', 'PRO-A'), '流程与程序 / 流程文件');
 });
 
 test('document type matching requires an exact configured code match', () => {

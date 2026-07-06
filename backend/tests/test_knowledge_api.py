@@ -2786,7 +2786,7 @@ def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain
     assert fake_bisheng.post_calls == []
 
 
-def test_search_files_passes_file_subcategory_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):
+def test_search_files_passes_document_type_subcategory_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):
     class DocumentTypeBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
@@ -2800,7 +2800,8 @@ def test_search_files_passes_file_subcategory_and_business_domain_code_to_shouga
                     "sort": "updated_at_desc",
                     "cursor": None,
                     "limit": 10,
-                    "file_subcategory_code": "RPT",
+                    "document_type": "PRO",
+                    "file_subcategory_code": "PRO-A",
                     "business_domain_code": "PM",
                     "rerank_model_id": "",
                 }
@@ -2833,7 +2834,7 @@ def test_search_files_passes_file_subcategory_and_business_domain_code_to_shouga
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         response = client.get(
-            "/api/v1/knowledge/files?space_ids=12&document_type=rpt&business_domain_code=pm&sort=updated_at_desc&limit=10"
+            "/api/v1/knowledge/files?space_ids=12&document_type=pro&file_subcategory_code=pro-a&business_domain_code=pm&sort=updated_at_desc&limit=10"
         )
 
     assert response.status_code == 200
@@ -3028,7 +3029,7 @@ def test_search_files_file_subcategory_request_uses_cursor_protocol_without_lega
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
-                assert json["file_subcategory_code"] == "RPT"
+                assert json["document_type"] == "RPT"
                 assert json["limit"] == 1
                 assert "page" not in json
                 assert "page_size" not in json

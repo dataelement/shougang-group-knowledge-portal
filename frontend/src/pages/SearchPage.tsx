@@ -5,6 +5,7 @@ import FileListItem from '../components/FileListItem';
 // import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
+import DocumentTypeFilterDropdown from '../components/DocumentTypeFilterDropdown';
 import {
   fetchKnowledgeSpaces,
   recordFileDownloadEvent,
@@ -22,10 +23,12 @@ import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import {
-  getRuntimeDocumentTypes,
-  matchesDocumentType,
+  findRuntimeDocumentTypeChild,
+  getDocumentTypeCodeFromFileEncoding,
+  getRuntimeDocumentTypeGroups,
   normalizeDocumentTypeCode,
   normalizeSearchSort,
+  type RuntimeDocumentTypeGroupOption,
   SEARCH_SORT_OPTIONS,
 } from '../utils/documentTypes';
 import {
@@ -55,6 +58,8 @@ const SPACE_LEVEL_OPTIONS = [
   { value: 'personal', label: '个人知识库' },
 ];
 
+const SEARCH_FULL_RESULT_PAGE_SIZE = 100;
+
 function normalizeFileExt(value: string): string {
   return value.trim().toLowerCase().replace(/^\./, '');
 }
@@ -64,8 +69,66 @@ function addStringOption(target: Set<string>, value: string) {
   if (normalized) target.add(normalized);
 }
 
+function getFileSpaceLevel(file: FileItem, spaceById: Map<number, SpaceOption>): string {
+  return (file.spaceLevel || spaceById.get(file.spaceId)?.spaceLevel || '').trim();
+}
+
+function getFileDocumentTypeCode(file: FileItem, groups: RuntimeDocumentTypeGroupOption[]): string {
+  const encodingDocumentType = getDocumentTypeCodeFromFileEncoding(file.fileEncoding);
+  if (encodingDocumentType) return encodingDocumentType;
+  return findRuntimeDocumentTypeChild(groups, file.fileSubcategoryCode || '')?.parentCode ?? '';
+}
+
+function matchesLocalSearchFilters(
+  file: FileItem,
+  filters: {
+    spaceLevel: string;
+    spaceId: string;
+    fileExt: string;
+    documentType: string;
+    fileSubcategoryCode: string;
+    tag: string;
+  },
+  context: {
+    spaceById: Map<number, SpaceOption>;
+    documentTypeGroups: RuntimeDocumentTypeGroupOption[];
+  },
+): boolean {
+  if (filters.spaceLevel && getFileSpaceLevel(file, context.spaceById) !== filters.spaceLevel) return false;
+  if (filters.spaceId && file.spaceId !== Number(filters.spaceId)) return false;
+  if (filters.fileExt && normalizeFileExt(file.ext) !== normalizeFileExt(filters.fileExt)) return false;
+  if (filters.tag && !file.tags.some((item) => item === filters.tag)) return false;
+  if (filters.documentType) {
+    const fileDocumentType = getFileDocumentTypeCode(file, context.documentTypeGroups);
+    if (fileDocumentType !== filters.documentType) return false;
+  }
+  if (filters.fileSubcategoryCode) {
+    if (normalizeDocumentTypeCode(file.fileSubcategoryCode) !== filters.fileSubcategoryCode) return false;
+  }
+  return true;
+}
+
+async function fetchCompleteSearchResults(params: {
+  q?: string;
+  sort?: string;
+}): Promise<FileItem[]> {
+  const allFiles: FileItem[] = [];
+  let cursor: string | null = null;
+  do {
+    const result = await searchFiles({
+      q: params.q,
+      sort: params.sort,
+      cursor,
+      limit: SEARCH_FULL_RESULT_PAGE_SIZE,
+    });
+    allFiles.push(...result.data);
+    cursor = result.hasMore ? result.nextCursor : null;
+  } while (cursor);
+  return allFiles;
+}
+
 export default function SearchPage() {
-  const { params, resultsTopRef, setFilter, setParams } = useListControls();
+  const { params, resultsTopRef, setFilter, setFilters, setParams } = useListControls();
   const q = params.get('q') || '';
   const displayKeyword = getSearchDisplayKeyword(params);
   const [draft, setDraft] = useState(displayKeyword);
@@ -73,6 +136,7 @@ export default function SearchPage() {
   const spaceId = params.get('space_id') || '';
   const fileExt = params.get('file_ext') || '';
   const documentType = normalizeDocumentTypeCode(params.get('document_type'));
+  const fileSubcategoryCode = normalizeDocumentTypeCode(params.get('file_subcategory_code'));
   const tag = params.get('tag') || '';
   const sort = normalizeSearchSort(params.get('sort'));
   const hasSearch = hasSearchContext(params);
@@ -124,9 +188,6 @@ export default function SearchPage() {
     }
   }, [toggleFavorite]);
 
-  // 选中具体空间时按该空间检索；否则为整个范围
-  const sids = useMemo(() => (spaceId ? [Number(spaceId)] : undefined), [spaceId]);
-
   useEffect(() => {
     setDraft(displayKeyword);
   }, [displayKeyword]);
@@ -163,44 +224,78 @@ export default function SearchPage() {
   const spaceById = useMemo(() => new Map(searchSpaces.map((sp) => [sp.id, sp])), [searchSpaces]);
   const selectedSpaceId = Number(spaceId);
   const selectedSpace = Number.isFinite(selectedSpaceId) ? spaceById.get(selectedSpaceId) : undefined;
-  const documentTypes = useMemo(() => getRuntimeDocumentTypes(config?.document_types), [config?.document_types]);
+  const documentTypeGroups = useMemo(
+    () => getRuntimeDocumentTypeGroups(config?.document_types),
+    [config?.document_types],
+  );
+
+  const filteredFiles = useMemo(() => {
+    if (!resultsReady) return [];
+    return rawFiles.filter((file) => matchesLocalSearchFilters(
+      file,
+      {
+        spaceLevel,
+        spaceId,
+        fileExt,
+        documentType,
+        fileSubcategoryCode,
+        tag,
+      },
+      {
+        spaceById,
+        documentTypeGroups,
+      },
+    ));
+  }, [
+    documentType,
+    documentTypeGroups,
+    fileExt,
+    fileSubcategoryCode,
+    rawFiles,
+    resultsReady,
+    spaceById,
+    spaceId,
+    spaceLevel,
+    tag,
+  ]);
 
   const resultSpaceLevelOptions = useMemo(() => {
     const levelSet = new Set<string>();
-    for (const file of files) {
-      const level = spaceById.get(file.spaceId)?.spaceLevel ?? '';
-      addStringOption(levelSet, level);
+    for (const file of rawFiles) {
+      addStringOption(levelSet, getFileSpaceLevel(file, spaceById));
     }
     addStringOption(levelSet, spaceLevel);
     return SPACE_LEVEL_OPTIONS.filter((item) => levelSet.has(item.value));
-  }, [files, spaceById, spaceLevel]);
+  }, [rawFiles, spaceById, spaceLevel]);
 
   const resultSpaceOptions = useMemo<SpaceOption[]>(() => {
     const optionIds: number[] = [];
     const seen = new Set<number>();
     const resultSpaceNames = new Map<number, string>();
+    const resultSpaceLevels = new Map<number, string>();
     const addSpaceId = (id: number) => {
       if (!Number.isFinite(id) || id <= 0 || seen.has(id)) return;
       seen.add(id);
       optionIds.push(id);
     };
-    for (const file of files) {
+    for (const file of rawFiles) {
       addSpaceId(file.spaceId);
       if (file.source) resultSpaceNames.set(file.spaceId, file.source);
+      if (file.spaceLevel) resultSpaceLevels.set(file.spaceId, file.spaceLevel);
     }
     addSpaceId(selectedSpaceId);
     return optionIds.map((id) => (
       spaceById.get(id) ?? {
         id,
         name: resultSpaceNames.get(id) ?? String(id),
-        spaceLevel: '',
+        spaceLevel: resultSpaceLevels.get(id) ?? '',
       }
     ));
-  }, [files, selectedSpaceId, spaceById]);
+  }, [rawFiles, selectedSpaceId, spaceById]);
 
   const resultFileExtOptions = useMemo(() => {
     const extSet = new Set<string>();
-    for (const file of files) {
+    for (const file of rawFiles) {
       addStringOption(extSet, normalizeFileExt(file.ext));
     }
     addStringOption(extSet, normalizeFileExt(fileExt));
@@ -209,16 +304,16 @@ export default function SearchPage() {
       .filter((item) => !FILE_EXT_OPTIONS.includes(item as (typeof FILE_EXT_OPTIONS)[number]))
       .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
     return [...knownOptions, ...customOptions];
-  }, [fileExt, files]);
+  }, [fileExt, rawFiles]);
 
   const resultTagOptions = useMemo(() => {
     const tagSet = new Set<string>();
-    for (const file of files) {
+    for (const file of rawFiles) {
       for (const item of file.tags) addStringOption(tagSet, item);
     }
     addStringOption(tagSet, tag);
     return [...tagSet].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
-  }, [files, tag]);
+  }, [rawFiles, tag]);
 
   const resultHeading = q
     ? `搜索 “${q}”`
@@ -253,18 +348,13 @@ export default function SearchPage() {
     requestSeq.current += 1;
     void (async () => {
       try {
-        const result = await searchFiles({
+        const data = await fetchCompleteSearchResults({
           q: q || undefined,
-          tag: tag || undefined,
-          spaceIds: sids,
-          spaceLevel: spaceLevel || undefined,
-          fileExt: fileExt || undefined,
           sort,
-          limit: displayConfig.search.pageSize,
         });
         if (!active) return;
-        setRawFiles(result.data);
-        setRawTotal(result.data.length);
+        setRawFiles(data);
+        setRawTotal(data.length);
         setResultsReady(true);
       } catch (err) {
         if (!active) return;
@@ -277,16 +367,17 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [fileExt, hasSearch, q, sids, spaceLevel, sort, tag]);
+  }, [hasSearch, q, sort]);
+
+  useEffect(() => {
+    if (!hasSearch || loading || !resultsReady) return;
+    setFiles(filteredFiles);
+    setTotal(filteredFiles.length);
+  }, [filteredFiles, hasSearch, loading, resultsReady]);
 
   useEffect(() => {
     if (!hasSearch || loading || !resultsReady) return;
     let active = true;
-    const filtered = documentType
-      ? rawFiles.filter((file) => matchesDocumentType(file.fileSubcategoryCode, documentType))
-      : rawFiles;
-    setFiles(filtered);
-    setTotal(documentType ? filtered.length : rawTotal);
     setAiText('');
     setAiCitations([]);
     setAiThinking(true);
@@ -294,9 +385,8 @@ export default function SearchPage() {
     void streamChatCompletion({
       scene: 'search',
       text: q,
-      knowledgeSpaceIds: sids ?? [],
-      spaceLevel: spaceLevel || undefined,
-      searchResults: filtered.slice(0, 10),
+      knowledgeSpaceIds: [],
+      searchResults: rawFiles.slice(0, 10),
       onUpdate(text) {
         if (!active || requestSeq.current !== currentRequest) return;
         setAiText(text);
@@ -314,7 +404,7 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [documentType, hasSearch, loading, q, rawFiles, rawTotal, resultsReady, sids, spaceLevel]);
+  }, [hasSearch, loading, q, rawFiles, rawTotal, resultsReady]);
 
   useEffect(() => {
     if (canFavorite && files.length) void loadStatuses(files);
@@ -393,10 +483,18 @@ export default function SearchPage() {
               <option value="">文件格式</option>
               {resultFileExtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
-            <select className={s.filterSelect} value={documentType} onChange={(e) => setFilter('document_type', e.target.value, false)}>
-              <option value="">文件分类</option>
-              {documentTypes.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
-            </select>
+            <DocumentTypeFilterDropdown
+              groups={documentTypeGroups}
+              documentType={documentType}
+              fileSubcategoryCode={fileSubcategoryCode}
+              compact
+              onChange={(next) => {
+                setFilters({
+                  document_type: next.documentType,
+                  file_subcategory_code: next.fileSubcategoryCode,
+                }, false);
+              }}
+            />
             <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
               <option value="">标签</option>
               {resultTagOptions.map((item) => <option key={item} value={item}>{item}</option>)}

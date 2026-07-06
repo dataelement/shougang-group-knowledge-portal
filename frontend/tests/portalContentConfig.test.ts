@@ -138,12 +138,12 @@ test('home content maps section file DTOs', async () => {
   }
 });
 
-test('file search sends file subcategory query parameter', async () => {
+test('file search sends document type query parameter', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     assert.equal(
       String(input),
-      '/api/v1/knowledge/files?space_level=department&file_ext=pdf&file_subcategory_code=RPT&sort=updated_at_desc&limit=10&space_ids=12',
+      '/api/v1/knowledge/files?space_level=department&file_ext=pdf&document_type=RPT&sort=updated_at_desc&limit=10&space_ids=12',
     );
     return new Response(JSON.stringify({
       status_code: 200,
@@ -158,6 +158,36 @@ test('file search sends file subcategory query parameter', async () => {
       spaceLevel: 'department',
       fileExt: 'pdf',
       documentType: 'RPT',
+      sort: 'updated_at_desc',
+      limit: 10,
+    });
+
+    assert.equal(result.hasMore, false);
+    assert.equal(result.nextCursor, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('file search sends document type and subcategory query parameters together', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(
+      String(input),
+      '/api/v1/knowledge/files?document_type=PRO&file_subcategory_code=PRO-A&sort=updated_at_desc&limit=10&space_ids=12',
+    );
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { data: [], has_more: false, next_cursor: null },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await searchFiles({
+      spaceIds: [12],
+      documentType: 'PRO',
+      fileSubcategoryCode: 'PRO-A',
       sort: 'updated_at_desc',
       limit: 10,
     });

@@ -11,6 +11,7 @@ class FileTag(BaseModel):
 class KnowledgeFileItem(BaseModel):
     id: int
     space_id: int
+    space_level: str = ""
     title: str
     summary: str
     source: str

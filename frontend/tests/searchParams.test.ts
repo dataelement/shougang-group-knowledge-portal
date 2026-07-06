@@ -31,6 +31,11 @@ test('search display keyword falls back to prefill while real query stays empty'
   assert.equal(hasSearchContext(params), true);
 });
 
+test('document type filters count as search context', () => {
+  assert.equal(hasSearchContext(new URLSearchParams('document_type=PRO')), true);
+  assert.equal(hasSearchContext(new URLSearchParams('file_subcategory_code=PRO-A')), true);
+});
+
 test('submitting a search promotes draft text to q and clears prefill', () => {
   const params = new URLSearchParams('domain=%E7%94%9F%E4%BA%A7&prefill=%E7%94%9F%E4%BA%A7&page=3');
   const next = createSubmittedSearchParams(params, '轧机');

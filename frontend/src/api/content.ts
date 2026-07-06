@@ -9,6 +9,7 @@ export interface FileTag {
 export interface FileItem {
   id: number;
   spaceId: number;
+  spaceLevel?: string;
   title: string;
   summary: string;
   source: string;
@@ -226,6 +227,7 @@ export class ApiRequestError extends Error {
 interface KnowledgeFileItemDto {
   id: number;
   space_id: number;
+  space_level?: string;
   title: string;
   summary: string;
   source: string;
@@ -514,6 +516,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
   return {
     id: dto.id,
     spaceId: dto.space_id,
+    spaceLevel: dto.space_level ?? '',
     title: dto.title,
     summary: dto.summary,
     source: dto.source,
@@ -533,6 +536,7 @@ function mapSearchResultForSummary(item: FileItem) {
   return {
     id: item.id,
     space_id: item.spaceId,
+    space_level: item.spaceLevel,
     title: item.title,
     summary: item.summary,
     source: item.source,
@@ -711,6 +715,7 @@ export async function searchFiles(params: {
   spaceLevel?: string;
   fileExt?: string;
   documentType?: string;
+  fileSubcategoryCode?: string;
   sort?: string;
   cursor?: string | null;
   limit?: number;
@@ -722,7 +727,8 @@ export async function searchFiles(params: {
   if (params.tag) query.set('tag', params.tag);
   if (params.spaceLevel) query.set('space_level', params.spaceLevel);
   if (params.fileExt) query.set('file_ext', params.fileExt);
-  if (params.documentType) query.set('file_subcategory_code', params.documentType);
+  if (params.documentType) query.set('document_type', params.documentType);
+  if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
   if (params.recommendation) query.set('recommendation', params.recommendation);
   if (params.sort) query.set('sort', params.sort);
