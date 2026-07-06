@@ -201,6 +201,7 @@ async def search_files(
     request: Request,
     q: Optional[str] = None,
     tag: Optional[str] = None,
+    base_tag: Optional[str] = None,
     space_ids: Annotated[Optional[list[int]], Query()] = None,
     space_level: Optional[str] = None,
     file_ext: Optional[str] = None,
@@ -228,6 +229,7 @@ async def search_files(
                 await service.search_files(
                     q=q,
                     tag=tag,
+                    base_tag=base_tag,
                     requested_space_ids=space_ids,
                     space_level=space_level,
                     file_ext=file_ext,
@@ -259,6 +261,7 @@ async def search_files(
             await service.search_files(
                 q=q,
                 tag=tag,
+                base_tag=base_tag,
                 requested_space_ids=space_ids,
                 space_level=space_level,
                 file_ext=file_ext,

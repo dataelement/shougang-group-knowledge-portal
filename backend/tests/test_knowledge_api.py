@@ -2693,6 +2693,37 @@ def test_search_files_uses_full_space_search_for_plain_tag_query(tmp_path: Path)
     assert fake_bisheng.post_calls == []
 
 
+def test_search_files_applies_base_tag_and_filter_tag_as_and_query(tmp_path: Path):
+    fake_bisheng = FakeBishengClient()
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        try:
+            response = client.get(
+                "/api/v1/knowledge/files"
+                "?base_tag=%E7%83%AD%E8%BD%A7"
+                "&tag=%E6%8C%AF%E5%8A%A8%E7%BA%B9"
+                "&space_ids=12&space_ids=18"
+                "&sort=updated_at_desc"
+                "&limit=10"
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["has_more"] is False
+    assert body["next_cursor"] is None
+    assert [item["id"] for item in body["data"]] == [1580]
+    assert body["data"][0]["tags"][0]["tag_name"] == "热轧"
+    assert fake_bisheng.post_calls == []
+
+
 def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path: Path):
     class RecommendationBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):

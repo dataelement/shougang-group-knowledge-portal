@@ -711,6 +711,7 @@ export async function fetchSpaceTags(spaceId: number): Promise<string[]> {
 export async function searchFiles(params: {
   q?: string;
   tag?: string;
+  baseTag?: string;
   spaceIds?: number[];
   spaceLevel?: string;
   fileExt?: string;
@@ -725,6 +726,7 @@ export async function searchFiles(params: {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
   if (params.tag) query.set('tag', params.tag);
+  if (params.baseTag) query.set('base_tag', params.baseTag);
   if (params.spaceLevel) query.set('space_level', params.spaceLevel);
   if (params.fileExt) query.set('file_ext', params.fileExt);
   if (params.documentType) query.set('document_type', params.documentType);

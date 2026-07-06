@@ -199,6 +199,36 @@ test('file search sends document type and subcategory query parameters together'
   }
 });
 
+test('file search sends base tag and user tag separately', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(
+      String(input),
+      '/api/v1/knowledge/files?tag=%E5%AE%89%E5%85%A8&base_tag=%E5%85%B8%E5%9E%8B%E6%A1%88%E4%BE%8B&space_level=department&sort=updated_at_desc&limit=10',
+    );
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { data: [], has_more: false, next_cursor: null },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await searchFiles({
+      baseTag: '典型案例',
+      tag: '安全',
+      spaceLevel: 'department',
+      sort: 'updated_at_desc',
+      limit: 10,
+    });
+
+    assert.equal(result.hasMore, false);
+    assert.equal(result.nextCursor, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('domain file search sends business domain code without public fallback', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
