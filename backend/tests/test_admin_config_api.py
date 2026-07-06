@@ -21,6 +21,12 @@ class FakeBishengClient:
     def __init__(self):
         self.post_calls: list[tuple[str, dict | None]] = []
         self.put_calls: list[tuple[str, dict | None]] = []
+        self.delete_calls: list[int] = []
+        self.bindings: list[dict] = []
+        self.bind_status: dict = {"status_code": 200, "data": {}}
+        self.bindable_params: object = "UNSET"
+        self.bindable_spaces: list[dict] = [{"id": 30, "name": "可绑定知识库示例"}]
+        self.departments: list[dict] = [{"id": 3, "name": "研发部"}]
 
     async def get_json(self, path: str, params=None):
         if path == "/api/v1/workstation/config":
@@ -189,6 +195,13 @@ class FakeBishengClient:
                     ]
                 }
             }
+        if path == "/api/v1/knowledge/space/department-binding/bindings":
+            return {"status_code": 200, "data": self.bindings}
+        if path == "/api/v1/knowledge/space/department-binding/bindable-spaces":
+            self.bindable_params = params
+            return {"status_code": 200, "data": self.bindable_spaces}
+        if path == "/api/v1/knowledge/space/department-binding/departments":
+            return {"status_code": 200, "data": self.departments}
         raise AssertionError(f"Unexpected path: {path}")
 
     async def post_json(self, path: str, json=None):
@@ -212,6 +225,8 @@ class FakeBishengClient:
                     ]
                 }
             }
+        if path == "/api/v1/knowledge/space/department-binding":
+            return self.bind_status
         raise AssertionError(f"Unexpected post path: {path}")
 
     async def put_json(self, path: str, json=None):
@@ -219,6 +234,14 @@ class FakeBishengClient:
         if path == "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes":
             return {"status_code": 200, "status_message": "SUCCESS", "data": {"updated": len((json or {}).get("bindings", []))}}
         raise AssertionError(f"Unexpected put path: {path}")
+
+    async def delete_json(self, path: str, json=None):
+        prefix = "/api/v1/knowledge/space/department-binding/"
+        if path.startswith(prefix):
+            space_id = int(path[len(prefix):])
+            self.delete_calls.append(space_id)
+            return {"status_code": 200, "data": {}}
+        raise AssertionError(f"Unexpected delete path: {path}")
 
     async def aclose(self):
         return None
@@ -1772,3 +1795,183 @@ def test_get_admin_config_backfills_missing_site_from_legacy_json(tmp_path: Path
     assert response.status_code == 200
     assert response.json()["data"]["header_brand_name"] == "首钢股份知库"
     assert response.json()["data"]["favicon_url"] == "/site-favicon-horizontal-v2.png"
+
+
+def test_get_dept_bindings_proxies_bisheng():
+    fake = FakeBishengClient()
+    fake.bindings = [
+        {
+            "space_id": 10,
+            "space_name": "团队库A",
+            "department_id": 3,
+            "department_name": "研发部",
+            "created_by": 1,
+            "create_time": "2026-07-06",
+        }
+    ]
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = fake
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/bindings")
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["space_id"] == 10
+
+
+def test_post_dept_binding_forwards_body():
+    fake = FakeBishengClient()
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = fake
+        response = client.post(
+            "/api/v1/admin/config/dept-knowledge-binding",
+            json={"space_id": 10, "department_id": 3},
+        )
+
+    assert response.status_code == 200
+    assert fake.post_calls[-1][1] == {"space_id": 10, "department_id": 3}
+
+
+def test_delete_dept_binding_proxies():
+    fake = FakeBishengClient()
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = fake
+        response = client.delete("/api/v1/admin/config/dept-knowledge-binding/10")
+
+    assert response.status_code == 200
+    assert 10 in fake.delete_calls
+
+
+def test_post_dept_binding_maps_bisheng_error():
+    fake = FakeBishengClient()
+    fake.bind_status = {"status_code": 500, "status_message": "该部门已绑定科室知识库"}
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = fake
+        response = client.post(
+            "/api/v1/admin/config/dept-knowledge-binding",
+            json={"space_id": 10, "department_id": 3},
+        )
+
+    assert response.status_code == 502
+    assert "已绑定" in response.json()["status_message"]
+
+
+def test_get_bindable_spaces_forwards_keyword():
+    fake = FakeBishengClient()
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = fake
+        keyword_response = client.get(
+            "/api/v1/admin/config/dept-knowledge-binding/bindable-spaces",
+            params={"keyword": "研发"},
+        )
+        assert keyword_response.status_code == 200
+        assert fake.bindable_params == {"keyword": "研发"}
+
+        no_keyword_response = client.get(
+            "/api/v1/admin/config/dept-knowledge-binding/bindable-spaces"
+        )
+        assert no_keyword_response.status_code == 200
+        assert fake.bindable_params is None
+
+
+def test_get_bindable_spaces_proxies_bisheng():
+    fake = FakeBishengClient()
+    fake.bindable_spaces = [{"space_id": 11, "name": "自由库X"}]
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = fake
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/bindable-spaces")
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["space_id"] == 11
+
+
+def test_get_dept_departments_proxies_bisheng():
+    fake = FakeBishengClient()
+    fake.departments = [{"id": 3, "name": "研发部"}]
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = fake
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/departments")
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["id"] == 3
+
+
+def test_get_dept_bindings_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/knowledge/space/department-binding/bindings":
+                raise RuntimeError("dept binding endpoint unreachable")
+            return await super().get_json(path, params=params)
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/bindings")
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
+
+
+def test_get_bindable_spaces_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/knowledge/space/department-binding/bindable-spaces":
+                raise RuntimeError("dept binding endpoint unreachable")
+            return await super().get_json(path, params=params)
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/bindable-spaces")
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
+
+
+def test_get_dept_departments_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/knowledge/space/department-binding/departments":
+                raise RuntimeError("dept binding endpoint unreachable")
+            return await super().get_json(path, params=params)
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.get("/api/v1/admin/config/dept-knowledge-binding/departments")
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
+
+
+def test_post_dept_binding_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None):
+            if path == "/api/v1/knowledge/space/department-binding":
+                raise RuntimeError("dept binding endpoint unreachable")
+            return await super().post_json(path, json=json)
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.post(
+            "/api/v1/admin/config/dept-knowledge-binding",
+            json={"space_id": 10, "department_id": 3},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
+
+
+def test_delete_dept_binding_returns_502_when_bisheng_transport_fails():
+    class FailingBishengClient(FakeBishengClient):
+        async def delete_json(self, path: str, json=None):
+            raise RuntimeError("dept binding endpoint unreachable")
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = FailingBishengClient()
+        response = client.delete("/api/v1/admin/config/dept-knowledge-binding/10")
+
+    assert response.status_code == 502
+    assert response.json()["status_message"] == "服务连接异常，请稍后重试"
