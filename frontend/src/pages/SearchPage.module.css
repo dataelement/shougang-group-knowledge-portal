@@ -251,6 +251,27 @@
   margin-bottom: 0;
 }
 
+.aiText :global(h1),
+.aiText :global(h2),
+.aiText :global(h3),
+.aiText :global(h4),
+.aiText :global(h5),
+.aiText :global(h6) {
+  margin: 0.8em 0 0.4em;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--neutral-900);
+}
+
+.aiText > :global(h1:first-child),
+.aiText > :global(h2:first-child),
+.aiText > :global(h3:first-child),
+.aiText > :global(h4:first-child),
+.aiText > :global(h5:first-child),
+.aiText > :global(h6:first-child) {
+  margin-top: 0;
+}
+
 .aiText :global(ul),
 .aiText :global(ol) {
   padding-left: 1.4em;

@@ -490,14 +490,28 @@
 }
 
 .domainGrid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  display: flex;
   gap: 18px;
   padding: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.domainGrid::-webkit-scrollbar {
+  display: none;
+}
+
+.domainGrid:active {
+  cursor: grabbing;
 }
 
 .domainCard {
   position: relative;
+  flex: 0 0 clamp(128px, 16vw, 172px);
   height: 118px;
   border-radius: 7px;
   overflow: hidden;
@@ -512,6 +526,7 @@
   padding: 18px;
   box-shadow: none;
   transition: border-color 0.15s ease;
+  user-select: none;
 }
 
 .domainCard:hover {
@@ -593,11 +608,11 @@
 }
 
 .domainArrowLeft {
-  left: -30px;
+  left: 6px;
 }
 
 .domainArrowRight {
-  right: -30px;
+  right: 6px;
 }
 
 /* ===== Two-column layout ===== */

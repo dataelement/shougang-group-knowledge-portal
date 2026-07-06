@@ -500,10 +500,12 @@
   transform: translateY(-1px);
 }
 
-/* 点击选中:蓝色边框高亮(用 ring 不占位、不抖动) */
+/* 点击选中:蓝色阴影高亮 */
 .smartAppTemplateCardActive,
 .smartAppTemplateCardActive:hover {
-  box-shadow: 0 0 0 1.5px #3662E3, 0px 0px 6px 0px #D1D6E2;
+  border-radius: 8px;
+  box-shadow: 0px 0px 10px 0px #337EFF;
+  background: #FFFFFF;
 }
 
 .smartAppTemplateIcon {
@@ -1207,7 +1209,7 @@
 }
 
 .smartAppComposerTop {
-  padding: 20px 0 28px;
+  padding: 40px 0;
 }
 
 .smartAppComposerBottom {

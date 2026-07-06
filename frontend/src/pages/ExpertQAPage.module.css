@@ -366,7 +366,7 @@
   align-items: center;
   gap: 4px;
   padding: 1px 8px;
-  border-radius: 9999px;
+  border-radius: 2px;
   background: #fff7ed;
   color: #c2410c;
   border: 1px solid #fed7aa;
@@ -479,6 +479,12 @@
   gap: 4px;
   font-size: 12px;
   color: #6B717A;
+}
+
+.countIcon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
 }
 
 .countNum {
