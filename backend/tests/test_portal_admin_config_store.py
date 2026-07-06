@@ -110,6 +110,30 @@ def test_non_remote_documents_are_process_memory_only():
     assert store.save_count == 0
 
 
+def test_load_remote_aggregate_backfills_legacy_empty_document_type_children():
+    """Regression guard: document types persisted before ``children`` became a
+    required field (empty list) must not crash config loading for every
+    dependent endpoint. New admin writes still reject empty children."""
+    store = RemotePortalAdminConfigStore(runtime_service=FakeRuntimeService())
+    store._request = lambda method, path, json=None: {  # type: ignore[method-assign]
+        "data": {
+            "portal": {
+                **DEFAULT_PORTAL_CONFIG,
+                "document_types": [
+                    {"code": "POL", "label": "政策制度", "children": []},
+                ],
+            },
+            "bisheng": {"base_url": "http://existing.example.com"},
+            "unified_auth": {},
+        }
+    }
+
+    payload = store.get_document("portal_config")
+
+    assert payload is not None
+    assert payload["document_types"][0]["children"] == [{"code": "POL", "label": "政策制度"}]
+
+
 def test_bisheng_runtime_service_can_store_runtime_state_in_memory(tmp_path):
     runtime_service = BishengRuntimeService(
         config_path=tmp_path / "bisheng_runtime.json",

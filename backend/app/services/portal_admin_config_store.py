@@ -14,6 +14,23 @@ REMOTE_CONFIG_PATH = "/api/v1/shougang-portal/config"
 REMOTE_CONFIG_INTERNAL_PATH = "/api/v1/shougang-portal/config/internal"
 
 
+def _repair_legacy_document_types(data: dict[str, Any]) -> None:
+    """Backfill ``children`` for document types persisted before that field
+    became required, so old data can still load. New writes still go through
+    the strict ``DocumentTypeConfig`` validation (see admin config API)."""
+    portal = data.get("portal")
+    document_types = portal.get("document_types") if isinstance(portal, dict) else None
+    if not isinstance(document_types, list):
+        return
+    for item in document_types:
+        if not isinstance(item, dict) or item.get("children"):
+            continue
+        code = str(item.get("code") or "").strip().upper()
+        label = str(item.get("label") or "").strip()
+        if code and label:
+            item["children"] = [{"code": code, "label": label}]
+
+
 class RemotePortalAdminConfigStore:
     skip_startup_seed = True
 
@@ -86,6 +103,7 @@ class RemotePortalAdminConfigStore:
         data = payload.get("data") if isinstance(payload, dict) else None
         if not data:
             return None
+        _repair_legacy_document_types(data)
         return PortalAdminAggregateConfig.model_validate(data)
 
     def _save_remote_aggregate(self, aggregate: PortalAdminAggregateConfig) -> None:
