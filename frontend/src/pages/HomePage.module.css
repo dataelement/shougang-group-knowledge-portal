@@ -652,26 +652,8 @@
 }
 
 .sectionList {
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
-  max-height: 320px;
-  overflow-y: auto;
-  padding-right: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
-}
-
-.sectionList::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sectionList::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-
-.sectionList::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 .panelHeaderLeft {
@@ -850,6 +832,32 @@
   color: var(--neutral-400);
   font-size: 0.86rem;
   text-align: center;
+}
+
+.sectionLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 96px;
+  padding: 26px 0 18px;
+  color: var(--neutral-500);
+  font-size: 0.86rem;
+}
+
+.sectionLoadingIcon {
+  color: var(--primary-600);
+  animation: home-section-spin 0.9s linear infinite;
+}
+
+@keyframes home-section-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ===== QA panel (right column shared shell) ===== */

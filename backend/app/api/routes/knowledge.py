@@ -108,6 +108,34 @@ async def _fetch_shougang_document_types(bisheng_client: BishengClient) -> list[
     return _normalize_document_types(file_encoding.get("document_types") if isinstance(file_encoding, dict) else [])
 
 
+async def _build_public_qa_model_options(
+    portal_config_service: PortalConfigService,
+    bisheng_client: BishengClient,
+):
+    try:
+        response = await bisheng_client.get_json("/api/v1/llm")
+    except Exception:
+        logger.warning("failed to fetch public qa model options", exc_info=True)
+        return portal_config_service.build_qa_model_options([])
+
+    raw_servers = response.get("data") if isinstance(response, dict) else []
+    if not isinstance(raw_servers, list):
+        raw_servers = []
+    return portal_config_service.build_qa_model_options(raw_servers)
+
+
+async def _refresh_public_qa_model_display_names(
+    portal_config_service: PortalConfigService,
+    bisheng_client: BishengClient,
+    config: PortalConfig,
+) -> PortalConfig:
+    qa = config.qa
+    if not ((qa.general_model or qa.selected_model).strip() or qa.reasoning_model.strip()):
+        return config
+    await _build_public_qa_model_options(portal_config_service, bisheng_client)
+    return portal_config_service.get_config()
+
+
 async def _scoped_service_and_extra_ids(
     request: Request,
     auth_service: PortalAuthService,
@@ -173,6 +201,7 @@ async def search_files(
     file_ext: Optional[str] = None,
     document_type: Optional[str] = None,
     business_domain_code: Optional[str] = None,
+    recommendation: Optional[str] = None,
     sort: str = "relevance",
     cursor: Optional[str] = None,
     limit: int = 20,
@@ -198,6 +227,7 @@ async def search_files(
                     file_ext=file_ext,
                     document_type=document_type,
                     business_domain_code=business_domain_code,
+                    recommendation=recommendation,
                     sort=sort,
                     cursor=cursor,
                     limit=limit,
@@ -227,6 +257,7 @@ async def search_files(
                 file_ext=file_ext,
                 document_type=document_type,
                 business_domain_code=business_domain_code,
+                recommendation=recommendation,
                 sort=sort,
                 cursor=cursor,
                 limit=limit,
@@ -273,9 +304,31 @@ async def get_aggregated_tags(
 
 @router.get("/home")
 async def get_home_content(
-    service: KnowledgeService = Depends(get_knowledge_service),
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok(await service.get_home_content())
+    session = auth_service.get_session(request)
+    if session is None:
+        service = KnowledgeService(
+            bisheng_client=await get_bisheng_client(request),
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        return response_ok(await service.get_home_content())
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        visible_spaces = await service.list_visible_spaces()
+        extra_space_ids = [space.id for space in visible_spaces.data]
+        return response_ok(await service.get_home_content(extra_space_ids=extra_space_ids))
+    finally:
+        await bisheng_client.aclose()
 
 
 @router.get("/home/stats")
@@ -296,6 +349,7 @@ async def get_portal_config(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
     config = portal_config_service.get_config()
+    config = await _refresh_public_qa_model_display_names(portal_config_service, bisheng_client, config)
     if config.document_types:
         document_types = [dt.model_dump() for dt in config.document_types]
     else:
@@ -309,6 +363,14 @@ async def get_portal_config(
         "document_types": document_types,
         "business_domain_options": business_domain_options,
     })
+
+
+@router.get("/qa/model-options")
+async def get_public_qa_model_options(
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    return response_ok(await _build_public_qa_model_options(portal_config_service, bisheng_client))
 
 
 @router.get("/domain-file-counts")

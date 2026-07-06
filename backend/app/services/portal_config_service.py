@@ -36,6 +36,10 @@ from app.schemas.portal_config import (
 from app.services.config_store import InMemoryConfigStore
 
 
+BUILTIN_SECTION_KEYS = ("latest_selected", "typical_case")
+LATEST_SELECTED_SECTION_LINK = "/list?recommendation=latest_selected"
+
+
 class PortalConfigService:
     _TABLE_NAME = "portal_config"
     _DOMAIN_COUNT_CACHE_TABLE = "domain_count_cache"
@@ -52,7 +56,8 @@ class PortalConfigService:
         qa_model_changed = self._ensure_qa_model_compat(data)
         qa_templates_changed = self._ensure_qa_templates_compat(data)
         agent_config_changed = self._ensure_agent_config_compat(data)
-        if qa_model_changed or qa_templates_changed or agent_config_changed:
+        sections_changed = self._ensure_sections_compat(data)
+        if qa_model_changed or qa_templates_changed or agent_config_changed or sections_changed:
             self._write_data(data)
         if "search" not in data or not isinstance(data.get("search"), dict):
             data["search"] = dict(DEFAULT_PORTAL_CONFIG.get("search") or {"rerank_model_id": ""})
@@ -111,7 +116,9 @@ class PortalConfigService:
         return PortalConfig.model_validate(data)
 
     def replace_config(self, payload: PortalConfig) -> PortalConfig:
-        return self._write_config(payload)
+        data = payload.model_dump(mode="json")
+        self._ensure_sections_compat(data)
+        return self._write_config(PortalConfig.model_validate(data))
 
     def update_domains(self, payload: DomainsConfigUpdate) -> PortalConfig:
         data = self.get_config().model_dump()
@@ -126,7 +133,10 @@ class PortalConfigService:
 
     def update_sections(self, payload: SectionsConfigUpdate) -> PortalConfig:
         data = self.get_config().model_dump()
-        data["sections"] = payload.model_dump()["sections"]
+        data["sections"] = self._normalize_sections_update(
+            current_sections=data.get("sections") or [],
+            next_sections=payload.model_dump()["sections"],
+        )
         return self._write_config(PortalConfig.model_validate(data))
 
     def update_document_types(self, payload: DocumentTypesConfigUpdate) -> PortalConfig:
@@ -368,6 +378,81 @@ class PortalConfigService:
                 agent_config[key] = list(default_agent_config.get(key) or [])
                 changed = True
         return changed
+
+    @staticmethod
+    def _ensure_sections_compat(data: dict[str, Any]) -> bool:
+        sections = data.get("sections")
+        if not isinstance(sections, list):
+            data["sections"] = deepcopy(DEFAULT_PORTAL_CONFIG.get("sections") or [])
+            return True
+        normalized = PortalConfigService._normalize_sections_update(
+            current_sections=sections,
+            next_sections=sections,
+        )
+        if normalized == sections:
+            return False
+        data["sections"] = normalized
+        return True
+
+    @staticmethod
+    def _normalize_sections_update(
+        *,
+        current_sections: list[dict[str, Any]],
+        next_sections: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        current = [
+            dict(section)
+            for section in current_sections
+            if isinstance(section, dict)
+        ]
+        result = [
+            dict(section)
+            for section in next_sections
+            if isinstance(section, dict)
+        ]
+        defaults = [
+            dict(section)
+            for section in (DEFAULT_PORTAL_CONFIG.get("sections") or [])
+            if isinstance(section, dict)
+        ]
+        result_has_builtin_key = any(
+            str(section.get("builtin_key") or "") in BUILTIN_SECTION_KEYS
+            for section in result
+        )
+
+        # 旧配置没有内置标识时，按现有前两个分区绑定系统身份，保留用户已改名的标题和标签。
+        for index, builtin_key in enumerate(BUILTIN_SECTION_KEYS):
+            if any(str(section.get("builtin_key") or "") == builtin_key for section in result):
+                continue
+            replacement = PortalConfigService._find_section_by_builtin_key(current, builtin_key)
+            if not result_has_builtin_key and index < len(result):
+                result[index]["builtin_key"] = builtin_key
+                continue
+            if replacement is None and index < len(defaults):
+                replacement = dict(defaults[index])
+            if replacement is not None:
+                replacement["builtin_key"] = builtin_key
+                result.insert(min(index, len(result)), replacement)
+
+        normalized: list[dict[str, Any]] = []
+        seen_builtin_keys: set[str] = set()
+        for section in result:
+            builtin_key = str(section.get("builtin_key") or "")
+            if builtin_key in BUILTIN_SECTION_KEYS:
+                if builtin_key in seen_builtin_keys:
+                    continue
+                seen_builtin_keys.add(builtin_key)
+                if builtin_key == "latest_selected":
+                    section["link"] = LATEST_SELECTED_SECTION_LINK
+            normalized.append(section)
+        return normalized
+
+    @staticmethod
+    def _find_section_by_builtin_key(sections: list[dict[str, Any]], builtin_key: str) -> dict[str, Any] | None:
+        for section in sections:
+            if str(section.get("builtin_key") or "") == builtin_key:
+                return dict(section)
+        return None
 
     @staticmethod
     def build_space_options(raw_spaces: list[dict[str, Any]]) -> SpaceOptionsResponse:

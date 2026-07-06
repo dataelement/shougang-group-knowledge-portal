@@ -6,7 +6,7 @@ import {
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Sparkles,
-  Package, Video, Flame, Briefcase, Users, ScrollText,
+  Package, Video, Flame, Briefcase, Users, ScrollText, Loader2,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
@@ -48,6 +48,20 @@ function resolveSectionIcon(title: string): string {
   if (/情报|资讯|行业|案例|事故/.test(title)) return iconIntel;
   if (/文件|资料/.test(title)) return iconFolder;
   return iconRecommend;
+}
+
+const LATEST_SELECTED_RECOMMENDATION = 'latest_selected';
+
+function isLatestSelectedSection(section: SectionConfig): boolean {
+  return section.builtin_key === LATEST_SELECTED_RECOMMENDATION;
+}
+
+function buildSectionMoreLink(section: SectionConfig): string {
+  const titleParam = `title=${encodeURIComponent(section.title)}`;
+  if (isLatestSelectedSection(section)) {
+    return `/list?recommendation=${LATEST_SELECTED_RECOMMENDATION}&${titleParam}`;
+  }
+  return `${section.link}${section.link.includes('?') ? '&' : '?'}${titleParam}`;
 }
 
 const DOMAIN_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
@@ -208,8 +222,9 @@ const MOCK_HOME_SECTIONS: SectionConfig[] = [
   {
     title: '最新精选',
     tag: '最新精选',
-    link: '/list?tag=%E6%9C%80%E6%96%B0%E7%B2%BE%E9%80%89',
+    link: '/list?recommendation=latest_selected',
     icon: 'Star',
+    builtin_key: 'latest_selected',
     color: '#2563eb',
     bg: '#eff6ff',
     enabled: true,
@@ -219,6 +234,7 @@ const MOCK_HOME_SECTIONS: SectionConfig[] = [
     tag: '典型案例',
     link: '/list?tag=%E5%85%B8%E5%9E%8B%E6%A1%88%E4%BE%8B',
     icon: 'AlertTriangle',
+    builtin_key: 'typical_case',
     color: '#dc2626',
     bg: '#fee2e2',
     enabled: true,
@@ -392,6 +408,7 @@ export default function HomePage() {
   const [qaStreaming, setQaStreaming] = useState(false);
   const [bannerIdx, setBannerIdx] = useState(0);
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
+  const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [sectionDataFailed, setSectionDataFailed] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -535,6 +552,7 @@ export default function HomePage() {
     };
 
     setSectionDataFailed(false);
+    setSectionDataLoading(true);
     void (async () => {
       try {
         const homeContent = await fetchHomeContent();
@@ -546,6 +564,8 @@ export default function HomePage() {
         if (!active) return;
         setSectionDataFailed(true);
         setLoadError(err instanceof Error ? err.message : '首页数据加载失败');
+      } finally {
+        if (active) setSectionDataLoading(false);
       }
     })();
 
@@ -799,7 +819,9 @@ export default function HomePage() {
           <div className={s.leftColumn}>
             {contentSections.map((sec, index) => {
               const fetchedItems = sectionData[sec.tag] || [];
-              const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems.slice(0, displayConfig.home.sectionPageSize);
+              const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems;
+              const showLoading = sectionDataLoading && !useMockHomeContent;
+              const moreLink = buildSectionMoreLink(sec);
               return (
                 <div
                   key={sec.tag}
@@ -811,38 +833,47 @@ export default function HomePage() {
                       <span className={s.panelTitle}>{sec.title}</span>
                     </div>
                     <Link
-                      to={`${sec.link}${sec.link.includes('?') ? '&' : '?'}title=${encodeURIComponent(sec.title)}`}
+                      to={moreLink}
                       className={s.panelMore}
                     >
                       更多 <ChevronRight size={14} />
                     </Link>
                   </div>
                   <div className={s.sectionList}>
-                    {items.map((f) => (
-                      <div
-                        key={f.id}
-                        className={s.listItem}
-                        onClick={() =>
-                          navigate(`/space/${f.spaceId}/file/${f.id}`, {
-                            state: { returnTo: sec.link },
-                          })}
-                      >
-                        <div className={s.itemTitle}>{f.title}</div>
-                        <div className={s.itemSubRow}>
-                          <span className={s.itemSummary}>
-                            {f.summary ?? ''}
-                          </span>
-                          {f.date ? (
-                            <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
-                          ) : null}
-                        </div>
+                    {showLoading ? (
+                      <div className={s.sectionLoading} role="status" aria-live="polite">
+                        <Loader2 size={18} className={s.sectionLoadingIcon} />
+                        <span>加载中</span>
                       </div>
-                    ))}
-                    {items.length === 0 ? (
-                      <div className={s.sectionEmpty}>
-                        暂无匹配内容
-                      </div>
-                    ) : null}
+                    ) : (
+                      <>
+                        {items.map((f) => (
+                          <div
+                            key={f.id}
+                            className={s.listItem}
+                            onClick={() =>
+                              navigate(`/space/${f.spaceId}/file/${f.id}`, {
+                                state: { returnTo: moreLink },
+                              })}
+                          >
+                            <div className={s.itemTitle}>{f.title}</div>
+                            <div className={s.itemSubRow}>
+                              <span className={s.itemSummary}>
+                                {f.summary ?? ''}
+                              </span>
+                              {f.date ? (
+                                <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                        {items.length === 0 ? (
+                          <div className={s.sectionEmpty}>
+                            暂无匹配内容
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 </div>
               );

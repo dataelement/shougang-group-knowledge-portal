@@ -32,6 +32,7 @@ import { buildGuestLoginPath } from '../utils/guestAccess';
 import s from './ListPage.module.css';
 
 const EMPTY_SPACE_IDS: number[] = [];
+const LATEST_SELECTED_RECOMMENDATION = 'latest_selected';
 
 export default function ListPage() {
   const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
@@ -41,6 +42,7 @@ export default function ListPage() {
   const { config, error: configError } = usePortalConfig();
   const tagParam = params.get('tag') || '';
   const titleParam = params.get('title') || '';
+  const recommendationParam = params.get('recommendation') || '';
   const fileExt = params.get('file_ext') || '';
   const documentType = normalizeDocumentTypeCode(params.get('document_type'));
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -100,11 +102,13 @@ export default function ListPage() {
   }, [configError]);
 
   const fetchFilePage = useCallback((cursor?: string | null) => {
+    const isLatestSelectedRecommendation = recommendationParam === LATEST_SELECTED_RECOMMENDATION;
     const baseParams = {
       fileExt: fileExt || undefined,
       documentType: documentType || undefined,
-      tag: tagParam || undefined,
-      sort: 'updated_at_desc',
+      tag: isLatestSelectedRecommendation ? undefined : tagParam || undefined,
+      recommendation: isLatestSelectedRecommendation ? LATEST_SELECTED_RECOMMENDATION : undefined,
+      sort: isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc',
       cursor: cursor || undefined,
       limit: pageLimit,
     };
@@ -125,7 +129,17 @@ export default function ListPage() {
       });
     }
     return searchFiles(baseParams);
-  }, [businessDomainCode, documentType, fileExt, isDomainList, pageLimit, spaceId, spaceIds, tagParam]);
+  }, [
+    businessDomainCode,
+    documentType,
+    fileExt,
+    isDomainList,
+    pageLimit,
+    recommendationParam,
+    spaceId,
+    spaceIds,
+    tagParam,
+  ]);
 
   useEffect(() => {
     let active = true;

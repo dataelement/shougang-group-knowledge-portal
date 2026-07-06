@@ -50,6 +50,33 @@ test('portal content config shares concurrent requests', async () => {
   }
 });
 
+test('portal content config force option bypasses stale cache', async () => {
+  invalidatePortalContentConfigCache();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(String(input), '/api/v1/knowledge/config');
+    calls += 1;
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { ...portalConfigPayload, site: { title: `配置 ${calls}` } },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const first = await fetchPortalContentConfig();
+    const second = await fetchPortalContentConfig({ force: true });
+
+    assert.equal(calls, 2);
+    assert.notEqual(first, second);
+    assert.deepEqual(second.site, { title: '配置 2' });
+  } finally {
+    invalidatePortalContentConfigCache();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('portal content config handles empty error responses without native json parse failure', async () => {
   invalidatePortalContentConfigCache();
   const originalFetch = globalThis.fetch;
@@ -166,6 +193,34 @@ test('domain file search sends business domain code without public fallback', as
 
     assert.equal(result.hasMore, false);
     assert.equal(result.nextCursor, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('file search sends latest selected recommendation query parameter', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(
+      String(input),
+      '/api/v1/knowledge/files?recommendation=latest_selected&sort=portal_read_count_desc&limit=10',
+    );
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { data: [], has_more: true, next_cursor: 'cursor-1' },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await searchFiles({
+      recommendation: 'latest_selected',
+      sort: 'portal_read_count_desc',
+      limit: 10,
+    });
+
+    assert.equal(result.hasMore, true);
+    assert.equal(result.nextCursor, 'cursor-1');
   } finally {
     globalThis.fetch = originalFetch;
   }

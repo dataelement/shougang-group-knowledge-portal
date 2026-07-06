@@ -441,7 +441,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     let active = true;
     void (async () => {
       try {
-        const config = await fetchPortalContentConfig();
+        const config = await fetchPortalContentConfig({ force: true });
         if (!active) return;
         const modelOptions = await fetchQaModelOptions().then((data) => data.models).catch(() => []);
         if (!active) return;
@@ -466,7 +466,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let active = true;

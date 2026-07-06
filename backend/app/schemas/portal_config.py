@@ -38,6 +38,7 @@ class SectionConfig(BaseModel):
     tag: str
     link: str
     icon: str
+    builtin_key: str = ""
     color: str = "#2563eb"
     bg: str = "#eff6ff"
     enabled: bool = True

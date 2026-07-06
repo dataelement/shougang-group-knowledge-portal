@@ -9,6 +9,7 @@ test('createSectionDraft maps existing section config to editor state', () => {
       tag: '最新精选',
       link: '/list?tag=最新精选',
       icon: 'Star',
+      builtin_key: 'latest_selected',
       color: '#2563eb',
       bg: '#eff6ff',
       enabled: true,
@@ -17,8 +18,34 @@ test('createSectionDraft maps existing section config to editor state', () => {
       title: '知识推荐 · 最新精选',
       tag: '最新精选',
       icon: 'Star',
+      builtinKey: 'latest_selected',
       color: '#2563eb',
       bg: '#eff6ff',
+    },
+  );
+});
+
+test('validateSectionDraft keeps builtin latest selected recommendation mode', () => {
+  assert.deepEqual(
+    validateSectionDraft({
+      title: '知识推荐 · 最新精选',
+      tag: '知识推荐',
+      icon: 'Star',
+      builtinKey: 'latest_selected',
+      color: '#2563eb',
+      bg: '#eff6ff',
+    }),
+    {
+      section: {
+        title: '知识推荐 · 最新精选',
+        tag: '知识推荐',
+        link: '/list?recommendation=latest_selected',
+        icon: 'Star',
+        builtin_key: 'latest_selected',
+        color: '#2563eb',
+        bg: '#eff6ff',
+        enabled: true,
+      },
     },
   );
 });
@@ -63,5 +90,12 @@ test('buildSectionLink derives a site list route from the tag', () => {
   assert.equal(
     buildSectionLink('最新精选'),
     '/list?tag=%E6%9C%80%E6%96%B0%E7%B2%BE%E9%80%89',
+  );
+});
+
+test('buildSectionLink derives latest selected route from builtin key', () => {
+  assert.equal(
+    buildSectionLink('知识推荐', 'latest_selected'),
+    '/list?recommendation=latest_selected',
   );
 });
