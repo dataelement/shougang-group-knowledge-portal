@@ -46,3 +46,12 @@ test('home knowledge section loading state is centered and animated', () => {
   assert.match(icon, /animation:\s*home-section-spin 0\.9s linear infinite;/);
   assert.match(homePageStyles, /@keyframes home-section-spin/);
 });
+
+test('home knowledge section list expands to configured item count', () => {
+  const sectionList = cssBlock('.sectionList');
+
+  assert.match(sectionList, /flex:\s*0 0 auto;/);
+  assert.doesNotMatch(sectionList, /max-height:/);
+  assert.doesNotMatch(sectionList, /overflow-y:\s*auto;/);
+  assert.doesNotMatch(homePageStyles, /\.sectionList::-webkit-scrollbar/);
+});

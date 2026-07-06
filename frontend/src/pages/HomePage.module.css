@@ -652,26 +652,8 @@
 }
 
 .sectionList {
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
-  max-height: 320px;
-  overflow-y: auto;
-  padding-right: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
-}
-
-.sectionList::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sectionList::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-
-.sectionList::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 .panelHeaderLeft {
