@@ -116,7 +116,7 @@ class RemotePortalAdminConfigStore:
             next_item = dict(item)
             code = str(next_item.get("code") or "").strip()
             label = str(next_item.get("label") or "").strip()
-            if next_item.get("children") == [] and code and label:
+            if not next_item.get("children") and code and label:
                 # 兼容早期远端配置：旧文档类型只有一级分类，新模型要求至少一个子类目。
                 next_item["children"] = [{"code": code, "label": label}]
             normalized.append(next_item)

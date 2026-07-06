@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search,
-  Send, BarChart3, Bot, ChevronRight, FileText,
+  Send, BarChart3, Bot, ChevronLeft, ChevronRight, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Sparkles,
@@ -407,6 +407,8 @@ export default function HomePage() {
   const [qaMessages, setQaMessages] = useState<HomeQaMessage[]>([]);
   const [qaStreaming, setQaStreaming] = useState(false);
   const [bannerIdx, setBannerIdx] = useState(0);
+  const domainScrollRef = useRef<HTMLDivElement>(null);
+  const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false });
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [sectionDataFailed, setSectionDataFailed] = useState(false);
@@ -440,6 +442,43 @@ export default function HomePage() {
       root.style.scrollBehavior = previousScrollBehavior;
     });
   }, [navigate]);
+
+  const scrollDomains = (direction: 1 | -1) => {
+    const el = domainScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: 'smooth' });
+  };
+
+  const handleDomainPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const el = domainScrollRef.current;
+    if (!el) return;
+    domainDragRef.current = {
+      isDown: true,
+      startX: event.clientX,
+      scrollLeft: el.scrollLeft,
+      moved: false,
+    };
+    el.setPointerCapture(event.pointerId);
+  };
+
+  const handleDomainPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = domainDragRef.current;
+    const el = domainScrollRef.current;
+    if (!drag.isDown || !el) return;
+    const delta = event.clientX - drag.startX;
+    if (Math.abs(delta) > 3) drag.moved = true;
+    el.scrollLeft = drag.scrollLeft - delta;
+  };
+
+  const handleDomainPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    domainDragRef.current.isDown = false;
+    domainScrollRef.current?.releasePointerCapture(event.pointerId);
+  };
+
+  const handleDomainCardClick = (path: string) => {
+    if (domainDragRef.current.moved) return;
+    navigateToTop(path);
+  };
 
   const homeBanners = useMemo(() => resolveHomeBanners(config?.banners), [config?.banners]);
 
@@ -719,7 +758,6 @@ export default function HomePage() {
                   APP_SHORTCUT_IMAGES[template.id] ||
                   APP_ICON_IMAGES[template.icon];
                 const AppIcon = APP_ICONS[template.icon] || Bot;
-       
                 return (
                   <button
                     key={template.id}
@@ -731,14 +769,14 @@ export default function HomePage() {
                       navigate(user ? path : buildGuestLoginPath(path));
                     }}
                   >
-                  <span className={s.appShortcutIcon}>
+                    <span className={s.appShortcutIcon}>
                       {iconImage ? (
                         <img src={iconImage} alt="" className={s.appShortcutImage} />
                       ) : (
                         <AppIcon size={20} />
                       )}
                     </span>
-                  <span className={s.appShortcutText}>{template.name}</span>
+                    <span className={s.appShortcutText}>{template.name}</span>
                   </button>
                 );
               })}
@@ -778,9 +816,21 @@ export default function HomePage() {
             <span className={s.domainHeaderTitle}>业务域导航</span>
           </div>
           <div className={s.domainCarousel}>
+            <button
+              type="button"
+              className={`${s.domainArrow} ${s.domainArrowLeft}`}
+              aria-label="向左滚动业务域"
+              onClick={() => scrollDomains(-1)}
+            >
+              <ChevronLeft size={22} />
+            </button>
             <div
+              ref={domainScrollRef}
               className={s.domainGrid}
-              style={homeDomains.length > 0 ? { gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' } : undefined}
+              onPointerDown={handleDomainPointerDown}
+              onPointerMove={handleDomainPointerMove}
+              onPointerUp={handleDomainPointerUp}
+              onPointerLeave={handleDomainPointerUp}
             >
               {homeDomains.map((d) => {
                 const Icon = DOMAIN_ICONS[d.icon] || Settings;
@@ -793,9 +843,7 @@ export default function HomePage() {
                     key={d.name}
                     className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
                     style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
-                    onClick={() => {
-                      navigateToTop(buildDomainSearchPath(d.name));
-                    }}
+                    onClick={() => handleDomainCardClick(buildDomainSearchPath(d.name))}
                   >
                     {usesBannerThumb ? null : (
                       <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>
@@ -810,6 +858,14 @@ export default function HomePage() {
                 );
               })}
             </div>
+            <button
+              type="button"
+              className={`${s.domainArrow} ${s.domainArrowRight}`}
+              aria-label="向右滚动业务域"
+              onClick={() => scrollDomains(1)}
+            >
+              <ChevronRight size={22} />
+            </button>
           </div>
         </div>
 
@@ -990,7 +1046,7 @@ export default function HomePage() {
               </div>
               <div className={s.qaCallout}>
                 <Sparkles size={13} />
-                <span>支持流式回复 · 引用知识库来源 · 多轮追问</span>
+                <span>支持流式回复 · 不引用知识库的日常问答</span>
               </div>
             </div>
 
