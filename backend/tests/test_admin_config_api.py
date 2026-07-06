@@ -780,6 +780,68 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
     ]
 
 
+def test_public_portal_config_refreshes_qa_model_display_names_for_non_admin_user(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_data = service.get_config().model_dump()
+    config_data["qa"].update(
+        {
+            "selected_model": "1",
+            "general_model": "1",
+            "reasoning_model": "2",
+            "general_model_display_name": "",
+            "reasoning_model_display_name": "",
+        }
+    )
+    service.replace_config(PortalConfig.model_validate(config_data))
+    app.dependency_overrides.pop(require_admin_session, None)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_client = FakeBishengClient()
+        response = client.get("/api/v1/knowledge/config")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["qa"]["general_model_display_name"] == "deepseek-chat"
+    assert data["qa"]["reasoning_model_display_name"] == "deepseek-reasoner"
+    assert service.get_config().qa.general_model_display_name == "deepseek-chat"
+    assert service.get_config().qa.reasoning_model_display_name == "deepseek-reasoner"
+
+
+def test_public_portal_config_keeps_qa_model_ids_when_name_refresh_fails(tmp_path: Path):
+    class FailingQaModelBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/llm":
+                raise RuntimeError("model list unavailable")
+            return await super().get_json(path, params=params)
+
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    config_data = service.get_config().model_dump()
+    config_data["qa"].update(
+        {
+            "selected_model": "1",
+            "general_model": "1",
+            "reasoning_model": "2",
+            "general_model_display_name": "",
+            "reasoning_model_display_name": "",
+        }
+    )
+    service.replace_config(PortalConfig.model_validate(config_data))
+    app.dependency_overrides.pop(require_admin_session, None)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_client = FailingQaModelBishengClient()
+        response = client.get("/api/v1/knowledge/config")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["qa"]["general_model"] == "1"
+    assert data["qa"]["reasoning_model"] == "2"
+    assert data["qa"]["general_model_display_name"] == ""
+    assert data["qa"]["reasoning_model_display_name"] == ""
+
+
 def test_update_document_types_strips_hidden_characters(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
 
@@ -1130,10 +1192,33 @@ def test_post_admin_sections_persists_icon_and_color_fields(tmp_path: Path):
     assert response.status_code == 200
     body = response.json()
     assert body["data"]["sections"][0]["icon"] == "Star"
+    assert body["data"]["sections"][0]["builtin_key"] == "latest_selected"
+    assert body["data"]["sections"][0]["link"] == "/list?recommendation=latest_selected"
     assert body["data"]["sections"][0]["color"] == "#2563eb"
     assert body["data"]["sections"][0]["bg"] == "#eff6ff"
+    assert body["data"]["sections"][1]["builtin_key"] == "typical_case"
     assert service.get_config().sections[0].color == "#2563eb"
     assert service.get_config().sections[0].bg == "#eff6ff"
+
+
+def test_post_admin_sections_keeps_builtin_sections_when_payload_deletes_them(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    current_sections = [section.model_dump() for section in service.get_config().sections]
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.post(
+            "/api/v1/admin/config/sections",
+            json={"sections": [current_sections[1]]},
+        )
+
+    assert response.status_code == 200
+    sections = response.json()["data"]["sections"]
+    assert [section["builtin_key"] for section in sections[:2]] == ["latest_selected", "typical_case"]
+    assert sections[0]["title"] == "知识推荐 · 最新精选"
+    assert sections[1]["title"] == "典型案例 · 事故分析"
 
 
 def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path: Path):

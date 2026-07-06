@@ -242,8 +242,9 @@ DEFAULT_PORTAL_CONFIG = {
         {
             "title": "知识推荐 · 最新精选",
             "tag": "最新精选",
-            "link": "/list?tag=最新精选",
+            "link": "/list?recommendation=latest_selected",
             "icon": "Star",
+            "builtin_key": "latest_selected",
             "color": "#2563eb",
             "bg": "#eff6ff",
             "enabled": True,
@@ -253,6 +254,7 @@ DEFAULT_PORTAL_CONFIG = {
             "tag": "典型案例",
             "link": "/list?tag=典型案例",
             "icon": "AlertTriangle",
+            "builtin_key": "typical_case",
             "color": "#dc2626",
             "bg": "#fee2e2",
             "enabled": True,

@@ -68,6 +68,7 @@ PREVIEW_TASK_POLL_DELAY_SECONDS = 0.4
 PREVIEW_TASK_FAILURE_STATUSES = {"cancelled", "canceled", "error", "failed", "failure", "timeout"}
 FRONTEND_PROXY_ASSET_PATH_PREFIXES = ("/bisheng/", "/skm-bisheng/", "/workspace/bisheng/", "/workspace/skm-bisheng/", "/tmp-dir")
 SHARE_ACCESS_COOKIE_NAME = "portal_share_access"
+LATEST_SELECTED_RECOMMENDATION = "latest_selected"
 SHARE_ACCESS_TTL_SECONDS = 3600
 SPACE_LIST_ENDPOINTS = (
     ("mine", "/api/v1/knowledge/space/mine"),
@@ -199,9 +200,17 @@ class KnowledgeService:
     async def get_space_name_map(self, extra_space_ids: Optional[list[int]] = None) -> dict[int, str]:
         return {space.id: space.name for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)}
 
-    async def get_home_content(self) -> HomeKnowledgeData:
+    @staticmethod
+    def _is_latest_selected_section(section: Any, index: int | None = None) -> bool:
+        if isinstance(section, dict):
+            builtin_key = str(section.get("builtin_key") or "")
+        else:
+            builtin_key = str(getattr(section, "builtin_key", "") or "")
+        return builtin_key == LATEST_SELECTED_RECOMMENDATION or (not builtin_key and index == 0)
+
+    async def get_home_content(self, extra_space_ids: Optional[list[int]] = None) -> HomeKnowledgeData:
         config = self._config_service.get_config()
-        space_ids = await self.resolve_requested_space_ids()
+        space_ids = await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
         sections = [section for section in config.sections if section.enabled and section.tag]
         if not space_ids or not sections:
             return HomeKnowledgeData(
@@ -209,26 +218,70 @@ class KnowledgeService:
                 tags=[],
             )
         try:
-            response = await self._bisheng.post_json(
-                "/api/v1/knowledge/shougang-portal/home",
-                json={
-                    "space_ids": space_ids,
-                    "space_level": None,
-                    "sections": [
-                        {
-                            "tag": section.tag,
-                            "page_size": config.display.home.section_page_size,
-                        }
-                        for section in sections
-                    ],
-                    "hot_tags_limit": config.display.home.hot_tags_count,
-                },
+            latest_section_results = await asyncio.gather(
+                *[
+                    self.search_files(
+                        q=None,
+                        tag=None,
+                        requested_space_ids=space_ids,
+                        space_level=None,
+                        file_ext=None,
+                        document_type=None,
+                        business_domain_code=None,
+                        recommendation=LATEST_SELECTED_RECOMMENDATION,
+                        sort="portal_read_count_desc",
+                        cursor=None,
+                        limit=config.display.home.section_page_size,
+                        extra_space_ids=extra_space_ids,
+                    )
+                    for index, section in enumerate(sections)
+                    if self._is_latest_selected_section(section, index)
+                ],
+                return_exceptions=True,
             )
-            data = response.get("data") or {}
+            latest_result_by_tag = {
+                section.tag: result
+                for section, result in zip(
+                    [
+                        section
+                        for index, section in enumerate(sections)
+                        if self._is_latest_selected_section(section, index)
+                    ],
+                    latest_section_results,
+                )
+            }
+            section_payloads: list[dict[str, Any]] = []
+            for index, section in enumerate(sections):
+                if self._is_latest_selected_section(section, index):
+                    continue
+                section_payload: dict[str, Any] = {
+                    "tag": section.tag,
+                    "page_size": config.display.home.section_page_size,
+                }
+                section_payloads.append(section_payload)
+
+            data: dict[str, Any] = {"sections": {}, "tags": []}
+            if section_payloads:
+                response = await self._bisheng.post_json(
+                    "/api/v1/knowledge/shougang-portal/home",
+                    json={
+                        "space_ids": space_ids,
+                        "space_level": None,
+                        "sections": section_payloads,
+                        "hot_tags_limit": config.display.home.hot_tags_count,
+                    },
+                )
+                data = response.get("data") or {}
+            else:
+                data["tags"] = await self.get_aggregated_tags(space_ids, extra_space_ids=extra_space_ids)
             raw_sections = data.get("sections") if isinstance(data, dict) else {}
             raw_tags = data.get("tags") if isinstance(data, dict) else []
             mapped_sections: dict[str, list[KnowledgeFileItem]] = {}
-            for section in sections:
+            for index, section in enumerate(sections):
+                if self._is_latest_selected_section(section, index):
+                    result = latest_result_by_tag.get(section.tag)
+                    mapped_sections[section.tag] = [] if isinstance(result, Exception) or result is None else result.data
+                    continue
                 raw_items = raw_sections.get(section.tag, []) if isinstance(raw_sections, dict) else []
                 mapped_sections[section.tag] = self._map_shougang_portal_response_items(raw_items)
             tags = list(dict.fromkeys(str(tag) for tag in raw_tags if str(tag))) if isinstance(raw_tags, list) else []
@@ -238,21 +291,29 @@ class KnowledgeService:
                 *[
                     self.search_files(
                         q=None,
-                        tag=section.tag,
+                        tag=None if self._is_latest_selected_section(section, index) else section.tag,
                         requested_space_ids=space_ids,
                         space_level=None,
                         file_ext=None,
                         document_type=None,
                         business_domain_code=None,
-                        sort="updated_at",
+                        recommendation=LATEST_SELECTED_RECOMMENDATION
+                        if self._is_latest_selected_section(section, index)
+                        else None,
+                        sort=(
+                            "portal_read_count_desc"
+                            if self._is_latest_selected_section(section, index)
+                            else "updated_at"
+                        ),
                         cursor=None,
                         limit=config.display.home.section_page_size,
+                        extra_space_ids=extra_space_ids,
                     )
-                    for section in sections
+                    for index, section in enumerate(sections)
                 ],
                 return_exceptions=True,
             )
-            tags = await self.get_aggregated_tags(space_ids)
+            tags = await self.get_aggregated_tags(space_ids, extra_space_ids=extra_space_ids)
             return HomeKnowledgeData(
                 sections={
                     section.tag: (
@@ -551,6 +612,7 @@ class KnowledgeService:
         extra_space_ids: Optional[list[int]] = None,
         document_type: Optional[str] = None,
         business_domain_code: Optional[str] = None,
+        recommendation: Optional[str] = None,
         fallback_to_public_spaces: bool = False,
     ) -> CursorKnowledgeFileData:
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
@@ -561,6 +623,7 @@ class KnowledgeService:
             or file_ext
             or document_type
             or normalized_business_domain_code
+            or recommendation
         )
         if not q and not has_filter:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
@@ -582,6 +645,7 @@ class KnowledgeService:
             file_ext=file_ext,
             document_type=document_type,
             business_domain_code=normalized_business_domain_code,
+            recommendation=recommendation,
             sort=sort,
             cursor=cursor,
             limit=limit,
@@ -678,6 +742,7 @@ class KnowledgeService:
         file_ext: Optional[str],
         document_type: Optional[str],
         business_domain_code: Optional[str],
+        recommendation: Optional[str],
         sort: str,
         cursor: Optional[str],
         limit: int,
@@ -692,6 +757,8 @@ class KnowledgeService:
             "cursor": cursor,
             "limit": min(max(int(limit or 20), 1), 100),
         }
+        if recommendation:
+            request_body["recommendation"] = recommendation
         normalized_document_type = self._normalize_document_type_code(document_type)
         if normalized_document_type:
             request_body["document_type"] = normalized_document_type

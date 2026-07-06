@@ -16,6 +16,7 @@ export interface SectionConfig {
   tag: string;
   link: string;
   icon: string;
+  builtin_key?: string;
   color: string;
   bg: string;
   enabled: boolean;

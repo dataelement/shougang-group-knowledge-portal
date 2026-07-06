@@ -645,7 +645,10 @@ export function invalidatePortalContentConfigCache() {
   portalContentConfigPromise = null;
 }
 
-export async function fetchPortalContentConfig(): Promise<PortalConfig> {
+export async function fetchPortalContentConfig(options: { force?: boolean } = {}): Promise<PortalConfig> {
+  if (options.force) {
+    portalContentConfigPromise = null;
+  }
   if (!portalContentConfigPromise) {
     portalContentConfigPromise = request<PortalConfig>('/api/v1/knowledge/config').catch((error) => {
       portalContentConfigPromise = null;
@@ -708,6 +711,7 @@ export async function searchFiles(params: {
   cursor?: string | null;
   limit?: number;
   businessDomainCode?: string;
+  recommendation?: string;
 }): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
@@ -716,6 +720,7 @@ export async function searchFiles(params: {
   if (params.fileExt) query.set('file_ext', params.fileExt);
   if (params.documentType) query.set('document_type', params.documentType);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
+  if (params.recommendation) query.set('recommendation', params.recommendation);
   if (params.sort) query.set('sort', params.sort);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));

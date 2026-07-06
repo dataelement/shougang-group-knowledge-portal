@@ -14,9 +14,12 @@ export interface SectionDraft {
   title: string;
   tag: string;
   icon: string;
+  builtinKey?: string;
   color: string;
   bg: string;
 }
+
+export const LATEST_SELECTED_SECTION_KEY = 'latest_selected';
 
 const SECTION_COLOR_BY_ICON: Record<string, { color: string; bg: string }> = {
   Star: { color: '#2563eb', bg: '#eff6ff' },
@@ -48,12 +51,16 @@ export function createSectionDraft(current?: SectionConfig): SectionDraft {
     title: current?.title ?? '',
     tag: current?.tag ?? '',
     icon: current?.icon ?? 'Star',
+    builtinKey: current?.builtin_key,
     color: visual.color,
     bg: visual.bg,
   };
 }
 
-export function buildSectionLink(tag: string): string {
+export function buildSectionLink(tag: string, builtinKey?: string): string {
+  if (builtinKey === LATEST_SELECTED_SECTION_KEY) {
+    return `/list?recommendation=${LATEST_SELECTED_SECTION_KEY}`;
+  }
   return `/list?tag=${encodeURIComponent(tag.trim())}`;
 }
 
@@ -73,15 +80,18 @@ export function validateSectionDraft(draft: SectionDraft): { section?: SectionCo
   const bg = draft.bg.trim();
   if (!bg) return { error: '请选择分区颜色' };
 
-  return {
-    section: {
-      title,
-      tag,
-      link: buildSectionLink(tag),
-      icon,
-      color,
-      bg,
-      enabled: true,
-    },
+  const section: SectionConfig = {
+    title,
+    tag,
+    link: buildSectionLink(tag, draft.builtinKey),
+    icon,
+    color,
+    bg,
+    enabled: true,
   };
+  if (draft.builtinKey) {
+    section.builtin_key = draft.builtinKey;
+  }
+
+  return { section };
 }

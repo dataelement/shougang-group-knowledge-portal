@@ -44,6 +44,7 @@ import {
 } from '../api/content';
 import { fetchQaModelOptions, type QAConfig, type QAModelOption, type QATemplateCategoryConfig, type QATemplateConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
+import { isPortalAdmin } from '../utils/adminAccess';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
 import composerModelIcon from '../assets/composer-model.svg';
 import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
@@ -441,9 +442,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     let active = true;
     void (async () => {
       try {
-        const config = await fetchPortalContentConfig();
+        const config = await fetchPortalContentConfig({ force: true });
         if (!active) return;
-        const modelOptions = await fetchQaModelOptions().then((data) => data.models).catch(() => []);
+        const modelOptions = isPortalAdmin(user)
+          ? await fetchQaModelOptions().then((data) => data.models).catch(() => [])
+          : [];
         if (!active) return;
         const qaModelConfig = {
           selected_model: config.qa.selected_model,
@@ -466,7 +469,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let active = true;

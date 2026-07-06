@@ -112,6 +112,8 @@ test('qa workspace uploads temporary attachments for chat', () => {
 test('qa workspace model selector only shows model names', () => {
   assert.match(qaPageSource, /function getQaModelNameLabel/);
   assert.match(qaPageSource, /model\.name \|\| model\.display_name \|\| model\.id/);
+  assert.match(qaPageSource, /fetchPortalContentConfig\(\{\s*force:\s*true\s*\}\)/);
+  assert.match(qaPageSource, /isPortalAdmin\(user\)[\s\S]*fetchQaModelOptions/);
   assert.match(qaPageSource, /general_model_display_name/);
   assert.match(qaPageSource, /reasoning_model_display_name/);
   assert.match(qaPageSource, /savedDisplayName\?\.trim\(\) \|\| modelId/);

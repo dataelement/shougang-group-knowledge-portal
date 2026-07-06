@@ -104,6 +104,10 @@ import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import s from './AdminPage.module.css';
 
+function isBuiltinSection(section: SectionConfig): boolean {
+  return Boolean(section.builtin_key);
+}
+
 const APP_ICON_OPTIONS = [
   'PenLine',
   'Search',
@@ -816,7 +820,10 @@ export default function AdminPage() {
               saving={saving}
               onAdd={openCreateSectionDialog}
               onEdit={(index) => openEditSectionDialog(config.sections[index], index)}
-              onDelete={(index) => setSectionDeleteIndex(index)}
+              onDelete={(index) => {
+                if (isBuiltinSection(config.sections[index])) return;
+                setSectionDeleteIndex(index);
+              }}
               onMoveUp={(index) => void handleMoveSection(config.sections, index, -1, runSave, setConfig)}
               onMoveDown={(index) => void handleMoveSection(config.sections, index, 1, runSave, setConfig)}
             />
@@ -2175,7 +2182,7 @@ function SectionsTable({
         <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
       </div>
       <p className={s.pageNote}>
-        首页分区按当前数组顺序展示。每个分区只需要配置标题、标签和图标；跳转地址会按标签自动生成。
+        首页分区按当前数组顺序展示。系统内置分区可以改名和改标签，但不能删除；普通分区跳转地址会按标签自动生成。
       </p>
       <table className={s.table}>
         <thead>
@@ -2189,9 +2196,10 @@ function SectionsTable({
         <tbody>
           {sections.map((sec, index) => {
             const visual = resolveSectionVisual(sec);
+            const builtin = isBuiltinSection(sec);
             return (
-            <tr key={sec.tag}>
-              <td>{sec.title}</td>
+            <tr key={`${sec.builtin_key || sec.tag}-${index}`}>
+              <td>{sec.title}{builtin ? <span className={s.sectionTagBadge}>系统内置</span> : null}</td>
               <td>
                 <span className={s.sectionTagBadge}>
                   {sec.tag}
@@ -2201,7 +2209,14 @@ function SectionsTable({
               <td>
                 <div className={s.actionGroup}>
                   <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
-                  <button className={s.inlineDangerBtn} onClick={() => onDelete(index)} disabled={saving}>删除</button>
+                  <button
+                    className={s.inlineDangerBtn}
+                    onClick={() => onDelete(index)}
+                    disabled={saving || builtin}
+                    title={builtin ? '系统内置分区不能删除' : '删除'}
+                  >
+                    删除
+                  </button>
                   <button
                     className={s.iconActionBtn}
                     onClick={() => onMoveUp(index)}
@@ -2255,7 +2270,7 @@ function SectionEditorDialog({
         <div className={s.modalHeader}>
           <div>
             <h3 className={s.modalTitle}>{draft.title.trim() ? `编辑首页分区：${draft.title}` : '新增首页分区'}</h3>
-            <p className={s.modalNote}>分区卡片会直接出现在首页。你只需要填写标签，跳转地址会按标签自动生成。</p>
+            <p className={s.modalNote}>分区卡片会直接出现在首页。系统内置分区会保留固定推荐逻辑，普通分区跳转地址会按标签自动生成。</p>
           </div>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
@@ -2278,7 +2293,7 @@ function SectionEditorDialog({
               onChange={(event) => onChange({ tag: event.target.value })}
               placeholder="例如：最新精选"
             />
-            <span className={s.fieldHint}>首页分区会按这个标签自动生成站内跳转，不需要单独填写链接。</span>
+            <span className={s.fieldHint}>普通分区会按这个标签自动生成站内跳转；系统内置推荐分区不再按标签查询首页数据。</span>
           </label>
           <div className={`${s.formField} ${s.formFieldWide}`}>
             <span className={s.fieldLabel}>图标</span>
@@ -4944,6 +4959,7 @@ async function handleDeleteSection(
   setConfig: ConfigSetter,
   options?: { confirm?: boolean; onSuccess?: () => void },
 ) {
+  if (isBuiltinSection(sections[index])) return;
   if (options?.confirm !== false && !window.confirm(`确定删除分区“${sections[index].title}”吗？`)) return;
   await runSave(async () => {
     await persistSections(sections.filter((_, i) => i !== index), setConfig);

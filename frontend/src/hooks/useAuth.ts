@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { buildPortalLogoutStartUrl, fetchPortalMe, type PortalUser } from '../api/auth';
-import { ApiRequestError } from '../api/content';
+import { ApiRequestError, invalidatePortalContentConfigCache } from '../api/content';
 
 export type { PortalUser };
 
@@ -24,11 +24,13 @@ export function loadPortalUser(): PortalUser | null {
 }
 
 export function savePortalUser(user: PortalUser) {
+  invalidatePortalContentConfigCache();
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
 }
 
 export function clearPortalUser() {
+  invalidatePortalContentConfigCache();
   window.localStorage.removeItem(STORAGE_KEY);
   window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
 }

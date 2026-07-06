@@ -50,6 +50,20 @@ function resolveSectionIcon(title: string): string {
   return iconRecommend;
 }
 
+const LATEST_SELECTED_RECOMMENDATION = 'latest_selected';
+
+function isLatestSelectedSection(section: SectionConfig): boolean {
+  return section.builtin_key === LATEST_SELECTED_RECOMMENDATION;
+}
+
+function buildSectionMoreLink(section: SectionConfig): string {
+  const titleParam = `title=${encodeURIComponent(section.title)}`;
+  if (isLatestSelectedSection(section)) {
+    return `/list?recommendation=${LATEST_SELECTED_RECOMMENDATION}&${titleParam}`;
+  }
+  return `${section.link}${section.link.includes('?') ? '&' : '?'}${titleParam}`;
+}
+
 const DOMAIN_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle, Leaf, Truck, Network, Wrench, GraduationCap,
   Briefcase, Users,
@@ -208,8 +222,9 @@ const MOCK_HOME_SECTIONS: SectionConfig[] = [
   {
     title: '最新精选',
     tag: '最新精选',
-    link: '/list?tag=%E6%9C%80%E6%96%B0%E7%B2%BE%E9%80%89',
+    link: '/list?recommendation=latest_selected',
     icon: 'Star',
+    builtin_key: 'latest_selected',
     color: '#2563eb',
     bg: '#eff6ff',
     enabled: true,
@@ -219,6 +234,7 @@ const MOCK_HOME_SECTIONS: SectionConfig[] = [
     tag: '典型案例',
     link: '/list?tag=%E5%85%B8%E5%9E%8B%E6%A1%88%E4%BE%8B',
     icon: 'AlertTriangle',
+    builtin_key: 'typical_case',
     color: '#dc2626',
     bg: '#fee2e2',
     enabled: true,
@@ -799,6 +815,7 @@ export default function HomePage() {
             {contentSections.map((sec, index) => {
               const fetchedItems = sectionData[sec.tag] || [];
               const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems;
+              const moreLink = buildSectionMoreLink(sec);
               return (
                 <div
                   key={sec.tag}
@@ -810,7 +827,7 @@ export default function HomePage() {
                       <span className={s.panelTitle}>{sec.title}</span>
                     </div>
                     <Link
-                      to={`${sec.link}${sec.link.includes('?') ? '&' : '?'}title=${encodeURIComponent(sec.title)}`}
+                      to={moreLink}
                       className={s.panelMore}
                     >
                       更多 <ChevronRight size={14} />
@@ -823,7 +840,7 @@ export default function HomePage() {
                         className={s.listItem}
                         onClick={() =>
                           navigate(`/space/${f.spaceId}/file/${f.id}`, {
-                            state: { returnTo: sec.link },
+                            state: { returnTo: moreLink },
                           })}
                       >
                         <div className={s.itemTitle}>{f.title}</div>

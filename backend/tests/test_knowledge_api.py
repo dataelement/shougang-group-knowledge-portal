@@ -5,7 +5,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.schemas.portal_config import AgentConfig
+from app.schemas.portal_config import AgentConfig, SectionsConfigUpdate
 from app.services.portal_config_service import PortalConfigService
 
 
@@ -2575,6 +2575,63 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
     ]
 
 
+def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path: Path):
+    class RecommendationBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": None,
+                    "tag": None,
+                    "space_ids": [12, 18, 25],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "portal_read_count_desc",
+                    "cursor": None,
+                    "limit": 5,
+                    "recommendation": "latest_selected",
+                    "rerank_model_id": "",
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "热轧1580产线精轧机振动纹治理实践",
+                                "summary": "振动纹治理实践摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": ["热轧"],
+                                "file_ext": "pdf",
+                                "file_size": "949.33KB",
+                                "file_encoding": "GF-ZD-SC-202604-01201",
+                            }
+                        ],
+                        "has_more": True,
+                        "next_cursor": "cursor-1",
+                    }
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = RecommendationBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get(
+            "/api/v1/knowledge/files?recommendation=latest_selected&sort=portal_read_count_desc&limit=5"
+        )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["has_more"] is True
+    assert body["next_cursor"] == "cursor-1"
+    assert body["data"][0]["space_id"] == 12
+    assert fake_bisheng.post_calls[0][1]["tag"] is None
+
+
 def test_search_files_does_not_fallback_to_public_spaces_when_flag_is_present(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
@@ -2924,12 +2981,44 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
     class HomeBatchBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": None,
+                    "tag": None,
+                    "space_ids": [12, 18, 25],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "portal_read_count_desc",
+                    "cursor": None,
+                    "limit": 6,
+                    "recommendation": "latest_selected",
+                    "rerank_model_id": "",
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "热轧1580产线精轧机振动纹治理实践",
+                                "summary": "振动纹治理实践摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": ["热轧"],
+                                "file_ext": "pdf",
+                                "file_size": "949.33KB",
+                                "file_encoding": "GF-ZD-SC-202604-01201",
+                            }
+                        ],
+                        "has_more": False,
+                        "next_cursor": None,
+                    }
+                }
             if path == "/api/v1/knowledge/shougang-portal/home":
                 assert json == {
                     "space_ids": [12, 18, 25],
                     "space_level": None,
                     "sections": [
-                        {"tag": "最新精选", "page_size": 6},
                         {"tag": "典型案例", "page_size": 6},
                     ],
                     "hot_tags_limit": 8,
@@ -2937,29 +3026,21 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
                 return {
                     "data": {
                         "sections": {
-                            "最新精选": [
-                                {
-                                    "id": 1580,
-                                    "space_id": 12,
-                                    "title": "热轧1580产线精轧机振动纹治理实践",
-                                    "summary": "振动纹治理实践摘要",
-                                    "source": "轧线技术案例库",
-                                    "updated_at": "2026-04-13T10:30:00",
-                                    "tags": ["最新精选", "热轧"],
-                                    "file_ext": "pdf",
-                                    "file_size": "949.33KB",
-                                    "file_encoding": "GF-ZD-SC-202604-01201",
-                                }
-                            ],
                             "典型案例": [],
                         },
-                        "tags": ["最新精选", "典型案例", "热轧"],
+                        "tags": ["知识推荐", "典型案例", "热轧"],
                     }
                 }
             return await super().post_json(path, json=json)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
+    config = config_service.get_config()
+    renamed_sections = [section.model_dump() for section in config.sections]
+    renamed_sections[0]["title"] = "知识推荐 · 最新精选"
+    renamed_sections[0]["tag"] = "知识推荐"
+    renamed_sections[0]["link"] = "/list?recommendation=latest_selected"
+    config_service.update_sections(SectionsConfigUpdate.model_validate({"sections": renamed_sections}))
     fake_bisheng = HomeBatchBishengClient()
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
@@ -2968,23 +3049,89 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["sections"]["最新精选"][0]["space_id"] == 12
+    assert body["sections"]["知识推荐"][0]["space_id"] == 12
     assert body["sections"]["典型案例"] == []
-    assert body["tags"] == ["最新精选", "典型案例", "热轧"]
+    assert body["tags"] == ["知识推荐", "典型案例", "热轧"]
     assert fake_bisheng.post_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/files/search",
+            {
+                "q": None,
+                "tag": None,
+                "space_ids": [12, 18, 25],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "portal_read_count_desc",
+                "cursor": None,
+                "limit": 6,
+                "recommendation": "latest_selected",
+                "rerank_model_id": "",
+            },
+        ),
         (
             "/api/v1/knowledge/shougang-portal/home",
             {
                 "space_ids": [12, 18, 25],
                 "space_level": None,
                 "sections": [
-                    {"tag": "最新精选", "page_size": 6},
                     {"tag": "典型案例", "page_size": 6},
                 ],
                 "hot_tags_limit": 8,
             },
         )
     ]
+
+
+def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_path: Path):
+    class LoggedHomeBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json["recommendation"] == "latest_selected"
+                assert json["tag"] is None
+                assert json["sort"] == "portal_read_count_desc"
+                assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 710101,
+                                "space_id": 7101,
+                                "title": "登录用户可见热门文档",
+                                "summary": "用户可见空间内的热门文档",
+                                "source": "冷轧设备故障复盘库",
+                                "updated_at": "2026-04-26T09:20:00",
+                                "tags": ["设备"],
+                                "file_ext": "pdf",
+                                "file_size": "1024",
+                                "file_encoding": "SGGF-CAS-PM-202604-00001",
+                            }
+                        ],
+                        "has_more": False,
+                        "next_cursor": None,
+                    }
+                }
+            if path == "/api/v1/knowledge/shougang-portal/home":
+                assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
+                return {"data": {"sections": {"典型案例": []}, "tags": []}}
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = LoggedHomeBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.get("/api/v1/knowledge/home")
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["sections"]["最新精选"][0]["space_id"] == 7101
 
 
 def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path):
