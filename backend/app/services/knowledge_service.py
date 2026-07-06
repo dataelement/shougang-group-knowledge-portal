@@ -69,6 +69,8 @@ PREVIEW_TASK_FAILURE_STATUSES = {"cancelled", "canceled", "error", "failed", "fa
 FRONTEND_PROXY_ASSET_PATH_PREFIXES = ("/bisheng/", "/skm-bisheng/", "/workspace/bisheng/", "/workspace/skm-bisheng/", "/tmp-dir")
 SHARE_ACCESS_COOKIE_NAME = "portal_share_access"
 LATEST_SELECTED_RECOMMENDATION = "latest_selected"
+TYPICAL_CASE_SECTION_KEY = "typical_case"
+LOCAL_OFFSET_CURSOR_PREFIX = "offset:"
 SHARE_ACCESS_TTL_SECONDS = 3600
 SPACE_LIST_ENDPOINTS = (
     ("mine", "/api/v1/knowledge/space/mine"),
@@ -208,6 +210,14 @@ class KnowledgeService:
             builtin_key = str(getattr(section, "builtin_key", "") or "")
         return builtin_key == LATEST_SELECTED_RECOMMENDATION or (not builtin_key and index == 0)
 
+    @staticmethod
+    def _is_typical_case_section(section: Any) -> bool:
+        if isinstance(section, dict):
+            builtin_key = str(section.get("builtin_key") or "")
+        else:
+            builtin_key = str(getattr(section, "builtin_key", "") or "")
+        return builtin_key == TYPICAL_CASE_SECTION_KEY
+
     async def get_home_content(self, extra_space_ids: Optional[list[int]] = None) -> HomeKnowledgeData:
         config = self._config_service.get_config()
         space_ids = await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
@@ -218,41 +228,51 @@ class KnowledgeService:
                 tags=[],
             )
         try:
-            latest_section_results = await asyncio.gather(
+            direct_section_results = await asyncio.gather(
                 *[
                     self.search_files(
                         q=None,
-                        tag=None,
+                        tag=None if self._is_latest_selected_section(section, index) else section.tag,
                         requested_space_ids=space_ids,
                         space_level=None,
                         file_ext=None,
                         document_type=None,
                         business_domain_code=None,
-                        recommendation=LATEST_SELECTED_RECOMMENDATION,
-                        sort="portal_read_count_desc",
+                        recommendation=(
+                            LATEST_SELECTED_RECOMMENDATION
+                            if self._is_latest_selected_section(section, index)
+                            else None
+                        ),
+                        sort=(
+                            "portal_read_count_desc"
+                            if self._is_latest_selected_section(section, index)
+                            else "updated_at_desc"
+                        ),
                         cursor=None,
                         limit=config.display.home.section_page_size,
                         extra_space_ids=extra_space_ids,
                     )
                     for index, section in enumerate(sections)
                     if self._is_latest_selected_section(section, index)
+                    or self._is_typical_case_section(section)
                 ],
                 return_exceptions=True,
             )
-            latest_result_by_tag = {
+            direct_result_by_tag = {
                 section.tag: result
                 for section, result in zip(
                     [
                         section
                         for index, section in enumerate(sections)
                         if self._is_latest_selected_section(section, index)
+                        or self._is_typical_case_section(section)
                     ],
-                    latest_section_results,
+                    direct_section_results,
                 )
             }
             section_payloads: list[dict[str, Any]] = []
             for index, section in enumerate(sections):
-                if self._is_latest_selected_section(section, index):
+                if self._is_latest_selected_section(section, index) or self._is_typical_case_section(section):
                     continue
                 section_payload: dict[str, Any] = {
                     "tag": section.tag,
@@ -278,8 +298,8 @@ class KnowledgeService:
             raw_tags = data.get("tags") if isinstance(data, dict) else []
             mapped_sections: dict[str, list[KnowledgeFileItem]] = {}
             for index, section in enumerate(sections):
-                if self._is_latest_selected_section(section, index):
-                    result = latest_result_by_tag.get(section.tag)
+                if self._is_latest_selected_section(section, index) or self._is_typical_case_section(section):
+                    result = direct_result_by_tag.get(section.tag)
                     mapped_sections[section.tag] = [] if isinstance(result, Exception) or result is None else result.data
                     continue
                 raw_items = raw_sections.get(section.tag, []) if isinstance(raw_sections, dict) else []
@@ -303,7 +323,7 @@ class KnowledgeService:
                         sort=(
                             "portal_read_count_desc"
                             if self._is_latest_selected_section(section, index)
-                            else "updated_at"
+                            else "updated_at_desc"
                         ),
                         cursor=None,
                         limit=config.display.home.section_page_size,
@@ -637,6 +657,23 @@ class KnowledgeService:
         if not space_ids:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
 
+        if self._should_use_full_tag_search(
+            q=q,
+            tag=tag,
+            file_ext=file_ext,
+            document_type=document_type,
+            business_domain_code=normalized_business_domain_code,
+            recommendation=recommendation,
+        ):
+            return await self._search_tag_files_across_spaces(
+                tag=tag or "",
+                space_ids=space_ids,
+                sort=sort,
+                cursor=cursor,
+                limit=limit,
+                extra_space_ids=extra_space_ids,
+            )
+
         return await self._search_shougang_portal_files(
             q=q,
             tag=tag,
@@ -650,6 +687,78 @@ class KnowledgeService:
             cursor=cursor,
             limit=limit,
         )
+
+    @staticmethod
+    def _should_use_full_tag_search(
+        *,
+        q: Optional[str],
+        tag: Optional[str],
+        file_ext: Optional[str],
+        document_type: Optional[str],
+        business_domain_code: Optional[str],
+        recommendation: Optional[str],
+    ) -> bool:
+        return bool(
+            tag
+            and not q
+            and not file_ext
+            and not document_type
+            and not business_domain_code
+            and not recommendation
+        )
+
+    async def _search_tag_files_across_spaces(
+        self,
+        *,
+        tag: str,
+        space_ids: list[int],
+        sort: str,
+        cursor: Optional[str],
+        limit: int,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> CursorKnowledgeFileData:
+        search_results = await asyncio.gather(
+            *[
+                self._fetch_space_files(space_id=space_id, keyword=None, tag_name=tag)
+                for space_id in space_ids
+            ],
+            return_exceptions=True,
+        )
+        raw_items: list[dict[str, Any]] = []
+        seen: set[tuple[int, int]] = set()
+        for result in search_results:
+            if isinstance(result, Exception):
+                continue
+            for item in result.items:
+                key = (int(item.get("knowledge_id", 0)), int(item.get("id", 0)))
+                if key in seen:
+                    continue
+                seen.add(key)
+                raw_items.append(item)
+
+        sorted_items = self._sort_items(raw_items, sort=sort, keyword=None)
+        page_limit = min(max(int(limit or 20), 1), self._page_size_limit)
+        start = self._parse_local_offset_cursor(cursor)
+        end = start + page_limit
+        space_name_map = await self.get_space_name_map(extra_space_ids)
+        data = self._map_items(sorted_items[start:end], space_name_map)
+        next_cursor = f"{LOCAL_OFFSET_CURSOR_PREFIX}{end}" if end < len(sorted_items) else None
+        return CursorKnowledgeFileData(
+            data=data,
+            has_more=next_cursor is not None,
+            next_cursor=next_cursor,
+        )
+
+    @staticmethod
+    def _parse_local_offset_cursor(cursor: Optional[str]) -> int:
+        if not cursor:
+            return 0
+        if not cursor.startswith(LOCAL_OFFSET_CURSOR_PREFIX):
+            return 0
+        try:
+            return max(int(cursor[len(LOCAL_OFFSET_CURSOR_PREFIX):]), 0)
+        except ValueError:
+            return 0
 
     async def get_qa_tree_children(
         self,

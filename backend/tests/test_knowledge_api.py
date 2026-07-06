@@ -2498,7 +2498,7 @@ def test_get_tags_passes_business_domain_code_to_shougang_portal_batch_endpoint(
     ]
 
 
-def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tmp_path: Path):
+def test_search_files_uses_shougang_portal_batch_endpoint_for_keyword_search(tmp_path: Path):
     class BatchOnlyBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):
             if path.endswith("/search"):
@@ -2509,7 +2509,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
                 assert json == {
-                    "q": None,
+                    "q": "振动纹",
                     "tag": "热轧",
                     "space_ids": [12, 18],
                     "space_level": None,
@@ -2548,7 +2548,9 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        response = client.get("/api/v1/knowledge/files?tag=%E7%83%AD%E8%BD%A7&space_ids=12&space_ids=18&limit=10")
+        response = client.get(
+            "/api/v1/knowledge/files?q=%E6%8C%AF%E5%8A%A8%E7%BA%B9&tag=%E7%83%AD%E8%BD%A7&space_ids=12&space_ids=18&limit=10"
+        )
 
     assert response.status_code == 200
     body = response.json()["data"]
@@ -2561,7 +2563,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
         (
             "/api/v1/knowledge/shougang-portal/files/search",
             {
-                "q": None,
+                "q": "振动纹",
                 "tag": "热轧",
                 "space_ids": [12, 18],
                 "space_level": None,
@@ -2573,6 +2575,122 @@ def test_search_files_uses_shougang_portal_batch_endpoint_without_space_level(tm
             },
         )
     ]
+
+
+def test_search_files_uses_full_space_search_for_plain_tag_query(tmp_path: Path):
+    class FullTagSearchBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.get_calls = []
+
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                raise AssertionError("plain tag query should use full per-space search")
+            return await super().post_json(path, json=json, headers=headers)
+
+        async def get_json(self, path: str, params=None, headers=None):
+            self.get_calls.append((path, params))
+            if path == "/api/v1/knowledge/space/12/tag":
+                return {"data": [{"id": 901, "name": "行业情报"}]}
+            if path == "/api/v1/knowledge/space/18/tag":
+                return {"data": [{"id": 902, "name": "行业情报"}]}
+            if path == "/api/v1/knowledge/space/12/search":
+                assert params == {
+                    "page": 1,
+                    "page_size": 100,
+                    "file_status": 2,
+                    "tag_ids": [901],
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1201,
+                                "knowledge_id": 12,
+                                "file_name": "行业旧简报.pdf",
+                                "abstract": "旧简报",
+                                "file_type": 1,
+                                "status": 2,
+                                "file_size": "10KB",
+                                "file_encoding": "SG-OLD",
+                                "update_time": "2026-04-10T08:00:00",
+                                "tags": [{"id": 901, "name": "行业情报"}],
+                            },
+                            {
+                                "id": 1202,
+                                "knowledge_id": 12,
+                                "file_name": "行业中期简报.pdf",
+                                "abstract": "中期简报",
+                                "file_type": 1,
+                                "status": 2,
+                                "file_size": "12KB",
+                                "file_encoding": "SG-MID",
+                                "update_time": "2026-04-12T08:00:00",
+                                "tags": [{"id": 901, "name": "行业情报"}],
+                            },
+                        ],
+                        "total": 2,
+                    }
+                }
+            if path == "/api/v1/knowledge/space/18/search":
+                assert params == {
+                    "page": 1,
+                    "page_size": 100,
+                    "file_status": 2,
+                    "tag_ids": [902],
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1801,
+                                "knowledge_id": 18,
+                                "file_name": "行业最新简报.pdf",
+                                "abstract": "最新简报",
+                                "file_type": 1,
+                                "status": 2,
+                                "file_size": "18KB",
+                                "file_encoding": "SG-NEW",
+                                "update_time": "2026-04-15T08:00:00",
+                                "tags": [{"id": 902, "name": "行业情报"}],
+                            }
+                        ],
+                        "total": 1,
+                    }
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = FullTagSearchBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        try:
+            first = client.get(
+                "/api/v1/knowledge/files?tag=%E8%A1%8C%E4%B8%9A%E6%83%85%E6%8A%A5&space_ids=12&space_ids=18&sort=updated_at_desc&limit=2"
+            )
+            second = client.get(
+                "/api/v1/knowledge/files?tag=%E8%A1%8C%E4%B8%9A%E6%83%85%E6%8A%A5&space_ids=12&space_ids=18&sort=updated_at_desc&limit=2&cursor=offset%3A2"
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert first.status_code == 200
+    first_body = first.json()["data"]
+    assert [item["id"] for item in first_body["data"]] == [1801, 1202]
+    assert first_body["has_more"] is True
+    assert first_body["next_cursor"] == "offset:2"
+
+    assert second.status_code == 200
+    second_body = second.json()["data"]
+    assert [item["id"] for item in second_body["data"]] == [1201]
+    assert second_body["has_more"] is False
+    assert second_body["next_cursor"] is None
+    assert fake_bisheng.post_calls == []
 
 
 def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path: Path):
@@ -2977,8 +3095,39 @@ def test_related_files_use_full_space_search_without_portal_top50(tmp_path: Path
     assert fake_bisheng.post_calls == []
 
 
-def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Path):
-    class HomeBatchBishengClient(FakeBishengClient):
+def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(tmp_path: Path):
+    class HomeBuiltinSearchBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/space/18/tag":
+                return {"data": [{"id": 901, "name": "典型案例"}]}
+            if path == "/api/v1/knowledge/space/18/search":
+                assert params == {
+                    "page": 1,
+                    "page_size": 100,
+                    "file_status": 2,
+                    "tag_ids": [901],
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1590,
+                                "knowledge_id": 18,
+                                "file_name": "典型事故案例复盘.docx",
+                                "abstract": "按更多列表口径返回的典型案例",
+                                "file_type": 1,
+                                "status": 2,
+                                "file_size": "128KB",
+                                "file_encoding": "GF-ZD-SC-202604-01202",
+                                "update_time": "2026-04-14T10:30:00",
+                                "tags": [{"id": 901, "name": "典型案例"}],
+                            }
+                        ],
+                        "total": 1,
+                    }
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
@@ -3015,22 +3164,10 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
                     }
                 }
             if path == "/api/v1/knowledge/shougang-portal/home":
-                assert json == {
-                    "space_ids": [12, 18, 25],
-                    "space_level": None,
-                    "sections": [
-                        {"tag": "典型案例", "page_size": 6},
-                    ],
-                    "hot_tags_limit": 8,
-                }
-                return {
-                    "data": {
-                        "sections": {
-                            "典型案例": [],
-                        },
-                        "tags": ["知识推荐", "典型案例", "热轧"],
-                    }
-                }
+                raise AssertionError("builtin latest selected and typical case should not use home batch endpoint")
+            if path == "/api/v1/knowledge/shougang-portal/tags/search":
+                assert json == {"space_ids": [12, 18, 25], "space_level": None}
+                return {"data": {"tags": ["知识推荐", "典型案例", "热轧"]}}
             return await super().post_json(path, json=json)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
@@ -3041,7 +3178,7 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
     renamed_sections[0]["tag"] = "知识推荐"
     renamed_sections[0]["link"] = "/list?recommendation=latest_selected"
     config_service.update_sections(SectionsConfigUpdate.model_validate({"sections": renamed_sections}))
-    fake_bisheng = HomeBatchBishengClient()
+    fake_bisheng = HomeBuiltinSearchBishengClient()
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
@@ -3050,8 +3187,9 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
     assert response.status_code == 200
     body = response.json()["data"]
     assert body["sections"]["知识推荐"][0]["space_id"] == 12
-    assert body["sections"]["典型案例"] == []
-    assert body["tags"] == ["知识推荐", "典型案例", "热轧"]
+    assert body["sections"]["典型案例"][0]["id"] == 1590
+    assert body["sections"]["典型案例"][0]["space_id"] == 18
+    assert body["tags"] == ["典型案例", "热轧", "知识推荐"]
     assert fake_bisheng.post_calls == [
         (
             "/api/v1/knowledge/shougang-portal/files/search",
@@ -3068,29 +3206,50 @@ def test_get_home_content_uses_shougang_portal_home_batch_endpoint(tmp_path: Pat
                 "rerank_model_id": "",
             },
         ),
-        (
-            "/api/v1/knowledge/shougang-portal/home",
-            {
-                "space_ids": [12, 18, 25],
-                "space_level": None,
-                "sections": [
-                    {"tag": "典型案例", "page_size": 6},
-                ],
-                "hot_tags_limit": 8,
-            },
-        )
+        ("/api/v1/knowledge/shougang-portal/tags/search", {"space_ids": [12, 18, 25], "space_level": None}),
     ]
 
 
 def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_path: Path):
     class LoggedHomeBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/space/7102/tag":
+                return {"data": [{"id": 902, "name": "典型案例"}]}
+            if path == "/api/v1/knowledge/space/7102/search":
+                assert params == {
+                    "page": 1,
+                    "page_size": 100,
+                    "file_status": 2,
+                    "tag_ids": [902],
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 710102,
+                                "knowledge_id": 7102,
+                                "file_name": "登录用户可见典型案例.pdf",
+                                "abstract": "用户可见空间内的典型案例",
+                                "file_type": 1,
+                                "status": 2,
+                                "file_size": "1024",
+                                "file_encoding": "SGGF-CAS-PM-202604-00001",
+                                "update_time": "2026-04-26T09:20:00",
+                                "tags": [{"id": 902, "name": "典型案例"}],
+                            }
+                        ],
+                        "total": 1,
+                    }
+                }
+            return await super().get_json(path, params=params, headers=headers)
+
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
-                assert json["recommendation"] == "latest_selected"
+                assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
+                assert json.get("recommendation") == "latest_selected"
                 assert json["tag"] is None
                 assert json["sort"] == "portal_read_count_desc"
-                assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
                 return {
                     "data": {
                         "data": [
@@ -3112,8 +3271,10 @@ def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_
                     }
                 }
             if path == "/api/v1/knowledge/shougang-portal/home":
+                raise AssertionError("builtin latest selected and typical case should not use home batch endpoint")
+            if path == "/api/v1/knowledge/shougang-portal/tags/search":
                 assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
-                return {"data": {"sections": {"典型案例": []}, "tags": []}}
+                return {"data": {"tags": []}}
             return await super().post_json(path, json=json)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
@@ -3132,6 +3293,7 @@ def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_
     assert response.status_code == 200
     body = response.json()["data"]
     assert body["sections"]["最新精选"][0]["space_id"] == 7101
+    assert body["sections"]["典型案例"][0]["space_id"] == 7102
 
 
 def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path):
