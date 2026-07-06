@@ -88,14 +88,13 @@ export function buildFileListItemView(
     }
   }
 
-  const MAX_TAGS_PER_GROUP = 2;
   const makeGroup = (label: string, allTags: string[]): TagGroup | null => {
     if (allTags.length === 0) return null;
     return {
       label,
-      tags: allTags.slice(0, MAX_TAGS_PER_GROUP),
-      hiddenCount: Math.max(0, allTags.length - MAX_TAGS_PER_GROUP),
-      hiddenTags: allTags.slice(MAX_TAGS_PER_GROUP),
+      tags: allTags.slice(0, visibleTagCount),
+      hiddenCount: Math.max(0, allTags.length - visibleTagCount),
+      hiddenTags: allTags.slice(visibleTagCount),
     };
   };
   const tagGroups: TagGroup[] = [

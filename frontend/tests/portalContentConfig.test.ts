@@ -138,12 +138,12 @@ test('home content maps section file DTOs', async () => {
   }
 });
 
-test('file search sends document type query parameter', async () => {
+test('file search sends file subcategory query parameter', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     assert.equal(
       String(input),
-      '/api/v1/knowledge/files?space_level=department&file_ext=pdf&document_type=RPT&sort=updated_at_desc&limit=10&space_ids=12',
+      '/api/v1/knowledge/files?space_level=department&file_ext=pdf&file_subcategory_code=RPT&sort=updated_at_desc&limit=10&space_ids=12',
     );
     return new Response(JSON.stringify({
       status_code: 200,
@@ -245,10 +245,10 @@ test('domain tag aggregation sends business domain code without public fallback'
   }
 });
 
-test('space file list sends document type query parameter', async () => {
+test('space file list sends file subcategory query parameter', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    assert.equal(String(input), '/api/v1/knowledge/space/12/files?document_type=STD&page=2&page_size=10');
+    assert.equal(String(input), '/api/v1/knowledge/space/12/files?file_subcategory_code=STD&page=2&page_size=10');
     return new Response(JSON.stringify({
       status_code: 200,
       status_message: 'OK',

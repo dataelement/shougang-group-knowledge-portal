@@ -128,6 +128,12 @@ export interface SearchRerankModelOptionsResponse {
 export interface DocumentTypeConfig {
   code: string;
   label: string;
+  children?: DocumentTypeChildConfig[];
+}
+
+export interface DocumentTypeChildConfig {
+  code: string;
+  label: string;
 }
 
 export interface BishengRuntimeConfig {

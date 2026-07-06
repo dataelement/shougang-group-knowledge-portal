@@ -2,6 +2,13 @@ import type { DocumentTypeConfig } from '../api/adminConfig';
 
 export type SearchSortValue = 'relevance' | 'updated_at_desc' | 'updated_at_asc';
 
+export interface RuntimeDocumentTypeOption {
+  code: string;
+  label: string;
+  parentCode: string;
+  parentLabel: string;
+}
+
 export const SEARCH_SORT_OPTIONS: Array<{ value: SearchSortValue; label: string }> = [
   { value: 'relevance', label: '相关性优先' },
   { value: 'updated_at_desc', label: '更新时间倒序' },
@@ -23,20 +30,33 @@ export function getDocumentTypeCodeFromFileEncoding(fileEncoding?: string | null
   return normalizeDocumentTypeCode(parts[1]);
 }
 
-export function getRuntimeDocumentTypes(documentTypes?: DocumentTypeConfig[] | null): DocumentTypeConfig[] {
+export function getRuntimeDocumentTypes(documentTypes?: DocumentTypeConfig[] | null): RuntimeDocumentTypeOption[] {
   const seen = new Set<string>();
-  const normalized: DocumentTypeConfig[] = [];
+  const normalized: RuntimeDocumentTypeOption[] = [];
   for (const item of documentTypes ?? []) {
-    const code = normalizeDocumentTypeCode(item.code);
-    const label = item.label.trim();
-    if (!code || !label || seen.has(code)) continue;
-    seen.add(code);
-    normalized.push({ code, label });
+    const parentCode = normalizeDocumentTypeCode(item.code);
+    const parentLabel = item.label.trim();
+    if (!parentCode || !parentLabel) continue;
+    const children = Array.isArray(item.children) && item.children.length
+      ? item.children
+      : [{ code: item.code, label: item.label }];
+    for (const child of children) {
+      const code = normalizeDocumentTypeCode(child.code);
+      const childLabel = child.label.trim();
+      if (!code || !childLabel || seen.has(code)) continue;
+      seen.add(code);
+      normalized.push({
+        code,
+        label: parentLabel === childLabel ? childLabel : `${parentLabel} / ${childLabel}`,
+        parentCode,
+        parentLabel,
+      });
+    }
   }
   return normalized;
 }
 
-export function matchesDocumentType(fileEncoding: string, documentTypeCode: string): boolean {
+export function matchesDocumentType(fileSubcategoryCode: string | undefined, documentTypeCode: string): boolean {
   const normalized = normalizeDocumentTypeCode(documentTypeCode);
-  return !normalized || getDocumentTypeCodeFromFileEncoding(fileEncoding) === normalized;
+  return !normalized || normalizeDocumentTypeCode(fileSubcategoryCode) === normalized;
 }

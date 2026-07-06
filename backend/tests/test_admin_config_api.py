@@ -771,8 +771,8 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
     data = response.json()["data"]
     assert "site" in data
     assert data["document_types"] == [
-        {"code": "RPT", "label": "报告"},
-        {"code": "STD", "label": "标准规范"},
+        {"code": "RPT", "label": "报告", "children": [{"code": "RPT", "label": "报告"}]},
+        {"code": "STD", "label": "标准规范", "children": [{"code": "STD", "label": "标准规范"}]},
     ]
     assert data["business_domain_options"] == [
         {"code": "PP", "name": "生产"},
@@ -887,13 +887,64 @@ def test_update_document_types_strips_hidden_characters(tmp_path: Path):
 
     assert response.status_code == 200
     assert response.json()["data"]["document_types"] == [
-        {"code": "CAS", "label": "案例"},
-        {"code": "STD", "label": "标准规范"},
+        {"code": "CAS", "label": "案例", "children": [{"code": "CAS", "label": "案例"}]},
+        {"code": "STD", "label": "标准规范", "children": [{"code": "STD", "label": "标准规范"}]},
     ]
     assert [item.model_dump() for item in service.get_config().document_types] == [
-        {"code": "CAS", "label": "案例"},
-        {"code": "STD", "label": "标准规范"},
+        {"code": "CAS", "label": "案例", "children": [{"code": "CAS", "label": "案例"}]},
+        {"code": "STD", "label": "标准规范", "children": [{"code": "STD", "label": "标准规范"}]},
     ]
+
+
+def test_update_document_types_accepts_child_categories(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        response = client.post(
+            "/api/v1/admin/config/document-types",
+            json={
+                "document_types": [
+                    {
+                        "code": "pol",
+                        "label": "政策制度",
+                        "children": [
+                            {"code": "POL-REG\u200b", "label": "制度文件\u200b"},
+                            {"code": "POL-NOTICE", "label": "通知公告"},
+                        ],
+                    },
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["document_types"] == [
+        {
+            "code": "POL",
+            "label": "政策制度",
+            "children": [
+                {"code": "POL-REG", "label": "制度文件"},
+                {"code": "POL-NOTICE", "label": "通知公告"},
+            ],
+        },
+    ]
+
+
+def test_update_document_types_rejects_empty_children(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        response = client.post(
+            "/api/v1/admin/config/document-types",
+            json={
+                "document_types": [
+                    {"code": "POL", "label": "政策制度", "children": []},
+                ],
+            },
+        )
+
+    assert response.status_code == 422
 
 
 def test_get_admin_config_uses_portal_config_service(tmp_path: Path):

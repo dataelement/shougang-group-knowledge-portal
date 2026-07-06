@@ -260,6 +260,7 @@ export default function SearchPage() {
           spaceLevel: spaceLevel || undefined,
           fileExt: fileExt || undefined,
           sort,
+          limit: displayConfig.search.pageSize,
         });
         if (!active) return;
         setRawFiles(result.data);
@@ -282,7 +283,7 @@ export default function SearchPage() {
     if (!hasSearch || loading || !resultsReady) return;
     let active = true;
     const filtered = documentType
-      ? rawFiles.filter((file) => matchesDocumentType(file.fileEncoding, documentType))
+      ? rawFiles.filter((file) => matchesDocumentType(file.fileSubcategoryCode, documentType))
       : rawFiles;
     setFiles(filtered);
     setTotal(documentType ? filtered.length : rawTotal);

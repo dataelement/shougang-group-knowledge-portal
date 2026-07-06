@@ -19,7 +19,7 @@ from app.schemas.knowledge import (
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
-from app.schemas.portal_config import DEFAULT_DOCUMENT_TYPES, PortalConfig
+from app.schemas.portal_config import DEFAULT_DOCUMENT_TYPES, DocumentTypeConfig, PortalConfig
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
@@ -79,24 +79,29 @@ def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
     raise HTTPException(status_code=status_code, detail=err.status_message)
 
 
-def _normalize_document_types(raw_items: Any) -> list[dict[str, str]]:
+def _normalize_document_types(raw_items: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_items, list):
         return []
-    document_types: list[dict[str, str]] = []
+    document_types: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in raw_items:
         if not isinstance(item, dict):
             continue
-        code = str(item.get("code") or "").strip().upper()
-        label = str(item.get("label") or item.get("name") or "").strip()
-        if not code or not label or code in seen:
+        raw_item = {**item}
+        if "label" not in raw_item and "name" in raw_item:
+            raw_item["label"] = raw_item.get("name")
+        try:
+            normalized = DocumentTypeConfig.model_validate(raw_item)
+        except Exception:
             continue
-        seen.add(code)
-        document_types.append({"code": code, "label": label})
+        if normalized.code in seen:
+            continue
+        seen.add(normalized.code)
+        document_types.append(normalized.model_dump(mode="json"))
     return document_types
 
 
-async def _fetch_shougang_document_types(bisheng_client: BishengClient) -> list[dict[str, str]]:
+async def _fetch_shougang_document_types(bisheng_client: BishengClient) -> list[dict[str, Any]]:
     try:
         response = await bisheng_client.get_json("/api/v1/workstation/config")
     except Exception:
@@ -200,6 +205,7 @@ async def search_files(
     space_level: Optional[str] = None,
     file_ext: Optional[str] = None,
     document_type: Optional[str] = None,
+    file_subcategory_code: Optional[str] = None,
     business_domain_code: Optional[str] = None,
     recommendation: Optional[str] = None,
     sort: str = "relevance",
@@ -225,7 +231,7 @@ async def search_files(
                     requested_space_ids=space_ids,
                     space_level=space_level,
                     file_ext=file_ext,
-                    document_type=document_type,
+                    document_type=file_subcategory_code or document_type,
                     business_domain_code=business_domain_code,
                     recommendation=recommendation,
                     sort=sort,
@@ -255,7 +261,7 @@ async def search_files(
                 requested_space_ids=space_ids,
                 space_level=space_level,
                 file_ext=file_ext,
-                document_type=document_type,
+                document_type=file_subcategory_code or document_type,
                 business_domain_code=business_domain_code,
                 recommendation=recommendation,
                 sort=sort,
@@ -354,7 +360,7 @@ async def get_portal_config(
         document_types = [dt.model_dump() for dt in config.document_types]
     else:
         bisheng_document_types = await _fetch_shougang_document_types(bisheng_client)
-        document_types = bisheng_document_types or DEFAULT_DOCUMENT_TYPES
+        document_types = _normalize_document_types(bisheng_document_types or DEFAULT_DOCUMENT_TYPES)
 
     business_domain_options = _build_business_domain_options(config)
 
@@ -755,6 +761,7 @@ async def list_space_files(
     request: Request,
     file_ext: Optional[str] = None,
     document_type: Optional[str] = None,
+    file_subcategory_code: Optional[str] = None,
     tag: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
@@ -770,7 +777,7 @@ async def list_space_files(
             await service.list_space_files(
                 space_id=space_id,
                 file_ext=file_ext,
-                document_type=document_type,
+                document_type=file_subcategory_code or document_type,
                 tag=tag,
                 page=page,
                 page_size=page_size,
