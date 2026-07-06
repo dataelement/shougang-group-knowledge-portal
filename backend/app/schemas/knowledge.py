@@ -20,6 +20,7 @@ class KnowledgeFileItem(BaseModel):
     file_ext: str = ""
     file_size: str = ""
     file_encoding: str = ""
+    file_subcategory_code: str = ""
     folder_path: str = ""
     source_path: str = ""
 

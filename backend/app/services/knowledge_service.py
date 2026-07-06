@@ -870,7 +870,7 @@ class KnowledgeService:
             request_body["recommendation"] = recommendation
         normalized_document_type = self._normalize_document_type_code(document_type)
         if normalized_document_type:
-            request_body["document_type"] = normalized_document_type
+            request_body["file_subcategory_code"] = normalized_document_type
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         if normalized_business_domain_code:
             request_body["business_domain_code"] = normalized_business_domain_code
@@ -906,6 +906,7 @@ class KnowledgeService:
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
                 file_encoding=str(item.get("file_encoding") or ""),
+                file_subcategory_code=self._extract_file_subcategory_code(item),
                 folder_path=str(item.get("folder_path") or ""),
                 source_path=str(item.get("source_path") or ""),
             )
@@ -947,6 +948,7 @@ class KnowledgeService:
             file_ext=self._get_file_ext(file_info.get("file_name", "")),
             file_size=self._extract_file_size_label(file_info, search_item),
             file_encoding=self._extract_file_encoding(file_info, search_item),
+            file_subcategory_code=self._extract_file_subcategory_code(file_info, search_item),
             space=KnowledgeFileSpace(id=space_id, name=source),
         )
 
@@ -1455,7 +1457,7 @@ class KnowledgeService:
 
     @classmethod
     def _matches_document_type(cls, item: dict[str, Any], document_type: str) -> bool:
-        return cls._extract_document_type_code(item) == document_type
+        return cls._extract_file_subcategory_code(item) == document_type
 
     @classmethod
     def _matches_business_domain_code(cls, item: dict[str, Any], business_domain_code: str) -> bool:
@@ -1484,6 +1486,7 @@ class KnowledgeService:
                     file_ext=self._get_file_ext(file_name),
                     file_size=self._extract_file_size_label(item),
                     file_encoding=self._extract_file_encoding(item),
+                    file_subcategory_code=self._extract_file_subcategory_code(item),
                     source_path=str(item.get("source_path") or ""),
                 )
             )
@@ -1614,6 +1617,14 @@ class KnowledgeService:
         if len(parts) < 2:
             return ""
         return cls._normalize_document_type_code(parts[1])
+
+    @classmethod
+    def _extract_file_subcategory_code(cls, *items: dict[str, Any] | None) -> str:
+        value = cls._first_value_from_items(
+            items,
+            ("file_subcategory_code", "fileSubcategoryCode", "document_subtype", "documentSubtype"),
+        )
+        return cls._normalize_document_type_code(value)
 
     @classmethod
     def _extract_business_domain_code(cls, *items: dict[str, Any] | None) -> str:

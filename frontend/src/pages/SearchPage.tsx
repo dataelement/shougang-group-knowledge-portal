@@ -283,7 +283,7 @@ export default function SearchPage() {
     if (!hasSearch || loading || !resultsReady) return;
     let active = true;
     const filtered = documentType
-      ? rawFiles.filter((file) => matchesDocumentType(file.fileEncoding, documentType))
+      ? rawFiles.filter((file) => matchesDocumentType(file.fileSubcategoryCode, documentType))
       : rawFiles;
     setFiles(filtered);
     setTotal(documentType ? filtered.length : rawTotal);

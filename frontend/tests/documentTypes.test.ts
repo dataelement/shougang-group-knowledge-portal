@@ -14,24 +14,25 @@ test('document type code is parsed from the second file encoding segment', () =>
   assert.equal(getDocumentTypeCodeFromFileEncoding('SGGF'), '');
 });
 
-test('runtime document types keep configured labels and dedupe codes', () => {
+test('runtime document types flatten child categories and keep legacy flat items compatible', () => {
   assert.deepEqual(
     getRuntimeDocumentTypes([
-      { code: ' rpt ', label: '报告' },
+      { code: ' pol ', label: '政策制度', children: [{ code: 'reg', label: '制度文件' }] },
+      { code: 'RPT', label: '报告' },
       { code: 'RPT', label: '重复报告' },
-      { code: 'STD', label: '' },
       { code: 'STD', label: '标准规范' },
     ]),
     [
-      { code: 'RPT', label: '报告' },
-      { code: 'STD', label: '标准规范' },
+      { code: 'REG', label: '政策制度 / 制度文件', parentCode: 'POL', parentLabel: '政策制度' },
+      { code: 'RPT', label: '报告', parentCode: 'RPT', parentLabel: '报告' },
+      { code: 'STD', label: '标准规范', parentCode: 'STD', parentLabel: '标准规范' },
     ],
   );
 });
 
 test('document type matching requires an exact configured code match', () => {
-  assert.equal(matchesDocumentType('SGGF-RPT-PP-202604-01201', 'RPT'), true);
-  assert.equal(matchesDocumentType('SGGF-STD-PP-202604-01201', 'RPT'), false);
+  assert.equal(matchesDocumentType('RPT', 'RPT'), true);
+  assert.equal(matchesDocumentType('STD', 'RPT'), false);
   assert.equal(matchesDocumentType('', 'RPT'), false);
 });
 

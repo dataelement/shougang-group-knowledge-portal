@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare,
+  Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronDown, ChevronRight, Trash2,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -262,6 +262,12 @@ interface SiteDraft {
   domain_count_cache_ttl_seconds: string;
 }
 
+interface DocumentTypeDraft {
+  code: string;
+  label: string;
+  children: Array<{ code: string; label: string }>;
+}
+
 export default function AdminPage() {
   const [active, setActive] = useState<NavKey>('domains');
   const [config, setConfig] = useState<PortalConfig | null>(null);
@@ -284,8 +290,9 @@ export default function AdminPage() {
   const [sectionDeleteIndex, setSectionDeleteIndex] = useState<number | null>(null);
   const [documentTypeDialogOpen, setDocumentTypeDialogOpen] = useState(false);
   const [documentTypeEditIndex, setDocumentTypeEditIndex] = useState<number | null>(null);
-  const [documentTypeDraft, setDocumentTypeDraft] = useState<DocumentTypeConfig>({ code: '', label: '' });
+  const [documentTypeDraft, setDocumentTypeDraft] = useState<DocumentTypeDraft>(createDocumentTypeDraft());
   const [documentTypeDialogError, setDocumentTypeDialogError] = useState('');
+  const [expandedDocumentTypeCodes, setExpandedDocumentTypeCodes] = useState<Set<string>>(() => new Set());
   const [bishengConfig, setBishengConfig] = useState<BishengRuntimeConfig | null>(null);
   const [bishengEditorOpen, setBishengEditorOpen] = useState(false);
   const [bishengDraft, setBishengDraft] = useState<BishengDraft>(createBishengDraft());
@@ -459,27 +466,46 @@ export default function AdminPage() {
   }
 
   async function handleConfirmDocumentType() {
-    const code = documentTypeDraft.code.trim().toUpperCase();
-    const label = documentTypeDraft.label.trim();
-    if (!code) { setDocumentTypeDialogError('请输入编码'); return; }
-    if (!label) { setDocumentTypeDialogError('请输入名称'); return; }
     const currentList = config?.document_types ?? [];
+    const result = buildDocumentTypeFromDraft(documentTypeDraft, currentList, documentTypeEditIndex);
+    if (result.error || !result.documentType) {
+      setDocumentTypeDialogError(result.error || '文件分类配置不完整');
+      return;
+    }
+    const documentType = result.documentType;
     let nextList: DocumentTypeConfig[];
     if (documentTypeEditIndex !== null) {
-      nextList = currentList.map((item, i) => i === documentTypeEditIndex ? { code, label } : item);
+      nextList = currentList.map((item, i) => i === documentTypeEditIndex ? documentType : item);
     } else {
-      if (currentList.some((item) => item.code === code)) {
-        setDocumentTypeDialogError('编码已存在');
-        return;
-      }
-      nextList = [...currentList, { code, label }];
+      nextList = [...currentList, documentType];
     }
+    setSaving(true);
+    setError('');
     try {
-      await runSave(() => persistDocumentTypes(nextList, setConfig));
+      await persistDocumentTypes(nextList, setConfig);
+      setExpandedDocumentTypeCodes((current) => {
+        const next = new Set(current);
+        next.add(documentType.code);
+        return next;
+      });
       setDocumentTypeDialogOpen(false);
     } catch (err) {
       setDocumentTypeDialogError(err instanceof Error ? err.message : '保存失败');
+    } finally {
+      setSaving(false);
     }
+  }
+
+  function toggleDocumentTypeExpanded(code: string) {
+    setExpandedDocumentTypeCodes((current) => {
+      const next = new Set(current);
+      if (next.has(code)) {
+        next.delete(code);
+      } else {
+        next.add(code);
+      }
+      return next;
+    });
   }
 
   function openBishengDialog(current?: BishengRuntimeConfig | null) {
@@ -840,15 +866,17 @@ export default function AdminPage() {
           {config && active === 'documentTypes' && (
             <DocumentTypesTable
               documentTypes={config.document_types}
+              expandedCodes={expandedDocumentTypeCodes}
               saving={saving}
+              onToggleExpand={toggleDocumentTypeExpanded}
               onAdd={() => {
-                setDocumentTypeDraft({ code: '', label: '' });
+                setDocumentTypeDraft(createDocumentTypeDraft());
                 setDocumentTypeEditIndex(null);
                 setDocumentTypeDialogError('');
                 setDocumentTypeDialogOpen(true);
               }}
               onEdit={(index) => {
-                setDocumentTypeDraft({ ...config.document_types[index] });
+                setDocumentTypeDraft(createDocumentTypeDraft(config.document_types[index]));
                 setDocumentTypeEditIndex(index);
                 setDocumentTypeDialogError('');
                 setDocumentTypeDialogOpen(true);
@@ -1151,18 +1179,17 @@ export default function AdminPage() {
         />
       ) : null}
       {documentTypeDialogOpen ? (
-        <SimpleCodeLabelDialog
+        <DocumentTypeEditorDialog
           open
           title={documentTypeEditIndex !== null ? '编辑文件分类' : '新增文件分类'}
-          codePlaceholder="如 ZC"
-          labelPlaceholder="如 政策制度"
-          code={documentTypeDraft.code}
-          label={documentTypeDraft.label}
+          draft={documentTypeDraft}
           saving={saving}
           error={documentTypeDialogError}
           onClose={() => setDocumentTypeDialogOpen(false)}
-          onChangeCode={(code) => { setDocumentTypeDraft((d) => ({ ...d, code })); setDocumentTypeDialogError(''); }}
-          onChangeLabel={(label) => { setDocumentTypeDraft((d) => ({ ...d, label })); setDocumentTypeDialogError(''); }}
+          onChange={(updater) => {
+            setDocumentTypeDraft(updater);
+            setDocumentTypeDialogError('');
+          }}
           onSubmit={() => void handleConfirmDocumentType()}
         />
       ) : null}
@@ -4833,6 +4860,72 @@ async function persistSections(sections: SectionConfig[], setConfig: Dispatch<Se
   setConfig((current) => (current ? { ...current, sections: data.sections } : current));
 }
 
+function normalizeDocumentTypeCode(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+function getDocumentTypeChildren(documentType: DocumentTypeConfig): Array<{ code: string; label: string }> {
+  if (Array.isArray(documentType.children) && documentType.children.length) {
+    return documentType.children.map((child) => ({ code: child.code, label: child.label }));
+  }
+  return documentType.code && documentType.label
+    ? [{ code: documentType.code, label: documentType.label }]
+    : [];
+}
+
+function createDocumentTypeDraft(documentType?: DocumentTypeConfig): DocumentTypeDraft {
+  if (!documentType) {
+    return { code: '', label: '', children: [{ code: '', label: '' }] };
+  }
+  const children = getDocumentTypeChildren(documentType);
+  return {
+    code: documentType.code,
+    label: documentType.label,
+    children: children.length ? children : [{ code: documentType.code, label: documentType.label }],
+  };
+}
+
+function buildDocumentTypeFromDraft(
+  draft: DocumentTypeDraft,
+  documentTypes: DocumentTypeConfig[],
+  editIndex: number | null,
+): { documentType?: DocumentTypeConfig; error?: string } {
+  const code = normalizeDocumentTypeCode(draft.code);
+  const label = draft.label.trim();
+  if (!code) return { error: '请输入一级分类编码' };
+  if (!label) return { error: '请输入一级分类名称' };
+  if (documentTypes.some((item, index) => index !== editIndex && normalizeDocumentTypeCode(item.code) === code)) {
+    return { error: '一级分类编码已存在' };
+  }
+
+  const children: Array<{ code: string; label: string }> = [];
+  for (const child of draft.children) {
+    const childCode = normalizeDocumentTypeCode(child.code);
+    const childLabel = child.label.trim();
+    if (!childCode && !childLabel) continue;
+    if (!childCode || !childLabel) {
+      return { error: '请完整填写二级分类编码和名称' };
+    }
+    children.push({ code: childCode, label: childLabel });
+  }
+  if (!children.length) return { error: '每个一级分类必须至少添加一个二级分类' };
+
+  const childCodes = children.map((child) => child.code);
+  if (childCodes.some((childCode, index) => childCodes.indexOf(childCode) !== index)) {
+    return { error: '同一一级分类下的二级分类编码不能重复' };
+  }
+  const existingChildCodes = new Set<string>();
+  documentTypes.forEach((item, index) => {
+    if (index === editIndex) return;
+    getDocumentTypeChildren(item).forEach((child) => existingChildCodes.add(normalizeDocumentTypeCode(child.code)));
+  });
+  if (children.some((child) => existingChildCodes.has(child.code))) {
+    return { error: '二级分类编码已存在，请使用全局唯一编码' };
+  }
+
+  return { documentType: { code, label, children } };
+}
+
 async function persistDocumentTypes(document_types: DocumentTypeConfig[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
   const data = await updateDocumentTypesConfig(document_types);
   setConfig((current) => (current ? { ...current, document_types: data.document_types } : current));
@@ -5581,7 +5674,9 @@ function BannerDeleteDialog({
 
 function DocumentTypesTable({
   documentTypes,
+  expandedCodes,
   saving,
+  onToggleExpand,
   onAdd,
   onEdit,
   onDelete,
@@ -5589,7 +5684,9 @@ function DocumentTypesTable({
   onMoveDown,
 }: {
   documentTypes: DocumentTypeConfig[];
+  expandedCodes: Set<string>;
   saving: boolean;
+  onToggleExpand: (code: string) => void;
   onAdd: () => void;
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
@@ -5602,82 +5699,151 @@ function DocumentTypesTable({
         <h2 className={s.pageTitle}>文件分类管理</h2>
         <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
       </div>
-      <p className={s.pageNote}>管理上传文件时"文件分类"下拉框的选项，修改后立即生效。</p>
+      <p className={s.pageNote}>一级分类用于分组，上传和筛选时使用二级分类；每个一级分类必须至少包含一个二级分类。</p>
       <table className={s.table}>
         <thead>
           <tr>
             <th>编码</th>
             <th>名称</th>
+            <th>二级分类</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           {documentTypes.length === 0 ? (
-            <tr><td colSpan={3} style={{ textAlign: 'center', color: '#888' }}>暂无文件分类，请点击右上角添加</td></tr>
-          ) : documentTypes.map((dt, index) => (
-            <tr key={dt.code}>
-              <td>{dt.code}</td>
-              <td>{dt.label}</td>
-              <td>
-                <div className={s.actionGroup}>
-                  <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
-                  <button className={s.inlineDangerBtn} onClick={() => onDelete(index)} disabled={saving}>删除</button>
-                  <button className={s.iconActionBtn} onClick={() => onMoveUp(index)} disabled={saving || index === 0} aria-label="上移" title="上移"><ArrowUp size={15} /></button>
-                  <button className={s.iconActionBtn} onClick={() => onMoveDown(index)} disabled={saving || index === documentTypes.length - 1} aria-label="下移" title="下移"><ArrowDown size={15} /></button>
-                </div>
-              </td>
-            </tr>
-          ))}
+            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#888' }}>暂无文件分类，请点击右上角添加</td></tr>
+          ) : documentTypes.map((dt, index) => {
+            const children = getDocumentTypeChildren(dt);
+            const expanded = expandedCodes.has(dt.code);
+            return (
+              <Fragment key={dt.code}>
+                <tr className={s.documentTypeRow} onClick={() => onToggleExpand(dt.code)}>
+                  <td>
+                    <div className={s.documentTypeCodeCell}>
+                      <button
+                        type="button"
+                        className={s.rowExpandBtn}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onToggleExpand(dt.code);
+                        }}
+                        aria-label={expanded ? '收起二级分类' : '展开二级分类'}
+                        title={expanded ? '收起二级分类' : '展开二级分类'}
+                      >
+                        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                      <span>{dt.code}</span>
+                    </div>
+                  </td>
+                  <td>{dt.label}</td>
+                  <td><span className={s.inlineHint}>{children.length} 个二级分类</span></td>
+                  <td onClick={(event) => event.stopPropagation()}>
+                    <div className={s.actionGroup}>
+                      <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
+                      <button className={s.inlineDangerBtn} onClick={() => onDelete(index)} disabled={saving}>删除</button>
+                      <button className={s.iconActionBtn} onClick={() => onMoveUp(index)} disabled={saving || index === 0} aria-label="上移" title="上移"><ArrowUp size={15} /></button>
+                      <button className={s.iconActionBtn} onClick={() => onMoveDown(index)} disabled={saving || index === documentTypes.length - 1} aria-label="下移" title="下移"><ArrowDown size={15} /></button>
+                    </div>
+                  </td>
+                </tr>
+                {expanded ? (
+                  <tr className={s.documentTypeChildRow}>
+                    <td colSpan={4}>
+                      <div className={s.childTypeList}>
+                        {children.map((child) => (
+                          <div className={s.childTypeItem} key={child.code}>
+                            <span className={s.keyBadge}>{child.code}</span>
+                            <span>{child.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </>
   );
 }
 
-function SimpleCodeLabelDialog({
+function DocumentTypeEditorDialog({
   open,
   title,
-  codePlaceholder,
-  labelPlaceholder,
-  code,
-  label,
+  draft,
   saving,
   error,
   onClose,
-  onChangeCode,
-  onChangeLabel,
+  onChange,
   onSubmit,
 }: {
   open: boolean;
   title: string;
-  codePlaceholder: string;
-  labelPlaceholder: string;
-  code: string;
-  label: string;
+  draft: DocumentTypeDraft;
   saving: boolean;
   error: string;
   onClose: () => void;
-  onChangeCode: (v: string) => void;
-  onChangeLabel: (v: string) => void;
+  onChange: (updater: SetStateAction<DocumentTypeDraft>) => void;
   onSubmit: () => void;
 }) {
   if (!open) return null;
+  function updateChild(index: number, patch: Partial<{ code: string; label: string }>) {
+    onChange((current) => ({
+      ...current,
+      children: current.children.map((child, i) => i === index ? { ...child, ...patch } : child),
+    }));
+  }
   return (
     <div className={s.modalBackdrop}>
-      <div className={s.confirmCard}>
+      <div className={`${s.confirmCard} ${s.documentTypeEditorCard}`}>
         <div className={s.modalHeader} style={{ justifyContent: "space-between" }}>
           <span>{title}</span>
           <button className={s.subtleBtn} onClick={onClose}><X size={18} /></button>
         </div>
         <div className={s.confirmBody}>
-          <label className={s.formField}>
-            <span style={{ display: "block", fontWeight: 500, marginBottom: 4 }}>编码</span>
-            <input className={s.formInput} value={code} placeholder={codePlaceholder} onChange={(e) => onChangeCode(e.target.value)} />
-          </label>
-          <label className={s.formField}>
-            <span style={{ display: "block", fontWeight: 500, marginBottom: 4 }}>名称</span>
-            <input className={s.formInput} value={label} placeholder={labelPlaceholder} onChange={(e) => onChangeLabel(e.target.value)} />
-          </label>
+          <div className={s.documentTypeEditorGrid}>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>一级分类编码</span>
+              <input className={s.formInput} value={draft.code} placeholder="如 POL" onChange={(e) => onChange((current) => ({ ...current, code: e.target.value }))} />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>一级分类名称</span>
+              <input className={s.formInput} value={draft.label} placeholder="如 政策制度" onChange={(e) => onChange((current) => ({ ...current, label: e.target.value }))} />
+            </label>
+          </div>
+          <div className={s.childTypeEditor}>
+            <div className={s.childTypeEditorHeader}>
+              <span className={s.fieldLabel}>二级分类</span>
+              <button
+                type="button"
+                className={s.inlineBtn}
+                onClick={() => onChange((current) => ({ ...current, children: [...current.children, { code: '', label: '' }] }))}
+                disabled={saving}
+              >
+                <Plus size={14} /> 添加二级分类
+              </button>
+            </div>
+            <div className={s.childTypeEditorList}>
+              {draft.children.map((child, index) => (
+                <div className={s.childTypeEditorRow} key={index}>
+                  <input className={s.formInput} value={child.code} placeholder="二级编码" onChange={(event) => updateChild(index, { code: event.target.value })} />
+                  <input className={s.formInput} value={child.label} placeholder="二级名称" onChange={(event) => updateChild(index, { label: event.target.value })} />
+                  <button
+                    type="button"
+                    className={s.iconActionBtn}
+                    onClick={() => onChange((current) => ({ ...current, children: current.children.filter((_, i) => i !== index) }))}
+                    disabled={saving || draft.children.length <= 1}
+                    aria-label="删除二级分类"
+                    title="删除二级分类"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
           {error ? <div className={s.errorBox}>{error}</div> : null}
         </div>
         <div className={s.confirmActions}>

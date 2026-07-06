@@ -195,6 +195,53 @@
   border-bottom: none;
 }
 
+.documentTypeRow {
+  cursor: pointer;
+}
+
+.documentTypeCodeCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.rowExpandBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--neutral-700);
+}
+
+.documentTypeChildRow td {
+  background: #f8fafc;
+}
+
+.childTypeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.childTypeItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--neutral-700);
+  font-size: 0.82rem;
+}
+
 .editBtn {
   font-size: 0.78rem;
   color: var(--primary-600);
@@ -726,6 +773,10 @@
   box-shadow: var(--shadow-sm);
 }
 
+.documentTypeEditorCard {
+  width: min(680px, 100%);
+}
+
 .confirmBody {
   padding: 20px;
   display: grid;
@@ -773,6 +824,39 @@
 
 .formFieldWide {
   grid-column: 1 / -1;
+}
+
+.documentTypeEditorGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.childTypeEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.childTypeEditorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.childTypeEditorList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.childTypeEditorRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1fr) 34px;
+  align-items: center;
+  gap: 10px;
 }
 
 .domainStatsGrid {
@@ -1123,6 +1207,11 @@
   }
 
   .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .documentTypeEditorGrid,
+  .childTypeEditorRow {
     grid-template-columns: 1fr;
   }
 

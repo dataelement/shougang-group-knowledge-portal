@@ -2784,7 +2784,7 @@ def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain
     assert fake_bisheng.post_calls == []
 
 
-def test_search_files_passes_document_type_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):
+def test_search_files_passes_file_subcategory_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):
     class DocumentTypeBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
@@ -2798,7 +2798,7 @@ def test_search_files_passes_document_type_and_business_domain_code_to_shougang_
                     "sort": "updated_at_desc",
                     "cursor": None,
                     "limit": 10,
-                    "document_type": "RPT",
+                    "file_subcategory_code": "RPT",
                     "business_domain_code": "PM",
                     "rerank_model_id": "",
                 }
@@ -3021,12 +3021,12 @@ def test_search_files_propagates_shougang_portal_business_error(tmp_path: Path):
     assert fake_bisheng.post_calls[0][0] == "/api/v1/knowledge/shougang-portal/files/search"
 
 
-def test_search_files_document_type_request_uses_cursor_protocol_without_legacy_fallback(tmp_path: Path):
+def test_search_files_file_subcategory_request_uses_cursor_protocol_without_legacy_fallback(tmp_path: Path):
     class FallbackDocumentTypeBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
-                assert json["document_type"] == "RPT"
+                assert json["file_subcategory_code"] == "RPT"
                 assert json["limit"] == 1
                 assert "page" not in json
                 assert "page_size" not in json

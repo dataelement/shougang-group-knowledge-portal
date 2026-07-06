@@ -18,6 +18,7 @@ export interface FileItem {
   ext: string;
   sizeLabel: string;
   fileEncoding: string;
+  fileSubcategoryCode?: string;
   /** 可读来源目录路径 "<source space>/<folder>/<folder>"，无法解析时为空。 */
   folderPath?: string;
   /** 可读文档来源路径 "<source space>><folder>/<file>"，根目录文件仅使用知识空间名称。 */
@@ -234,6 +235,7 @@ interface KnowledgeFileItemDto {
   file_ext?: string;
   file_size?: string;
   file_encoding?: string;
+  file_subcategory_code?: string;
   folder_path?: string;
   source_path?: string;
 }
@@ -521,6 +523,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     ext: dto.file_ext ?? '',
     sizeLabel: dto.file_size ?? '',
     fileEncoding: dto.file_encoding ?? '',
+    fileSubcategoryCode: dto.file_subcategory_code ?? '',
     folderPath: dto.folder_path ?? '',
     sourcePath: dto.source_path ?? '',
   };
@@ -539,6 +542,7 @@ function mapSearchResultForSummary(item: FileItem) {
     file_ext: item.ext,
     file_size: item.sizeLabel,
     file_encoding: item.fileEncoding,
+    file_subcategory_code: item.fileSubcategoryCode,
     folder_path: item.folderPath,
     source_path: item.sourcePath,
   };
@@ -718,7 +722,7 @@ export async function searchFiles(params: {
   if (params.tag) query.set('tag', params.tag);
   if (params.spaceLevel) query.set('space_level', params.spaceLevel);
   if (params.fileExt) query.set('file_ext', params.fileExt);
-  if (params.documentType) query.set('document_type', params.documentType);
+  if (params.documentType) query.set('file_subcategory_code', params.documentType);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
   if (params.recommendation) query.set('recommendation', params.recommendation);
   if (params.sort) query.set('sort', params.sort);
@@ -745,7 +749,7 @@ export async function fetchSpaceFiles(params: {
   const query = new URLSearchParams();
   if (params.tag) query.set('tag', params.tag);
   if (params.fileExt) query.set('file_ext', params.fileExt);
-  if (params.documentType) query.set('document_type', params.documentType);
+  if (params.documentType) query.set('file_subcategory_code', params.documentType);
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('page_size', String(params.pageSize));
 
