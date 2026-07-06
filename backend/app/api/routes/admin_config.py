@@ -620,3 +620,112 @@ async def update_unified_auth_runtime_config(
     except ValueError as err:
         return response_error(normalize_user_facing_message(err, status_code=400), status_code=400)
     return response_ok(config)
+
+
+_DEPT_BINDING_BASE = "/api/v1/knowledge/space/department-binding"
+
+
+@router.get("/dept-knowledge-binding/bindings")
+async def get_dept_bindings(bisheng_client: BishengClient = Depends(get_bisheng_client)):
+    try:
+        resp = await bisheng_client.get_json(f"{_DEPT_BINDING_BASE}/bindings")
+    except Exception as err:
+        return response_error(
+            normalize_user_facing_message(err, fallback="获取科室库绑定失败", status_code=502),
+            status_code=502,
+        )
+    if resp.get("status_code") not in (None, 200):
+        return response_error(
+            normalize_user_facing_message(
+                resp.get("status_message"), fallback="获取科室库绑定失败", status_code=502
+            ),
+            status_code=502,
+        )
+    return response_ok(resp.get("data") or [])
+
+
+@router.get("/dept-knowledge-binding/bindable-spaces")
+async def get_dept_bindable_spaces(
+    keyword: str | None = None,
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    try:
+        resp = await bisheng_client.get_json(
+            f"{_DEPT_BINDING_BASE}/bindable-spaces",
+            params={"keyword": keyword} if keyword else None,
+        )
+    except Exception as err:
+        return response_error(
+            normalize_user_facing_message(err, fallback="获取可绑定知识库失败", status_code=502),
+            status_code=502,
+        )
+    if resp.get("status_code") not in (None, 200):
+        return response_error(
+            normalize_user_facing_message(
+                resp.get("status_message"), fallback="获取可绑定知识库失败", status_code=502
+            ),
+            status_code=502,
+        )
+    return response_ok(resp.get("data") or [])
+
+
+@router.get("/dept-knowledge-binding/departments")
+async def get_dept_departments(bisheng_client: BishengClient = Depends(get_bisheng_client)):
+    try:
+        resp = await bisheng_client.get_json(f"{_DEPT_BINDING_BASE}/departments")
+    except Exception as err:
+        return response_error(
+            normalize_user_facing_message(err, fallback="获取部门列表失败", status_code=502),
+            status_code=502,
+        )
+    if resp.get("status_code") not in (None, 200):
+        return response_error(
+            normalize_user_facing_message(
+                resp.get("status_message"), fallback="获取部门列表失败", status_code=502
+            ),
+            status_code=502,
+        )
+    return response_ok(resp.get("data") or [])
+
+
+@router.post("/dept-knowledge-binding")
+async def bind_dept_space(
+    body: dict,
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    try:
+        resp = await bisheng_client.post_json(
+            _DEPT_BINDING_BASE,
+            json={"space_id": body.get("space_id"), "department_id": body.get("department_id")},
+        )
+    except Exception as err:
+        return response_error(
+            normalize_user_facing_message(err, fallback="绑定失败", status_code=502),
+            status_code=502,
+        )
+    if resp.get("status_code") not in (None, 200):
+        return response_error(
+            normalize_user_facing_message(resp.get("status_message"), fallback="绑定失败", status_code=502),
+            status_code=502,
+        )
+    return response_ok(resp.get("data") or {})
+
+
+@router.delete("/dept-knowledge-binding/{space_id}")
+async def unbind_dept_space(
+    space_id: int,
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    try:
+        resp = await bisheng_client.delete_json(f"{_DEPT_BINDING_BASE}/{space_id}")
+    except Exception as err:
+        return response_error(
+            normalize_user_facing_message(err, fallback="解绑失败", status_code=502),
+            status_code=502,
+        )
+    if resp.get("status_code") not in (None, 200):
+        return response_error(
+            normalize_user_facing_message(resp.get("status_message"), fallback="解绑失败", status_code=502),
+            status_code=502,
+        )
+    return response_ok(resp.get("data") or {})
