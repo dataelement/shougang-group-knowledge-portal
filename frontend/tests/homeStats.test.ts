@@ -20,3 +20,11 @@ test('home stats failure does not restore legacy fake numbers', () => {
   assert.match(homePageSource, /return '--';/);
   assert.doesNotMatch(homePageSource, /homeStatsFailed[\s\S]{0,200}(1\.17亿|163万|1101万)/);
 });
+
+test('home knowledge sections show loading state before empty state', () => {
+  assert.match(homePageSource, /sectionDataLoading/);
+  assert.match(homePageSource, /setSectionDataLoading\(true\)/);
+  assert.match(homePageSource, /showLoading\s*=\s*sectionDataLoading && !useMockHomeContent/);
+  assert.match(homePageSource, /className=\{s\.sectionLoading\}/);
+  assert.match(homePageSource, /<span>加载中<\/span>/);
+});

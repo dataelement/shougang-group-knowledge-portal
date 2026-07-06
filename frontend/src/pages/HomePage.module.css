@@ -852,6 +852,32 @@
   text-align: center;
 }
 
+.sectionLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 96px;
+  padding: 26px 0 18px;
+  color: var(--neutral-500);
+  font-size: 0.86rem;
+}
+
+.sectionLoadingIcon {
+  color: var(--primary-600);
+  animation: home-section-spin 0.9s linear infinite;
+}
+
+@keyframes home-section-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ===== QA panel (right column shared shell) ===== */
 .qaPanel {
   background: var(--surface);

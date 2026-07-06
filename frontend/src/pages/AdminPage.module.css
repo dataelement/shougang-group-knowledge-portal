@@ -702,6 +702,13 @@
   background: var(--neutral-100);
 }
 
+.inlineMutedBtn:disabled {
+  color: var(--neutral-400);
+  background: var(--neutral-100);
+  border-color: var(--neutral-200);
+  cursor: not-allowed;
+}
+
 .iconActionBtn {
   width: 34px;
   height: 34px;
@@ -922,6 +929,13 @@
 .formInput:focus {
   outline: none;
   border-color: var(--primary-500);
+}
+
+.formInput:disabled {
+  color: var(--neutral-500);
+  background: var(--neutral-100);
+  border-color: var(--neutral-200);
+  cursor: not-allowed;
 }
 
 .formTextarea {

@@ -6,7 +6,7 @@ import {
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Sparkles,
-  Package, Video, Flame, Briefcase, Users, ScrollText,
+  Package, Video, Flame, Briefcase, Users, ScrollText, Loader2,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
@@ -408,6 +408,7 @@ export default function HomePage() {
   const [qaStreaming, setQaStreaming] = useState(false);
   const [bannerIdx, setBannerIdx] = useState(0);
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
+  const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [sectionDataFailed, setSectionDataFailed] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -551,6 +552,7 @@ export default function HomePage() {
     };
 
     setSectionDataFailed(false);
+    setSectionDataLoading(true);
     void (async () => {
       try {
         const homeContent = await fetchHomeContent();
@@ -562,6 +564,8 @@ export default function HomePage() {
         if (!active) return;
         setSectionDataFailed(true);
         setLoadError(err instanceof Error ? err.message : '首页数据加载失败');
+      } finally {
+        if (active) setSectionDataLoading(false);
       }
     })();
 
@@ -815,6 +819,7 @@ export default function HomePage() {
             {contentSections.map((sec, index) => {
               const fetchedItems = sectionData[sec.tag] || [];
               const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems;
+              const showLoading = sectionDataLoading && !useMockHomeContent;
               const moreLink = buildSectionMoreLink(sec);
               return (
                 <div
@@ -834,31 +839,40 @@ export default function HomePage() {
                     </Link>
                   </div>
                   <div className={s.sectionList}>
-                    {items.map((f) => (
-                      <div
-                        key={f.id}
-                        className={s.listItem}
-                        onClick={() =>
-                          navigate(`/space/${f.spaceId}/file/${f.id}`, {
-                            state: { returnTo: moreLink },
-                          })}
-                      >
-                        <div className={s.itemTitle}>{f.title}</div>
-                        <div className={s.itemSubRow}>
-                          <span className={s.itemSummary}>
-                            {f.summary ?? ''}
-                          </span>
-                          {f.date ? (
-                            <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
-                          ) : null}
-                        </div>
+                    {showLoading ? (
+                      <div className={s.sectionLoading} role="status" aria-live="polite">
+                        <Loader2 size={18} className={s.sectionLoadingIcon} />
+                        <span>加载中</span>
                       </div>
-                    ))}
-                    {items.length === 0 ? (
-                      <div className={s.sectionEmpty}>
-                        暂无匹配内容
-                      </div>
-                    ) : null}
+                    ) : (
+                      <>
+                        {items.map((f) => (
+                          <div
+                            key={f.id}
+                            className={s.listItem}
+                            onClick={() =>
+                              navigate(`/space/${f.spaceId}/file/${f.id}`, {
+                                state: { returnTo: moreLink },
+                              })}
+                          >
+                            <div className={s.itemTitle}>{f.title}</div>
+                            <div className={s.itemSubRow}>
+                              <span className={s.itemSummary}>
+                                {f.summary ?? ''}
+                              </span>
+                              {f.date ? (
+                                <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                        {items.length === 0 ? (
+                          <div className={s.sectionEmpty}>
+                            暂无匹配内容
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 </div>
               );

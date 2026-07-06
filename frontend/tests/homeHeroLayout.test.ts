@@ -35,3 +35,14 @@ test('home quick app shortcut labels are not truncated', () => {
   assert.match(shortcutText, /text-overflow:\s*clip;/);
   assert.doesNotMatch(shortcutText, /text-overflow:\s*ellipsis;/);
 });
+
+test('home knowledge section loading state is centered and animated', () => {
+  const loading = cssBlock('.sectionLoading');
+  const icon = cssBlock('.sectionLoadingIcon');
+
+  assert.match(loading, /display:\s*flex;/);
+  assert.match(loading, /justify-content:\s*center;/);
+  assert.match(loading, /min-height:\s*96px;/);
+  assert.match(icon, /animation:\s*home-section-spin 0\.9s linear infinite;/);
+  assert.match(homePageStyles, /@keyframes home-section-spin/);
+});

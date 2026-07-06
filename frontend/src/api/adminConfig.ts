@@ -406,7 +406,7 @@ export function updateQaConfig(qa: QAConfig) {
 }
 
 export function fetchQaModelOptions() {
-  return request<QAModelOptionsResponse>('/api/v1/admin/config/qa/model-options');
+  return request<QAModelOptionsResponse>('/api/v1/knowledge/qa/model-options');
 }
 
 export function fetchAgentConfig() {

@@ -65,6 +65,7 @@ import {
 } from '../utils/adminDomains';
 import {
   createSectionDraft,
+  LATEST_SELECTED_SECTION_KEY,
   resolveSectionVisual,
   SECTION_ICON_OPTIONS,
   validateSectionDraft,
@@ -106,6 +107,14 @@ import s from './AdminPage.module.css';
 
 function isBuiltinSection(section: SectionConfig): boolean {
   return Boolean(section.builtin_key);
+}
+
+function isLatestSelectedSection(section: Pick<SectionConfig, 'builtin_key'>): boolean {
+  return section.builtin_key === LATEST_SELECTED_SECTION_KEY;
+}
+
+function isLatestSelectedSectionDraft(draft: Pick<SectionDraft, 'builtinKey'>): boolean {
+  return draft.builtinKey === LATEST_SELECTED_SECTION_KEY;
 }
 
 const APP_ICON_OPTIONS = [
@@ -2182,7 +2191,7 @@ function SectionsTable({
         <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
       </div>
       <p className={s.pageNote}>
-        首页分区按当前数组顺序展示。系统内置分区可以改名和改标签，但不能删除；普通分区跳转地址会按标签自动生成。
+        首页分区按当前数组顺序展示。系统内置分区可以改名，但不能删除；知识推荐 · 最新精选不再关联标签，普通分区跳转地址会按标签自动生成。
       </p>
       <table className={s.table}>
         <thead>
@@ -2197,12 +2206,13 @@ function SectionsTable({
           {sections.map((sec, index) => {
             const visual = resolveSectionVisual(sec);
             const builtin = isBuiltinSection(sec);
+            const latestSelected = isLatestSelectedSection(sec);
             return (
             <tr key={`${sec.builtin_key || sec.tag}-${index}`}>
               <td>{sec.title}{builtin ? <span className={s.sectionTagBadge}>系统内置</span> : null}</td>
               <td>
                 <span className={s.sectionTagBadge}>
-                  {sec.tag}
+                  {latestSelected ? '无' : sec.tag}
                 </span>
               </td>
               <td><AdminIconCell icon={sec.icon} color={visual.color} bg={visual.bg} /></td>
@@ -2210,7 +2220,7 @@ function SectionsTable({
                 <div className={s.actionGroup}>
                   <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
                   <button
-                    className={s.inlineDangerBtn}
+                    className={builtin ? s.inlineMutedBtn : s.inlineDangerBtn}
                     onClick={() => onDelete(index)}
                     disabled={saving || builtin}
                     title={builtin ? '系统内置分区不能删除' : '删除'}
@@ -2263,6 +2273,7 @@ function SectionEditorDialog({
   onSubmit: () => void;
 }) {
   if (!open) return null;
+  const latestSelected = isLatestSelectedSectionDraft(draft);
 
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
@@ -2289,11 +2300,16 @@ function SectionEditorDialog({
             <span className={s.fieldLabel}>关联标签</span>
             <input
               className={s.formInput}
-              value={draft.tag}
+              value={latestSelected ? '无' : draft.tag}
+              disabled={latestSelected}
               onChange={(event) => onChange({ tag: event.target.value })}
               placeholder="例如：最新精选"
             />
-            <span className={s.fieldHint}>普通分区会按这个标签自动生成站内跳转；系统内置推荐分区不再按标签查询首页数据。</span>
+            <span className={s.fieldHint}>
+              {latestSelected
+                ? '知识推荐 · 最新精选使用文档预览数推荐，不按标签查询。'
+                : '普通分区会按这个标签自动生成站内跳转。'}
+            </span>
           </label>
           <div className={`${s.formField} ${s.formFieldWide}`}>
             <span className={s.fieldLabel}>图标</span>

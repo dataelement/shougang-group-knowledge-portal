@@ -808,6 +808,34 @@ def test_public_portal_config_refreshes_qa_model_display_names_for_non_admin_use
     assert service.get_config().qa.reasoning_model_display_name == "deepseek-reasoner"
 
 
+def test_public_qa_model_options_do_not_require_admin(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    service.update_qa(
+        service.get_config().qa.model_copy(
+            update={
+                "selected_model": "1",
+                "general_model": "1",
+                "reasoning_model": "2",
+                "general_model_display_name": "",
+                "reasoning_model_display_name": "",
+            }
+        )
+    )
+    app.dependency_overrides.pop(require_admin_session, None)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_client = FakeBishengClient()
+        response = client.get("/api/v1/knowledge/qa/model-options")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["general_model_display_name"] == "deepseek-chat"
+    assert data["reasoning_model_display_name"] == "deepseek-reasoner"
+    assert data["models"][0]["id"] == "1"
+    assert data["models"][0]["name"] == "deepseek-chat"
+
+
 def test_public_portal_config_keeps_qa_model_ids_when_name_refresh_fails(tmp_path: Path):
     class FailingQaModelBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None):

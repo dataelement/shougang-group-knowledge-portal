@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const appSource = readFileSync('src/App.tsx', 'utf8');
+const adminConfigSource = readFileSync('src/api/adminConfig.ts', 'utf8');
 const contentApiSource = readFileSync('src/api/content.ts', 'utf8');
 const homePageSource = readFileSync('src/pages/HomePage.tsx', 'utf8');
 const qaPageSource = readFileSync('src/pages/QAPage.tsx', 'utf8');
@@ -113,7 +114,8 @@ test('qa workspace model selector only shows model names', () => {
   assert.match(qaPageSource, /function getQaModelNameLabel/);
   assert.match(qaPageSource, /model\.name \|\| model\.display_name \|\| model\.id/);
   assert.match(qaPageSource, /fetchPortalContentConfig\(\{\s*force:\s*true\s*\}\)/);
-  assert.match(qaPageSource, /isPortalAdmin\(user\)[\s\S]*fetchQaModelOptions/);
+  assert.match(adminConfigSource, /\/api\/v1\/knowledge\/qa\/model-options/);
+  assert.doesNotMatch(qaPageSource, /isPortalAdmin\(user\)[\s\S]*fetchQaModelOptions/);
   assert.match(qaPageSource, /general_model_display_name/);
   assert.match(qaPageSource, /reasoning_model_display_name/);
   assert.match(qaPageSource, /savedDisplayName\?\.trim\(\) \|\| modelId/);

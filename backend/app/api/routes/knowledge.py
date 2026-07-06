@@ -108,6 +108,22 @@ async def _fetch_shougang_document_types(bisheng_client: BishengClient) -> list[
     return _normalize_document_types(file_encoding.get("document_types") if isinstance(file_encoding, dict) else [])
 
 
+async def _build_public_qa_model_options(
+    portal_config_service: PortalConfigService,
+    bisheng_client: BishengClient,
+):
+    try:
+        response = await bisheng_client.get_json("/api/v1/llm")
+    except Exception:
+        logger.warning("failed to fetch public qa model options", exc_info=True)
+        return portal_config_service.build_qa_model_options([])
+
+    raw_servers = response.get("data") if isinstance(response, dict) else []
+    if not isinstance(raw_servers, list):
+        raw_servers = []
+    return portal_config_service.build_qa_model_options(raw_servers)
+
+
 async def _refresh_public_qa_model_display_names(
     portal_config_service: PortalConfigService,
     bisheng_client: BishengClient,
@@ -116,16 +132,7 @@ async def _refresh_public_qa_model_display_names(
     qa = config.qa
     if not ((qa.general_model or qa.selected_model).strip() or qa.reasoning_model.strip()):
         return config
-    try:
-        response = await bisheng_client.get_json("/api/v1/llm")
-    except Exception:
-        logger.warning("failed to refresh public qa model display names", exc_info=True)
-        return config
-
-    raw_servers = response.get("data") if isinstance(response, dict) else []
-    if not isinstance(raw_servers, list):
-        raw_servers = []
-    portal_config_service.build_qa_model_options(raw_servers)
+    await _build_public_qa_model_options(portal_config_service, bisheng_client)
     return portal_config_service.get_config()
 
 
@@ -356,6 +363,14 @@ async def get_portal_config(
         "document_types": document_types,
         "business_domain_options": business_domain_options,
     })
+
+
+@router.get("/qa/model-options")
+async def get_public_qa_model_options(
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+):
+    return response_ok(await _build_public_qa_model_options(portal_config_service, bisheng_client))
 
 
 @router.get("/domain-file-counts")
