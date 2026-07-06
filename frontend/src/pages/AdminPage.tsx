@@ -4779,16 +4779,16 @@ function getDisplayItems(display: DisplayConfig): DisplayItem[] {
   return [
     { group: '首页', key: 'home.section_page_size', label: '知识推荐/典型案例条数', value: display.home.section_page_size },
     { group: '首页', key: 'home.hot_tags_count', label: '热门标签条数', value: display.home.hot_tags_count },
-    { group: '首页', key: 'home.qa_hot_count', label: '技术问答热门问题条数', value: display.home.qa_hot_count },
+   /* { group: '首页', key: 'home.qa_hot_count', label: '技术问答热门问题条数', value: display.home.qa_hot_count },
     { group: '首页', key: 'home.domain_count', label: '业务域导航条数', value: display.home.domain_count },
     { group: '首页', key: 'home.spaces_count', label: '知识广场条数', value: display.home.spaces_count },
-    { group: '首页', key: 'home.apps_count', label: '应用市场条数', value: display.home.apps_count },
+    { group: '首页', key: 'home.apps_count', label: '应用市场条数', value: display.home.apps_count },*/
     { group: '列表页', key: 'list.page_size', label: '列表页每页文档数', value: display.list.page_size },
     { group: '列表页', key: 'list.visible_tag_count', label: '列表页单条标签展示数', value: display.list.visible_tag_count },
     { group: '搜索页', key: 'search.page_size', label: '搜索页每页文档数', value: display.search.page_size },
     { group: '搜索页', key: 'search.visible_tag_count', label: '搜索页单条标签展示数', value: display.search.visible_tag_count },
-    { group: '详情页', key: 'detail.related_files_count', label: '相关推荐条数', value: display.detail.related_files_count },
-    { group: '详情页', key: 'detail.visible_tag_count', label: '相关推荐标签展示数', value: display.detail.visible_tag_count },
+    /*{ group: '详情页', key: 'detail.related_files_count', label: '相关推荐条数', value: display.detail.related_files_count },
+    { group: '详情页', key: 'detail.visible_tag_count', label: '相关推荐标签展示数', value: display.detail.visible_tag_count },*/
   ];
 }
 

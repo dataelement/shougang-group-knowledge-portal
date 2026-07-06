@@ -260,6 +260,7 @@ export default function SearchPage() {
           spaceLevel: spaceLevel || undefined,
           fileExt: fileExt || undefined,
           sort,
+          limit: displayConfig.search.pageSize,
         });
         if (!active) return;
         setRawFiles(result.data);

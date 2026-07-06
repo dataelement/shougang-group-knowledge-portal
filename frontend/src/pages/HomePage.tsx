@@ -568,7 +568,8 @@ export default function HomePage() {
   const homeSections = (useMockHomeContent ? MOCK_HOME_SECTIONS : enabledSections).slice(0, 3);
   const contentSections = homeSections;
   const assistantGreeting = getWelcomeMessage(config?.qa.welcome_message);
-  const qaHotQuestions = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
+  const qaHotQuestionsTemp = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
+  const qaHotQuestions = qaHotQuestionsTemp?.slice(0, displayConfig.home.hotTagsCount) || [];
   const primaryQaQuestion = qaHotQuestions[0] || '振动纹通常如何排查？';
   const qaPreviewMessages = qaMessages.length > 0
     ? qaMessages
@@ -798,7 +799,7 @@ export default function HomePage() {
           <div className={s.leftColumn}>
             {contentSections.map((sec, index) => {
               const fetchedItems = sectionData[sec.tag] || [];
-              const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems;
+              const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems.slice(0, displayConfig.home.sectionPageSize);
               return (
                 <div
                   key={sec.tag}
