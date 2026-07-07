@@ -79,6 +79,15 @@ def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
     raise HTTPException(status_code=status_code, detail=err.status_message)
 
 
+_QA_TREE_FORBIDDEN_CODES = {18040, 18000}  # SpacePermissionDenied / SpaceNotFound
+
+
+def _raise_qa_tree_children_error(err: BishengBusinessError) -> None:
+    if err.status_code in _QA_TREE_FORBIDDEN_CODES:
+        raise HTTPException(status_code=403, detail="包含无权限或不存在的知识库")
+    _raise_bisheng_business_error(err)
+
+
 def _normalize_document_types(raw_items: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_items, list):
         return []
@@ -464,14 +473,17 @@ async def list_qa_tree_children(
         public_space_ids = {space.id for space in (await service.list_public_spaces()).data}
         if space_id not in public_space_ids:
             raise HTTPException(status_code=403, detail="未登录仅可浏览公共知识库目录")
-        return response_ok(
-            await service.get_qa_tree_children(
-                space_id=space_id,
-                parent_id=parent_id,
-                page=page,
-                page_size=page_size,
+        try:
+            return response_ok(
+                await service.get_qa_tree_children(
+                    space_id=space_id,
+                    parent_id=parent_id,
+                    page=page,
+                    page_size=page_size,
+                )
             )
-        )
+        except BishengBusinessError as err:
+            _raise_qa_tree_children_error(err)
 
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
@@ -479,17 +491,18 @@ async def list_qa_tree_children(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        visible_space_ids = {space.id for space in (await service.list_visible_spaces()).data}
-        if space_id not in visible_space_ids:
-            raise HTTPException(status_code=403, detail="包含无权限或不存在的知识库")
-        return response_ok(
-            await service.get_qa_tree_children(
-                space_id=space_id,
-                parent_id=parent_id,
-                page=page,
-                page_size=page_size,
+        # 信任上游 /children 的读权限校验:不再自己全量拉取可见空间做预检。
+        try:
+            return response_ok(
+                await service.get_qa_tree_children(
+                    space_id=space_id,
+                    parent_id=parent_id,
+                    page=page,
+                    page_size=page_size,
+                )
             )
-        )
+        except BishengBusinessError as err:
+            _raise_qa_tree_children_error(err)
     finally:
         await bisheng_client.aclose()
 

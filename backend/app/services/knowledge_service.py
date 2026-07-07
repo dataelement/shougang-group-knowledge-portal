@@ -810,14 +810,19 @@ class KnowledgeService:
         page: int = 1,
         page_size: int = 100,
     ) -> QaKnowledgeTreeNodeData:
+        resolved_page_size = min(max(page_size, 1), self._page_size_limit)
         params: dict[str, Any] = {
-            "page_size": min(max(page_size, 1), self._page_size_limit),
+            "page_size": resolved_page_size,
             "file_status": [SUCCESS_STATUS],
+            # QA 树只用 folder counts 与节点基础字段,跳过上游文件富化以省开销。
+            "enrich_files": False,
         }
         if parent_id is not None:
             params["parent_id"] = parent_id
         response = await self._bisheng.get_json(f"/api/v1/knowledge/space/{space_id}/children", params=params)
-        data = response.get("data") or {}
+        # 上游权限/不存在等业务错误经 HTTP 200 + body status_code 返回;
+        # 显式检测并抛 BishengBusinessError,交由路由层翻译为 403。
+        data = self._extract_success_data(response)
         raw_items = data.get("data") if isinstance(data, dict) else []
         if not isinstance(raw_items, list):
             raw_items = []
@@ -826,11 +831,13 @@ class KnowledgeService:
             for item in raw_items
             if isinstance(item, dict)
         ]
+        # 上游为 F027 游标分页,已移除 total/page;门户当前仅加载首页直接子节点:
+        # total 仅表示本页节点数(非全量),page 回显入参,不做跨页。
         return QaKnowledgeTreeNodeData(
             data=nodes,
-            total=int(data.get("total") or len(nodes)),
-            page=int(data.get("page") or page),
-            page_size=int(data.get("page_size") or params["page_size"]),
+            total=len(nodes),
+            page=page,
+            page_size=int(data.get("page_size") or resolved_page_size),
         )
 
     async def search_qa_files_by_name(

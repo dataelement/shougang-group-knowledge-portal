@@ -334,3 +334,52 @@ def test_chat_scope_rejects_obvious_file_limit_overflow(tmp_path: Path):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "一次最多可选择20个文件进行问答。"
+
+
+class QaForbiddenBishengClient(QaScopeBishengClient):
+    """对 7199/children 返回上游权限拒绝码(HTTP 200 + body status_code)。"""
+
+    async def get_json(self, path: str, params=None, headers=None):
+        self.get_calls.append((path, params or {}))
+        if path == "/api/v1/knowledge/space/7199/children":
+            return {"status_code": 18040, "status_message": "Permission denied"}
+        return await super().get_json(path, params=params, headers=headers)
+
+
+def _make_forbidden_client(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = QaForbiddenBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        previous_bisheng = getattr(client.app.state, "bisheng_client", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = FakeBishengClient()
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            yield client, user_bisheng
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+            if previous_bisheng is not None:
+                client.app.state.bisheng_client = previous_bisheng
+
+
+def test_qa_tree_children_translates_upstream_permission_error_to_403(tmp_path: Path):
+    for client, _ in _make_forbidden_client(tmp_path):
+        resp = client.get("/api/v1/knowledge/qa/tree/spaces/7199/children")
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "包含无权限或不存在的知识库"
+
+
+def test_qa_tree_children_passes_enrich_files_false_and_fixes_paging(tmp_path: Path):
+    for client, _config_service, fake_bisheng in _make_auth_client(tmp_path):
+        resp = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    # 分页字段:total = 本页节点数,page 回显入参
+    assert body["total"] == len(body["data"]) == 2
+    assert body["page"] == 1
+    # 向上游传了 enrich_files=False(省富化)
+    children_calls = [p for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children"]
+    assert children_calls, "未调用上游 children"
+    assert children_calls[0][1].get("enrich_files") is False
