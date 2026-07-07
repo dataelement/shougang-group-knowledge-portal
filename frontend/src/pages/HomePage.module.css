@@ -490,14 +490,34 @@
 }
 
 .domainGrid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  /* 每屏列数:卡片宽度 = (可视宽 - 列间距总和) / 列数,保证整数张铺满、不截断半张。
+     列数按屏宽分档(见下方媒体查询):正常 7、大屏更多、小屏更少。 */
+  --cols: 7;
+  display: flex;
   gap: 18px;
   padding: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  cursor: grab;
+  touch-action: pan-y;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 18px;
+}
+
+.domainGrid::-webkit-scrollbar {
+  display: none;
+}
+
+.domainGrid:active {
+  cursor: grabbing;
 }
 
 .domainCard {
   position: relative;
+  flex: 0 0 calc((100% - (var(--cols) - 1) * 18px) / var(--cols));
+  scroll-snap-align: start;
   height: 118px;
   border-radius: 7px;
   overflow: hidden;
@@ -512,6 +532,7 @@
   padding: 18px;
   box-shadow: none;
   transition: border-color 0.15s ease;
+  user-select: none;
 }
 
 .domainCard:hover {
@@ -588,16 +609,33 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);  
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
   transform: translateY(-50%);
 }
 
 .domainArrowLeft {
-  left: -30px;
+  left: 6px;
 }
 
 .domainArrowRight {
-  right: -30px;
+  right: 6px;
+}
+
+/* 业务域每屏列数分档:大屏多几个、小屏少几个 */
+@media (min-width: 1700px) {
+  .domainGrid { --cols: 8; }
+}
+@media (min-width: 2100px) {
+  .domainGrid { --cols: 9; }
+}
+@media (max-width: 1280px) {
+  .domainGrid { --cols: 6; }
+}
+@media (max-width: 1040px) {
+  .domainGrid { --cols: 5; }
+}
+@media (max-width: 820px) {
+  .domainGrid { --cols: 4; }
 }
 
 /* ===== Two-column layout ===== */
@@ -1343,65 +1381,147 @@
   flex-shrink: 0;
 }
 
-.wikiList {
-  display: flex;
-  flex-direction: column;
-}
-
-.wikiRow {
+/* ===== 积分榜单 ===== */
+.rankTabs {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  color: inherit;
+  border: 1px solid #d9d9da;
+  border-radius: 4px;
+  padding: 3px;
+  background: #fff;
+}
+
+.rankTab {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 20px;
+  color: #545a60;
+  background: transparent;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.rankTabActive {
+  background: #e5f0fd;
+  color: #3662e3;
+  font-weight: 500;
+}
+
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 28px;
+  padding: 26px 0 22px;
+}
+
+.podiumItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 96px;
+}
+
+.podiumMedal {
+  width: 56px;
+  height: 68px;
+  object-fit: contain;
+}
+
+.podiumItemFirst .podiumMedal {
+  width: 62px;
+  height: 76px;
+}
+
+.podiumName {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #273142;
+  line-height: 22px;
+}
+
+.podiumDept {
+  margin-top: 2px;
+  font-size: 13px;
+  color: #86909c;
+  line-height: 18px;
+}
+
+.podiumScore {
+  margin-top: 10px;
+  min-width: 96px;
+  text-align: center;
+  padding: 3px 0;
+  border-radius: 16px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.podiumScore_gold {
+  background: #fff8e1;
+  color: #ff8f00;
+}
+
+.podiumScore_silver {
+  background: #edf3fb;
+  color: #545a60;
+}
+
+.podiumScore_bronze {
+  background: #faefe7;
+  color: #bd6148;
+}
+
+.rankTable {
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rankHead,
+.rankRow {
+  display: grid;
+  grid-template-columns: 40px 76px 1fr 60px 56px;
+  align-items: center;
+  column-gap: 8px;
+  padding: 0 12px;
+}
+
+.rankHead {
+  height: 48px;
+  background: #f3f4f6;
+  font-size: 14px;
+  font-weight: 500;
+  color: #545a60;
+}
+
+.rankRow {
+  height: 48px;
+  font-size: 14px;
+  color: #273142;
+  border-top: 1px solid #f0f2f5;
+  background: #fff;
   transition: background 0.15s ease;
 }
 
-.wikiRow + .wikiRow {
-  border-top: 1px solid #f0f2f5;
+.rankRow:hover {
+  background: #f5f7fa;
 }
 
-.wikiRow:first-child {
-  border-top: none;
-}
-
-.wikiRow:hover {
-  background: transparent;
-}
-
-.wikiRow:hover .wikiRowName {
-  color: var(--primary-700);
-}
-
-.wikiRowIcon {
-  color: var(--neutral-700);
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-}
-
-.wikiRowName {
-  font-size: 15px;
-  font-weight: 500;
-  color: #333;
-  transition: color 0.15s ease;
-  min-width: 0;
+.rankUser,
+.rankDept {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.wikiCatTag {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 4px;
-  background: var(--primary-50);
-  color: var(--primary-600);
-  font-size: 12px;
-  line-height: 1.6;
-  margin-left: auto;
-  flex-shrink: 0;
+.rankDelta {
+  color: inherit;
 }
 
 .bottomPad {

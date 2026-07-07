@@ -27,7 +27,7 @@ import type { ExpertProfileResponse, ExpertUpsertPayload, UserListItem } from '.
 import s from './ExpertManagePage.module.css';
 import { getAdminAccessState } from '../utils/adminAccess';
 import { useAuth } from '../hooks/useAuth';
-import expertBanner from '../assets/expert-banner@2x.png';
+import expertBanner from '../assets/expert-manage-banner@2x.png';
 import verifiedIcon from '../assets/icon-verified-expert.svg';
 
 // ─── 工具函数 ─────────────────────────────────────────────────

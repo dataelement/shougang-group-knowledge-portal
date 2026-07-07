@@ -233,6 +233,7 @@ class KnowledgeService:
                     self.search_files(
                         q=None,
                         tag=None if self._is_latest_selected_section(section, index) else section.tag,
+                        base_tag=None,
                         requested_space_ids=space_ids,
                         space_level=None,
                         file_ext=None,
@@ -312,6 +313,7 @@ class KnowledgeService:
                     self.search_files(
                         q=None,
                         tag=None if self._is_latest_selected_section(section, index) else section.tag,
+                        base_tag=None,
                         requested_space_ids=space_ids,
                         space_level=None,
                         file_ext=None,
@@ -623,6 +625,7 @@ class KnowledgeService:
         self,
         q: Optional[str],
         tag: Optional[str],
+        base_tag: Optional[str],
         requested_space_ids: Optional[list[int]],
         space_level: Optional[str],
         file_ext: Optional[str],
@@ -631,17 +634,23 @@ class KnowledgeService:
         limit: int,
         extra_space_ids: Optional[list[int]] = None,
         document_type: Optional[str] = None,
+        file_subcategory_code: Optional[str] = None,
         business_domain_code: Optional[str] = None,
         recommendation: Optional[str] = None,
         fallback_to_public_spaces: bool = False,
     ) -> CursorKnowledgeFileData:
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
+        normalized_tag = (tag or "").strip()
+        normalized_base_tag = (base_tag or "").strip()
+        effective_tag = normalized_base_tag or normalized_tag or None
         has_filter = bool(
-            tag
+            normalized_tag
+            or normalized_base_tag
             or requested_space_ids
             or space_level
             or file_ext
             or document_type
+            or file_subcategory_code
             or normalized_business_domain_code
             or recommendation
         )
@@ -657,16 +666,32 @@ class KnowledgeService:
         if not space_ids:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
 
+        if normalized_base_tag and normalized_tag and normalized_base_tag != normalized_tag and not q and not recommendation:
+            return await self._search_tag_files_across_spaces(
+                tag=normalized_base_tag,
+                space_ids=space_ids,
+                sort=sort,
+                cursor=cursor,
+                limit=limit,
+                extra_space_ids=extra_space_ids,
+                filter_tag=normalized_tag,
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=normalized_business_domain_code,
+            )
+
         if self._should_use_full_tag_search(
             q=q,
-            tag=tag,
+            tag=effective_tag,
             file_ext=file_ext,
             document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
             business_domain_code=normalized_business_domain_code,
             recommendation=recommendation,
         ):
             return await self._search_tag_files_across_spaces(
-                tag=tag or "",
+                tag=effective_tag or "",
                 space_ids=space_ids,
                 sort=sort,
                 cursor=cursor,
@@ -676,11 +701,12 @@ class KnowledgeService:
 
         return await self._search_shougang_portal_files(
             q=q,
-            tag=tag,
+            tag=effective_tag,
             space_ids=space_ids,
             space_level=space_level,
             file_ext=file_ext,
             document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
             business_domain_code=normalized_business_domain_code,
             recommendation=recommendation,
             sort=sort,
@@ -695,6 +721,7 @@ class KnowledgeService:
         tag: Optional[str],
         file_ext: Optional[str],
         document_type: Optional[str],
+        file_subcategory_code: Optional[str],
         business_domain_code: Optional[str],
         recommendation: Optional[str],
     ) -> bool:
@@ -703,6 +730,7 @@ class KnowledgeService:
             and not q
             and not file_ext
             and not document_type
+            and not file_subcategory_code
             and not business_domain_code
             and not recommendation
         )
@@ -716,6 +744,11 @@ class KnowledgeService:
         cursor: Optional[str],
         limit: int,
         extra_space_ids: Optional[list[int]] = None,
+        filter_tag: Optional[str] = None,
+        file_ext: Optional[str] = None,
+        document_type: Optional[str] = None,
+        file_subcategory_code: Optional[str] = None,
+        business_domain_code: Optional[str] = None,
     ) -> CursorKnowledgeFileData:
         search_results = await asyncio.gather(
             *[
@@ -736,7 +769,17 @@ class KnowledgeService:
                 seen.add(key)
                 raw_items.append(item)
 
-        sorted_items = self._sort_items(raw_items, sort=sort, keyword=None)
+        filtered_items = self._filter_items(
+            items=raw_items,
+            allowed_space_ids=set(space_ids),
+            file_ext=file_ext,
+            document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
+            business_domain_code=business_domain_code,
+        )
+        if filter_tag:
+            filtered_items = [item for item in filtered_items if self._matches_tag_name(item, filter_tag)]
+        sorted_items = self._sort_items(filtered_items, sort=sort, keyword=None)
         page_limit = min(max(int(limit or 20), 1), self._page_size_limit)
         start = self._parse_local_offset_cursor(cursor)
         end = start + page_limit
@@ -850,6 +893,7 @@ class KnowledgeService:
         space_level: Optional[str],
         file_ext: Optional[str],
         document_type: Optional[str],
+        file_subcategory_code: Optional[str],
         business_domain_code: Optional[str],
         recommendation: Optional[str],
         sort: str,
@@ -871,6 +915,9 @@ class KnowledgeService:
         normalized_document_type = self._normalize_document_type_code(document_type)
         if normalized_document_type:
             request_body["document_type"] = normalized_document_type
+        normalized_file_subcategory_code = self._normalize_document_type_code(file_subcategory_code)
+        if normalized_file_subcategory_code:
+            request_body["file_subcategory_code"] = normalized_file_subcategory_code
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         if normalized_business_domain_code:
             request_body["business_domain_code"] = normalized_business_domain_code
@@ -897,6 +944,7 @@ class KnowledgeService:
             KnowledgeFileItem(
                 id=int(item.get("id") or 0),
                 space_id=int(item.get("space_id") or item.get("knowledge_id") or 0),
+                space_level=str(item.get("space_level") or item.get("spaceLevel") or ""),
                 title=str(item.get("title") or item.get("file_name") or ""),
                 summary=str(item.get("summary") or item.get("abstract") or ""),
                 source=str(item.get("source") or ""),
@@ -906,6 +954,7 @@ class KnowledgeService:
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
                 file_encoding=str(item.get("file_encoding") or ""),
+                file_subcategory_code=KnowledgeService._extract_file_subcategory_code(item),
                 folder_path=str(item.get("folder_path") or ""),
                 source_path=str(item.get("source_path") or ""),
             )
@@ -947,6 +996,7 @@ class KnowledgeService:
             file_ext=self._get_file_ext(file_info.get("file_name", "")),
             file_size=self._extract_file_size_label(file_info, search_item),
             file_encoding=self._extract_file_encoding(file_info, search_item),
+            file_subcategory_code=self._extract_file_subcategory_code(file_info, search_item),
             space=KnowledgeFileSpace(id=space_id, name=source),
         )
 
@@ -1403,9 +1453,11 @@ class KnowledgeService:
         allowed_space_ids: set[int],
         file_ext: Optional[str],
         document_type: Optional[str],
+        file_subcategory_code: Optional[str] = None,
         business_domain_code: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         normalized_document_type = self._normalize_document_type_code(document_type)
+        normalized_file_subcategory_code = self._normalize_document_type_code(file_subcategory_code)
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         filtered: list[dict[str, Any]] = []
         for item in items:
@@ -1417,6 +1469,8 @@ class KnowledgeService:
                 continue
             file_name = item.get("file_name") or ""
             if file_ext and self._get_file_ext(file_name) != file_ext:
+                continue
+            if normalized_file_subcategory_code and self._extract_file_subcategory_code(item) != normalized_file_subcategory_code:
                 continue
             if normalized_document_type and not self._matches_document_type(item, normalized_document_type):
                 continue
@@ -1455,7 +1509,17 @@ class KnowledgeService:
 
     @classmethod
     def _matches_document_type(cls, item: dict[str, Any], document_type: str) -> bool:
-        return cls._extract_document_type_code(item) == document_type
+        return (
+            cls._extract_document_type_code(item) == document_type
+            or cls._extract_file_subcategory_code(item) == document_type
+        )
+
+    @classmethod
+    def _matches_tag_name(cls, item: dict[str, Any], tag_name: str) -> bool:
+        normalized = tag_name.strip()
+        if not normalized:
+            return True
+        return normalized in cls._extract_tag_names(item)
 
     @classmethod
     def _matches_business_domain_code(cls, item: dict[str, Any], business_domain_code: str) -> bool:
@@ -1475,6 +1539,7 @@ class KnowledgeService:
                 KnowledgeFileItem(
                     id=int(item.get("id", 0)),
                     space_id=space_id,
+                    space_level=str(item.get("space_level") or item.get("spaceLevel") or ""),
                     title=self._clean_title(file_name),
                     summary=item.get("abstract") or "",
                     source=space_name_map.get(space_id, str(space_id)),
@@ -1484,6 +1549,7 @@ class KnowledgeService:
                     file_ext=self._get_file_ext(file_name),
                     file_size=self._extract_file_size_label(item),
                     file_encoding=self._extract_file_encoding(item),
+                    file_subcategory_code=self._extract_file_subcategory_code(item),
                     source_path=str(item.get("source_path") or ""),
                 )
             )
@@ -1544,8 +1610,13 @@ class KnowledgeService:
         tags = item.get("tags") or []
         names: list[str] = []
         for tag in tags:
-            if isinstance(tag, dict) and tag.get("name"):
-                names.append(tag["name"])
+            if isinstance(tag, dict):
+                name = tag.get("tag_name") or tag.get("name")
+                if name:
+                    names.append(str(name))
+                continue
+            if tag not in (None, ""):
+                names.append(str(tag))
         return names
 
     @staticmethod
@@ -1614,6 +1685,14 @@ class KnowledgeService:
         if len(parts) < 2:
             return ""
         return cls._normalize_document_type_code(parts[1])
+
+    @classmethod
+    def _extract_file_subcategory_code(cls, *items: dict[str, Any] | None) -> str:
+        value = cls._first_value_from_items(
+            items,
+            ("file_subcategory_code", "fileSubcategoryCode", "document_subtype", "documentSubtype"),
+        )
+        return cls._normalize_document_type_code(value)
 
     @classmethod
     def _extract_business_domain_code(cls, *items: dict[str, Any] | None) -> str:

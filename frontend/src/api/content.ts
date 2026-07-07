@@ -9,6 +9,7 @@ export interface FileTag {
 export interface FileItem {
   id: number;
   spaceId: number;
+  spaceLevel?: string;
   title: string;
   summary: string;
   source: string;
@@ -18,6 +19,7 @@ export interface FileItem {
   ext: string;
   sizeLabel: string;
   fileEncoding: string;
+  fileSubcategoryCode?: string;
   /** 可读来源目录路径 "<source space>/<folder>/<folder>"，无法解析时为空。 */
   folderPath?: string;
   /** 可读文档来源路径 "<source space>><folder>/<file>"，根目录文件仅使用知识空间名称。 */
@@ -225,6 +227,7 @@ export class ApiRequestError extends Error {
 interface KnowledgeFileItemDto {
   id: number;
   space_id: number;
+  space_level?: string;
   title: string;
   summary: string;
   source: string;
@@ -234,6 +237,7 @@ interface KnowledgeFileItemDto {
   file_ext?: string;
   file_size?: string;
   file_encoding?: string;
+  file_subcategory_code?: string;
   folder_path?: string;
   source_path?: string;
 }
@@ -512,6 +516,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
   return {
     id: dto.id,
     spaceId: dto.space_id,
+    spaceLevel: dto.space_level ?? '',
     title: dto.title,
     summary: dto.summary,
     source: dto.source,
@@ -521,6 +526,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     ext: dto.file_ext ?? '',
     sizeLabel: dto.file_size ?? '',
     fileEncoding: dto.file_encoding ?? '',
+    fileSubcategoryCode: dto.file_subcategory_code ?? '',
     folderPath: dto.folder_path ?? '',
     sourcePath: dto.source_path ?? '',
   };
@@ -530,6 +536,7 @@ function mapSearchResultForSummary(item: FileItem) {
   return {
     id: item.id,
     space_id: item.spaceId,
+    space_level: item.spaceLevel,
     title: item.title,
     summary: item.summary,
     source: item.source,
@@ -539,6 +546,7 @@ function mapSearchResultForSummary(item: FileItem) {
     file_ext: item.ext,
     file_size: item.sizeLabel,
     file_encoding: item.fileEncoding,
+    file_subcategory_code: item.fileSubcategoryCode,
     folder_path: item.folderPath,
     source_path: item.sourcePath,
   };
@@ -703,10 +711,12 @@ export async function fetchSpaceTags(spaceId: number): Promise<string[]> {
 export async function searchFiles(params: {
   q?: string;
   tag?: string;
+  baseTag?: string;
   spaceIds?: number[];
   spaceLevel?: string;
   fileExt?: string;
   documentType?: string;
+  fileSubcategoryCode?: string;
   sort?: string;
   cursor?: string | null;
   limit?: number;
@@ -716,9 +726,11 @@ export async function searchFiles(params: {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
   if (params.tag) query.set('tag', params.tag);
+  if (params.baseTag) query.set('base_tag', params.baseTag);
   if (params.spaceLevel) query.set('space_level', params.spaceLevel);
   if (params.fileExt) query.set('file_ext', params.fileExt);
   if (params.documentType) query.set('document_type', params.documentType);
+  if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
   if (params.recommendation) query.set('recommendation', params.recommendation);
   if (params.sort) query.set('sort', params.sort);
@@ -745,7 +757,7 @@ export async function fetchSpaceFiles(params: {
   const query = new URLSearchParams();
   if (params.tag) query.set('tag', params.tag);
   if (params.fileExt) query.set('file_ext', params.fileExt);
-  if (params.documentType) query.set('document_type', params.documentType);
+  if (params.documentType) query.set('file_subcategory_code', params.documentType);
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('page_size', String(params.pageSize));
 

@@ -128,6 +128,12 @@ export interface SearchRerankModelOptionsResponse {
 export interface DocumentTypeConfig {
   code: string;
   label: string;
+  children?: DocumentTypeChildConfig[];
+}
+
+export interface DocumentTypeChildConfig {
+  code: string;
+  label: string;
 }
 
 export interface BishengRuntimeConfig {
@@ -279,6 +285,17 @@ export interface AdminConfigImportResult {
   unified_auth: UnifiedAuthRuntimeConfig;
   message: string;
 }
+
+export interface DeptBinding {
+  space_id: number;
+  space_name: string;
+  department_id: number;
+  department_name: string;
+  created_by?: number;
+  create_time?: string;
+}
+export interface BindableSpace { space_id: number; name: string; }
+export interface DepartmentOption { id: number; name: string; }
 
 interface ApiEnvelope<T> {
   status_code: number;
@@ -548,4 +565,25 @@ export async function uploadBannerImage(file: File): Promise<{ image_url: string
   } catch (error) {
     throw new Error(normalizeUserFacingErrorMessage(error, '图片上传失败，请稍后重试。'));
   }
+}
+
+export function fetchDeptBindings() {
+  return request<DeptBinding[]>('/api/v1/admin/config/dept-knowledge-binding/bindings');
+}
+export function fetchBindableSpaces(keyword?: string) {
+  const q = keyword ? `?keyword=${encodeURIComponent(keyword)}` : '';
+  return request<BindableSpace[]>(`/api/v1/admin/config/dept-knowledge-binding/bindable-spaces${q}`);
+}
+export function fetchBindingDepartments() {
+  return request<DepartmentOption[]>('/api/v1/admin/config/dept-knowledge-binding/departments');
+}
+export function bindDeptSpace(spaceId: number, departmentId: number) {
+  return request<Record<string, unknown>>('/api/v1/admin/config/dept-knowledge-binding', {
+    method: 'POST', body: JSON.stringify({ space_id: spaceId, department_id: departmentId }),
+  });
+}
+export function unbindDeptSpace(spaceId: number) {
+  return request<Record<string, unknown>>(`/api/v1/admin/config/dept-knowledge-binding/${spaceId}`, {
+    method: 'DELETE',
+  });
 }

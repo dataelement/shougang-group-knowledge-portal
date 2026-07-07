@@ -9,10 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
-  Eye,
-  MessageCircle,
   Tag,
-  ThumbsUp,
   Trash2,
   User,
   Settings, Shield, Leaf, GraduationCap, Network, Zap, Factory,
@@ -36,6 +33,9 @@ import expertBanner from '../assets/expert-banner@2x.png';
 import askBadge from '../assets/ask-badge.png';
 import emptyQuestionsImg from '../assets/empty-questions.png';
 import expertsErrorImg from '../assets/experts-error.png';
+import iconVote from '../assets/icon-vote.png';
+import iconAnswer from '../assets/icon-answer.png';
+import iconViews from '../assets/icon-views.png';
 import type { DomainConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
 
@@ -201,17 +201,17 @@ function QuestionCard({
           <div className={s.footerRight}>
             <div className={s.countStats}>
               <span className={s.countItem}>
-                <ThumbsUp size={14} />
+                <img src={iconVote} alt="" className={s.countIcon} />
                 <span className={s.countNum}>{q.votes}</span>
                 <span className={s.countLb}>投票</span>
               </span>
               <span className={s.countItem}>
-                <MessageCircle size={14} />
+                <img src={iconAnswer} alt="" className={s.countIcon} />
                 <span className={s.countNum}>{q.answers}</span>
                 <span className={s.countLb}>{q.acceptedAnswers > 0 ? '已采纳' : '回答'}</span>
               </span>
               <span className={s.countItem}>
-                <Eye size={14} />
+                <img src={iconViews} alt="" className={s.countIcon} />
                 <span className={s.countNum}>{q.views}</span>
                 <span className={s.countLb}>浏览</span>
               </span>

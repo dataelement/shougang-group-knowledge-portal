@@ -2693,6 +2693,37 @@ def test_search_files_uses_full_space_search_for_plain_tag_query(tmp_path: Path)
     assert fake_bisheng.post_calls == []
 
 
+def test_search_files_applies_base_tag_and_filter_tag_as_and_query(tmp_path: Path):
+    fake_bisheng = FakeBishengClient()
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        try:
+            response = client.get(
+                "/api/v1/knowledge/files"
+                "?base_tag=%E7%83%AD%E8%BD%A7"
+                "&tag=%E6%8C%AF%E5%8A%A8%E7%BA%B9"
+                "&space_ids=12&space_ids=18"
+                "&sort=updated_at_desc"
+                "&limit=10"
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["has_more"] is False
+    assert body["next_cursor"] is None
+    assert [item["id"] for item in body["data"]] == [1580]
+    assert body["data"][0]["tags"][0]["tag_name"] == "热轧"
+    assert fake_bisheng.post_calls == []
+
+
 def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path: Path):
     class RecommendationBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
@@ -2724,6 +2755,7 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
                                 "file_ext": "pdf",
                                 "file_size": "949.33KB",
                                 "file_encoding": "GF-ZD-SC-202604-01201",
+                                "file_subcategory_code": "RPT",
                             }
                         ],
                         "has_more": True,
@@ -2747,6 +2779,7 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
     assert body["has_more"] is True
     assert body["next_cursor"] == "cursor-1"
     assert body["data"][0]["space_id"] == 12
+    assert body["data"][0]["file_subcategory_code"] == "RPT"
     assert fake_bisheng.post_calls[0][1]["tag"] is None
 
 
@@ -2784,7 +2817,7 @@ def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain
     assert fake_bisheng.post_calls == []
 
 
-def test_search_files_passes_document_type_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):
+def test_search_files_passes_document_type_subcategory_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):
     class DocumentTypeBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
@@ -2798,7 +2831,8 @@ def test_search_files_passes_document_type_and_business_domain_code_to_shougang_
                     "sort": "updated_at_desc",
                     "cursor": None,
                     "limit": 10,
-                    "document_type": "RPT",
+                    "document_type": "PRO",
+                    "file_subcategory_code": "PRO-A",
                     "business_domain_code": "PM",
                     "rerank_model_id": "",
                 }
@@ -2831,7 +2865,7 @@ def test_search_files_passes_document_type_and_business_domain_code_to_shougang_
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         response = client.get(
-            "/api/v1/knowledge/files?space_ids=12&document_type=rpt&business_domain_code=pm&sort=updated_at_desc&limit=10"
+            "/api/v1/knowledge/files?space_ids=12&document_type=pro&file_subcategory_code=pro-a&business_domain_code=pm&sort=updated_at_desc&limit=10"
         )
 
     assert response.status_code == 200
@@ -3021,7 +3055,7 @@ def test_search_files_propagates_shougang_portal_business_error(tmp_path: Path):
     assert fake_bisheng.post_calls[0][0] == "/api/v1/knowledge/shougang-portal/files/search"
 
 
-def test_search_files_document_type_request_uses_cursor_protocol_without_legacy_fallback(tmp_path: Path):
+def test_search_files_file_subcategory_request_uses_cursor_protocol_without_legacy_fallback(tmp_path: Path):
     class FallbackDocumentTypeBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))

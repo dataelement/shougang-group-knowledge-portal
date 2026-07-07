@@ -33,6 +33,9 @@ export function hasSearchContext(params: URLSearchParams): boolean {
     || (params.get('space_level') || '').trim()
     || (params.get('space_id') || '').trim()
     || (params.get('file_ext') || '').trim()
+    || (params.get('document_type') || '').trim()
+    || (params.get('file_subcategory_code') || '').trim()
+    || (params.get('business_domain_code') || '').trim()
     || (params.get('tag') || '').trim(),
   );
 }

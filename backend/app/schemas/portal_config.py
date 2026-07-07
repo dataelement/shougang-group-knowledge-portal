@@ -269,7 +269,7 @@ class SearchRerankModelOptionsResponse(BaseModel):
     models: list[QAModelOption] = Field(default_factory=list)
 
 
-class DocumentTypeConfig(BaseModel):
+class DocumentTypeChildConfig(BaseModel):
     code: str = ""
     label: str = ""
 
@@ -282,6 +282,54 @@ class DocumentTypeConfig(BaseModel):
     @classmethod
     def normalize_label(cls, value):
         return _clean_config_text(value)
+
+    @model_validator(mode="after")
+    def validate_required_fields(self):
+        if not self.code:
+            raise ValueError("Document type child code is required")
+        if not self.label:
+            raise ValueError("Document type child label is required")
+        return self
+
+
+class DocumentTypeConfig(BaseModel):
+    code: str = ""
+    label: str = ""
+    children: list[DocumentTypeChildConfig] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def fill_legacy_children(cls, value):
+        if isinstance(value, dict) and "children" not in value:
+            code = _clean_config_text(value.get("code")).upper()
+            label = _clean_config_text(value.get("label"))
+            if code and label:
+                return {**value, "children": [{"code": code, "label": label}]}
+        return value
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_code(cls, value):
+        return _clean_config_text(value).upper()
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def normalize_label(cls, value):
+        return _clean_config_text(value)
+
+    @model_validator(mode="after")
+    def normalize_and_validate(self):
+        if not self.code:
+            raise ValueError("Document type code is required")
+        if not self.label:
+            raise ValueError("Document type label is required")
+        if not self.children:
+            raise ValueError("Document type children are required")
+        child_codes = [child.code for child in self.children]
+        duplicate_child_codes = {code for code in child_codes if child_codes.count(code) > 1}
+        if duplicate_child_codes:
+            raise ValueError("Document type child codes must be unique")
+        return self
 
 
 class SpaceOption(BaseModel):
@@ -438,3 +486,19 @@ class BannersConfigUpdate(BaseModel):
 
 class DocumentTypesConfigUpdate(BaseModel):
     document_types: list[DocumentTypeConfig]
+
+    @model_validator(mode="after")
+    def validate_unique_codes(self):
+        codes = [item.code for item in self.document_types]
+        duplicate_codes = {code for code in codes if codes.count(code) > 1}
+        if duplicate_codes:
+            raise ValueError("Document type codes must be unique")
+        child_codes = [
+            child.code
+            for item in self.document_types
+            for child in item.children
+        ]
+        duplicate_child_codes = {code for code in child_codes if child_codes.count(code) > 1}
+        if duplicate_child_codes:
+            raise ValueError("Document type child codes must be unique")
+        return self

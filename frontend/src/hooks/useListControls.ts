@@ -13,10 +13,21 @@ export function useListControls() {
     setParams(next);
   };
 
+  const setFilters = (updates: Record<string, string>, resetPage = true) => {
+    const next = new URLSearchParams(params);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    if (resetPage) next.delete('page');
+    setParams(next);
+  };
+
   return {
     params,
     resultsTopRef,
     setFilter,
+    setFilters,
     setParams,
   };
 }

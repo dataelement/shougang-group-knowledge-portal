@@ -16,12 +16,24 @@ test('home latest selected more link uses recommendation mode instead of tag que
 
 test('list page recommendation mode does not send tag filter', () => {
   assert.ok(listPageSource.includes("const LATEST_SELECTED_RECOMMENDATION = 'latest_selected'"));
-  assert.ok(listPageSource.includes('tag: isLatestSelectedRecommendation ? undefined : tagParam || undefined'));
+  assert.ok(listPageSource.includes('baseTag: isLatestSelectedRecommendation ? undefined : tagParam || undefined'));
+  assert.ok(listPageSource.includes('tag: filterTag || undefined'));
   assert.ok(
     listPageSource.includes(
       'recommendation: isLatestSelectedRecommendation ? LATEST_SELECTED_RECOMMENDATION : undefined',
     ),
   );
+});
+
+test('list page keeps entry tag separate from user tag filter', () => {
+  assert.ok(listPageSource.includes("const filterTag = params.get('filter_tag') || ''"));
+  assert.ok(listPageSource.includes("setFilter('filter_tag', e.target.value)"));
+});
+
+test('list page adds business domain filter to global recommendation and section lists', () => {
+  assert.ok(listPageSource.includes("const businessDomainFilter = normalizeBusinessDomainCode(params.get('business_domain_code'))"));
+  assert.ok(listPageSource.includes('businessDomainCode: showBusinessDomainFilter ? businessDomainFilter || undefined : undefined'));
+  assert.ok(listPageSource.includes("setFilter('business_domain_code', e.target.value)"));
 });
 
 test('admin latest selected section does not expose editable tag binding', () => {

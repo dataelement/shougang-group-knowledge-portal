@@ -229,14 +229,14 @@ export default function QAKnowledgeTreePicker({
     const folderRefs: QaKnowledgeFolderRef[] = exists
       ? current.folderRefs.filter((ref) => folderRefKey(ref.knowledgeSpaceId, ref.folderId) !== key)
       : [
-          ...current.folderRefs,
-          {
-            knowledgeSpaceId: node.spaceId,
-            folderId: node.id,
-            resolvedFileCount: node.resolvedFileCount,
-            fileRefs: collectKnownFolderFileRefs(node),
-          },
-        ];
+        ...current.folderRefs,
+        {
+          knowledgeSpaceId: node.spaceId,
+          folderId: node.id,
+          resolvedFileCount: node.resolvedFileCount,
+          fileRefs: collectKnownFolderFileRefs(node),
+        },
+      ];
     const nextScope = buildFilesScope(current.fileRefs, folderRefs);
     if (!exists && nextScope.resolvedFileCount > 20) {
       notify(FILE_LIMIT_TIP);
@@ -300,35 +300,35 @@ export default function QAKnowledgeTreePicker({
 
   return (
     <div className={s.panel}>
-    <div className={s.header}>
-      <div className={s.headerInfo}>
-        <strong>知识库范围</strong>
-        <span>整库限选 1 个，文件最多 20 个</span>
-      </div>
-      <div className={s.headerActions}>
-        {scope.mode !== 'none' ? (
+      <div className={s.header}>
+        <div className={s.headerInfo}>
+          <strong>知识库范围</strong>
+          <span>支持选择单一整库或跨库选择不超过20个文件</span>
+        </div>
+        <div className={s.headerActions}>
+          {scope.mode !== 'none' ? (
+            <button
+              type="button"
+              className={s.clearButton}
+              onClick={() => onChange({ mode: 'none' })}
+              title="清空已选"
+            >
+              清空选择
+            </button>
+          ) : null}
+          <span className={s.headerStatus}>
+            {scope.mode === 'knowledge_space' ? '整库' : scope.mode === 'files' ? `${getScopeFileCount(scope)} 文件` : '未选择'}
+          </span>
           <button
             type="button"
-            className={s.clearButton}
-            onClick={() => onChange({ mode: 'none' })}
-            title="清空已选"
+            onClick={() => onClose?.()}
+            className={s.closeButton}
+            title="关闭"
           >
-            清空选择
+            <X size={15} />
           </button>
-        ) : null}
-        <span className={s.headerStatus}>
-          {scope.mode === 'knowledge_space' ? '整库' : scope.mode === 'files' ? `${getScopeFileCount(scope)} 文件` : '未选择'}
-        </span>
-        <button
-          type="button"
-          onClick={() => onClose?.()}
-          className={s.closeButton}
-          title="关闭"
-        >
-          <X size={15} />
-        </button>
+        </div>
       </div>
-    </div>
 
       {inlineTip ? <div className={s.inlineTip}>{inlineTip}</div> : null}
 
@@ -387,66 +387,66 @@ export default function QAKnowledgeTreePicker({
             {loading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 知识库加载中</div> : null}
             {!loading && spaces.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
             {spaces.map((space) => {
-          const rootKey = nodeChildrenKey(space.id);
-          const expanded = expandedKeys.has(rootKey);
-          const wholeSelected = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === space.id;
-          const spaceSelectedCount = scope.mode === 'files'
-            ? scope.fileRefs.filter((ref) => ref.knowledgeSpaceId === space.id).length
-              + scope.folderRefs
+              const rootKey = nodeChildrenKey(space.id);
+              const expanded = expandedKeys.has(rootKey);
+              const wholeSelected = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === space.id;
+              const spaceSelectedCount = scope.mode === 'files'
+                ? scope.fileRefs.filter((ref) => ref.knowledgeSpaceId === space.id).length
+                + scope.folderRefs
                   .filter((ref) => ref.knowledgeSpaceId === space.id)
                   .reduce((sum, ref) => sum + (ref.resolvedFileCount || 0), 0)
-            : 0;
-          const full = wholeSelected || (space.fileCount > 0 && spaceSelectedCount >= space.fileCount);
-          const indeterminate = !full && spaceSelectedCount > 0;
-          const children = childrenByKey[rootKey] ?? [];
-          const loadingRoot = loadingKeys.has(rootKey);
-          const erroredRoot = errorKeys.has(rootKey);
-          return (
-            <section key={space.id} className={s.spaceBlock}>
-              <div className={`${s.spaceRow} ${full ? s.spaceRowActive : ''}`}>
-                <button
-                  type="button"
-                  className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
-                  onClick={() => toggleWholeSpace(space)}
-                  aria-label={`选择知识库 ${space.name}`}
-                >
-                  {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
-                </button>
-                <Database size={16} className={s.spaceIcon} />
-                <div className={s.spaceContent}>
-                  <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
-                    <strong>{space.name}</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className={`${s.spaceAction} ${expanded ? s.spaceActionActive : ''}`}
-                    onClick={() => toggleExpand(space.id)}
-                  >
-                    {loadingRoot ? <Loader2 size={13} className={s.spin} /> : expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                    <span className={s.spaceActionText}>
-                      {expanded ? '收起目录（可多选子项）' : '展开目录（可多选子项）'}
-                    </span>
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className={s.expandButton}
-                  onClick={() => toggleExpand(space.id)}
-                  aria-label={expanded ? '收起目录' : '展开目录'}
-                  title={expanded ? '收起目录' : '展开目录'}
-                >
-                  {loadingRoot ? <Loader2 size={14} className={s.spin} /> : expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </button>
-              </div>
-              {expanded ? (
-                <div className={s.rootChildren}>
-                  {erroredRoot ? <div className={s.stateLine}>加载失败</div> : null}
-                  {!erroredRoot && !loadingRoot && children.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
-                  {children.map((node) => renderNode(node, 1))}
-                </div>
-              ) : null}
-            </section>
-          );
+                : 0;
+              const full = wholeSelected || (space.fileCount > 0 && spaceSelectedCount >= space.fileCount);
+              const indeterminate = !full && spaceSelectedCount > 0;
+              const children = childrenByKey[rootKey] ?? [];
+              const loadingRoot = loadingKeys.has(rootKey);
+              const erroredRoot = errorKeys.has(rootKey);
+              return (
+                <section key={space.id} className={s.spaceBlock}>
+                  <div className={`${s.spaceRow} ${full ? s.spaceRowActive : ''}`}>
+                    <button
+                      type="button"
+                      className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
+                      onClick={() => toggleWholeSpace(space)}
+                      aria-label={`选择知识库 ${space.name}`}
+                    >
+                      {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
+                    </button>
+                    <Database size={16} className={s.spaceIcon} />
+                    <div className={s.spaceContent}>
+                      <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
+                        <strong>{space.name}</strong>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${s.spaceAction} ${expanded ? s.spaceActionActive : ''}`}
+                        onClick={() => toggleExpand(space.id)}
+                      >
+                        {loadingRoot ? <Loader2 size={13} className={s.spin} /> : expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                        <span className={s.spaceActionText}>
+                          {expanded ? '收起目录（可多选子项）' : '展开目录（可多选子项）'}
+                        </span>
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className={s.expandButton}
+                      onClick={() => toggleExpand(space.id)}
+                      aria-label={expanded ? '收起目录' : '展开目录'}
+                      title={expanded ? '收起目录' : '展开目录'}
+                    >
+                      {loadingRoot ? <Loader2 size={14} className={s.spin} /> : expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </button>
+                  </div>
+                  {expanded ? (
+                    <div className={s.rootChildren}>
+                      {erroredRoot ? <div className={s.stateLine}>加载失败</div> : null}
+                      {!erroredRoot && !loadingRoot && children.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
+                      {children.map((node) => renderNode(node, 1))}
+                    </div>
+                  ) : null}
+                </section>
+              );
             })}
           </>
         )}

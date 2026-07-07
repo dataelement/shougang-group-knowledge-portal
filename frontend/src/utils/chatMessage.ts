@@ -1,5 +1,8 @@
 import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import type { Citation } from '../api/content';
+
+marked.setOptions({ breaks: true, gfm: true });
 
 const OPEN = '\\ue200';
 const SEP = '\\ue201';
@@ -23,25 +26,8 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function renderInlineMarkdown(value: string): string {
-  return value.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-}
-
 function renderMarkdown(markdown: string): string {
-  const blocks = markdown.split(/\n{2,}/);
-  return blocks
-    .map((block) => {
-      const fenced = block.match(/^```\n([\s\S]*?)\n```$/);
-      if (fenced) return `<pre><code>${escapeHtml(fenced[1])}</code></pre>`;
-
-      const lines = block.split('\n');
-      if (lines.every((line) => /^\d+\.\s+/.test(line))) {
-        return `<ol>${lines.map((line) => `<li>${renderInlineMarkdown(line.replace(/^\d+\.\s+/, ''))}</li>`).join('')}</ol>`;
-      }
-
-      return `<p>${renderInlineMarkdown(block).replace(/\n/g, '<br>')}</p>`;
-    })
-    .join('\n');
+  return marked.parse(markdown, { async: false }) as string;
 }
 
 function getCitationGroupId(citation: Citation): string {
