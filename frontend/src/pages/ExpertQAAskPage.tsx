@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Bold,
   Check,
@@ -28,6 +28,8 @@ import {
   fetchConfigData,
   fetchExpertProfiles,
   fetchSimilarExpertQuestions,
+  fetchExpertQuestionDetail,
+  updateExpertQuestion,
   uploadQaImage,
   type ExpertProfileResponse,
   type SimilarQuestionItem,
@@ -72,8 +74,89 @@ const TOOLBAR_BUTTONS = [
 const EXPERT_PAGE_SIZE = 20;
 const MAX_IMAGE_COUNT = 3;
 const ATTACHMENT_LIST_SEPARATOR = ';';
+const LINK_LIST_SPLIT_PATTERN = /[;；,，\n\r]+/;
 
 type KnowledgeAttachment = CommonUploadedFile;
+
+function splitStoredList(value?: string | null): string[] {
+  if (!value?.trim()) return [];
+  return value
+    .split(LINK_LIST_SPLIT_PATTERN)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseInvitedExperts(
+  invitedIds?: string | null,
+  invitedNames?: string | null,
+): ExpertProfileResponse[] {
+  const ids = splitStoredList(invitedIds);
+  const names = splitStoredList(invitedNames);
+  return ids
+    .map((id, index) => {
+      const numericId = Number(id);
+      if (!Number.isFinite(numericId)) return null;
+      const expert: ExpertProfileResponse = {
+        id: numericId,
+        user_id: numericId,
+        expert_name: names[index] || '',
+        introduction: null,
+        depart_ment: null,
+        major: null,
+        answer_count: 0,
+        adoption_count: 0,
+        vote_count: 0,
+        created_at: '',
+        updated_at: '',
+      };
+      return expert;
+    })
+    .filter((item): item is ExpertProfileResponse => Boolean(item));
+}
+
+function parseQuestionAttachments(
+  attachmentNames?: string | null,
+  relatedDocs?: string | null,
+): KnowledgeAttachment[] {
+  const names = splitStoredList(attachmentNames);
+  if (!relatedDocs?.trim()) return [];
+
+  const pairs = relatedDocs
+    .replace(/;/g, '；')
+    .split('；')
+    .map((str) => str.trim())
+    .filter(Boolean);
+
+  return pairs.reduce<KnowledgeAttachment[]>((acc, pair, index) => {
+    if (!pair.includes('-')) return acc;
+    const [spaceIdStr, fileIdStr] = pair.split('-');
+    const spaceId = Number(spaceIdStr);
+    const fileId = Number(fileIdStr);
+    if (!Number.isFinite(spaceId) || !Number.isFinite(fileId)) return acc;
+
+    const fileName = names[index] || 'file';
+    const ext = fileName.includes('.') ? fileName.split('.').pop() : '';
+    const encodedName = encodeURIComponent(fileName);
+    const url = `/workspace/knowledge/file/${fileId}?name=${encodedName}&type=${ext}&spaceId=${spaceId}`;
+
+    acc.push({
+      id: `${spaceId}-${fileId}`,
+      fileId,
+      spaceId,
+      parentId: null,
+      type: 'file',
+      title: fileName,
+      name: fileName,
+      path: url,
+      url,
+      ext: ext || '',
+      sizeLabel: '',
+      hasChildren: false,
+      resolvedFileCount: 1,
+    });
+    return acc;
+  }, []);
+}
 
 function serializeKnowledgeAttachments(
   items: KnowledgeAttachment[],
@@ -133,6 +216,10 @@ function normalizeExpertResult(res: unknown): ExpertProfilesResult {
 //主页面
 export default function ExpertQAAskPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editQuestionId = searchParams.get('edit');
+  const isEditMode = Boolean(editQuestionId);
+
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [selectedDomain, setSelectedDomain] = useState<string>('');
@@ -243,7 +330,9 @@ export default function ExpertQAAskPage() {
       .then((data) => {
         if (!active) return;
         setDomainList(data);
-        if (data.length > 0) setSelectedDomain(data[0].name);
+        if (data.length > 0 && !isEditMode && !selectedDomain) {
+          setSelectedDomain(data[0].name);
+        }
       })
       .catch((err) => {
         if (!active) return;
@@ -253,7 +342,35 @@ export default function ExpertQAAskPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isEditMode, selectedDomain]);
+
+  // 编辑模式：加载原问题内容回填表单
+  useEffect(() => {
+    if (!editQuestionId) return;
+    let active = true;
+    setSubmitLoading(true);
+    fetchExpertQuestionDetail(editQuestionId)
+      .then((question) => {
+        if (!active) return;
+        setTitle(question.title || '');
+        setBody(question.description || '');
+        if (question.business_domain) setSelectedDomain(question.business_domain);
+        setImageUrls(splitStoredList(question.image_url));
+        setInvited(parseInvitedExperts(question.invited_experts, question.experts_names));
+        setAttachments(parseQuestionAttachments(question.attachments, question.related_docs));
+      })
+      .catch((err) => {
+        if (!active) return;
+        setSubmitError(err instanceof Error ? err.message : '加载问题失败');
+      })
+      .finally(() => {
+        if (!active) return;
+        setSubmitLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [editQuestionId]);
 
   function toggleInvite(expert: ExpertProfileResponse) {
     setInvited((current) => {
@@ -388,20 +505,29 @@ export default function ExpertQAAskPage() {
     try {
       // 校验问题是否存在安全内容
       await handleCheckQuestion(title.trim()+"\n"+ body.trim());
-      await createExpertQuestion({
+      const payload = {
         title: title.trim(),
         body: body.trim(),
         domain: selectedDomain,
         invited_expert_ids: invited.map((e) => e.id).join(';'),
         invited_expert_names: invited.map((e) => e.expert_name).join(';'),
-        image_url: imageUrls.length ? imageUrls.join(';') : undefined,
-        attachments: serializeKnowledgeAttachments(attachments),
-        related_docs: serializeKnowledgeAttachmentsID(attachments)
-        
-      });
+        image_url: imageUrls.length ? imageUrls.join(';') : null,
+        attachments: serializeKnowledgeAttachments(attachments) ?? null,
+        related_docs: serializeKnowledgeAttachmentsID(attachments) ?? null,
+      };
+      if (isEditMode && editQuestionId) {
+        await updateExpertQuestion(Number(editQuestionId), payload);
+      } else {
+        await createExpertQuestion({
+          ...payload,
+          image_url: payload.image_url ?? undefined,
+          attachments: payload.attachments ?? undefined,
+          related_docs: payload.related_docs ?? undefined,
+        });
+      }
       navigate('/expert-qa');
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : '发布失败，请重试');
+      setSubmitError(err instanceof Error ? err.message : isEditMode ? '保存失败，请重试' : '发布失败，请重试');
     } finally {
       setSubmitLoading(false);
     }
@@ -413,7 +539,7 @@ export default function ExpertQAAskPage() {
         <div className={s.crumbs}>
           <Link to="/expert-qa">专家问答</Link>
           <ChevronRight size={14} className={s.crumbChevron} />
-          <span>我要提问</span>
+          <span>{isEditMode ? '编辑提问' : '我要提问'}</span>
         </div>
         <div className={s.layout}>
           <main className={s.formCard}>
@@ -423,7 +549,7 @@ export default function ExpertQAAskPage() {
             >
               <div className={s.formHeaderTitle}>
                 <span className={s.formAccent} aria-hidden />
-                我要提问
+                {isEditMode ? '编辑提问' : '我要提问'}
               </div>
               <p className={s.formHeaderSub}>描述您的问题，邀请专家为您解答～</p>
             </div>
@@ -686,7 +812,14 @@ export default function ExpertQAAskPage() {
               onClick={handlePublish}
               disabled={submitLoading}
             >
-              <Send size={14} /> {submitLoading ? '发布中...' : '发布提问'}
+              <Send size={14} />{' '}
+              {submitLoading
+                ? isEditMode
+                  ? '保存中...'
+                  : '发布中...'
+                : isEditMode
+                  ? '保存并发布'
+                  : '发布提问'}
             </button>
             </div>
           </main>

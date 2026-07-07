@@ -25,7 +25,6 @@ import {
   fetchConfigData,
   fetchExpertProfiles,
   fetchExpertQuestions,
-  updateExpertQuestion,
   type ApiAnswer,
   type ApiQuestion,
   type ExpertProfileResponse,
@@ -65,6 +64,8 @@ type QuestionEntry = {
   domain: string;
   statusMeta: { text: string; cls: string };
   asker: { name: string; initial: string };
+  ownerUserId: number;
+  createdBy: string | null;
   bounty?: number;
   invitedSummary?: string;
   acceptedPreview?: {
@@ -96,6 +97,15 @@ function buildAnswerPreview(answer: ApiAnswer): QuestionEntry['acceptedPreview']
     excerpt: textExcerpt(answer.content, 120),
     accepted: answer.status === 2 || Boolean(answer.adopted),
   };
+}
+
+function isQuestionOwner(q: QuestionEntry, user: ReturnType<typeof useAuth>['user']): boolean {
+  if (!user) return false;
+  return (
+    (q.createdBy && (q.createdBy === user.name || q.createdBy === user.account)) ||
+    String(q.ownerUserId) === user.externalId ||
+    String(q.ownerUserId) === user.account
+  );
 }
 
 function getInvitedSummary(question: ApiQuestion): string | undefined {
@@ -260,55 +270,6 @@ const STATUS_LABEL: Record<string, { text: string; cls: string; icon?: typeof Ch
 
 // ─── Modal 组件 ───────────────────────────────────────────────────────────────
 
-function EditModal({
-  title,
-  body,
-  onTitleChange,
-  onBodyChange,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  body: string;
-  onTitleChange: (v: string) => void;
-  onBodyChange: (v: string) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className={s.modalOverlay} onClick={onCancel}>
-      <div className={s.modalBox} onClick={(e) => e.stopPropagation()}>
-        <div className={s.modalTitle}>编辑问题</div>
-        <label className={s.modalLabel}>标题</label>
-        <input
-          className={s.modalInput}
-          value={title}
-          onChange={(e) => onTitleChange(e.target.value)}
-        />
-        <label className={s.modalLabel}>描述</label>
-        <textarea
-          className={s.modalTextarea}
-          value={body}
-          onChange={(e) => onBodyChange(e.target.value)}
-        />
-        <div className={s.modalActions}>
-          <button type="button" className={s.modalBtn} onClick={onCancel}>
-            取消
-          </button>
-          <button
-            type="button"
-            className={`${s.modalBtn} ${s.modalBtnPrimary}`}
-            onClick={onConfirm}
-            disabled={!title.trim() || !body.trim()}
-          >
-            保存
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function DeleteModal({
   onConfirm,
   onCancel,
@@ -361,17 +322,8 @@ export default function ExpertQAPage() {
   const [experts, setExperts] = useState<ExpertProfileResponse[]>([]);
   const [domains, setDomains] = useState<DomainConfig[]>([]);
   const { user } = useAuth();
-  const showOwnerActions = activeStatus === 'my_question';
 
   const maxPage = Math.max(1, Math.ceil(total / pageSize));
-
-  // 编辑弹窗状态
-  const [editModal, setEditModal] = useState<{
-    open: boolean;
-    q: QuestionEntry | null;
-    title: string;
-    body: string;
-  }>({ open: false, q: null, title: '', body: '' });
 
   // 删除确认弹窗状态
   const [deleteModal, setDeleteModal] = useState<{
@@ -420,6 +372,8 @@ export default function ExpertQAPage() {
             name: q.created_by || `用户${q.user_id}`,
             initial: (q.created_by || `U${q.user_id}`)[0],
           },
+          ownerUserId: q.user_id,
+          createdBy: q.created_by,
           askedAt: new Date(q.created_at).toLocaleDateString('zh-CN'),
         }));
 
@@ -517,38 +471,9 @@ export default function ExpertQAPage() {
     }
   }, [domains, activeDomain]);
 
-  // 打开编辑弹窗
+  // 打开编辑页面
   function handleEditQuestion(q: QuestionEntry) {
-    setEditModal({ open: true, q, title: q.title, body: q.body || q.excerpt });
-  }
-
-  // 确认编辑保存
-  async function handleConfirmEdit() {
-    const { q, title, body } = editModal;
-    if (!q || !title.trim() || !body.trim()) return;
-    setError(null);
-    try {
-      await updateExpertQuestion(q.id, {
-        title: title.trim(),
-        body: body.trim(),
-        domain: q.domain,
-      });
-      setQuestions((current) =>
-        current.map((item) =>
-          item.id === q.id
-            ? {
-              ...item,
-              title: title.trim(),
-              body: body.trim(),
-              excerpt: textExcerpt(body.trim(), 120),
-            }
-            : item,
-        ),
-      );
-      setEditModal({ open: false, q: null, title: '', body: '' });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '问题保存失败，请稍后重试');
-    }
+    navigate(`/expert-qa/ask?edit=${q.id}`);
   }
 
   // 打开删除确认弹窗
@@ -671,7 +596,7 @@ export default function ExpertQAPage() {
                   <QuestionCard
                     key={q.id}
                     q={q}
-                    showOwnerActions={showOwnerActions}
+                    showOwnerActions={isQuestionOwner(q, user)}
                     onOpen={(id) => navigate(`/expert-qa/${id}`)}
                     onEdit={(item) => handleEditQuestion(item)}
                     onDelete={(item) => handleDeleteQuestion(item)}
@@ -748,18 +673,6 @@ export default function ExpertQAPage() {
           </aside>
         </div>
       </div>
-
-      {/* 编辑弹窗 */}
-      {editModal.open && (
-        <EditModal
-          title={editModal.title}
-          body={editModal.body}
-          onTitleChange={(v) => setEditModal((prev) => ({ ...prev, title: v }))}
-          onBodyChange={(v) => setEditModal((prev) => ({ ...prev, body: v }))}
-          onConfirm={() => void handleConfirmEdit()}
-          onCancel={() => setEditModal({ open: false, q: null, title: '', body: '' })}
-        />
-      )}
 
       {/* 删除确认弹窗 */}
       {deleteModal.open && (
