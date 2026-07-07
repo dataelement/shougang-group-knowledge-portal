@@ -428,7 +428,7 @@ export default function HomePage() {
   const [qaStreaming, setQaStreaming] = useState(false);
   const [bannerIdx, setBannerIdx] = useState(0);
   const domainScrollRef = useRef<HTMLDivElement>(null);
-  const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false });
+  const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [sectionDataFailed, setSectionDataFailed] = useState(false);
@@ -472,11 +472,15 @@ export default function HomePage() {
   const handleDomainPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     const el = domainScrollRef.current;
     if (!el) return;
+    // 记录按下时所在卡片的跳转路径:指针捕获后 click 会落到容器而非卡片,
+    // 因此点击跳转改在 pointerup(未拖动时)按此路径触发。
+    const card = (event.target as HTMLElement).closest<HTMLElement>('[data-domain-path]');
     domainDragRef.current = {
       isDown: true,
       startX: event.clientX,
       scrollLeft: el.scrollLeft,
       moved: false,
+      path: card?.dataset.domainPath ?? '',
     };
     el.setPointerCapture(event.pointerId);
   };
@@ -491,13 +495,16 @@ export default function HomePage() {
   };
 
   const handleDomainPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    domainDragRef.current.isDown = false;
+    const drag = domainDragRef.current;
+    const shouldNavigate = drag.isDown && !drag.moved && Boolean(drag.path);
+    drag.isDown = false;
     domainScrollRef.current?.releasePointerCapture(event.pointerId);
+    if (shouldNavigate) navigateToTop(drag.path);
   };
 
-  const handleDomainCardClick = (path: string) => {
-    if (domainDragRef.current.moved) return;
-    navigateToTop(path);
+  // 指针移出/取消:仅结束拖动,不触发跳转
+  const handleDomainPointerCancel = () => {
+    domainDragRef.current.isDown = false;
   };
 
   const homeBanners = useMemo(() => resolveHomeBanners(config?.banners), [config?.banners]);
@@ -850,7 +857,8 @@ export default function HomePage() {
               onPointerDown={handleDomainPointerDown}
               onPointerMove={handleDomainPointerMove}
               onPointerUp={handleDomainPointerUp}
-              onPointerLeave={handleDomainPointerUp}
+              onPointerLeave={handleDomainPointerCancel}
+              onPointerCancel={handleDomainPointerCancel}
             >
               {homeDomains.map((d) => {
                 const Icon = DOMAIN_ICONS[d.icon] || Settings;
@@ -863,7 +871,15 @@ export default function HomePage() {
                     key={d.name}
                     className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
                     style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
-                    onClick={() => handleDomainCardClick(buildDomainSearchPath(d.name))}
+                    data-domain-path={buildDomainSearchPath(d.name)}
+                    role="link"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        navigateToTop(buildDomainSearchPath(d.name));
+                      }
+                    }}
                   >
                     {usesBannerThumb ? null : (
                       <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>
@@ -927,10 +943,14 @@ export default function HomePage() {
                           <div
                             key={f.id}
                             className={s.listItem}
-                            onClick={() =>
-                              navigate(`/space/${f.spaceId}/file/${f.id}`, {
-                                state: { returnTo: moreLink },
-                              })}
+                            onClick={() => {
+                              const target = `/space/${f.spaceId}/file/${f.id}`;
+                              if (!user) {
+                                navigate(buildGuestLoginPath(target));
+                                return;
+                              }
+                              navigate(target, { state: { returnTo: moreLink } });
+                            }}
                           >
                             <div className={s.itemTitle}>{f.title}</div>
                             <div className={s.itemSubRow}>
@@ -972,7 +992,10 @@ export default function HomePage() {
                     key={c.id}
                     type="button"
                     className={s.courseRow}
-                    onClick={() => navigate(`/course/${c.id}`)}
+                    onClick={() => {
+                      const target = `/course/${c.id}`;
+                      navigate(user ? target : buildGuestLoginPath(target));
+                    }}
                   >
                     <Video size={22} className={s.courseRowIcon} />
                     <span className={s.courseRowTitle}>{c.title}</span>
