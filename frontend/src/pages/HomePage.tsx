@@ -927,6 +927,11 @@ export default function HomePage() {
                     <Link
                       to={moreLink}
                       className={s.panelMore}
+                      onClick={(event) => {
+                        if (user) return;
+                        event.preventDefault();
+                        navigate(buildGuestLoginPath(moreLink));
+                      }}
                     >
                       更多 <ChevronRight size={14} />
                     </Link>
@@ -982,7 +987,15 @@ export default function HomePage() {
                   <img src={iconCourse} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>专业课程 · 岗位赋能</span>
                 </div>
-                <Link to="/course" className={s.panelMore}>
+                <Link
+                  to="/course"
+                  className={s.panelMore}
+                  onClick={(event) => {
+                    if (user) return;
+                    event.preventDefault();
+                    navigate(buildGuestLoginPath('/course'));
+                  }}
+                >
                   全部课程 <ChevronRight size={14} />
                 </Link>
               </div>
