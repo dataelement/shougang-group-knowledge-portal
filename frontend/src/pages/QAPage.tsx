@@ -160,6 +160,12 @@ function resolveSessionGroup(dateText?: string): Session['group'] {
   return '30 天内';
 }
 
+/** 会话排序用时间戳(更新时间优先),解析失败按最旧处理,保证新会话排在最上面。 */
+function sessionSortTime(session: Session): number {
+  const time = Date.parse(session.updatedAt ?? '');
+  return Number.isNaN(time) ? 0 : time;
+}
+
 function createDraftSession(answerMode: AnswerMode = 'normal'): Session {
   return {
     id: `local_${Date.now()}`,
@@ -507,7 +513,9 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     void fetchWorkstationConversations({ page: 1, limit: 50 })
       .then((items) => {
         if (!active) return;
-        const remoteSessions = items.map(mapConversationToSession);
+        const remoteSessions = items
+          .map(mapConversationToSession)
+          .sort((a, b) => sessionSortTime(b) - sessionSortTime(a));
         setSessions((prev) => {
           const localSessions = prev.filter((item) => !item.conversationId);
           const merged = [...localSessions, ...remoteSessions];
@@ -600,6 +608,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               ...ss,
               title: ss.title === '新会话' ? finalText.slice(0, 18) : ss.title,
               messages: [...ss.messages, { role: 'user', text: finalText, files: messageFiles }, { role: 'bot', text: '' }],
+              // 盖上当前更新时间,发起会话后按"最近更新"排到分组最上面
+              updatedAt: new Date().toISOString(),
             }
           : ss,
       ),

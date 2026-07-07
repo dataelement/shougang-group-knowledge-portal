@@ -146,6 +146,10 @@ function resolveRecordGroup(dateText?: string): Session['group'] {
 }
 
 function getRecordTime(record: SmartAppsRecord): number {
+  // 未保存的草稿(新会话)没有更新时间,视为最新,始终排在分组最上面
+  if (record.kind === 'qa' && !record.session.conversationId) {
+    return Number.POSITIVE_INFINITY;
+  }
   const time = Date.parse(record.updatedAt || '');
   return Number.isNaN(time) ? 0 : time;
 }

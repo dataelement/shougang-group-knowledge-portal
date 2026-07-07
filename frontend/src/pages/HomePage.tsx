@@ -6,7 +6,7 @@ import {
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Sparkles,
-  Package, Video, Flame, Briefcase, Users, ScrollText, Loader2,
+  Video, Flame, Briefcase, Users, ScrollText, Loader2,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
@@ -25,7 +25,6 @@ import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
 import { buildGuestLoginPath } from '../utils/guestAccess';
-import { WIKI_LIST_ITEMS } from '../data/wikiData';
 import { COURSE_LIST_ITEMS } from '../data/courseMock';
 import s from './HomePage.module.css';
 import navIcon from '../assets/nav-icon@2x.png';
@@ -37,7 +36,28 @@ import iconRecommend from '../assets/icon-recommend@2x.png';
 import iconIntel from '../assets/icon-intel@2x.png';
 import iconFolder from '../assets/icon-folder@2x.png';
 import iconHot from '../assets/icon-hot@2x.png';
+import medalGold from '../assets/medal-gold@2x.png';
+import medalSilver from '../assets/medal-silver@2x.png';
+import medalBronze from '../assets/medal-bronze@2x.png';
 import { formatDisplayDateTime } from '../utils/dateTime';
+
+/** 积分榜单前三名(领奖台),按 展示顺序 [第二, 第一, 第三] 排列 */
+const POINTS_PODIUM = [
+  { rank: 2, name: '李思', dept: '技术研发部', score: 3850, medal: medalSilver, tone: 'silver' as const },
+  { rank: 1, name: '王丽', dept: '质量管理部', score: 4120, medal: medalGold, tone: 'gold' as const },
+  { rank: 3, name: '赵峰', dept: '生产运营部', score: 3620, medal: medalBronze, tone: 'bronze' as const },
+];
+
+/** 积分榜单 4~10 名列表,me 标记当前登录用户所在行 */
+const POINTS_ROWS = [
+  { rank: 4, name: '尉仁子', dept: '设备管理部', score: 3280, delta: 290 },
+  { rank: 5, name: '索世泽', dept: '安全环保部', score: 3150, delta: 260 },
+  { rank: 6, name: '多琦娜(我)', dept: '技术研发部', score: 3129, delta: 150 },
+  { rank: 7, name: '茶慧伦', dept: '生产运营部', score: 2580, delta: 156 },
+  { rank: 8, name: '滑良和', dept: '知识管理部', score: 2217, delta: 310 },
+  { rank: 9, name: '潘世', dept: '技术研发部', score: 1640, delta: 124 },
+  { rank: 10, name: '尹胜', dept: '生产运营部', score: 1500, delta: 100 },
+];
 
 /** Resolve a homepage panel header icon (PNG) from its title keywords. */
 function resolveSectionIcon(title: string): string {
@@ -1057,19 +1077,42 @@ export default function HomePage() {
               <div className={s.panelHeader}>
                 <div className={s.panelHeaderLeft}>
                   <img src={iconRank} alt="" className={s.panelIconImg} />
-                  <span className={s.panelTitle}>股份百科 · 知识产品</span>
+                  <span className={s.panelTitle}>积分榜单</span>
                 </div>
-                <Link to="/wiki" className={s.panelMore}>
-                  更多词条 <ChevronRight size={14} />
-                </Link>
               </div>
-              <div className={s.wikiList}>
-                {WIKI_LIST_ITEMS.slice(0, 5).map((item) => (
-                  <Link key={item.id} to={`/wiki/${item.id}`} className={s.wikiRow}>
-                    <Package size={22} className={s.wikiRowIcon} />
-                    <span className={s.wikiRowName}>{item.name}</span>
-                    <span className={s.wikiCatTag}>{item.domain}</span>
-                  </Link>
+
+              <div className={s.podium}>
+                {POINTS_PODIUM.map((p) => (
+                  <div
+                    key={p.rank}
+                    className={`${s.podiumItem} ${p.rank === 1 ? s.podiumItemFirst : ''}`}
+                  >
+                    <img src={p.medal} alt={`第${p.rank}名`} className={s.podiumMedal} />
+                    <span className={s.podiumName}>{p.name}</span>
+                    <span className={s.podiumDept}>{p.dept}</span>
+                    <span className={`${s.podiumScore} ${s[`podiumScore_${p.tone}`]}`}>
+                      {p.score}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className={s.rankTable}>
+                <div className={s.rankHead}>
+                  <span>排名</span>
+                  <span>用户</span>
+                  <span>部门</span>
+                  <span>当前积分</span>
+                  <span>本月积分</span>
+                </div>
+                {POINTS_ROWS.map((r) => (
+                  <div key={r.rank} className={s.rankRow}>
+                    <span className={s.rankNo}>{r.rank}</span>
+                    <span className={s.rankUser}>{r.name}</span>
+                    <span className={s.rankDept}>{r.dept}</span>
+                    <span className={s.rankScore}>{r.score}</span>
+                    <span className={s.rankDelta}>+{r.delta}</span>
+                  </div>
                 ))}
               </div>
             </div>
