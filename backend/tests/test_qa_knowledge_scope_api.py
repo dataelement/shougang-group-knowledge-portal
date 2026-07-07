@@ -365,10 +365,14 @@ def _make_forbidden_client(tmp_path: Path):
 
 
 def test_qa_tree_children_translates_upstream_permission_error_to_403(tmp_path: Path):
-    for client, _ in _make_forbidden_client(tmp_path):
+    for client, user_bisheng in _make_forbidden_client(tmp_path):
         resp = client.get("/api/v1/knowledge/qa/tree/spaces/7199/children")
     assert resp.status_code == 403
     assert resp.json()["detail"] == "包含无权限或不存在的知识库"
+    # 证明走的是"信任上游"路径:上游 /children 确实被调用(而非旧预检拦截)
+    assert any(
+        path == "/api/v1/knowledge/space/7199/children" for path, _ in user_bisheng.get_calls
+    )
 
 
 def test_qa_tree_children_passes_enrich_files_false_and_fixes_paging(tmp_path: Path):

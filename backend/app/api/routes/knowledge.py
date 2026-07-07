@@ -79,7 +79,7 @@ def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
     raise HTTPException(status_code=status_code, detail=err.status_message)
 
 
-_QA_TREE_FORBIDDEN_CODES = {18040, 18000}  # SpacePermissionDenied / SpaceNotFound
+_QA_TREE_FORBIDDEN_CODES = {_BISHENG_PERMISSION_DENIED_CODE, 18000}  # SpacePermissionDenied / SpaceNotFound
 
 
 def _raise_qa_tree_children_error(err: BishengBusinessError) -> None:
@@ -483,6 +483,7 @@ async def list_qa_tree_children(
                 )
             )
         except BishengBusinessError as err:
+            # _raise_qa_tree_children_error 必定抛 HTTPException(不会 fall through)
             _raise_qa_tree_children_error(err)
 
     bisheng_client = auth_service.create_bisheng_client(session)
@@ -502,6 +503,7 @@ async def list_qa_tree_children(
                 )
             )
         except BishengBusinessError as err:
+            # _raise_qa_tree_children_error 必定抛 HTTPException(不会 fall through)
             _raise_qa_tree_children_error(err)
     finally:
         await bisheng_client.aclose()
