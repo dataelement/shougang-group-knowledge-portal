@@ -807,8 +807,8 @@ class KnowledgeService:
         self,
         space_id: int,
         parent_id: int | None,
-        page: int = 1,
-        page_size: int = 100,
+        cursor: str | None = None,
+        page_size: int = 10,
     ) -> QaKnowledgeTreeNodeData:
         resolved_page_size = min(max(page_size, 1), self._page_size_limit)
         params: dict[str, Any] = {
@@ -818,9 +818,13 @@ class KnowledgeService:
             # 注:httpx 将 Python False 序列化为查询串 "enrich_files=false"(bool 特判为小写),
             # 上游 FastAPI 的 bool 解析读回 False;httpx 大版本升级需复核此序列化契约。
             "enrich_files": False,
+            # QA 树只需直接子文件数,走上游轻量计数(零 openfga、不递归)。
+            "folder_count_mode": "shallow",
         }
         if parent_id is not None:
             params["parent_id"] = parent_id
+        if cursor:
+            params["cursor"] = cursor
         response = await self._bisheng.get_json(f"/api/v1/knowledge/space/{space_id}/children", params=params)
         # 上游权限/不存在等业务错误经 HTTP 200 + body status_code 返回;
         # 显式检测并抛 BishengBusinessError,交由路由层翻译为 403。
@@ -833,13 +837,12 @@ class KnowledgeService:
             for item in raw_items
             if isinstance(item, dict)
         ]
-        # 上游为 F027 游标分页,已移除 total/page;门户当前仅加载首页直接子节点:
-        # total 仅表示本页节点数(非全量),page 回显入参,不做跨页。
+        next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
         return QaKnowledgeTreeNodeData(
             data=nodes,
-            total=len(nodes),
-            page=page,
-            page_size=int(data.get("page_size") or resolved_page_size),
+            page_size=int(data.get("page_size") or resolved_page_size) if isinstance(data, dict) else resolved_page_size,
+            has_more=bool(data.get("has_more")) if isinstance(data, dict) else False,
+            next_cursor=next_cursor if isinstance(next_cursor, str) else None,
         )
 
     async def search_qa_files_by_name(
@@ -1585,6 +1588,11 @@ class KnowledgeService:
             "file_count",
             "children_count",
         )
+        raw_has_children = item.get("has_children")
+        if raw_has_children is not None and not is_file:
+            has_children = bool(raw_has_children)
+        else:
+            has_children = (not is_file) and resolved_file_count > 0
         return QaKnowledgeTreeNode(
             id=node_id,
             space_id=space_id,
@@ -1595,7 +1603,7 @@ class KnowledgeService:
             file_ext=self._get_file_ext(file_name) if is_file else "",
             selectable=True,
             disabled_reason="",
-            has_children=(not is_file) and resolved_file_count > 0,
+            has_children=has_children,
             resolved_file_count=1 if is_file else resolved_file_count,
         )
 

@@ -103,9 +103,9 @@ class QaKnowledgeTreeNode(BaseModel):
 
 class QaKnowledgeTreeNodeData(BaseModel):
     data: list[QaKnowledgeTreeNode] = Field(default_factory=list)
-    total: int = 0
-    page: int = 1
-    page_size: int = 100
+    page_size: int = 10
+    has_more: bool = False
+    next_cursor: str | None = None
 
 
 class PersonalKnowledgeSpaceItem(BaseModel):

@@ -459,8 +459,8 @@ async def list_qa_tree_children(
     space_id: int,
     request: Request,
     parent_id: Optional[int] = Query(default=None),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=100, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None),
+    page_size: int = Query(default=10, ge=1, le=100),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
@@ -478,7 +478,7 @@ async def list_qa_tree_children(
                 await service.get_qa_tree_children(
                     space_id=space_id,
                     parent_id=parent_id,
-                    page=page,
+                    cursor=cursor,
                     page_size=page_size,
                 )
             )
@@ -498,7 +498,7 @@ async def list_qa_tree_children(
                 await service.get_qa_tree_children(
                     space_id=space_id,
                     parent_id=parent_id,
-                    page=page,
+                    cursor=cursor,
                     page_size=page_size,
                 )
             )

@@ -21,6 +21,11 @@ class QaScopeBishengClient(FakeBishengClient):
         self.get_calls.append((path, params or {}))
         if path == "/api/v1/knowledge/space/7101/children":
             assert params.get("file_status") == [2]
+            if params.get("cursor") == "CUR7101P2":
+                return {"data": {"data": [
+                    {"id": 9002, "knowledge_id": 7101, "file_name": "第二页.pdf",
+                     "file_type": 1, "status": 2, "file_level_path": ""},
+                ], "page_size": 10, "has_more": False, "next_cursor": None}}
             if params.get("parent_id") == 3001:
                 return {
                     "data": {
@@ -37,42 +42,19 @@ class QaScopeBishengClient(FakeBishengClient):
                                 "tags": [],
                             }
                         ],
-                        "page_size": 100,
+                        "page_size": 10,
                         "has_more": False,
                         "next_cursor": None,
                     }
                 }
-            return {
-                "data": {
-                    "data": [
-                        {
-                            "id": 3001,
-                            "knowledge_id": 7101,
-                            "file_name": "团队规范",
-                            "file_type": 0,
-                            "status": 2,
-                            "file_level_path": "",
-                            "file_num": 2,
-                            "success_file_num": 2,
-                            "visible_success_file_num": 1,
-                        },
-                        {
-                            "id": 9001,
-                            "knowledge_id": 7101,
-                            "file_name": "开发流程文档.pdf",
-                            "file_type": 1,
-                            "status": 2,
-                            "file_level_path": "",
-                            "summary": "开发流程",
-                            "file_encoding": "DEV-PROC-001",
-                            "tags": [],
-                        },
-                    ],
-                    "page_size": 100,
-                    "has_more": False,
-                    "next_cursor": None,
-                }
-            }
+            return {"data": {"data": [
+                {"id": 3001, "knowledge_id": 7101, "file_name": "团队规范", "file_type": 0,
+                 "status": 2, "file_level_path": "", "visible_success_file_num": 1,
+                 "has_children": True},
+                {"id": 9001, "knowledge_id": 7101, "file_name": "开发流程文档.pdf",
+                 "file_type": 1, "status": 2, "file_level_path": "", "file_ext": "pdf",
+                 "summary": "开发流程", "file_encoding": "DEV-PROC-001", "tags": []},
+            ], "page_size": 10, "has_more": True, "next_cursor": "CUR7101P2"}}
         if path == "/api/v1/knowledge/space/7101/search":
             assert params.get("file_status") == [2]
             if params.get("parent_id") == 3001:
@@ -380,10 +362,41 @@ def test_qa_tree_children_passes_enrich_files_false_and_fixes_paging(tmp_path: P
         resp = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children")
     assert resp.status_code == 200
     body = resp.json()["data"]
-    # 分页字段:total = 本页节点数,page 回显入参
-    assert body["total"] == len(body["data"]) == 2
-    assert body["page"] == 1
+    # 分页字段:游标分页,has_more/next_cursor/page_size 透传上游
+    assert len(body["data"]) == 2
+    assert body["has_more"] is True
+    assert body["next_cursor"] == "CUR7101P2"
+    assert body["page_size"] == 10
     # 向上游传了 enrich_files=False(省富化)
     children_calls = [p for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children"]
     assert children_calls, "未调用上游 children"
     assert children_calls[0][1].get("enrich_files") is False
+
+
+def test_qa_tree_children_uses_cursor_pagination_and_shallow_counts(tmp_path: Path):
+    for client, _c, fake_bisheng in _make_auth_client(tmp_path):
+        first = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children")
+        second = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children?cursor=CUR7101P2")
+    assert first.status_code == 200
+    body = first.json()["data"]
+    assert body["has_more"] is True
+    assert body["next_cursor"] == "CUR7101P2"
+    assert body["page_size"] == 10
+    assert "total" not in body and "page" not in body
+    # 上游收到 shallow 模式 + page_size
+    call = next(p for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children")
+    assert call[1].get("folder_count_mode") == "shallow"
+    assert call[1].get("page_size") == 10
+    # 第二页透传 cursor
+    assert second.json()["data"]["data"][0]["id"] == 9002
+    assert any(p[1].get("cursor") == "CUR7101P2"
+               for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children")
+
+
+def test_qa_tree_children_has_children_decoupled_from_count(tmp_path: Path):
+    for client, _c, _b in _make_auth_client(tmp_path):
+        body = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children").json()["data"]
+    folder = next(n for n in body["data"] if n["type"] == "folder")
+    # 该文件夹 visible_success_file_num=1 且显式 has_children=True → 节点可展开
+    assert folder["has_children"] is True
+    assert folder["resolved_file_count"] == 1
