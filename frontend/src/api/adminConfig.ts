@@ -132,7 +132,7 @@ export interface DocumentTypeConfig {
 }
 
 export interface DocumentTypeChildConfig {
-  code: string;
+  code?: string;
   label: string;
 }
 

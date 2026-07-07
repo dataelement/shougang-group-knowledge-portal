@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -951,6 +952,34 @@ def test_update_document_types_accepts_child_categories(tmp_path: Path):
             ],
         },
     ]
+
+
+def test_update_document_types_generates_missing_child_codes(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        response = client.post(
+            "/api/v1/admin/config/document-types",
+            json={
+                "document_types": [
+                    {
+                        "code": "pol",
+                        "label": "政策制度",
+                        "children": [
+                            {"label": "制度文件"},
+                            {"code": "POL-OLD", "label": "历史分类"},
+                        ],
+                    },
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    children = response.json()["data"]["document_types"][0]["children"]
+    assert re.fullmatch(r"POL-[A-Z0-9]{4}", children[0]["code"])
+    assert children[0]["label"] == "制度文件"
+    assert children[1] == {"code": "POL-OLD", "label": "历史分类"}
 
 
 def test_update_document_types_rejects_empty_children(tmp_path: Path):

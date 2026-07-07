@@ -1,11 +1,27 @@
+import secrets
+import string
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 _HIDDEN_TEXT_CHARS = "\u200b\u200c\u200d\ufeff"
+_DOCUMENT_TYPE_CHILD_CODE_RANDOM_ALPHABET = string.ascii_uppercase + string.digits
+_DOCUMENT_TYPE_CHILD_CODE_RANDOM_LENGTH = 4
 
 
 def _clean_config_text(value: str) -> str:
     return str(value or "").translate({ord(char): None for char in _HIDDEN_TEXT_CHARS}).strip()
+
+
+def _generate_document_type_child_code(parent_code: str, used_codes: set[str]) -> str:
+    while True:
+        suffix = "".join(
+            secrets.choice(_DOCUMENT_TYPE_CHILD_CODE_RANDOM_ALPHABET)
+            for _ in range(_DOCUMENT_TYPE_CHILD_CODE_RANDOM_LENGTH)
+        )
+        code = f"{parent_code}-{suffix}"
+        if code not in used_codes:
+            return code
 
 
 DEFAULT_QUICK_MODE_SYSTEM_PROMPT = (
@@ -299,13 +315,42 @@ class DocumentTypeConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def fill_legacy_children(cls, value):
-        if isinstance(value, dict) and "children" not in value:
-            code = _clean_config_text(value.get("code")).upper()
-            label = _clean_config_text(value.get("label"))
+    def fill_legacy_children_and_child_codes(cls, value):
+        if not isinstance(value, dict):
+            return value
+
+        next_value = dict(value)
+        code = _clean_config_text(next_value.get("code")).upper()
+        label = _clean_config_text(next_value.get("label"))
+        if "children" not in next_value:
             if code and label:
-                return {**value, "children": [{"code": code, "label": label}]}
-        return value
+                next_value["children"] = [{"code": code, "label": label}]
+            return next_value
+        raw_children = next_value.get("children")
+        if not raw_children:
+            return next_value
+        if not isinstance(raw_children, list) or not code:
+            return next_value
+
+        used_codes: set[str] = set()
+        children = []
+        for child in raw_children:
+            if not isinstance(child, dict):
+                children.append(child)
+                continue
+            next_child = dict(child)
+            child_code = _clean_config_text(next_child.get("code")).upper()
+            child_label = _clean_config_text(next_child.get("label"))
+            if child_code:
+                used_codes.add(child_code)
+                next_child["code"] = child_code
+            elif child_label:
+                generated_code = _generate_document_type_child_code(code, used_codes)
+                used_codes.add(generated_code)
+                next_child["code"] = generated_code
+            children.append(next_child)
+        next_value["children"] = children
+        return next_value
 
     @field_validator("code", mode="before")
     @classmethod

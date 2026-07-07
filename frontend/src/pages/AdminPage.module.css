@@ -854,7 +854,7 @@
 
 .childTypeEditorRow {
   display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1fr) 34px;
+  grid-template-columns: minmax(160px, 1fr) 34px;
   align-items: center;
   gap: 10px;
 }

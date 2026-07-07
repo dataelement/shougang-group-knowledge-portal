@@ -280,7 +280,7 @@ interface SiteDraft {
 interface DocumentTypeDraft {
   code: string;
   label: string;
-  children: Array<{ code: string; label: string }>;
+  children: Array<{ code?: string; label: string }>;
 }
 
 export default function AdminPage() {
@@ -5117,13 +5117,13 @@ async function persistSections(sections: SectionConfig[], setConfig: Dispatch<Se
   setConfig((current) => (current ? { ...current, sections: data.sections } : current));
 }
 
-function normalizeDocumentTypeCode(value: string): string {
-  return value.trim().toUpperCase();
+function normalizeDocumentTypeCode(value?: string): string {
+  return (value ?? '').trim().toUpperCase();
 }
 
 function getDocumentTypeChildren(documentType: DocumentTypeConfig): Array<{ code: string; label: string }> {
   if (Array.isArray(documentType.children) && documentType.children.length) {
-    return documentType.children.map((child) => ({ code: child.code, label: child.label }));
+    return documentType.children.map((child) => ({ code: child.code ?? '', label: child.label }));
   }
   return documentType.code && documentType.label
     ? [{ code: documentType.code, label: documentType.label }]
@@ -5132,7 +5132,7 @@ function getDocumentTypeChildren(documentType: DocumentTypeConfig): Array<{ code
 
 function createDocumentTypeDraft(documentType?: DocumentTypeConfig): DocumentTypeDraft {
   if (!documentType) {
-    return { code: '', label: '', children: [{ code: '', label: '' }] };
+    return { code: '', label: '', children: [{ label: '' }] };
   }
   const children = getDocumentTypeChildren(documentType);
   return {
@@ -5155,19 +5155,16 @@ function buildDocumentTypeFromDraft(
     return { error: '一级分类编码已存在' };
   }
 
-  const children: Array<{ code: string; label: string }> = [];
+  const children: NonNullable<DocumentTypeConfig['children']> = [];
   for (const child of draft.children) {
     const childCode = normalizeDocumentTypeCode(child.code);
     const childLabel = child.label.trim();
-    if (!childCode && !childLabel) continue;
-    if (!childCode || !childLabel) {
-      return { error: '请完整填写二级分类编码和名称' };
-    }
-    children.push({ code: childCode, label: childLabel });
+    if (!childLabel) continue;
+    children.push(childCode ? { code: childCode, label: childLabel } : { label: childLabel });
   }
   if (!children.length) return { error: '每个一级分类必须至少添加一个二级分类' };
 
-  const childCodes = children.map((child) => child.code);
+  const childCodes = children.map((child) => normalizeDocumentTypeCode(child.code)).filter(Boolean);
   if (childCodes.some((childCode, index) => childCodes.indexOf(childCode) !== index)) {
     return { error: '同一一级分类下的二级分类编码不能重复' };
   }
@@ -5176,7 +5173,7 @@ function buildDocumentTypeFromDraft(
     if (index === editIndex) return;
     getDocumentTypeChildren(item).forEach((child) => existingChildCodes.add(normalizeDocumentTypeCode(child.code)));
   });
-  if (children.some((child) => existingChildCodes.has(child.code))) {
+  if (children.some((child) => existingChildCodes.has(normalizeDocumentTypeCode(child.code)))) {
     return { error: '二级分类编码已存在，请使用全局唯一编码' };
   }
 
@@ -6008,8 +6005,7 @@ function DocumentTypesTable({
                     <td colSpan={4}>
                       <div className={s.childTypeList}>
                         {children.map((child) => (
-                          <div className={s.childTypeItem} key={child.code}>
-                            <span className={s.keyBadge}>{child.code}</span>
+                          <div className={s.childTypeItem} key={child.code || child.label}>
                             <span>{child.label}</span>
                           </div>
                         ))}
@@ -6046,7 +6042,7 @@ function DocumentTypeEditorDialog({
   onSubmit: () => void;
 }) {
   if (!open) return null;
-  function updateChild(index: number, patch: Partial<{ code: string; label: string }>) {
+  function updateChild(index: number, patch: Partial<{ code?: string; label: string }>) {
     onChange((current) => ({
       ...current,
       children: current.children.map((child, i) => i === index ? { ...child, ...patch } : child),
@@ -6076,7 +6072,7 @@ function DocumentTypeEditorDialog({
               <button
                 type="button"
                 className={s.inlineBtn}
-                onClick={() => onChange((current) => ({ ...current, children: [...current.children, { code: '', label: '' }] }))}
+                onClick={() => onChange((current) => ({ ...current, children: [...current.children, { label: '' }] }))}
                 disabled={saving}
               >
                 <Plus size={14} /> 添加二级分类
@@ -6085,7 +6081,6 @@ function DocumentTypeEditorDialog({
             <div className={s.childTypeEditorList}>
               {draft.children.map((child, index) => (
                 <div className={s.childTypeEditorRow} key={index}>
-                  <input className={s.formInput} value={child.code} placeholder="二级编码" onChange={(event) => updateChild(index, { code: event.target.value })} />
                   <input className={s.formInput} value={child.label} placeholder="二级名称" onChange={(event) => updateChild(index, { label: event.target.value })} />
                   <button
                     type="button"
