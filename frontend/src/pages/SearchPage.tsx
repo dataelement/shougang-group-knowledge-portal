@@ -32,6 +32,11 @@ import {
   SEARCH_SORT_OPTIONS,
 } from '../utils/documentTypes';
 import {
+  getBusinessDomainCodeFromFileEncoding,
+  getBusinessDomainFilterOptions,
+  normalizeBusinessDomainCode,
+} from '../utils/businessDomains';
+import {
   buildDownloadFileName,
   openFileDownloadUrl,
   resolveFileDownloadUrl,
@@ -87,6 +92,7 @@ function matchesLocalSearchFilters(
     fileExt: string;
     documentType: string;
     fileSubcategoryCode: string;
+    businessDomainCode: string;
     tag: string;
   },
   context: {
@@ -97,6 +103,7 @@ function matchesLocalSearchFilters(
   if (filters.spaceLevel && getFileSpaceLevel(file, context.spaceById) !== filters.spaceLevel) return false;
   if (filters.spaceId && file.spaceId !== Number(filters.spaceId)) return false;
   if (filters.fileExt && normalizeFileExt(file.ext) !== normalizeFileExt(filters.fileExt)) return false;
+  if (filters.businessDomainCode && getBusinessDomainCodeFromFileEncoding(file.fileEncoding) !== filters.businessDomainCode) return false;
   if (filters.tag && !file.tags.some((item) => item === filters.tag)) return false;
   if (filters.documentType) {
     const fileDocumentType = getFileDocumentTypeCode(file, context.documentTypeGroups);
@@ -137,6 +144,7 @@ export default function SearchPage() {
   const fileExt = params.get('file_ext') || '';
   const documentType = normalizeDocumentTypeCode(params.get('document_type'));
   const fileSubcategoryCode = normalizeDocumentTypeCode(params.get('file_subcategory_code'));
+  const businessDomainCode = normalizeBusinessDomainCode(params.get('business_domain_code'));
   const tag = params.get('tag') || '';
   const sort = normalizeSearchSort(params.get('sort'));
   const hasSearch = hasSearchContext(params);
@@ -228,6 +236,10 @@ export default function SearchPage() {
     () => getRuntimeDocumentTypeGroups(config?.document_types),
     [config?.document_types],
   );
+  const businessDomainOptions = useMemo(
+    () => getBusinessDomainFilterOptions(config?.domains),
+    [config?.domains],
+  );
 
   const filteredFiles = useMemo(() => {
     if (!resultsReady) return [];
@@ -239,6 +251,7 @@ export default function SearchPage() {
         fileExt,
         documentType,
         fileSubcategoryCode,
+        businessDomainCode,
         tag,
       },
       {
@@ -247,6 +260,7 @@ export default function SearchPage() {
       },
     ));
   }, [
+    businessDomainCode,
     documentType,
     documentTypeGroups,
     fileExt,
@@ -495,6 +509,10 @@ export default function SearchPage() {
                 }, false);
               }}
             />
+            <select className={s.filterSelect} value={businessDomainCode} onChange={(e) => setFilter('business_domain_code', e.target.value, false)}>
+              <option value="">业务域</option>
+              {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+            </select>
             <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
               <option value="">标签</option>
               {resultTagOptions.map((item) => <option key={item} value={item}>{item}</option>)}

@@ -51,6 +51,7 @@ test('search page keeps result filters local instead of passing them to search A
   assert.doesNotMatch(fetchCall, /fileExt:/);
   assert.doesNotMatch(fetchCall, /documentType:/);
   assert.doesNotMatch(fetchCall, /fileSubcategoryCode:/);
+  assert.doesNotMatch(fetchCall, /businessDomainCode:/);
   assert.match(activeSource, /function matchesLocalSearchFilters/);
   assert.match(activeSource, /setFiles\(filteredFiles\)/);
   assert.match(activeSource, /setTotal\(filteredFiles\.length\)/);
@@ -94,7 +95,9 @@ test('search page derives filter options from complete search results', () => {
   assert.match(activeSource, /const resultSpaceOptions = useMemo/);
   assert.match(activeSource, /const resultFileExtOptions = useMemo/);
   assert.match(activeSource, /const resultTagOptions = useMemo/);
+  assert.match(activeSource, /const businessDomainOptions = useMemo/);
   assert.match(activeSource, /getFileSpaceLevel\(file, spaceById\)/);
+  assert.match(activeSource, /getBusinessDomainCodeFromFileEncoding\(file\.fileEncoding\)/);
   assert.match(activeSource, /addSpaceId\(file\.spaceId\)/);
   assert.match(activeSource, /normalizeFileExt\(file\.ext\)/);
   assert.match(activeSource, /for \(const item of file\.tags\)/);
@@ -106,5 +109,6 @@ test('search page derives filter options from complete search results', () => {
   assert.match(activeSource, /resultSpaceLevelOptions\.map/);
   assert.match(activeSource, /resultSpaceOptions\.map/);
   assert.match(activeSource, /resultFileExtOptions\.map/);
+  assert.match(activeSource, /businessDomainOptions\.map/);
   assert.match(activeSource, /resultTagOptions\.map/);
 });

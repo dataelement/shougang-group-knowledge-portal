@@ -25,6 +25,10 @@ import { useListControls } from '../hooks/useListControls';
 import { resolveListContext } from '../utils/listPageContext';
 import { getRuntimeDocumentTypeGroups, normalizeDocumentTypeCode } from '../utils/documentTypes';
 import {
+  getBusinessDomainFilterOptions,
+  normalizeBusinessDomainCode,
+} from '../utils/businessDomains';
+import {
   buildDownloadFileName,
   openFileDownloadUrl,
   resolveFileDownloadUrl,
@@ -58,6 +62,7 @@ export default function ListPage() {
   const spaceLevel = params.get('space_level') || '';
   const selectedSpaceFilter = params.get('space_id') || '';
   const fileExt = params.get('file_ext') || '';
+  const businessDomainFilter = normalizeBusinessDomainCode(params.get('business_domain_code'));
   const documentType = normalizeDocumentTypeCode(params.get('document_type'));
   const fileSubcategoryCode = normalizeDocumentTypeCode(params.get('file_subcategory_code'));
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -86,10 +91,16 @@ export default function ListPage() {
   const spaceIds = listContext?.spaceIds ?? EMPTY_SPACE_IDS;
   const businessDomainCode = listContext?.businessDomainCode ?? '';
   const isDomainList = listContext?.mode === 'domain';
+  const isGlobalList = listContext?.mode === 'global';
+  const showBusinessDomainFilter = Boolean(isGlobalList && (recommendationParam || tagParam || titleParam));
   const selectedSpaceFilterId = Number(selectedSpaceFilter);
   const documentTypeGroups = useMemo(
     () => getRuntimeDocumentTypeGroups(config?.document_types),
     [config?.document_types],
+  );
+  const businessDomainOptions = useMemo(
+    () => getBusinessDomainFilterOptions(config?.domains),
+    [config?.domains],
   );
 
   useEffect(() => {
@@ -188,6 +199,7 @@ export default function ListPage() {
       fileExt: fileExt || undefined,
       documentType: documentType || undefined,
       fileSubcategoryCode: fileSubcategoryCode || undefined,
+      businessDomainCode: showBusinessDomainFilter ? businessDomainFilter || undefined : undefined,
       recommendation: isLatestSelectedRecommendation ? LATEST_SELECTED_RECOMMENDATION : undefined,
       sort: isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc',
       cursor: cursor || undefined,
@@ -215,6 +227,7 @@ export default function ListPage() {
     });
   }, [
     businessDomainCode,
+    businessDomainFilter,
     documentType,
     filterTag,
     fileExt,
@@ -223,6 +236,7 @@ export default function ListPage() {
     pageLimit,
     recommendationParam,
     selectedSpaceFilterId,
+    showBusinessDomainFilter,
     spaceId,
     spaceIds,
     spaceLevel,
@@ -368,6 +382,12 @@ export default function ListPage() {
               });
             }}
           />
+          {showBusinessDomainFilter ? (
+            <select className={s.filterSelect} value={businessDomainFilter} onChange={(e) => setFilter('business_domain_code', e.target.value)}>
+              <option value="">业务域</option>
+              {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+            </select>
+          ) : null}
           <select className={s.filterSelect} value={filterTag} onChange={(e) => setFilter('filter_tag', e.target.value)}>
             <option value="">标签</option>
             {availableTags.map((t) => <option key={t} value={t}>{t}</option>)}

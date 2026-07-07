@@ -30,6 +30,12 @@ test('list page keeps entry tag separate from user tag filter', () => {
   assert.ok(listPageSource.includes("setFilter('filter_tag', e.target.value)"));
 });
 
+test('list page adds business domain filter to global recommendation and section lists', () => {
+  assert.ok(listPageSource.includes("const businessDomainFilter = normalizeBusinessDomainCode(params.get('business_domain_code'))"));
+  assert.ok(listPageSource.includes('businessDomainCode: showBusinessDomainFilter ? businessDomainFilter || undefined : undefined'));
+  assert.ok(listPageSource.includes("setFilter('business_domain_code', e.target.value)"));
+});
+
 test('admin latest selected section does not expose editable tag binding', () => {
   assert.ok(adminPageSource.includes("section.builtin_key === LATEST_SELECTED_SECTION_KEY"));
   assert.ok(adminPageSource.includes("value={latestSelected ? '无' : draft.tag}"));
