@@ -175,6 +175,11 @@ export default function QAKnowledgeTreePicker({
     const cursor = nextCursorByKey[key];
     if (!cursor) return;
     setLoadingMoreKeys((prev) => new Set(prev).add(key));
+    setErrorKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
     try {
       const result = await onLoadChildren(spaceId, parentId ?? undefined, cursor);
       setChildrenByKey((prev) => {
