@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -53,7 +53,8 @@ export default function QAKnowledgeTreePicker({
   scope: QaKnowledgeScope;
   loading: boolean;
   onChange: (scope: QaKnowledgeScope) => void;
-  onLoadChildren: (spaceId: number, parentId?: number) => Promise<{ data: QaKnowledgeTreeNode[] }>;
+  onLoadChildren: (spaceId: number, parentId?: number, cursor?: string)
+    => Promise<{ data: QaKnowledgeTreeNode[]; hasMore: boolean; nextCursor: string | null }>;
   onSearchFiles: (q: string, page?: number, pageSize?: number) => Promise<{ data: FileItem[]; total: number }>;
   onTip?: (message: string) => void;
   onClose?: () => void;
@@ -62,6 +63,9 @@ export default function QAKnowledgeTreePicker({
   const [childrenByKey, setChildrenByKey] = useState<Record<string, QaKnowledgeTreeNode[]>>({});
   const [loadingKeys, setLoadingKeys] = useState<Set<string>>(() => new Set());
   const [errorKeys, setErrorKeys] = useState<Set<string>>(() => new Set());
+  const [nextCursorByKey, setNextCursorByKey] = useState<Record<string, string | null>>({});
+  const [hasMoreByKey, setHasMoreByKey] = useState<Record<string, boolean>>({});
+  const [loadingMoreKeys, setLoadingMoreKeys] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<FileItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -152,10 +156,39 @@ export default function QAKnowledgeTreePicker({
     try {
       const result = await onLoadChildren(spaceId, parentId ?? undefined);
       setChildrenByKey((prev) => ({ ...prev, [key]: result.data }));
+      setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
+      setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
     } catch {
       setErrorKeys((prev) => new Set(prev).add(key));
     } finally {
       setLoadingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const loadMoreChildren = async (spaceId: number, parentId?: number | null) => {
+    const key = nodeChildrenKey(spaceId, parentId);
+    if (!hasMoreByKey[key] || loadingMoreKeys.has(key)) return;
+    const cursor = nextCursorByKey[key];
+    if (!cursor) return;
+    setLoadingMoreKeys((prev) => new Set(prev).add(key));
+    try {
+      const result = await onLoadChildren(spaceId, parentId ?? undefined, cursor);
+      setChildrenByKey((prev) => {
+        const existing = prev[key] ?? [];
+        const seen = new Set(existing.map((n) => `${n.spaceId}-${n.id}`));
+        const merged = [...existing, ...result.data.filter((n) => !seen.has(`${n.spaceId}-${n.id}`))];
+        return { ...prev, [key]: merged };
+      });
+      setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
+      setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
+    } catch {
+      setErrorKeys((prev) => new Set(prev).add(key));
+    } finally {
+      setLoadingMoreKeys((prev) => {
         const next = new Set(prev);
         next.delete(key);
         return next;
@@ -245,6 +278,30 @@ export default function QAKnowledgeTreePicker({
     onChange(nextScope);
   };
 
+  const scrollRootRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef(loadMoreChildren);
+  loadMoreRef.current = loadMoreChildren;
+  const sentinelCbRef = useRef<(el: HTMLDivElement | null, spaceId: number, parentId?: number | null) => void>(undefined);
+
+  useEffect(() => {
+    const root = scrollRootRef.current;
+    if (!root || typeof IntersectionObserver === 'undefined') return undefined;
+    const targets = new Map<Element, { spaceId: number; parentId?: number | null }>();
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const meta = targets.get(entry.target);
+        if (meta) void loadMoreRef.current(meta.spaceId, meta.parentId);
+      }
+    }, { root, rootMargin: '80px' });
+    sentinelCbRef.current = (el, spaceId, parentId) => {
+      if (!el) return;
+      targets.set(el, { spaceId, parentId });
+      observer.observe(el);
+    };
+    return () => observer.disconnect();
+  }, []);
+
   const renderNode = (node: QaKnowledgeTreeNode, depth: number) => {
     const key = nodeChildrenKey(node.spaceId, node.id);
     const expanded = expandedKeys.has(key);
@@ -292,6 +349,11 @@ export default function QAKnowledgeTreePicker({
             {errored ? <div className={s.stateLine}>加载失败</div> : null}
             {!errored && !loadingNode && children.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
             {children.map((child) => renderNode(child, depth + 1))}
+            {hasMoreByKey[key] ? (
+              <div ref={(el) => sentinelCbRef.current?.(el, node.spaceId, node.id)} className={s.loadMoreSentinel}>
+                {loadingMoreKeys.has(key) ? <Loader2 size={14} className={s.spin} /> : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -341,7 +403,7 @@ export default function QAKnowledgeTreePicker({
         />
       </label>
 
-      <div className={s.spaceList}>
+      <div className={s.spaceList} ref={scrollRootRef}>
         {searchMode ? (
           <>
             {searchLoading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 搜索中</div> : null}
@@ -443,6 +505,11 @@ export default function QAKnowledgeTreePicker({
                       {erroredRoot ? <div className={s.stateLine}>加载失败</div> : null}
                       {!erroredRoot && !loadingRoot && children.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
                       {children.map((node) => renderNode(node, 1))}
+                      {hasMoreByKey[rootKey] ? (
+                        <div ref={(el) => sentinelCbRef.current?.(el, space.id, undefined)} className={s.loadMoreSentinel}>
+                          {loadingMoreKeys.has(rootKey) ? <Loader2 size={14} className={s.spin} /> : null}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </section>

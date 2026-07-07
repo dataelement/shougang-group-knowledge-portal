@@ -355,6 +355,13 @@
   flex: 0 0 auto;
 }
 
+.loadMoreSentinel {
+  height: 1px;
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
+
 .stateLine {
   min-height: 34px;
   padding: 8px 12px;
