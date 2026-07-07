@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, NoReturn, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
@@ -74,7 +74,7 @@ def get_domain_file_count_service(
     )
 
 
-def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
+def _raise_bisheng_business_error(err: BishengBusinessError) -> NoReturn:
     status_code = 403 if err.status_code in {_BISHENG_PERMISSION_DENIED_CODE, 404} else 502
     raise HTTPException(status_code=status_code, detail=err.status_message)
 
@@ -82,7 +82,7 @@ def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
 _QA_TREE_FORBIDDEN_CODES = {_BISHENG_PERMISSION_DENIED_CODE, 18000}  # SpacePermissionDenied / SpaceNotFound
 
 
-def _raise_qa_tree_children_error(err: BishengBusinessError) -> None:
+def _raise_qa_tree_children_error(err: BishengBusinessError) -> NoReturn:
     if err.status_code in _QA_TREE_FORBIDDEN_CODES:
         raise HTTPException(status_code=403, detail="包含无权限或不存在的知识库")
     _raise_bisheng_business_error(err)

@@ -815,6 +815,8 @@ class KnowledgeService:
             "page_size": resolved_page_size,
             "file_status": [SUCCESS_STATUS],
             # QA 树只用 folder counts 与节点基础字段,跳过上游文件富化以省开销。
+            # 注:httpx 将 Python False 序列化为查询串 "enrich_files=false"(bool 特判为小写),
+            # 上游 FastAPI 的 bool 解析读回 False;httpx 大版本升级需复核此序列化契约。
             "enrich_files": False,
         }
         if parent_id is not None:
