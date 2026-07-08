@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 import { buildPortalLogoutStartUrl, fetchPortalMe, type PortalUser } from '../api/auth';
 import { ApiRequestError, invalidatePortalContentConfigCache } from '../api/content';
@@ -23,67 +23,104 @@ export function loadPortalUser(): PortalUser | null {
   return readStoredUser();
 }
 
+// 全局单例用户态：所有 useAuth() 消费者共享同一份 currentUser + 同一组 window 监听。
+// 目的是消除“每个组件各自拉一次 /auth/me + 各自持有会抖动的 user 引用”导致的重复请求风暴。
+let currentUser: PortalUser | null = readStoredUser();
+const listeners = new Set<() => void>();
+
+function usersEqual(a: PortalUser | null, b: PortalUser | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// 只有当用户数据真正变化时才替换引用；否则保持引用稳定，
+// 避免 readStoredUser() 每次 JSON.parse 产生新对象，令 [user] 依赖的 effect 无谓重跑。
+function setCurrentUser(next: PortalUser | null) {
+  if (usersEqual(currentUser, next)) return;
+  currentUser = next;
+  for (const listener of listeners) listener();
+}
+
+function handleUserChanged() {
+  setCurrentUser(readStoredUser());
+}
+
+function handleStorage(event: StorageEvent) {
+  if (event.key !== STORAGE_KEY) return;
+  handleUserChanged();
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  // window 监听在“首个订阅者接入 / 最后一个订阅者离开”时统一装卸，全局仅注册一份。
+  if (listeners.size === 1 && typeof window !== 'undefined') {
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener(PORTAL_USER_CHANGED_EVENT, handleUserChanged);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0 && typeof window !== 'undefined') {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(PORTAL_USER_CHANGED_EVENT, handleUserChanged);
+    }
+  };
+}
+
+function getSnapshot(): PortalUser | null {
+  return currentUser;
+}
+
 export function savePortalUser(user: PortalUser) {
   invalidatePortalContentConfigCache();
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  setCurrentUser(user);
   window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
 }
 
 export function clearPortalUser() {
   invalidatePortalContentConfigCache();
   window.localStorage.removeItem(STORAGE_KEY);
+  setCurrentUser(null);
   window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
 }
 
+// 单飞 /auth/me：同一批组件挂载时共享同一个在途请求，只发一次；
+// 请求结束后释放，SPA 内再次进入相关页面时仍可重新校验登录态。
+// localStorage 是前端登录态，BFF 重启 / session 过期 / cookie 丢失会让它和后端脱钩，
+// 因此挂载时始终校验一次：后端可用门户 session 或 Bisheng cookie 恢复用户态。
+let mePromise: Promise<void> | null = null;
+
+function ensureAuthSynced(): Promise<void> {
+  if (mePromise) return mePromise;
+  mePromise = fetchPortalMe()
+    .then((next) => {
+      savePortalUser(next);
+    })
+    .catch((err: unknown) => {
+      if (err instanceof ApiRequestError && err.status === 401) {
+        clearPortalUser();
+      }
+    })
+    .finally(() => {
+      mePromise = null;
+    });
+  return mePromise;
+}
+
 export function useAuth() {
-  const [user, setUser] = useState<PortalUser | null>(() => readStoredUser());
+  const user = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
-    function syncUser() {
-      setUser(readStoredUser());
-    }
-    function syncFromStorage(event: StorageEvent) {
-      if (event.key !== STORAGE_KEY) return;
-      syncUser();
-    }
-    window.addEventListener('storage', syncFromStorage);
-    window.addEventListener(PORTAL_USER_CHANGED_EVENT, syncUser);
-    return () => {
-      window.removeEventListener('storage', syncFromStorage);
-      window.removeEventListener(PORTAL_USER_CHANGED_EVENT, syncUser);
-    };
-  }, []);
-
-  // localStorage 是前端登录态，BFF 重启 / session 过期 / cookie 丢失会让它和后端脱钩。
-  // 挂载时始终拉一次 /auth/me：后端可用门户 session 或 Bisheng cookie 恢复用户态。
-  useEffect(() => {
-    let active = true;
-    void fetchPortalMe()
-      .then((next) => {
-        if (!active) return;
-        savePortalUser(next);
-        setUser(next);
-      })
-      .catch((err) => {
-        if (!active) return;
-        if (err instanceof ApiRequestError && err.status === 401) {
-          clearPortalUser();
-          setUser(null);
-        }
-      });
-    return () => {
-      active = false;
-    };
+    void ensureAuthSynced();
   }, []);
 
   const login = useCallback((next: PortalUser) => {
     savePortalUser(next);
-    setUser(next);
   }, []);
 
   const logout = useCallback(() => {
     clearPortalUser();
-    setUser(null);
     window.location.assign(buildPortalLogoutStartUrl());
   }, []);
 

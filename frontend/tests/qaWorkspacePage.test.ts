@@ -91,7 +91,7 @@ test('qa workspace lets anonymous users chat with public spaces only', () => {
   assert.match(qaPageSource, /useAuth\(\)/);
   assert.match(qaPageSource, /fetchQaKnowledgeTreeSpaces/);
   assert.match(qaPageSource, /当前暂无可用公共知识库。/);
-  assert.match(qaPageSource, /if\s*\(!user\)\s*\{[\s\S]*setLoadingSessions\(false\)/);
+  assert.match(qaPageSource, /if\s*\(!user\?\.account\)\s*\{[\s\S]*setLoadingSessions\(false\)/);
   assert.doesNotMatch(qaPageSource, /请先登录后再使用智能问答/);
 });
 

@@ -473,7 +473,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user?.account]);
 
   useEffect(() => {
     let active = true;
@@ -484,11 +484,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
         setAvailableSpaces(spaces);
         setSelectedKnowledgeScope({ mode: 'none' });
         if (!spaces.length) {
-          setComposerTip(user ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
+          setComposerTip(user?.account ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
         }
       })
       .catch(() => {
-        if (active) setComposerTip(user ? '知识库列表加载失败，请确认登录状态后重试。' : '公共知识库列表加载失败，请稍后重试。');
+        if (active) setComposerTip(user?.account ? '知识库列表加载失败，请确认登录状态后重试。' : '公共知识库列表加载失败，请稍后重试。');
       })
       .finally(() => {
         if (active) setLoadingKnowledgeSpaces(false);
@@ -496,12 +496,12 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user?.account]);
 
   useEffect(() => {
     let active = true;
     setLoadingSessions(true);
-    if (!user) {
+    if (!user?.account) {
       const draft = createDraftSession();
       setSessions([draft]);
       setActiveId(draft.id);
@@ -532,7 +532,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user?.account]);
 
   useEffect(() => {
     if (!composerTip) return;
