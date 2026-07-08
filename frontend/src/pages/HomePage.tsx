@@ -6,7 +6,7 @@ import {
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
   Sparkles,
-  Video, Flame, Briefcase, Users, ScrollText, Loader2,
+  Flame, Briefcase, Users, ScrollText, Loader2,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
@@ -36,6 +36,9 @@ import iconRecommend from '../assets/icon-recommend@2x.png';
 import iconIntel from '../assets/icon-intel@2x.png';
 import iconFolder from '../assets/icon-folder@2x.png';
 import iconHot from '../assets/icon-hot@2x.png';
+import iconArticle from '../assets/icon-article.svg';
+import iconCase from '../assets/icon-case.svg';
+import iconVideo from '../assets/icon-video.svg';
 import medalGold from '../assets/medal-gold@2x.png';
 import medalSilver from '../assets/medal-silver@2x.png';
 import medalBronze from '../assets/medal-bronze@2x.png';
@@ -68,6 +71,18 @@ function resolveSectionIcon(title: string): string {
   if (/情报|资讯|行业|案例|事故/.test(title)) return iconIntel;
   if (/文件|资料/.test(title)) return iconFolder;
   return iconRecommend;
+}
+
+/** 首页板块标题渐变类:情报/案例→蓝紫,其余(知识推荐)→蓝 */
+function resolveSectionHeaderClass(title: string): string {
+  if (/情报|资讯|行业|案例|事故|趋势/.test(title)) return s.headerIntel;
+  return s.headerRecommend;
+}
+
+/** 首页板块列表项图标:情报/案例→深蓝,知识推荐→浅蓝 */
+function resolveSectionItemIcon(title: string): string {
+  if (/情报|资讯|行业|案例|事故|趋势/.test(title)) return iconCase;
+  return iconArticle;
 }
 
 const LATEST_SELECTED_RECOMMENDATION = 'latest_selected';
@@ -919,7 +934,7 @@ export default function HomePage() {
                   key={sec.tag}
                   className={`${s.panel} ${index === 0 ? s.primarySectionPanel : s.tallSectionPanel}`}
                 >
-                  <div className={s.panelHeader}>
+                  <div className={`${s.panelHeader} ${resolveSectionHeaderClass(sec.title)}`}>
                     <div className={s.panelHeaderLeft}>
                       <img src={resolveSectionIcon(sec.title)} alt="" className={s.panelIconImg} />
                       <span className={s.panelTitle}>{sec.title}</span>
@@ -957,15 +972,14 @@ export default function HomePage() {
                               navigate(target, { state: { returnTo: moreLink } });
                             }}
                           >
-                            <div className={s.itemTitle}>{f.title}</div>
-                            <div className={s.itemSubRow}>
-                              <span className={s.itemSummary}>
-                                {f.summary ?? ''}
-                              </span>
-                              {f.date ? (
-                                <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
-                              ) : null}
+                            <img src={resolveSectionItemIcon(sec.title)} alt="" className={s.itemIcon} />
+                            <div className={s.itemBody}>
+                              <div className={s.itemTitle}>{f.title}</div>
+                              <div className={s.itemSummary}>{f.summary ?? ''}</div>
                             </div>
+                            {f.date ? (
+                              <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
+                            ) : null}
                           </div>
                         ))}
                         {items.length === 0 ? (
@@ -982,7 +996,7 @@ export default function HomePage() {
 
             {/* 专业课程 · 岗位赋能 */}
             <div className={s.panel}>
-              <div className={s.panelHeader}>
+              <div className={`${s.panelHeader} ${s.headerCourse}`}>
                 <div className={s.panelHeaderLeft}>
                   <img src={iconCourse} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>专业课程 · 岗位赋能</span>
@@ -1010,7 +1024,7 @@ export default function HomePage() {
                       navigate(user ? target : buildGuestLoginPath(target));
                     }}
                   >
-                    <Video size={22} className={s.courseRowIcon} />
+                    <img src={iconVideo} alt="" className={s.courseRowIcon} />
                     <span className={s.courseRowTitle}>{c.title}</span>
                     {c.hot ? (
                       <span className={s.courseHotTag}>
@@ -1110,7 +1124,7 @@ export default function HomePage() {
             <ExpertQuestions className={s.qaPanel} />
 
             <div className={s.panel}>
-              <div className={s.panelHeader}>
+              <div className={`${s.panelHeader} ${s.headerRank}`}>
                 <div className={s.panelHeaderLeft}>
                   <img src={iconRank} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>积分榜单</span>

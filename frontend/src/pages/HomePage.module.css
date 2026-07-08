@@ -456,7 +456,7 @@
 .domainSection {
   margin-top: 24px;
   padding: 0;
-  background: #fff;
+  background: linear-gradient(180deg, #e3eeff 0%, #f4f8ff 26%, #ffffff 60%);
   border: 1px solid #dbe3ef;
   border-radius: 8px;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
@@ -466,13 +466,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 24px 16px 18px;
-  border-bottom: 1px solid #e5eaf2;
+  height: 64px;
+  padding: 0 16px;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
 }
 
 .domainHeaderIcon {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   object-fit: contain;
 }
@@ -536,7 +538,6 @@
 }
 
 .domainCard:hover {
-  box-shadow: none;
   border-color: var(--primary-200);
 }
 
@@ -684,9 +685,28 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0;
-  padding: 24px 0 18px;
-  border-bottom: 1px solid #e5eaf2;
+  height: 64px;
+  padding: 0 16px;
+  /* 抵消 .panel 的 16px 横向内边距,让标题背景铺满整块 */
+  margin: 0 -16px;
+  border-radius: 8px 8px 0 0;
+}
+
+/* 各模块标题渐变色 */
+.headerRecommend {
+  background: linear-gradient(270deg, #f7fbff 0%, #e5f0ff 57.96%, #d0ebff 100%);
+}
+
+.headerIntel {
+  background: linear-gradient(270deg, #f7f9ff 0%, #e8efff 47.81%, #d6e1ff 100%);
+}
+
+.headerCourse {
+  background: linear-gradient(270deg, #fffcf7 0%, #fff2df 100%);
+}
+
+.headerRank {
+  background: linear-gradient(270deg, #f7f9ff 0%, #e5f0ff 57.96%, #d0e4ff 100%);
 }
 
 .sectionList {
@@ -701,8 +721,8 @@
 }
 
 .panelIconImg {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   object-fit: contain;
 }
@@ -734,8 +754,8 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  color: #3662E3;
-  font-size: 16px;
+  color: #545A60;
+  font-size: 15px;
   transition: color 0.15s ease;
 }
 
@@ -744,10 +764,26 @@
 }
 
 .listItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 14px 0 16px;
   border-top: 1px solid var(--neutral-100);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
+}
+
+.itemIcon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  object-fit: contain;
+}
+
+.itemBody {
+  flex: 1;
+  min-width: 0;
 }
 
 .listItem:first-child {
@@ -762,8 +798,8 @@
 }
 
 .itemSummary {
-  flex: 1;
   min-width: 0;
+  margin-top: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -916,9 +952,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0;
-  padding: 24px 0 18px;
-  border-bottom: 1px solid #e5eaf2;
+  height: 64px;
+  padding: 0 16px;
+  margin: 0 -16px;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(270deg, #f7f9ff 0%, #d6e1ff 100%);
 }
 
 .qaHeaderLeft {
@@ -1332,10 +1370,10 @@
 }
 
 .courseRowIcon {
-  color: var(--neutral-700);
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
 }
 
 .courseRowTitle {
