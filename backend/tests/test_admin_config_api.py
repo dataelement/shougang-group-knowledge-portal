@@ -795,8 +795,8 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
     data = response.json()["data"]
     assert "site" in data
     assert data["document_types"] == [
-        {"code": "RPT", "label": "报告", "children": [{"code": "RPT", "label": "报告"}]},
-        {"code": "STD", "label": "标准规范", "children": [{"code": "STD", "label": "标准规范"}]},
+        {"code": "RPT", "label": "报告", "description_examples": "", "children": [{"code": "RPT", "label": "报告"}]},
+        {"code": "STD", "label": "标准规范", "description_examples": "", "children": [{"code": "STD", "label": "标准规范"}]},
     ]
     assert data["business_domain_options"] == [
         {"code": "PP", "name": "生产"},
@@ -903,7 +903,7 @@ def test_update_document_types_strips_hidden_characters(tmp_path: Path):
             "/api/v1/admin/config/document-types",
             json={
                 "document_types": [
-                    {"code": "cas\u200b", "label": "案例\u200b"},
+                    {"code": "cas\u200b", "label": "案例\u200b", "description_examples": "\u200b包含典型案例与事故复盘\u200b"},
                     {"code": "\ufeffSTD", "label": "\u200c标准规范"},
                 ],
             },
@@ -911,12 +911,22 @@ def test_update_document_types_strips_hidden_characters(tmp_path: Path):
 
     assert response.status_code == 200
     assert response.json()["data"]["document_types"] == [
-        {"code": "CAS", "label": "案例", "children": [{"code": "CAS", "label": "案例"}]},
-        {"code": "STD", "label": "标准规范", "children": [{"code": "STD", "label": "标准规范"}]},
+        {
+            "code": "CAS",
+            "label": "案例",
+            "description_examples": "包含典型案例与事故复盘",
+            "children": [{"code": "CAS", "label": "案例"}],
+        },
+        {"code": "STD", "label": "标准规范", "description_examples": "", "children": [{"code": "STD", "label": "标准规范"}]},
     ]
     assert [item.model_dump() for item in service.get_config().document_types] == [
-        {"code": "CAS", "label": "案例", "children": [{"code": "CAS", "label": "案例"}]},
-        {"code": "STD", "label": "标准规范", "children": [{"code": "STD", "label": "标准规范"}]},
+        {
+            "code": "CAS",
+            "label": "案例",
+            "description_examples": "包含典型案例与事故复盘",
+            "children": [{"code": "CAS", "label": "案例"}],
+        },
+        {"code": "STD", "label": "标准规范", "description_examples": "", "children": [{"code": "STD", "label": "标准规范"}]},
     ]
 
 
@@ -932,6 +942,7 @@ def test_update_document_types_accepts_child_categories(tmp_path: Path):
                     {
                         "code": "pol",
                         "label": "政策制度",
+                        "description_examples": "例如：管理制度、通知公告",
                         "children": [
                             {"code": "POL-REG\u200b", "label": "制度文件\u200b"},
                             {"code": "POL-NOTICE", "label": "通知公告"},
@@ -946,6 +957,7 @@ def test_update_document_types_accepts_child_categories(tmp_path: Path):
         {
             "code": "POL",
             "label": "政策制度",
+            "description_examples": "例如：管理制度、通知公告",
             "children": [
                 {"code": "POL-REG", "label": "制度文件"},
                 {"code": "POL-NOTICE", "label": "通知公告"},
@@ -980,6 +992,7 @@ def test_update_document_types_generates_missing_child_codes(tmp_path: Path):
     assert re.fullmatch(r"POL-[A-Z0-9]{4}", children[0]["code"])
     assert children[0]["label"] == "制度文件"
     assert children[1] == {"code": "POL-OLD", "label": "历史分类"}
+    assert response.json()["data"]["document_types"][0]["description_examples"] == ""
 
 
 def test_update_document_types_rejects_empty_children(tmp_path: Path):

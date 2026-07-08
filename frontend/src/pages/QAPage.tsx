@@ -398,6 +398,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
 
   const applyWritingTemplate = (template: QATemplateConfig) => {
     setTemplateCategory(template.category_id);
+    setSelectedTemplateId(template.id);
     setInput(template.prompt);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -691,7 +692,12 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   };
 
   const chooseTemplate = (template: QATemplateConfig) => {
-    setSelectedTemplateId(template.id);
+    if (selectedTemplateId === template.id) {
+      setSelectedTemplateId('');
+      setInput('');
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+      return;
+    }
     applyWritingTemplate(template);
   };
 

@@ -280,6 +280,7 @@ interface SiteDraft {
 interface DocumentTypeDraft {
   code: string;
   label: string;
+  description_examples: string;
   children: Array<{ code?: string; label: string }>;
 }
 
@@ -5132,12 +5133,13 @@ function getDocumentTypeChildren(documentType: DocumentTypeConfig): Array<{ code
 
 function createDocumentTypeDraft(documentType?: DocumentTypeConfig): DocumentTypeDraft {
   if (!documentType) {
-    return { code: '', label: '', children: [{ label: '' }] };
+    return { code: '', label: '', description_examples: '', children: [{ label: '' }] };
   }
   const children = getDocumentTypeChildren(documentType);
   return {
     code: documentType.code,
     label: documentType.label,
+    description_examples: documentType.description_examples ?? '',
     children: children.length ? children : [{ code: documentType.code, label: documentType.label }],
   };
 }
@@ -5149,6 +5151,7 @@ function buildDocumentTypeFromDraft(
 ): { documentType?: DocumentTypeConfig; error?: string } {
   const code = normalizeDocumentTypeCode(draft.code);
   const label = draft.label.trim();
+  const description_examples = draft.description_examples.trim();
   if (!code) return { error: '请输入一级分类编码' };
   if (!label) return { error: '请输入一级分类名称' };
   if (documentTypes.some((item, index) => index !== editIndex && normalizeDocumentTypeCode(item.code) === code)) {
@@ -5177,7 +5180,7 @@ function buildDocumentTypeFromDraft(
     return { error: '二级分类编码已存在，请使用全局唯一编码' };
   }
 
-  return { documentType: { code, label, children } };
+  return { documentType: { code, label, description_examples, children } };
 }
 
 async function persistDocumentTypes(document_types: DocumentTypeConfig[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
@@ -5959,16 +5962,18 @@ function DocumentTypesTable({
           <tr>
             <th>编码</th>
             <th>名称</th>
+            <th>分类描述及示例</th>
             <th>二级分类</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           {documentTypes.length === 0 ? (
-            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#888' }}>暂无文件分类，请点击右上角添加</td></tr>
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#888' }}>暂无文件分类，请点击右上角添加</td></tr>
           ) : documentTypes.map((dt, index) => {
             const children = getDocumentTypeChildren(dt);
             const expanded = expandedCodes.has(dt.code);
+            const descriptionExamples = dt.description_examples?.trim() ?? '';
             return (
               <Fragment key={dt.code}>
                 <tr className={s.documentTypeRow} onClick={() => onToggleExpand(dt.code)}>
@@ -5990,6 +5995,15 @@ function DocumentTypesTable({
                     </div>
                   </td>
                   <td>{dt.label}</td>
+                  <td>
+                    {descriptionExamples ? (
+                      <span className={s.documentTypeDescription} title={descriptionExamples}>
+                        {descriptionExamples}
+                      </span>
+                    ) : (
+                      <span className={s.inlineHint}>--</span>
+                    )}
+                  </td>
                   <td><span className={s.inlineHint}>{children.length} 个二级分类</span></td>
                   <td onClick={(event) => event.stopPropagation()}>
                     <div className={s.actionGroup}>
@@ -6002,7 +6016,7 @@ function DocumentTypesTable({
                 </tr>
                 {expanded ? (
                   <tr className={s.documentTypeChildRow}>
-                    <td colSpan={4}>
+                    <td colSpan={5}>
                       <div className={s.childTypeList}>
                         {children.map((child) => (
                           <div className={s.childTypeItem} key={child.code || child.label}>
@@ -6064,6 +6078,15 @@ function DocumentTypeEditorDialog({
             <label className={s.formField}>
               <span className={s.fieldLabel}>一级分类名称</span>
               <input className={s.formInput} value={draft.label} placeholder="如 政策制度" onChange={(e) => onChange((current) => ({ ...current, label: e.target.value }))} />
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>分类描述及示例</span>
+              <textarea
+                className={s.formTextarea}
+                value={draft.description_examples}
+                placeholder="填写该一级分类的说明、适用范围或示例文件，可留空"
+                onChange={(e) => onChange((current) => ({ ...current, description_examples: e.target.value }))}
+              />
             </label>
           </div>
           <div className={s.childTypeEditor}>
