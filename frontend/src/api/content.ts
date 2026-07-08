@@ -332,9 +332,9 @@ interface QaKnowledgeTreeNodeDto {
 
 interface QaKnowledgeTreeNodeDataDto {
   data: QaKnowledgeTreeNodeDto[];
-  total: number;
-  page: number;
   page_size: number;
+  has_more: boolean;
+  next_cursor: string | null;
 }
 
 interface PersonalKnowledgeSpaceDto {
@@ -791,18 +791,20 @@ export async function fetchQaKnowledgeTreeSpaces(): Promise<{ data: KnowledgeSpa
 export async function fetchQaKnowledgeTreeChildren(
   spaceId: number,
   parentId?: number,
-): Promise<{ data: QaKnowledgeTreeNode[]; total: number; page: number; pageSize: number }> {
+  cursor?: string,
+): Promise<{ data: QaKnowledgeTreeNode[]; pageSize: number; hasMore: boolean; nextCursor: string | null }> {
   const query = new URLSearchParams();
   if (parentId) query.set('parent_id', String(parentId));
+  if (cursor) query.set('cursor', cursor);
   const suffix = query.toString();
   const data = await request<QaKnowledgeTreeNodeDataDto>(
     `/api/v1/knowledge/qa/tree/spaces/${spaceId}/children${suffix ? `?${suffix}` : ''}`,
   );
   return {
     data: data.data.map(mapQaKnowledgeTreeNode),
-    total: data.total,
-    page: data.page,
     pageSize: data.page_size,
+    hasMore: Boolean(data.has_more),
+    nextCursor: data.next_cursor ?? null,
   };
 }
 

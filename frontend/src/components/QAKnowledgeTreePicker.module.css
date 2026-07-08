@@ -1,35 +1,64 @@
 .panel {
-  width: min(560px, calc(100vw - 80px));
-  max-height: min(620px, calc(100vh - 220px));
+  width: min(680px, calc(100vw - 48px));
+  max-height: min(560px, calc(100vh - 240px));
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #1e293b;
+  color: #273142;
 }
 
-.headerInfo {
-  min-width: 0;
-  flex: 1 1 auto;
+.headerTitle {
+  font-size: 18px;
+  font-weight: 500;
+  color: #273142;
+  line-height: 24px;
+}
+
+/* 已选择 N 个文件 汇总行 */
+.selectedBar {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.header strong {
-  font-size: 0.9rem;
+.selectedBarLeft {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.header span {
-  color: #64748b;
-  font-size: 0.78rem;
-  font-weight: 700;
+.selectedBarMark {
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: #3662e3;
+  flex: 0 0 auto;
+}
+
+.selectedText {
+  font-size: 15px;
+  color: #273142;
+  white-space: nowrap;
+}
+
+.selectedText b {
+  color: #3662e3;
+  font-weight: 600;
+  margin: 0 2px;
+}
+
+.selectedHint {
+  font-size: 12px;
+  color: #86909c;
   white-space: nowrap;
 }
 
@@ -58,17 +87,17 @@
 }
 
 .closeButton:hover {
-  color: #64748b;
+  color: #86909c;
 }
 
 .clearButton {
   flex: 0 0 auto;
   min-height: 22px;
   padding: 2px 8px;
-  border: 1px solid #93c5fd;
+  border: 1px solid #a9bdf4;
   border-radius: 6px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f0f4fe;
+  color: #2f54d8;
   font-size: 0.74rem;
   line-height: 1.2;
   white-space: nowrap;
@@ -93,22 +122,35 @@
 }
 
 .searchBox {
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid #dbe2ee;
-  border-radius: 8px;
-  background: #f8fafc;
+  height: 36px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  border: 1px solid #d9d9da;
+  border-radius: 4px;
+  background: #fff;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #64748b;
+  color: #86909c;
+}
+
+/* 搜索框下方分隔线 */
+.searchDivider {
+  height: 1px;
+  background: #eaedf2;
+  flex: 0 0 auto;
 }
 
 .searchBox input {
   min-width: 0;
   flex: 1;
-  color: #172033;
-  font-size: 0.86rem;
+  color: #273142;
+  font-size: 14px;
+}
+
+.searchBox input::placeholder {
+  color: #86909c;
 }
 
 .spaceList {
@@ -118,7 +160,7 @@
 
 .sectionTitle {
   margin: 0 0 6px;
-  color: #64748b;
+  color: #86909c;
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -130,7 +172,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #1e293b;
+  color: #273142;
   text-align: left;
 }
 
@@ -140,8 +182,8 @@
 
 .searchFileRow:hover,
 .searchFileRowActive {
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  border-color: #a9bdf4;
+  background: #f0f4fe;
 }
 
 .searchMeta,
@@ -161,7 +203,7 @@
 .spaceTitleButton strong {
   display: block;
   min-width: 0;
-  color: #0f172a;
+  color: #273142;
   font-size: 0.86rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -171,7 +213,7 @@
 .searchMeta span,
 .nodeText span {
   min-width: 0;
-  color: #64748b;
+  color: #86909c;
   font-size: 0.74rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -183,13 +225,19 @@
 }
 
 .spaceBlock {
-  border: 1px solid #e3e9f3;
-  border-radius: 8px;
+  border: 1px solid #d9d9da;
+  border-radius: 4px;
   background: #fff;
 }
 
 .spaceBlock + .spaceBlock {
-  margin-top: 8px;
+  margin-top: 12px;
+}
+
+/* 展开时:浅蓝底 + 蓝色描边容器 */
+.spaceBlockExpanded {
+  background: #f8fcff;
+  border-color: rgba(54, 98, 227, 0.3);
 }
 
 .searchSpaceBlock {
@@ -197,27 +245,53 @@
 }
 
 .spaceRow,
-.nodeRow,
 .searchSpaceHeader {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+}
+
+.nodeRow {
   min-height: 44px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.spaceRow,
-.searchSpaceHeader {
-  padding: 9px 10px;
-}
-
 .spaceRowActive {
-  background: #eff6ff;
+  background: #f8fcff;
 }
 
 .spaceIcon,
 .nodeIcon {
-  color: #2563eb;
+  color: #3662e3;
   flex: 0 0 auto;
+}
+
+/* 子文件夹:黄色图标 */
+.folderIcon {
+  color: #faad14;
+}
+
+/* 文件列表文字:不加粗 */
+.nodeText strong {
+  color: #313233;
+  font-size: 15px;
+  font-weight: normal;
+}
+
+/* 知识库名称:加粗 */
+.spaceTitleButton strong {
+  color: #313233;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* 选中的文件名:蓝色 */
+.nodeTextActive strong {
+  color: #3662e3;
 }
 
 .spaceContent {
@@ -233,7 +307,7 @@
 }
 
 .spaceTitleButton:hover strong {
-  color: #1d4ed8;
+  color: #2f54d8;
 }
 
 .searchSpaceHeader .spaceContent {
@@ -242,7 +316,7 @@
 
 .searchSpaceHeader strong {
   min-width: 0;
-  color: #0f172a;
+  color: #273142;
   font-size: 0.86rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -251,7 +325,7 @@
 
 .searchSpaceHeader span span {
   min-width: 0;
-  color: #64748b;
+  color: #86909c;
   font-size: 0.74rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -266,7 +340,7 @@
   padding: 2px 6px;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: #64748b;
+  color: #86909c;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -284,9 +358,9 @@
 
 .spaceAction:hover,
 .spaceActionActive {
-  border-color: #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border-color: #a9bdf4;
+  background: #f0f4fe;
+  color: #2f54d8;
 }
 
 .rootChildren,
@@ -304,10 +378,10 @@
 }
 
 .checkBox {
-  width: 20px;
-  height: 20px;
-  border: 1.5px solid #60a5fa;
-  border-radius: 6px;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #3662e3;
+  border-radius: 4px;
   background: #fff;
   color: #fff;
   display: inline-flex;
@@ -317,8 +391,8 @@
 }
 
 .checkBoxActive {
-  border-color: #2563eb;
-  background: #2563eb;
+  border-color: #3662e3;
+  background: #3662e3;
 }
 
 .checkBox:disabled {
@@ -329,8 +403,8 @@
 
 .checkBoxActive:disabled {
   cursor: not-allowed;
-  border-color: #2563eb;
-  background: #2563eb;
+  border-color: #3662e3;
+  background: #3662e3;
   opacity: 0.85;
 }
 
@@ -338,7 +412,7 @@
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  color: #64748b;
+  color: #86909c;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -346,8 +420,8 @@
 }
 
 .expandButton:hover {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f0f4fe;
+  color: #2f54d8;
 }
 
 .expandSpacer {
@@ -355,10 +429,17 @@
   flex: 0 0 auto;
 }
 
+.loadMoreSentinel {
+  height: 1px;
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
+
 .stateLine {
   min-height: 34px;
   padding: 8px 12px;
-  color: #64748b;
+  color: #86909c;
   display: flex;
   align-items: center;
   gap: 8px;

@@ -19,6 +19,7 @@ import {
   Search,
   Send,
   Square,
+  Star,
   User,
   X,
 } from 'lucide-react';
@@ -82,6 +83,17 @@ type AnswerMode = 'normal' | 'expert';
 type SmartQaComposerPlacement = 'top' | 'bottom';
 
 const ALL_TEMPLATE_CATEGORY_ID = '__all__';
+const FAVORITE_TEMPLATE_CATEGORY_ID = '__favorite__';
+const TEMPLATE_FAVORITES_STORAGE_KEY = 'shougang_writing_template_favorites';
+
+function readFavoriteTemplateIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(TEMPLATE_FAVORITES_STORAGE_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
 
 const TEMPLATE_ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
   BriefcaseBusiness,
@@ -352,6 +364,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const [templateCategories, setTemplateCategories] = useState<QATemplateCategoryConfig[]>([]);
   const [writingTemplates, setWritingTemplates] = useState<QATemplateConfig[]>([]);
   const [templateCategory, setTemplateCategory] = useState(ALL_TEMPLATE_CATEGORY_ID);
+  const [favoriteTemplateIds, setFavoriteTemplateIds] = useState<Set<string>>(readFavoriteTemplateIds);
   const [pendingTemplateId, setPendingTemplateId] = useState(() => {
     const params = new URLSearchParams(location.search);
     return params.get('templateId')?.trim() || '';
@@ -375,11 +388,12 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const activeSession = sessions.find((ss) => ss.id === activeId) ?? sessions[0];
   const enabledCategories = templateCategories.filter((category) => category.enabled);
   const enabledCategoryIds = new Set(enabledCategories.map((category) => category.id));
-  const visibleTemplates = writingTemplates.filter((item) => (
-    item.enabled
-      && enabledCategoryIds.has(item.category_id)
-      && (templateCategory === ALL_TEMPLATE_CATEGORY_ID || item.category_id === templateCategory)
-  ));
+  const visibleTemplates = writingTemplates.filter((item) => {
+    if (!item.enabled || !enabledCategoryIds.has(item.category_id)) return false;
+    if (templateCategory === FAVORITE_TEMPLATE_CATEGORY_ID) return favoriteTemplateIds.has(item.id);
+    if (templateCategory === ALL_TEMPLATE_CATEGORY_ID) return true;
+    return item.category_id === templateCategory;
+  });
   const hasConversation = Boolean(activeSession.conversationId)
     || activeSession.messages.some((msg) => msg.role === 'user')
     || streaming;
@@ -398,6 +412,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
 
   const applyWritingTemplate = (template: QATemplateConfig) => {
     setTemplateCategory(template.category_id);
+    setSelectedTemplateId(template.id);
     setInput(template.prompt);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -472,7 +487,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user?.account]);
 
   useEffect(() => {
     let active = true;
@@ -483,11 +498,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
         setAvailableSpaces(spaces);
         setSelectedKnowledgeScope({ mode: 'none' });
         if (!spaces.length) {
-          setComposerTip(user ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
+          setComposerTip(user?.account ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
         }
       })
       .catch(() => {
-        if (active) setComposerTip(user ? '知识库列表加载失败，请确认登录状态后重试。' : '公共知识库列表加载失败，请稍后重试。');
+        if (active) setComposerTip(user?.account ? '知识库列表加载失败，请确认登录状态后重试。' : '公共知识库列表加载失败，请稍后重试。');
       })
       .finally(() => {
         if (active) setLoadingKnowledgeSpaces(false);
@@ -495,12 +510,12 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user?.account]);
 
   useEffect(() => {
     let active = true;
     setLoadingSessions(true);
-    if (!user) {
+    if (!user?.account) {
       const draft = createDraftSession();
       setSessions([draft]);
       setActiveId(draft.id);
@@ -531,7 +546,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user?.account]);
 
   useEffect(() => {
     if (!composerTip) return;
@@ -691,8 +706,30 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   };
 
   const chooseTemplate = (template: QATemplateConfig) => {
-    setSelectedTemplateId(template.id);
+    if (selectedTemplateId === template.id) {
+      setSelectedTemplateId('');
+      setInput('');
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+      return;
+    }
     applyWritingTemplate(template);
+  };
+
+  const toggleTemplateFavorite = (templateId: string) => {
+    setFavoriteTemplateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(templateId)) {
+        next.delete(templateId);
+      } else {
+        next.add(templateId);
+      }
+      try {
+        localStorage.setItem(TEMPLATE_FAVORITES_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // 忽略 localStorage 写入失败(隐私模式等)
+      }
+      return next;
+    });
   };
 
   const chooseModel = (choice: ConfiguredQaModelChoice) => {
@@ -790,7 +827,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       {!hasConversation ? (
         <div className={`${s.templatePanel} ${isSmartAppsMode ? s.smartAppTemplatePanel : ''}`}>
           <div className={`${s.templateTabs} ${isSmartAppsMode ? s.smartAppTemplateTabs : ''}`} role="tablist" aria-label="写作模板分类">
-            {[{ id: ALL_TEMPLATE_CATEGORY_ID, name: '全部' }, ...enabledCategories].map((category) => (
+            {[
+              { id: ALL_TEMPLATE_CATEGORY_ID, name: '全部' },
+              { id: FAVORITE_TEMPLATE_CATEGORY_ID, name: '我的收藏' },
+              ...enabledCategories,
+            ].map((category) => (
               <button
                 key={category.id}
                 type="button"
@@ -815,6 +856,25 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                 >
                   {isSmartAppsMode ? (
                     <>
+                      <span
+                        className={`${s.templateFavBtn} ${favoriteTemplateIds.has(template.id) ? s.templateFavBtnActive : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={favoriteTemplateIds.has(template.id) ? `取消收藏 ${template.name}` : `收藏 ${template.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleTemplateFavorite(template.id);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            toggleTemplateFavorite(template.id);
+                          }
+                        }}
+                      >
+                        <Star size={16} />
+                      </span>
                       <span className={s.smartAppTemplateTop}>
                         <span
                           className={s.smartAppTemplateIcon}

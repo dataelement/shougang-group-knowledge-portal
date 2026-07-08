@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -53,7 +53,8 @@ export default function QAKnowledgeTreePicker({
   scope: QaKnowledgeScope;
   loading: boolean;
   onChange: (scope: QaKnowledgeScope) => void;
-  onLoadChildren: (spaceId: number, parentId?: number) => Promise<{ data: QaKnowledgeTreeNode[] }>;
+  onLoadChildren: (spaceId: number, parentId?: number, cursor?: string)
+    => Promise<{ data: QaKnowledgeTreeNode[]; hasMore: boolean; nextCursor: string | null }>;
   onSearchFiles: (q: string, page?: number, pageSize?: number) => Promise<{ data: FileItem[]; total: number }>;
   onTip?: (message: string) => void;
   onClose?: () => void;
@@ -62,6 +63,9 @@ export default function QAKnowledgeTreePicker({
   const [childrenByKey, setChildrenByKey] = useState<Record<string, QaKnowledgeTreeNode[]>>({});
   const [loadingKeys, setLoadingKeys] = useState<Set<string>>(() => new Set());
   const [errorKeys, setErrorKeys] = useState<Set<string>>(() => new Set());
+  const [nextCursorByKey, setNextCursorByKey] = useState<Record<string, string | null>>({});
+  const [hasMoreByKey, setHasMoreByKey] = useState<Record<string, boolean>>({});
+  const [loadingMoreKeys, setLoadingMoreKeys] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<FileItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -152,10 +156,44 @@ export default function QAKnowledgeTreePicker({
     try {
       const result = await onLoadChildren(spaceId, parentId ?? undefined);
       setChildrenByKey((prev) => ({ ...prev, [key]: result.data }));
+      setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
+      setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
     } catch {
       setErrorKeys((prev) => new Set(prev).add(key));
     } finally {
       setLoadingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const loadMoreChildren = async (spaceId: number, parentId?: number | null) => {
+    const key = nodeChildrenKey(spaceId, parentId);
+    if (!hasMoreByKey[key] || loadingMoreKeys.has(key)) return;
+    const cursor = nextCursorByKey[key];
+    if (!cursor) return;
+    setLoadingMoreKeys((prev) => new Set(prev).add(key));
+    setErrorKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    try {
+      const result = await onLoadChildren(spaceId, parentId ?? undefined, cursor);
+      setChildrenByKey((prev) => {
+        const existing = prev[key] ?? [];
+        const seen = new Set(existing.map((n) => `${n.spaceId}-${n.id}`));
+        const merged = [...existing, ...result.data.filter((n) => !seen.has(`${n.spaceId}-${n.id}`))];
+        return { ...prev, [key]: merged };
+      });
+      setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
+      setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
+    } catch {
+      setErrorKeys((prev) => new Set(prev).add(key));
+    } finally {
+      setLoadingMoreKeys((prev) => {
         const next = new Set(prev);
         next.delete(key);
         return next;
@@ -245,6 +283,30 @@ export default function QAKnowledgeTreePicker({
     onChange(nextScope);
   };
 
+  const scrollRootRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef(loadMoreChildren);
+  loadMoreRef.current = loadMoreChildren;
+  const sentinelCbRef = useRef<(el: HTMLDivElement | null, spaceId: number, parentId?: number | null) => void>(undefined);
+
+  useEffect(() => {
+    const root = scrollRootRef.current;
+    if (!root || typeof IntersectionObserver === 'undefined') return undefined;
+    const targets = new Map<Element, { spaceId: number; parentId?: number | null }>();
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const meta = targets.get(entry.target);
+        if (meta) void loadMoreRef.current(meta.spaceId, meta.parentId);
+      }
+    }, { root, rootMargin: '80px' });
+    sentinelCbRef.current = (el, spaceId, parentId) => {
+      if (!el) return;
+      targets.set(el, { spaceId, parentId });
+      observer.observe(el);
+    };
+    return () => observer.disconnect();
+  }, []);
+
   const renderNode = (node: QaKnowledgeTreeNode, depth: number) => {
     const key = nodeChildrenKey(node.spaceId, node.id);
     const expanded = expandedKeys.has(key);
@@ -258,7 +320,7 @@ export default function QAKnowledgeTreePicker({
       : isFolderSelected);
     return (
       <div key={`${node.spaceId}-${node.id}`} className={s.treeNode}>
-        <div className={s.nodeRow} style={{ paddingLeft: 12 + depth * 18 }}>
+        <div className={s.nodeRow} style={{ paddingLeft: 14 + depth * 24 }}>
           {node.type === 'folder' ? (
             <button
               type="button"
@@ -281,10 +343,9 @@ export default function QAKnowledgeTreePicker({
           >
             {selected ? <Check size={13} /> : null}
           </button>
-          <span className={s.nodeIcon}>{node.type === 'folder' ? <Folder size={15} /> : <FileText size={15} />}</span>
-          <span className={s.nodeText}>
-            <strong>{node.name}</strong>
-            <span>{node.type === 'folder' ? `${node.resolvedFileCount} 个文件` : node.fileExt || '文件'}</span>
+          <span className={`${s.nodeIcon} ${node.type === 'folder' ? s.folderIcon : ''}`}>{node.type === 'folder' ? <Folder size={15} /> : <FileText size={15} />}</span>
+          <span className={`${s.nodeText} ${selected && node.type === 'file' ? s.nodeTextActive : ''}`}>
+            <strong>{node.type === 'folder' ? `${node.name}（${node.resolvedFileCount}个文件）` : node.name}</strong>
           </span>
         </div>
         {expanded ? (
@@ -292,6 +353,11 @@ export default function QAKnowledgeTreePicker({
             {errored ? <div className={s.stateLine}>加载失败</div> : null}
             {!errored && !loadingNode && children.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
             {children.map((child) => renderNode(child, depth + 1))}
+            {hasMoreByKey[key] ? (
+              <div ref={(el) => sentinelCbRef.current?.(el, node.spaceId, node.id)} className={s.loadMoreSentinel}>
+                {loadingMoreKeys.has(key) ? <Loader2 size={14} className={s.spin} /> : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -301,33 +367,15 @@ export default function QAKnowledgeTreePicker({
   return (
     <div className={s.panel}>
       <div className={s.header}>
-        <div className={s.headerInfo}>
-          <strong>知识库范围</strong>
-          <span>支持选择单一整库或跨库选择不超过20个文件</span>
-        </div>
-        <div className={s.headerActions}>
-          {scope.mode !== 'none' ? (
-            <button
-              type="button"
-              className={s.clearButton}
-              onClick={() => onChange({ mode: 'none' })}
-              title="清空已选"
-            >
-              清空选择
-            </button>
-          ) : null}
-          <span className={s.headerStatus}>
-            {scope.mode === 'knowledge_space' ? '整库' : scope.mode === 'files' ? `${getScopeFileCount(scope)} 文件` : '未选择'}
-          </span>
-          <button
-            type="button"
-            onClick={() => onClose?.()}
-            className={s.closeButton}
-            title="关闭"
-          >
-            <X size={15} />
-          </button>
-        </div>
+        <strong className={s.headerTitle}>知识库范围</strong>
+        <button
+          type="button"
+          onClick={() => onClose?.()}
+          className={s.closeButton}
+          title="关闭"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       {inlineTip ? <div className={s.inlineTip}>{inlineTip}</div> : null}
@@ -341,7 +389,30 @@ export default function QAKnowledgeTreePicker({
         />
       </label>
 
-      <div className={s.spaceList}>
+      <div className={s.searchDivider} />
+
+      <div className={s.selectedBar}>
+        <span className={s.selectedBarLeft}>
+          <i className={s.selectedBarMark} />
+          <span className={s.selectedText}>
+            已选择 <b>{scope.mode === 'knowledge_space' ? 1 : getScopeFileCount(scope)}</b>
+            {scope.mode === 'knowledge_space' ? ' 个整库' : ' 个文件'}
+          </span>
+          {scope.mode !== 'none' ? (
+            <button
+              type="button"
+              className={s.clearButton}
+              onClick={() => onChange({ mode: 'none' })}
+              title="清空已选"
+            >
+              清空选择
+            </button>
+          ) : null}
+        </span>
+        <span className={s.selectedHint}>整库限选1个，文件最多20个</span>
+      </div>
+
+      <div className={s.spaceList} ref={scrollRootRef}>
         {searchMode ? (
           <>
             {searchLoading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 搜索中</div> : null}
@@ -402,32 +473,8 @@ export default function QAKnowledgeTreePicker({
               const loadingRoot = loadingKeys.has(rootKey);
               const erroredRoot = errorKeys.has(rootKey);
               return (
-                <section key={space.id} className={s.spaceBlock}>
+                <section key={space.id} className={`${s.spaceBlock} ${expanded ? s.spaceBlockExpanded : ''}`}>
                   <div className={`${s.spaceRow} ${full ? s.spaceRowActive : ''}`}>
-                    <button
-                      type="button"
-                      className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
-                      onClick={() => toggleWholeSpace(space)}
-                      aria-label={`选择知识库 ${space.name}`}
-                    >
-                      {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
-                    </button>
-                    <Database size={16} className={s.spaceIcon} />
-                    <div className={s.spaceContent}>
-                      <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
-                        <strong>{space.name}</strong>
-                      </button>
-                      <button
-                        type="button"
-                        className={`${s.spaceAction} ${expanded ? s.spaceActionActive : ''}`}
-                        onClick={() => toggleExpand(space.id)}
-                      >
-                        {loadingRoot ? <Loader2 size={13} className={s.spin} /> : expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                        <span className={s.spaceActionText}>
-                          {expanded ? '收起目录（可多选子项）' : '展开目录（可多选子项）'}
-                        </span>
-                      </button>
-                    </div>
                     <button
                       type="button"
                       className={s.expandButton}
@@ -437,12 +484,30 @@ export default function QAKnowledgeTreePicker({
                     >
                       {loadingRoot ? <Loader2 size={14} className={s.spin} /> : expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
+                    <button
+                      type="button"
+                      className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
+                      onClick={() => toggleWholeSpace(space)}
+                      aria-label={`选择知识库 ${space.name}`}
+                    >
+                      {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
+                    </button>
+                    <div className={s.spaceContent}>
+                      <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
+                        <strong>{space.name}</strong>
+                      </button>
+                    </div>
                   </div>
                   {expanded ? (
                     <div className={s.rootChildren}>
                       {erroredRoot ? <div className={s.stateLine}>加载失败</div> : null}
                       {!erroredRoot && !loadingRoot && children.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
                       {children.map((node) => renderNode(node, 1))}
+                      {hasMoreByKey[rootKey] ? (
+                        <div ref={(el) => sentinelCbRef.current?.(el, space.id, undefined)} className={s.loadMoreSentinel}>
+                          {loadingMoreKeys.has(rootKey) ? <Loader2 size={14} className={s.spin} /> : null}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </section>

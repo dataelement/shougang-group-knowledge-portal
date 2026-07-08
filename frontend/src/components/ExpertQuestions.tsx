@@ -5,6 +5,7 @@ import { fetchExpertQuestions } from '../api/expertQa';
 import { useAuth } from '../hooks/useAuth';
 import { buildGuestLoginPath } from '../utils/guestAccess';
 import iconExpert from '../assets/icon-expert@2x.png';
+import iconExpertItem from '../assets/icon-expert-item.svg';
 import s from './ExpertQuestions.module.css';
 
 const DEBOUNCE_DELAY_MS = 300;
@@ -124,7 +125,7 @@ export default function ExpertQuestions({ className = '' }: ExpertQuestionsProps
                 className={s.item}
                 onClick={guardLink(`${EXPERT_QA_PATH}/${question.id}`)}
               >
-                <span className={s.badge}>Q</span>
+                <img src={iconExpertItem} alt="" className={s.itemIcon} />
                 <span className={s.text}>{question.title}</span>
               </Link>
             ))}

@@ -139,7 +139,7 @@ export default function DocumentTypeFilterDropdown({
                       setOpen(false);
                     }}
                   >
-                    {group.code} / {group.label}
+                    {group.label}
                   </button>
                 </div>
                 {isExpanded ? (
@@ -156,7 +156,7 @@ export default function DocumentTypeFilterDropdown({
                             setOpen(false);
                           }}
                         >
-                          {child.code} / {child.label}
+                          {child.parentLabel} / {child.label}
                         </button>
                       );
                     })}

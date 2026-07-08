@@ -223,6 +223,17 @@
   background: #f8fafc;
 }
 
+.documentTypeDescription {
+  display: -webkit-box;
+  max-width: 360px;
+  overflow: hidden;
+  color: var(--neutral-700);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .childTypeList {
   display: flex;
   flex-wrap: wrap;
@@ -854,7 +865,7 @@
 
 .childTypeEditorRow {
   display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1fr) 34px;
+  grid-template-columns: minmax(160px, 1fr) 34px;
   align-items: center;
   gap: 10px;
 }

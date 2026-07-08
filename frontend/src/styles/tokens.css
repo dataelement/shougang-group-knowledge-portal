@@ -46,7 +46,7 @@
   box-sizing: border-box;
 }
 
-html { font-size: 15px; scroll-behavior: smooth; scrollbar-gutter: stable; }
+html { font-size: 15px; scroll-behavior: smooth; scrollbar-gutter: stable; scrollbar-color: #8b95a3 transparent; }
 
 body {
   font-family: var(--font-sans);
@@ -62,6 +62,7 @@ ul, ol { list-style: none; }
 button, input, select, textarea { font: inherit; border: none; outline: none; background: none; }
 button { cursor: pointer; }
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--neutral-300); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #8b95a3; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #616b78; }

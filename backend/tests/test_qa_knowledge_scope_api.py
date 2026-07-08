@@ -21,6 +21,11 @@ class QaScopeBishengClient(FakeBishengClient):
         self.get_calls.append((path, params or {}))
         if path == "/api/v1/knowledge/space/7101/children":
             assert params.get("file_status") == [2]
+            if params.get("cursor") == "CUR7101P2":
+                return {"data": {"data": [
+                    {"id": 9002, "knowledge_id": 7101, "file_name": "第二页.pdf",
+                     "file_type": 1, "status": 2, "file_level_path": ""},
+                ], "page_size": 10, "has_more": False, "next_cursor": None}}
             if params.get("parent_id") == 3001:
                 return {
                     "data": {
@@ -37,42 +42,19 @@ class QaScopeBishengClient(FakeBishengClient):
                                 "tags": [],
                             }
                         ],
-                        "page_size": 100,
+                        "page_size": 10,
                         "has_more": False,
                         "next_cursor": None,
                     }
                 }
-            return {
-                "data": {
-                    "data": [
-                        {
-                            "id": 3001,
-                            "knowledge_id": 7101,
-                            "file_name": "团队规范",
-                            "file_type": 0,
-                            "status": 2,
-                            "file_level_path": "",
-                            "file_num": 2,
-                            "success_file_num": 2,
-                            "visible_success_file_num": 1,
-                        },
-                        {
-                            "id": 9001,
-                            "knowledge_id": 7101,
-                            "file_name": "开发流程文档.pdf",
-                            "file_type": 1,
-                            "status": 2,
-                            "file_level_path": "",
-                            "summary": "开发流程",
-                            "file_encoding": "DEV-PROC-001",
-                            "tags": [],
-                        },
-                    ],
-                    "page_size": 100,
-                    "has_more": False,
-                    "next_cursor": None,
-                }
-            }
+            return {"data": {"data": [
+                {"id": 3001, "knowledge_id": 7101, "file_name": "团队规范", "file_type": 0,
+                 "status": 2, "file_level_path": "", "visible_success_file_num": 1,
+                 "has_children": True},
+                {"id": 9001, "knowledge_id": 7101, "file_name": "开发流程文档.pdf",
+                 "file_type": 1, "status": 2, "file_level_path": "", "file_ext": "pdf",
+                 "summary": "开发流程", "file_encoding": "DEV-PROC-001", "tags": []},
+            ], "page_size": 10, "has_more": True, "next_cursor": "CUR7101P2"}}
         if path == "/api/v1/knowledge/space/7101/search":
             assert params.get("file_status") == [2]
             if params.get("parent_id") == 3001:
@@ -334,3 +316,87 @@ def test_chat_scope_rejects_obvious_file_limit_overflow(tmp_path: Path):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "一次最多可选择20个文件进行问答。"
+
+
+class QaForbiddenBishengClient(QaScopeBishengClient):
+    """对 7199/children 返回上游权限拒绝码(HTTP 200 + body status_code)。"""
+
+    async def get_json(self, path: str, params=None, headers=None):
+        self.get_calls.append((path, params or {}))
+        if path == "/api/v1/knowledge/space/7199/children":
+            return {"status_code": 18040, "status_message": "Permission denied"}
+        return await super().get_json(path, params=params, headers=headers)
+
+
+def _make_forbidden_client(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    user_bisheng = QaForbiddenBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        previous_bisheng = getattr(client.app.state, "bisheng_client", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = FakeBishengClient()
+        client.app.state.portal_auth_service = FakePortalAuthService(user_bisheng)
+        try:
+            yield client, user_bisheng
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+            if previous_bisheng is not None:
+                client.app.state.bisheng_client = previous_bisheng
+
+
+def test_qa_tree_children_translates_upstream_permission_error_to_403(tmp_path: Path):
+    for client, user_bisheng in _make_forbidden_client(tmp_path):
+        resp = client.get("/api/v1/knowledge/qa/tree/spaces/7199/children")
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "包含无权限或不存在的知识库"
+    # 证明走的是"信任上游"路径:上游 /children 确实被调用(而非旧预检拦截)
+    assert any(
+        path == "/api/v1/knowledge/space/7199/children" for path, _ in user_bisheng.get_calls
+    )
+
+
+def test_qa_tree_children_passes_enrich_files_false_and_fixes_paging(tmp_path: Path):
+    for client, _config_service, fake_bisheng in _make_auth_client(tmp_path):
+        resp = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    # 分页字段:游标分页,has_more/next_cursor/page_size 透传上游
+    assert len(body["data"]) == 2
+    assert body["has_more"] is True
+    assert body["next_cursor"] == "CUR7101P2"
+    assert body["page_size"] == 10
+    # 向上游传了 enrich_files=False(省富化)
+    children_calls = [p for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children"]
+    assert children_calls, "未调用上游 children"
+    assert children_calls[0][1].get("enrich_files") is False
+
+
+def test_qa_tree_children_uses_cursor_pagination_and_shallow_counts(tmp_path: Path):
+    for client, _c, fake_bisheng in _make_auth_client(tmp_path):
+        first = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children")
+        second = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children?cursor=CUR7101P2")
+    assert first.status_code == 200
+    body = first.json()["data"]
+    assert body["has_more"] is True
+    assert body["next_cursor"] == "CUR7101P2"
+    assert body["page_size"] == 10
+    assert "total" not in body and "page" not in body
+    # 上游收到 shallow 模式 + page_size
+    call = next(p for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children")
+    assert call[1].get("folder_count_mode") == "shallow"
+    assert call[1].get("page_size") == 10
+    # 第二页透传 cursor
+    assert second.json()["data"]["data"][0]["id"] == 9002
+    assert any(p[1].get("cursor") == "CUR7101P2"
+               for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children")
+
+
+def test_qa_tree_children_has_children_decoupled_from_count(tmp_path: Path):
+    for client, _c, _b in _make_auth_client(tmp_path):
+        body = client.get("/api/v1/knowledge/qa/tree/spaces/7101/children").json()["data"]
+    folder = next(n for n in body["data"] if n["type"] == "folder")
+    # 该文件夹 visible_success_file_num=1 且显式 has_children=True → 节点可展开
+    assert folder["has_children"] is True
+    assert folder["resolved_file_count"] == 1

@@ -128,11 +128,12 @@ export interface SearchRerankModelOptionsResponse {
 export interface DocumentTypeConfig {
   code: string;
   label: string;
+  description_examples?: string;
   children?: DocumentTypeChildConfig[];
 }
 
 export interface DocumentTypeChildConfig {
-  code: string;
+  code?: string;
   label: string;
 }
 

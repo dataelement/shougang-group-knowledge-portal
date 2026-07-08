@@ -50,6 +50,9 @@ export default function Header() {
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuOpen = menuKey === location.pathname;
+  const [msgKey, setMsgKey] = useState<string | null>(null);
+  const msgRef = useRef<HTMLDivElement>(null);
+  const msgOpen = msgKey === location.pathname;
 
   // Never render the portal header when loaded inside an iframe.
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
@@ -65,6 +68,17 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', handleAway);
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (!msgOpen) return;
+    function handleAway(event: MouseEvent) {
+      if (!msgRef.current) return;
+      if (msgRef.current.contains(event.target as Node)) return;
+      setMsgKey(null);
+    }
+    document.addEventListener('mousedown', handleAway);
+    return () => document.removeEventListener('mousedown', handleAway);
+  }, [msgOpen]);
+
   const closeMenu = useMemo(() => () => setMenuKey(null), []);
 
   const initial = user ? (user.initial || user.name.slice(0, 1)) : '';
@@ -79,6 +93,7 @@ export default function Header() {
 
   const openPortalApprovalAction = (action: PortalApprovalAction) => {
     closeMenu();
+    setMsgKey(null);
     // The global ApprovalDialogHost listens for this event and opens the
     // BiSheng dialog as an overlay on whatever page the user is on, so we no
     // longer navigate to the knowledge workbench.
@@ -140,34 +155,83 @@ export default function Header() {
         <div className={s.spacer} />
 
         {user ? (
-          <div className={s.userMenuWrap} ref={menuRef}>
-            <button
-              type="button"
-              className={s.userTrigger}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuKey((current) => (current === location.pathname ? null : location.pathname))}
-            >
-              <img src={adminIcon} alt="" className={s.userTriggerIcon} />
-              <span className={s.userTriggerName}>{user.name}</span>
-              <ChevronDown size={12} className={s.userTriggerCaret} />
-              {badges.total > 0 ? (
-                <span className={s.triggerDot} aria-label={`有 ${badges.total} 条新消息`} />
-              ) : null}
-            </button>
-            {menuOpen ? (
-              <div className={s.userMenu} role="menu">
-                <div className={s.userMenuHead}>
-                  <div className={s.userMenuAvatar}>{initial}</div>
-                  <div>
-                    <div className={s.userMenuName}>{user.name}</div>
-                    {externalId ? (
-                      <div className={s.userMenuRole}>工号 {externalId}</div>
+          <div className={s.userArea}>
+            {/* 消息中心:待办 / 申请 / 消息 */}
+            <div className={s.msgWrap} ref={msgRef}>
+              <button
+                type="button"
+                className={s.msgTrigger}
+                aria-haspopup="menu"
+                aria-expanded={msgOpen}
+                aria-label="消息中心"
+                onClick={() => setMsgKey((current) => (current === location.pathname ? null : location.pathname))}
+              >
+                <Bell size={18} />
+                {badges.total > 0 ? (
+                  <span className={s.triggerDot} aria-label={`有 ${badges.total} 条新消息`} />
+                ) : null}
+              </button>
+              {msgOpen ? (
+                <div className={`${s.userMenu} ${s.msgMenu}`} role="menu">
+                  <button
+                    type="button"
+                    className={s.userMenuItem}
+                    onClick={() => openPortalApprovalAction('tasks')}
+                  >
+                    <ClipboardList size={15} />
+                    待办
+                    {badges.todo > 0 ? (
+                      <span className={s.menuBadge}>{formatBadgeCount(badges.todo)}</span>
                     ) : null}
-                  </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={s.userMenuItem}
+                    onClick={() => openPortalApprovalAction('requests')}
+                  >
+                    <Send size={15} />
+                    申请
+                  </button>
+                  <button
+                    type="button"
+                    className={s.userMenuItem}
+                    onClick={() => openPortalApprovalAction('notifications')}
+                  >
+                    <Bell size={15} />
+                    消息
+                    {badges.messages > 0 ? (
+                      <span className={s.menuBadge}>{formatBadgeCount(badges.messages)}</span>
+                    ) : null}
+                  </button>
                 </div>
-                {canOpenAdmin ? (
-                  <>
+              ) : null}
+            </div>
+
+            {/* 用户名下拉 */}
+            <div className={s.userMenuWrap} ref={menuRef}>
+              <button
+                type="button"
+                className={s.userTrigger}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuKey((current) => (current === location.pathname ? null : location.pathname))}
+              >
+                <img src={adminIcon} alt="" className={s.userTriggerIcon} />
+                <span className={s.userTriggerName}>{user.name}</span>
+                <ChevronDown size={12} className={s.userTriggerCaret} />
+              </button>
+              {menuOpen ? (
+                <div className={s.userMenu} role="menu">
+                  <div className={s.userMenuHead}>
+                    <div className={s.userMenuAvatar}>{initial}</div>
+                    <div>
+                      <div className={s.userMenuName}>{user.name}</div>
+                      {externalId ? (
+                        <div className={s.userMenuRole}>工号 {externalId}</div>
+                      ) : null}
+                    </div>
+                  </div>
+                  {canOpenAdmin ? (
                     <button
                       type="button"
                       className={s.userMenuItem}
@@ -179,63 +243,34 @@ export default function Header() {
                       <LayoutDashboard size={15} />
                       知识管理后台
                     </button>
+                  ) : null}
+                  {showMyUploadsEntry ? (
+                    <button
+                      type="button"
+                      className={s.userMenuItem}
+                      onClick={openMyUploads}
+                    >
+                      <Upload size={15} />
+                      我的上传
+                    </button>
+                  ) : null}
+                  {canOpenAdmin || showMyUploadsEntry ? (
                     <div className={s.userMenuDivider} />
-                  </>
-                ) : null}
-                {showMyUploadsEntry ? (
+                  ) : null}
                   <button
                     type="button"
-                    className={s.userMenuItem}
-                    onClick={openMyUploads}
+                    className={`${s.userMenuItem} ${s.userMenuItemDanger}`}
+                    onClick={() => {
+                      logout();
+                      closeMenu();
+                    }}
                   >
-                    <Upload size={15} />
-                    我的上传
+                    <LogOut size={15} />
+                    退出登录
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  className={s.userMenuItem}
-                  onClick={() => openPortalApprovalAction('tasks')}
-                >
-                  <ClipboardList size={15} />
-                  待办
-                  {badges.todo > 0 ? (
-                    <span className={s.menuBadge}>{formatBadgeCount(badges.todo)}</span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  className={s.userMenuItem}
-                  onClick={() => openPortalApprovalAction('requests')}
-                >
-                  <Send size={15} />
-                  申请
-                </button>
-                <button
-                  type="button"
-                  className={s.userMenuItem}
-                  onClick={() => openPortalApprovalAction('notifications')}
-                >
-                  <Bell size={15} />
-                  消息
-                  {badges.messages > 0 ? (
-                    <span className={s.menuBadge}>{formatBadgeCount(badges.messages)}</span>
-                  ) : null}
-                </button>
-                <div className={s.userMenuDivider} />
-                <button
-                  type="button"
-                  className={`${s.userMenuItem} ${s.userMenuItemDanger}`}
-                  onClick={() => {
-                    logout();
-                    closeMenu();
-                  }}
-                >
-                  <LogOut size={15} />
-                  退出登录
-                </button>
-              </div>
-            ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : (
           <button type="button" className={s.loginEntry} onClick={goLogin}>

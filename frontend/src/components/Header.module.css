@@ -105,6 +105,39 @@
   border-color: rgba(255, 255, 255, 0.32);
 }
 
+.userArea {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.msgWrap {
+  position: relative;
+}
+
+.msgTrigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 30px;
+  border-radius: 3px;
+  background: transparent;
+  border: 0;
+  color: #fff;
+  transition: background 0.15s ease;
+}
+
+.msgTrigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 消息中心下拉:比用户菜单窄,右对齐避免溢出屏幕边缘 */
+.msgMenu {
+  width: 168px;
+}
+
 .userMenuWrap {
   position: relative;
   margin-left: 0;

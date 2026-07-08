@@ -77,3 +77,17 @@ test('qa knowledge scope count dedupes known folder files and explicit file refs
   assert.equal(getResolvedFileCount(fileRefs, folderRefs), 3);
   assert.equal(buildFilesScope(fileRefs, folderRefs).resolvedFileCount, 3);
 });
+
+test('content api supports cursor pagination for tree children', () => {
+  assert.match(contentApiSource, /fetchQaKnowledgeTreeChildren\s*\(\s*spaceId:\s*number,\s*parentId\?:\s*number,\s*cursor\?:\s*string/);
+  assert.match(contentApiSource, /next_cursor/);
+  assert.match(contentApiSource, /has_more/);
+  assert.match(contentApiSource, /query\.set\('cursor'/);
+});
+
+test('tree picker auto-loads more children on scroll via IntersectionObserver', () => {
+  assert.match(pickerSource, /IntersectionObserver/);
+  assert.match(pickerSource, /loadMoreChildren/);
+  assert.match(pickerSource, /nextCursor/);
+  assert.match(pickerSource, /hasMore/);
+});

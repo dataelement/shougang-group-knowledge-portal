@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, NoReturn, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
@@ -74,9 +74,18 @@ def get_domain_file_count_service(
     )
 
 
-def _raise_bisheng_business_error(err: BishengBusinessError) -> None:
+def _raise_bisheng_business_error(err: BishengBusinessError) -> NoReturn:
     status_code = 403 if err.status_code in {_BISHENG_PERMISSION_DENIED_CODE, 404} else 502
     raise HTTPException(status_code=status_code, detail=err.status_message)
+
+
+_QA_TREE_FORBIDDEN_CODES = {_BISHENG_PERMISSION_DENIED_CODE, 18000}  # SpacePermissionDenied / SpaceNotFound
+
+
+def _raise_qa_tree_children_error(err: BishengBusinessError) -> NoReturn:
+    if err.status_code in _QA_TREE_FORBIDDEN_CODES:
+        raise HTTPException(status_code=403, detail="包含无权限或不存在的知识库")
+    _raise_bisheng_business_error(err)
 
 
 def _normalize_document_types(raw_items: Any) -> list[dict[str, Any]]:
@@ -450,8 +459,8 @@ async def list_qa_tree_children(
     space_id: int,
     request: Request,
     parent_id: Optional[int] = Query(default=None),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=100, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None),
+    page_size: int = Query(default=10, ge=1, le=100),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
@@ -464,14 +473,18 @@ async def list_qa_tree_children(
         public_space_ids = {space.id for space in (await service.list_public_spaces()).data}
         if space_id not in public_space_ids:
             raise HTTPException(status_code=403, detail="未登录仅可浏览公共知识库目录")
-        return response_ok(
-            await service.get_qa_tree_children(
-                space_id=space_id,
-                parent_id=parent_id,
-                page=page,
-                page_size=page_size,
+        try:
+            return response_ok(
+                await service.get_qa_tree_children(
+                    space_id=space_id,
+                    parent_id=parent_id,
+                    cursor=cursor,
+                    page_size=page_size,
+                )
             )
-        )
+        except BishengBusinessError as err:
+            # _raise_qa_tree_children_error 必定抛 HTTPException(不会 fall through)
+            _raise_qa_tree_children_error(err)
 
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
@@ -479,17 +492,19 @@ async def list_qa_tree_children(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        visible_space_ids = {space.id for space in (await service.list_visible_spaces()).data}
-        if space_id not in visible_space_ids:
-            raise HTTPException(status_code=403, detail="包含无权限或不存在的知识库")
-        return response_ok(
-            await service.get_qa_tree_children(
-                space_id=space_id,
-                parent_id=parent_id,
-                page=page,
-                page_size=page_size,
+        # 信任上游 /children 的读权限校验:不再自己全量拉取可见空间做预检。
+        try:
+            return response_ok(
+                await service.get_qa_tree_children(
+                    space_id=space_id,
+                    parent_id=parent_id,
+                    cursor=cursor,
+                    page_size=page_size,
+                )
             )
-        )
+        except BishengBusinessError as err:
+            # _raise_qa_tree_children_error 必定抛 HTTPException(不会 fall through)
+            _raise_qa_tree_children_error(err)
     finally:
         await bisheng_client.aclose()
 

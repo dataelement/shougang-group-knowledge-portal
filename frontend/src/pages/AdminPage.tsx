@@ -280,7 +280,8 @@ interface SiteDraft {
 interface DocumentTypeDraft {
   code: string;
   label: string;
-  children: Array<{ code: string; label: string }>;
+  description_examples: string;
+  children: Array<{ code?: string; label: string }>;
 }
 
 export default function AdminPage() {
@@ -5117,13 +5118,13 @@ async function persistSections(sections: SectionConfig[], setConfig: Dispatch<Se
   setConfig((current) => (current ? { ...current, sections: data.sections } : current));
 }
 
-function normalizeDocumentTypeCode(value: string): string {
-  return value.trim().toUpperCase();
+function normalizeDocumentTypeCode(value?: string): string {
+  return (value ?? '').trim().toUpperCase();
 }
 
 function getDocumentTypeChildren(documentType: DocumentTypeConfig): Array<{ code: string; label: string }> {
   if (Array.isArray(documentType.children) && documentType.children.length) {
-    return documentType.children.map((child) => ({ code: child.code, label: child.label }));
+    return documentType.children.map((child) => ({ code: child.code ?? '', label: child.label }));
   }
   return documentType.code && documentType.label
     ? [{ code: documentType.code, label: documentType.label }]
@@ -5132,12 +5133,13 @@ function getDocumentTypeChildren(documentType: DocumentTypeConfig): Array<{ code
 
 function createDocumentTypeDraft(documentType?: DocumentTypeConfig): DocumentTypeDraft {
   if (!documentType) {
-    return { code: '', label: '', children: [{ code: '', label: '' }] };
+    return { code: '', label: '', description_examples: '', children: [{ label: '' }] };
   }
   const children = getDocumentTypeChildren(documentType);
   return {
     code: documentType.code,
     label: documentType.label,
+    description_examples: documentType.description_examples ?? '',
     children: children.length ? children : [{ code: documentType.code, label: documentType.label }],
   };
 }
@@ -5149,25 +5151,23 @@ function buildDocumentTypeFromDraft(
 ): { documentType?: DocumentTypeConfig; error?: string } {
   const code = normalizeDocumentTypeCode(draft.code);
   const label = draft.label.trim();
+  const description_examples = draft.description_examples.trim();
   if (!code) return { error: '请输入一级分类编码' };
   if (!label) return { error: '请输入一级分类名称' };
   if (documentTypes.some((item, index) => index !== editIndex && normalizeDocumentTypeCode(item.code) === code)) {
     return { error: '一级分类编码已存在' };
   }
 
-  const children: Array<{ code: string; label: string }> = [];
+  const children: NonNullable<DocumentTypeConfig['children']> = [];
   for (const child of draft.children) {
     const childCode = normalizeDocumentTypeCode(child.code);
     const childLabel = child.label.trim();
-    if (!childCode && !childLabel) continue;
-    if (!childCode || !childLabel) {
-      return { error: '请完整填写二级分类编码和名称' };
-    }
-    children.push({ code: childCode, label: childLabel });
+    if (!childLabel) continue;
+    children.push(childCode ? { code: childCode, label: childLabel } : { label: childLabel });
   }
   if (!children.length) return { error: '每个一级分类必须至少添加一个二级分类' };
 
-  const childCodes = children.map((child) => child.code);
+  const childCodes = children.map((child) => normalizeDocumentTypeCode(child.code)).filter(Boolean);
   if (childCodes.some((childCode, index) => childCodes.indexOf(childCode) !== index)) {
     return { error: '同一一级分类下的二级分类编码不能重复' };
   }
@@ -5176,11 +5176,11 @@ function buildDocumentTypeFromDraft(
     if (index === editIndex) return;
     getDocumentTypeChildren(item).forEach((child) => existingChildCodes.add(normalizeDocumentTypeCode(child.code)));
   });
-  if (children.some((child) => existingChildCodes.has(child.code))) {
+  if (children.some((child) => existingChildCodes.has(normalizeDocumentTypeCode(child.code)))) {
     return { error: '二级分类编码已存在，请使用全局唯一编码' };
   }
 
-  return { documentType: { code, label, children } };
+  return { documentType: { code, label, description_examples, children } };
 }
 
 async function persistDocumentTypes(document_types: DocumentTypeConfig[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
@@ -5962,16 +5962,18 @@ function DocumentTypesTable({
           <tr>
             <th>编码</th>
             <th>名称</th>
+            <th>分类描述及示例</th>
             <th>二级分类</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           {documentTypes.length === 0 ? (
-            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#888' }}>暂无文件分类，请点击右上角添加</td></tr>
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#888' }}>暂无文件分类，请点击右上角添加</td></tr>
           ) : documentTypes.map((dt, index) => {
             const children = getDocumentTypeChildren(dt);
             const expanded = expandedCodes.has(dt.code);
+            const descriptionExamples = dt.description_examples?.trim() ?? '';
             return (
               <Fragment key={dt.code}>
                 <tr className={s.documentTypeRow} onClick={() => onToggleExpand(dt.code)}>
@@ -5993,6 +5995,15 @@ function DocumentTypesTable({
                     </div>
                   </td>
                   <td>{dt.label}</td>
+                  <td>
+                    {descriptionExamples ? (
+                      <span className={s.documentTypeDescription} title={descriptionExamples}>
+                        {descriptionExamples}
+                      </span>
+                    ) : (
+                      <span className={s.inlineHint}>--</span>
+                    )}
+                  </td>
                   <td><span className={s.inlineHint}>{children.length} 个二级分类</span></td>
                   <td onClick={(event) => event.stopPropagation()}>
                     <div className={s.actionGroup}>
@@ -6005,11 +6016,10 @@ function DocumentTypesTable({
                 </tr>
                 {expanded ? (
                   <tr className={s.documentTypeChildRow}>
-                    <td colSpan={4}>
+                    <td colSpan={5}>
                       <div className={s.childTypeList}>
                         {children.map((child) => (
-                          <div className={s.childTypeItem} key={child.code}>
-                            <span className={s.keyBadge}>{child.code}</span>
+                          <div className={s.childTypeItem} key={child.code || child.label}>
                             <span>{child.label}</span>
                           </div>
                         ))}
@@ -6046,7 +6056,7 @@ function DocumentTypeEditorDialog({
   onSubmit: () => void;
 }) {
   if (!open) return null;
-  function updateChild(index: number, patch: Partial<{ code: string; label: string }>) {
+  function updateChild(index: number, patch: Partial<{ code?: string; label: string }>) {
     onChange((current) => ({
       ...current,
       children: current.children.map((child, i) => i === index ? { ...child, ...patch } : child),
@@ -6069,6 +6079,15 @@ function DocumentTypeEditorDialog({
               <span className={s.fieldLabel}>一级分类名称</span>
               <input className={s.formInput} value={draft.label} placeholder="如 政策制度" onChange={(e) => onChange((current) => ({ ...current, label: e.target.value }))} />
             </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>分类描述及示例</span>
+              <textarea
+                className={s.formTextarea}
+                value={draft.description_examples}
+                placeholder="填写该一级分类的说明、适用范围或示例文件，可留空"
+                onChange={(e) => onChange((current) => ({ ...current, description_examples: e.target.value }))}
+              />
+            </label>
           </div>
           <div className={s.childTypeEditor}>
             <div className={s.childTypeEditorHeader}>
@@ -6076,7 +6095,7 @@ function DocumentTypeEditorDialog({
               <button
                 type="button"
                 className={s.inlineBtn}
-                onClick={() => onChange((current) => ({ ...current, children: [...current.children, { code: '', label: '' }] }))}
+                onClick={() => onChange((current) => ({ ...current, children: [...current.children, { label: '' }] }))}
                 disabled={saving}
               >
                 <Plus size={14} /> 添加二级分类
@@ -6085,7 +6104,6 @@ function DocumentTypeEditorDialog({
             <div className={s.childTypeEditorList}>
               {draft.children.map((child, index) => (
                 <div className={s.childTypeEditorRow} key={index}>
-                  <input className={s.formInput} value={child.code} placeholder="二级编码" onChange={(event) => updateChild(index, { code: event.target.value })} />
                   <input className={s.formInput} value={child.label} placeholder="二级名称" onChange={(event) => updateChild(index, { label: event.target.value })} />
                   <button
                     type="button"
