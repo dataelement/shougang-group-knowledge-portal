@@ -4,7 +4,7 @@
  * 路由：/expert-qa/manage  （需管理员权限）
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { UIEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -97,10 +97,34 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
   const [userSearch, setUserSearch] = useState(initial.expert_name ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const isEdit = mode === 'edit';
   const selectedUser = users.find((item) => item.user_id === form.user_id);
   const hasMoreUsers = usersTotal === 0 || users.length < usersTotal;
   const selectedUserName = selectedUser?.user_name || form.expert_name || '已选用户';
+
+  const isDirty = useMemo(() => {
+    const normalize = (v: string | null | undefined) => (v ?? '').trim();
+    return (
+      normalize(form.expert_name) !== normalize(initial.expert_name) ||
+      Number(form.user_id || 0) !== Number(initial.user_id || 0) ||
+      normalize(form.depart_ment) !== normalize(initial.depart_ment) ||
+      normalize(form.introduction) !== normalize(initial.introduction) ||
+      normalize(form.major) !== normalize(initial.major)
+    );
+  }, [form, initial]);
+
+  function requestClose() {
+    if (isDirty) {
+      setShowUnsavedConfirm(true);
+    } else {
+      onClose();
+    }
+  }
+
+  function handleSaveAndClose() {
+    void handleSubmit();
+  }
 
   function set(key: keyof ExpertUpsertPayload, value: string | number) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -240,11 +264,11 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
   }
 
   return (
-    <div className={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={s.overlay} onClick={(e) => e.target === e.currentTarget && requestClose()}>
       <div className={s.modal}>
         <div className={s.modalHead}>
           <span className={s.modalTitle}>{mode === 'create' ? '新增专家' : '编辑专家'}</span>
-          <button type="button" className={s.modalClose} onClick={onClose} aria-label="关闭">
+          <button type="button" className={s.modalClose} onClick={requestClose} aria-label="关闭">
             <X size={14} />
           </button>
         </div>
@@ -355,7 +379,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
         </div>
 
         <div className={s.modalFoot}>
-          <button type="button" className={s.btnGhost} onClick={onClose} disabled={loading}>
+          <button type="button" className={s.btnGhost} onClick={requestClose} disabled={loading}>
             取消
           </button>
           <button
@@ -365,6 +389,57 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
             disabled={loading}
           >
             {loading ? '提交中…' : mode === 'create' ? '创建专家' : '保存更改'}
+          </button>
+        </div>
+      </div>
+      {showUnsavedConfirm ? (
+        <UnsavedConfirmModal
+          onCancel={() => setShowUnsavedConfirm(false)}
+          onDiscard={onClose}
+          onSave={handleSaveAndClose}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 未保存提示弹窗
+// ═══════════════════════════════════════════════════════════════
+
+interface UnsavedConfirmProps {
+  onCancel: () => void;
+  onDiscard: () => void;
+  onSave: () => void;
+}
+
+function UnsavedConfirmModal({ onCancel, onDiscard, onSave }: UnsavedConfirmProps) {
+  return (
+    <div className={s.overlay} onClick={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className={s.modal} style={{ maxWidth: 420 }}>
+        <div className={s.modalHead}>
+          <span className={s.modalTitle}>未保存的更改</span>
+          <button type="button" className={s.modalClose} onClick={onCancel} aria-label="关闭">
+            <X size={14} />
+          </button>
+        </div>
+        <div className={s.confirmBody}>
+          <div className={s.confirmIcon}>
+            <TriangleAlert size={24} />
+          </div>
+          <p className={s.confirmText}>
+            当前填写的专家信息尚未保存，关闭后将丢失已输入的内容。是否保存？
+          </p>
+        </div>
+        <div className={s.modalFoot}>
+          <button type="button" className={s.btnGhost} onClick={onCancel}>
+            取消
+          </button>
+          <button type="button" className={s.btnGhost} onClick={onDiscard}>
+            不保存
+          </button>
+          <button type="button" className={s.btnPrimary} onClick={onSave}>
+            保存
           </button>
         </div>
       </div>
