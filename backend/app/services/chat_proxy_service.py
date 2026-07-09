@@ -269,47 +269,41 @@ class ChatProxyService:
         self._unwrap_bisheng_data(payload)
 
     async def list_agent_workflow_conversations(self, page: int = 1, limit: int = 20):
-        agents = await self.list_agent_workflows()
-        if not agents:
+        payload = await self._bisheng.get_json(
+            "/api/v1/workstation/app/portal-agent-conversations",
+            params={"page": page, "limit": limit},
+        )
+        data = self._unwrap_bisheng_data(payload)
+        raw_items = data.get("list") if isinstance(data, dict) else data
+        if not isinstance(raw_items, list):
             return []
 
         conversations: list[dict] = []
         seen_chat_ids: set[str] = set()
-        for agent in agents:
-            workflow_id = str(agent.get("workflow_id") or "").strip()
-            if not workflow_id:
+        for item in raw_items:
+            if not isinstance(item, dict):
                 continue
-            payload = await self._bisheng.get_json(
-                "/api/v1/workstation/app/conversations",
-                params={"flow_id": workflow_id, "page": page, "limit": limit},
+            chat_id = str(item.get("chat_id") or item.get("conversationId") or "").strip()
+            if not chat_id or chat_id in seen_chat_ids:
+                continue
+            seen_chat_ids.add(chat_id)
+            workflow_id = str(item.get("workflow_id") or item.get("flow_id") or "").strip()
+            conversations.append(
+                {
+                    "agent_id": item.get("agent_id"),
+                    "agent_name": item.get("agent_name"),
+                    "workflow_id": workflow_id,
+                    "chat_id": chat_id,
+                    "name": item.get("name") or item.get("title") or item.get("agent_name"),
+                    "flow_id": item.get("flow_id") or workflow_id,
+                    "flow_name": item.get("flow_name") or item.get("agent_name"),
+                    "flow_type": item.get("flow_type") or 10,
+                    "logo": item.get("logo") or "",
+                    "latest_message": item.get("latest_message"),
+                    "create_time": item.get("create_time") or item.get("createdAt") or "",
+                    "update_time": item.get("update_time") or item.get("updateAt") or item.get("create_time") or "",
+                }
             )
-            data = self._unwrap_bisheng_data(payload)
-            raw_items = data.get("list") if isinstance(data, dict) else data
-            if not isinstance(raw_items, list):
-                continue
-            for item in raw_items:
-                if not isinstance(item, dict):
-                    continue
-                chat_id = str(item.get("chat_id") or item.get("conversationId") or "").strip()
-                if not chat_id or chat_id in seen_chat_ids:
-                    continue
-                seen_chat_ids.add(chat_id)
-                conversations.append(
-                    {
-                        "agent_id": agent.get("id"),
-                        "agent_name": agent.get("name"),
-                        "workflow_id": workflow_id,
-                        "chat_id": chat_id,
-                        "name": item.get("name") or item.get("title") or agent.get("name"),
-                        "flow_id": item.get("flow_id") or workflow_id,
-                        "flow_name": item.get("flow_name") or agent.get("name"),
-                        "flow_type": item.get("flow_type") or 10,
-                        "logo": item.get("logo") or "",
-                        "latest_message": item.get("latest_message"),
-                        "create_time": item.get("create_time") or item.get("createdAt") or "",
-                        "update_time": item.get("update_time") or item.get("updateAt") or item.get("create_time") or "",
-                    }
-                )
         return conversations
 
     async def list_agent_workflows(self):
