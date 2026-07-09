@@ -942,10 +942,32 @@
   gap: 6px;
 }
 
+.spacePickerGroupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .spacePickerGroupTitle {
   font-size: 0.76rem;
   font-weight: 700;
   color: var(--neutral-600);
+}
+
+.spacePickerGroupSelectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--neutral-600);
+  cursor: pointer;
+}
+
+.spacePickerGroupSelectAll input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
 }
 
 .spacePickerOption {

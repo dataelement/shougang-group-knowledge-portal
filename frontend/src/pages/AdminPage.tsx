@@ -2128,28 +2128,60 @@ function DomainEditorDialog({
             <span className={s.fieldLabel}>绑定空间</span>
             <div className={s.spaceMultiPicker}>
               {spacesLoading ? <div className={s.spacePickerEmpty}>正在加载候选空间...</div> : null}
-              {getDomainBindableSpaceGroups(spaces).map((group) => (
-                <div key={group.level} className={s.spacePickerGroup}>
-                  <div className={s.spacePickerGroupTitle}>{group.label}</div>
-                  {group.options.length ? (
-                    group.options.map((space) => (
-                      <label key={space.id} className={s.spacePickerOption}>
-                        <input
-                          type="checkbox"
-                          checked={selectedSpaceIds.has(String(space.id))}
-                          onChange={() => toggleSpace(String(space.id))}
-                        />
-                        <span className={s.spacePickerName}>{space.name}</span>
-                        {(space.business_domain_codes ?? []).length ? (
-                          <span className={s.spacePickerMeta}>{space.business_domain_codes?.join(' / ')}</span>
-                        ) : null}
-                      </label>
-                    ))
-                  ) : (
-                    <div className={s.spacePickerEmpty}>暂无{group.label}</div>
-                  )}
+              {getDomainBindableSpaceGroups(spaces).map((group) => {
+                const groupSpaceIds = group.options.map((space) => String(space.id));
+                const allGroupSelected =
+                  groupSpaceIds.length > 0 &&
+                  groupSpaceIds.every((id) => selectedSpaceIds.has(id));
+                const toggleGroup = () => {
+                  if (allGroupSelected) {
+                    onChange({
+                      spaceIds: draft.spaceIds.filter(
+                        (id) => !groupSpaceIds.includes(id),
+                      ),
+                    });
+                  } else {
+                    onChange({
+                      spaceIds: Array.from(new Set([...draft.spaceIds, ...groupSpaceIds])),
+                    });
+                  }
+                };
+
+                return (
+                  <div key={group.level} className={s.spacePickerGroup}>
+                    <div className={s.spacePickerGroupHead}>
+                      <div className={s.spacePickerGroupTitle}>{group.label}</div>
+                      {group.options.length ? (
+                        <label className={s.spacePickerGroupSelectAll}>
+                          <span>全选</span>
+                          <input
+                            type="checkbox"
+                            checked={allGroupSelected}
+                            onChange={toggleGroup}
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                    {group.options.length ? (
+                      group.options.map((space) => (
+                        <label key={space.id} className={s.spacePickerOption}>
+                          <input
+                            type="checkbox"
+                            checked={selectedSpaceIds.has(String(space.id))}
+                            onChange={() => toggleSpace(String(space.id))}
+                          />
+                          <span className={s.spacePickerName}>{space.name}</span>
+                          {(space.business_domain_codes ?? []).length ? (
+                            <span className={s.spacePickerMeta}>{space.business_domain_codes?.join(' / ')}</span>
+                          ) : null}
+                        </label>
+                      ))
+                    ) : (
+                      <div className={s.spacePickerEmpty}>暂无{group.label}</div>
+                    )}
                 </div>
-              ))}
+              );
+            })}
             </div>
             <div className={s.selectedSpaceChips}>
               {selectedSpaces.length ? selectedSpaces.map((space) => (
