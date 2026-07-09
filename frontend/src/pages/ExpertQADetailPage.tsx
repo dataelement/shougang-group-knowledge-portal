@@ -28,6 +28,9 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
+import {
+  handleCheckQuestion,
+} from '../api/expertQa';
 import CommonFileUploadModal, {
   type CommonUploadedFile,
 } from '../components/CommonFileUploadModal';
@@ -759,6 +762,8 @@ function CommentThread({
     setState((prev) => ({ ...prev, submitting: true, error: null }));
 
     try {
+      // 校验问题是否存在安全内容
+      await handleCheckQuestion(content);
       const createdComment = await createComment({
         answer_id: answerId,
         question_id: questionId,
@@ -807,10 +812,11 @@ function CommentThread({
       onTotalChange?.(refreshedTotal);
     } catch (err) {
       console.error('评论发布失败:', err);
+      const errorMessage = err instanceof Error ? err.message : '评论发布失败，请稍后重试';
       setState((prev) => ({
         ...prev,
         submitting: false,
-        error: '评论发布失败，请稍后重试',
+        error: errorMessage,
       }));
     }
   }
@@ -1334,6 +1340,8 @@ export default function ExpertQADetailPage() {
     setSubmitError(null);
 
     try {
+      // 校验问题是否存在安全内容
+      await handleCheckQuestion(content);
       const payload: CreateAnswerPayload = {
         question_id: questionNumericId,
         content,
