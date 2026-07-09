@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 import { buildPortalLogoutStartUrl, fetchPortalMe, type PortalUser } from '../api/auth';
 import { ApiRequestError, invalidatePortalContentConfigCache } from '../api/content';
+import { invalidatePortalConfigStore } from './usePortalConfig';
 
 export type { PortalUser };
 
@@ -76,6 +77,7 @@ export function savePortalUser(user: PortalUser) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   setCurrentUser(user);
   window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
+  invalidatePortalConfigStore();
 }
 
 export function clearPortalUser() {
@@ -83,6 +85,7 @@ export function clearPortalUser() {
   window.localStorage.removeItem(STORAGE_KEY);
   setCurrentUser(null);
   window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
+  invalidatePortalConfigStore();
 }
 
 // 单飞 /auth/me：同一批组件挂载时共享同一个在途请求，只发一次；
