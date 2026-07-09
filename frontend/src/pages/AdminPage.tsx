@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronDown, ChevronRight, Trash2, Link2,
+  Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, Trash2, Link2,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -281,7 +281,7 @@ interface DocumentTypeDraft {
   code: string;
   label: string;
   description_examples: string;
-  children: Array<{ code?: string; label: string }>;
+  children: Array<{ code?: string; label: string; description_examples?: string }>;
 }
 
 export default function AdminPage() {
@@ -308,7 +308,7 @@ export default function AdminPage() {
   const [documentTypeEditIndex, setDocumentTypeEditIndex] = useState<number | null>(null);
   const [documentTypeDraft, setDocumentTypeDraft] = useState<DocumentTypeDraft>(createDocumentTypeDraft());
   const [documentTypeDialogError, setDocumentTypeDialogError] = useState('');
-  const [expandedDocumentTypeCodes, setExpandedDocumentTypeCodes] = useState<Set<string>>(() => new Set());
+  const [documentTypeChildrenIndex, setDocumentTypeChildrenIndex] = useState<number | null>(null);
   const [bishengConfig, setBishengConfig] = useState<BishengRuntimeConfig | null>(null);
   const [bishengEditorOpen, setBishengEditorOpen] = useState(false);
   const [bishengDraft, setBishengDraft] = useState<BishengDraft>(createBishengDraft());
@@ -537,29 +537,12 @@ export default function AdminPage() {
     setError('');
     try {
       await persistDocumentTypes(nextList, setConfig);
-      setExpandedDocumentTypeCodes((current) => {
-        const next = new Set(current);
-        next.add(documentType.code);
-        return next;
-      });
       setDocumentTypeDialogOpen(false);
     } catch (err) {
       setDocumentTypeDialogError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
     }
-  }
-
-  function toggleDocumentTypeExpanded(code: string) {
-    setExpandedDocumentTypeCodes((current) => {
-      const next = new Set(current);
-      if (next.has(code)) {
-        next.delete(code);
-      } else {
-        next.add(code);
-      }
-      return next;
-    });
   }
 
   function openBishengDialog(current?: BishengRuntimeConfig | null) {
@@ -927,9 +910,8 @@ export default function AdminPage() {
           {config && active === 'documentTypes' && (
             <DocumentTypesTable
               documentTypes={config.document_types}
-              expandedCodes={expandedDocumentTypeCodes}
               saving={saving}
-              onToggleExpand={toggleDocumentTypeExpanded}
+              onViewChildren={(index) => setDocumentTypeChildrenIndex(index)}
               onAdd={() => {
                 setDocumentTypeDraft(createDocumentTypeDraft());
                 setDocumentTypeEditIndex(null);
@@ -1260,6 +1242,12 @@ export default function AdminPage() {
             setDocumentTypeDialogError('');
           }}
           onSubmit={() => void handleConfirmDocumentType()}
+        />
+      ) : null}
+      {config && documentTypeChildrenIndex !== null && config.document_types[documentTypeChildrenIndex] ? (
+        <DocumentTypeChildrenDialog
+          documentType={config.document_types[documentTypeChildrenIndex]}
+          onClose={() => setDocumentTypeChildrenIndex(null)}
         />
       ) : null}
       {bishengEditorOpen ? (
@@ -5154,12 +5142,16 @@ function normalizeDocumentTypeCode(value?: string): string {
   return (value ?? '').trim().toUpperCase();
 }
 
-function getDocumentTypeChildren(documentType: DocumentTypeConfig): Array<{ code: string; label: string }> {
+function getDocumentTypeChildren(documentType: DocumentTypeConfig): Array<{ code: string; label: string; description_examples: string }> {
   if (Array.isArray(documentType.children) && documentType.children.length) {
-    return documentType.children.map((child) => ({ code: child.code ?? '', label: child.label }));
+    return documentType.children.map((child) => ({
+      code: child.code ?? '',
+      label: child.label,
+      description_examples: child.description_examples ?? '',
+    }));
   }
   return documentType.code && documentType.label
-    ? [{ code: documentType.code, label: documentType.label }]
+    ? [{ code: documentType.code, label: documentType.label, description_examples: '' }]
     : [];
 }
 
@@ -5194,8 +5186,10 @@ function buildDocumentTypeFromDraft(
   for (const child of draft.children) {
     const childCode = normalizeDocumentTypeCode(child.code);
     const childLabel = child.label.trim();
+    const childDescriptionExamples = (child.description_examples ?? '').trim();
     if (!childLabel) continue;
-    children.push(childCode ? { code: childCode, label: childLabel } : { label: childLabel });
+    const nextChild = childCode ? { code: childCode, label: childLabel } : { label: childLabel };
+    children.push(childDescriptionExamples ? { ...nextChild, description_examples: childDescriptionExamples } : nextChild);
   }
   if (!children.length) return { error: '每个一级分类必须至少添加一个二级分类' };
 
@@ -5963,9 +5957,8 @@ function BannerDeleteDialog({
 
 function DocumentTypesTable({
   documentTypes,
-  expandedCodes,
   saving,
-  onToggleExpand,
+  onViewChildren,
   onAdd,
   onEdit,
   onDelete,
@@ -5973,9 +5966,8 @@ function DocumentTypesTable({
   onMoveDown,
 }: {
   documentTypes: DocumentTypeConfig[];
-  expandedCodes: Set<string>;
   saving: boolean;
-  onToggleExpand: (code: string) => void;
+  onViewChildren: (index: number) => void;
   onAdd: () => void;
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
@@ -6004,11 +5996,10 @@ function DocumentTypesTable({
             <tr><td colSpan={5} style={{ textAlign: 'center', color: '#888' }}>暂无文件分类，请点击右上角添加</td></tr>
           ) : documentTypes.map((dt, index) => {
             const children = getDocumentTypeChildren(dt);
-            const expanded = expandedCodes.has(dt.code);
             const descriptionExamples = dt.description_examples?.trim() ?? '';
             return (
               <Fragment key={dt.code}>
-                <tr className={s.documentTypeRow} onClick={() => onToggleExpand(dt.code)}>
+                <tr className={s.documentTypeRow} onClick={() => onViewChildren(index)}>
                   <td>
                     <div className={s.documentTypeCodeCell}>
                       <button
@@ -6016,12 +6007,12 @@ function DocumentTypesTable({
                         className={s.rowExpandBtn}
                         onClick={(event) => {
                           event.stopPropagation();
-                          onToggleExpand(dt.code);
+                          onViewChildren(index);
                         }}
-                        aria-label={expanded ? '收起二级分类' : '展开二级分类'}
-                        title={expanded ? '收起二级分类' : '展开二级分类'}
+                        aria-label="查看二级分类"
+                        title="查看二级分类"
                       >
-                        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        <ChevronRight size={16} />
                       </button>
                       <span>{dt.code}</span>
                     </div>
@@ -6046,25 +6037,69 @@ function DocumentTypesTable({
                     </div>
                   </td>
                 </tr>
-                {expanded ? (
-                  <tr className={s.documentTypeChildRow}>
-                    <td colSpan={5}>
-                      <div className={s.childTypeList}>
-                        {children.map((child) => (
-                          <div className={s.childTypeItem} key={child.code || child.label}>
-                            <span>{child.label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ) : null}
               </Fragment>
             );
           })}
         </tbody>
       </table>
     </>
+  );
+}
+
+function DocumentTypeChildrenDialog({
+  documentType,
+  onClose,
+}: {
+  documentType: DocumentTypeConfig;
+  onClose: () => void;
+}) {
+  const children = getDocumentTypeChildren(documentType);
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={`${s.confirmCard} ${s.documentTypeChildrenCard}`} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader} style={{ justifyContent: "space-between" }}>
+          <div>
+            <span>二级分类列表</span>
+            <div className={s.documentTypeChildrenSubTitle}>
+              {documentType.code} / {documentType.label}，共 {children.length} 个二级分类
+            </div>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className={s.confirmBody}>
+          <table className={s.childTypeTable}>
+            <thead>
+              <tr>
+                <th>二级分类名称</th>
+                <th>分类描述及示例</th>
+              </tr>
+            </thead>
+            <tbody>
+              {children.map((child) => {
+                const childDescriptionExamples = child.description_examples.trim();
+                return (
+                  <tr key={child.code || child.label}>
+                    <td>{child.label}</td>
+                    <td>
+                      {childDescriptionExamples ? (
+                        <span className={s.documentTypeDescription} title={childDescriptionExamples}>
+                          {childDescriptionExamples}
+                        </span>
+                      ) : (
+                        <span className={s.inlineHint}>--</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -6088,7 +6123,7 @@ function DocumentTypeEditorDialog({
   onSubmit: () => void;
 }) {
   if (!open) return null;
-  function updateChild(index: number, patch: Partial<{ code?: string; label: string }>) {
+  function updateChild(index: number, patch: Partial<{ code?: string; label: string; description_examples?: string }>) {
     onChange((current) => ({
       ...current,
       children: current.children.map((child, i) => i === index ? { ...child, ...patch } : child),
@@ -6137,6 +6172,12 @@ function DocumentTypeEditorDialog({
               {draft.children.map((child, index) => (
                 <div className={s.childTypeEditorRow} key={index}>
                   <input className={s.formInput} value={child.label} placeholder="二级名称" onChange={(event) => updateChild(index, { label: event.target.value })} />
+                  <textarea
+                    className={s.formTextarea}
+                    value={child.description_examples ?? ''}
+                    placeholder="分类描述及示例，可留空"
+                    onChange={(event) => updateChild(index, { description_examples: event.target.value })}
+                  />
                   <button
                     type="button"
                     className={s.iconActionBtn}

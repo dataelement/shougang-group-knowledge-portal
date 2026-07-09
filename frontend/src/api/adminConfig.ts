@@ -135,6 +135,7 @@ export interface DocumentTypeConfig {
 export interface DocumentTypeChildConfig {
   code?: string;
   label: string;
+  description_examples?: string;
 }
 
 export interface BishengRuntimeConfig {
