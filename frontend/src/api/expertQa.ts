@@ -651,7 +651,7 @@ export async function deleteExpert(expertId: number): Promise<void> {
 }
 
 export async function fetchExpertInfoDetail(expertName: string): Promise<ExpertProfileResponse> {
-  return req<ExpertProfileResponse>(`${BASE}/experts/${encodeURIComponent(expertName)}`);
+  return req<ExpertProfileResponse>(`${BASE}/experts/name/${encodeURIComponent(expertName)}`);
 }
 
 export async function fetchExpertAnswerDetail(

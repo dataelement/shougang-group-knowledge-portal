@@ -251,7 +251,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
           user_id: userId,
           expert_name: expertName,
           introduction: form.introduction?.trim(),
-          depart_ment: form.depart_ment?.trim(),
+          depart_ment: selectedUser?.department_id?.toString() || '',
           major: form.major?.trim(),
         });
       }
