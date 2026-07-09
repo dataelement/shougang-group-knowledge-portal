@@ -38,6 +38,7 @@ import s from './ExpertQAAskPage.module.css';
 import type { DomainConfig } from '../api/adminConfig';
 import { ASK_DRAFT } from '../data/expertQaMock';
 import askBanner from '../assets/ask-banner@2x.png';
+import { resolveQaImageUrl } from '../utils/qaImageUrl';
 
 // 颜色缓存，避免每次渲染重新计算
 const colorCache = new Map<string, string>();
@@ -655,7 +656,7 @@ export default function ExpertQAAskPage() {
                 <div className={s.previewGrid}>
                   {imageUrls.map((url) => (
                     <div key={url} className={s.imagePreviewItem}>
-                      <img src={url} alt="uploaded" className={s.previewImg} />
+                      <img src={resolveQaImageUrl(url)} alt="uploaded" className={s.previewImg} />
                       <button
                         type="button"
                         className={s.removeImg}

@@ -65,6 +65,7 @@ import {
   type QuestionStatus,
 } from '../types/expertQa';
 import askBadge from '../assets/ask-badge.png';
+import { resolveQaImageUrl } from '../utils/qaImageUrl';
 import s from './ExpertQADetailPage.module.css';
 
 const ANSWERS_PAGE_SIZE = 10;
@@ -994,8 +995,8 @@ function AnswerCard({
         {answer.imageUrls?.length ? (
           <div className={s.questionImages}>
             {answer.imageUrls.map((url) => (
-              <a key={url} href={url} target="_blank" rel="noopener noreferrer">
-                <img src={url} alt="回答图片" />
+              <a key={url} href={resolveQaImageUrl(url)} target="_blank" rel="noopener noreferrer">
+                <img src={resolveQaImageUrl(url)} alt="回答图片" />
               </a>
             ))}
           </div>
@@ -1548,11 +1549,11 @@ export default function ExpertQADetailPage() {
                     {question.imageUrls.map((url) => (
                       <a
                         key={url}
-                        href={url}
+                        href={resolveQaImageUrl(url)}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        <img src={url} alt="问题图片" />
+                        <img src={resolveQaImageUrl(url)} alt="问题图片" />
                       </a>
                     ))}
                   </div>
@@ -1733,7 +1734,7 @@ export default function ExpertQADetailPage() {
                   <div className={s.commentPreviewGrid}>
                     {answerImageUrls.map((url) => (
                       <div key={url} className={s.commentImagePreview}>
-                        <img src={url} alt="已上传回答图片" />
+                        <img src={resolveQaImageUrl(url)} alt="已上传回答图片" />
                         <button
                           type="button"
                           onClick={() => removeAnswerImage(url)}

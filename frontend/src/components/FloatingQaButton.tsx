@@ -3,6 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import s from './FloatingQaButton.module.css';
 
+// 嵌入 iframe(如文件预览详情弹窗内的 embed=1 页面)时,不渲染悬浮按钮
+const IS_EMBEDDED = typeof window !== 'undefined' && window.self !== window.top;
+
 const PORTAL_PAGE_PREFIXES = [
   '/',
   '/domains',
@@ -46,7 +49,7 @@ export default function FloatingQaButton() {
     return isPortalPage(location.pathname);
   }, [location.pathname, user]);
 
-  if (!visible) return null;
+  if (!visible || IS_EMBEDDED) return null;
 
   return (
     <button

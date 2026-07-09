@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from time import monotonic
 from typing import Annotated, Any, NoReturn, Optional
 from urllib.parse import quote
 
@@ -39,6 +41,12 @@ logger = logging.getLogger(__name__)
 
 _BISHENG_DUPLICATE_FAVORITE_CODE = 18021
 _BISHENG_PERMISSION_DENIED_CODE = 18040
+_QA_MODEL_OPTIONS_CACHE_TTL_SECONDS = 300.0
+_qa_model_raw_servers_cache: dict[str, Any] = {
+    "expires_at": 0.0,
+    "raw_servers": [],
+}
+_qa_model_raw_servers_lock = asyncio.Lock()
 
 
 def _build_business_domain_options(config: PortalConfig) -> list[dict[str, str]]:
@@ -127,27 +135,39 @@ async def _build_public_qa_model_options(
     bisheng_client: BishengClient,
 ):
     try:
-        response = await bisheng_client.get_json("/api/v1/llm")
+        raw_servers = await _fetch_public_qa_model_raw_servers(bisheng_client)
     except Exception:
         logger.warning("failed to fetch public qa model options", exc_info=True)
         return portal_config_service.build_qa_model_options([])
-
-    raw_servers = response.get("data") if isinstance(response, dict) else []
-    if not isinstance(raw_servers, list):
-        raw_servers = []
     return portal_config_service.build_qa_model_options(raw_servers)
 
 
-async def _refresh_public_qa_model_display_names(
-    portal_config_service: PortalConfigService,
-    bisheng_client: BishengClient,
-    config: PortalConfig,
-) -> PortalConfig:
-    qa = config.qa
-    if not ((qa.general_model or qa.selected_model).strip() or qa.reasoning_model.strip()):
-        return config
-    await _build_public_qa_model_options(portal_config_service, bisheng_client)
-    return portal_config_service.get_config()
+async def _fetch_public_qa_model_raw_servers(bisheng_client: BishengClient) -> list[dict[str, Any]]:
+    now = monotonic()
+    cached_raw_servers = _qa_model_raw_servers_cache["raw_servers"]
+    if now < float(_qa_model_raw_servers_cache["expires_at"]) and isinstance(cached_raw_servers, list):
+        return cached_raw_servers
+
+    async with _qa_model_raw_servers_lock:
+        now = monotonic()
+        cached_raw_servers = _qa_model_raw_servers_cache["raw_servers"]
+        if now < float(_qa_model_raw_servers_cache["expires_at"]) and isinstance(cached_raw_servers, list):
+            return cached_raw_servers
+
+        try:
+            response = await bisheng_client.get_json("/api/v1/llm")
+        except Exception:
+            if isinstance(cached_raw_servers, list) and cached_raw_servers:
+                logger.warning("using stale public qa model options cache", exc_info=True)
+                return cached_raw_servers
+            raise
+
+        raw_servers = response.get("data") if isinstance(response, dict) else []
+        if not isinstance(raw_servers, list):
+            raw_servers = []
+        _qa_model_raw_servers_cache["raw_servers"] = raw_servers
+        _qa_model_raw_servers_cache["expires_at"] = monotonic() + _QA_MODEL_OPTIONS_CACHE_TTL_SECONDS
+        return raw_servers
 
 
 async def _scoped_service_and_extra_ids(
@@ -369,7 +389,6 @@ async def get_portal_config(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
     config = portal_config_service.get_config()
-    config = await _refresh_public_qa_model_display_names(portal_config_service, bisheng_client, config)
     if config.document_types:
         document_types = [dt.model_dump() for dt in config.document_types]
     else:

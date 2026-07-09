@@ -460,3 +460,10 @@
     width: min(440px, calc(100vw - 42px));
   }
 }
+
+/* 小屏电脑:保持下拉框形式,收窄宽度避免横向超出屏幕(高度沿用基础的视口自适应) */
+@media (max-width: 1024px) {
+  .panel {
+    width: min(560px, calc(100vw - 32px));
+  }
+}

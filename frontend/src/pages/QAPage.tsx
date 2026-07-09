@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Bot,
@@ -29,7 +29,6 @@ import {
   ApiRequestError,
   fetchQaKnowledgeTreeChildren,
   fetchQaKnowledgeTreeSpaces,
-  fetchPortalContentConfig,
   fetchWorkstationConversations,
   fetchWorkstationMessages,
   renameWorkstationConversation,
@@ -43,8 +42,9 @@ import {
   type WorkstationChatMessage,
   type WorkstationConversation,
 } from '../api/content';
-import { fetchQaModelOptions, type QAConfig, type QAModelOption, type QATemplateCategoryConfig, type QATemplateConfig } from '../api/adminConfig';
+import type { QAConfig, QAModelOption, QATemplateCategoryConfig, QATemplateConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
+import { usePortalConfig } from '../hooks/usePortalConfig';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
 import composerModelIcon from '../assets/composer-model.svg';
 import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
@@ -351,6 +351,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { config: portalConfig, loading: portalConfigLoading } = usePortalConfig();
   const [assistantGreeting, setAssistantGreeting] = useState(getWelcomeMessage());
   const [sessions, setSessions] = useState<Session[]>(() => [INITIAL_DRAFT_SESSION]);
   const [activeId, setActiveId] = useState(() => INITIAL_DRAFT_SESSION.id);
@@ -360,7 +361,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [availableSpaces, setAvailableSpaces] = useState<KnowledgeSpace[]>([]);
   const [selectedKnowledgeScope, setSelectedKnowledgeScope] = useState<QaKnowledgeScope>({ mode: 'none' });
-  const [loadingKnowledgeSpaces, setLoadingKnowledgeSpaces] = useState(true);
+  const [loadingKnowledgeSpaces, setLoadingKnowledgeSpaces] = useState(false);
+  const [knowledgeSpacesLoaded, setKnowledgeSpacesLoaded] = useState(false);
   const [templateCategories, setTemplateCategories] = useState<QATemplateCategoryConfig[]>([]);
   const [writingTemplates, setWritingTemplates] = useState<QATemplateConfig[]>([]);
   const [templateCategory, setTemplateCategory] = useState(ALL_TEMPLATE_CATEGORY_ID);
@@ -384,6 +386,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const abortControllerRef = useRef<AbortController | null>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
+  const knowledgePanelRef = useRef<HTMLDivElement>(null);
+  const knowledgeSpacesRequestRef = useRef(0);
 
   const activeSession = sessions.find((ss) => ss.id === activeId) ?? sessions[0];
   const enabledCategories = templateCategories.filter((category) => category.enabled);
@@ -458,25 +462,41 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [modelMenuOpen, knowledgePickerOpen]);
 
+  // 知识库下拉框:打开后按视口横向夹取,按钮靠右时也不会超出屏幕左/右边缘。
+  useLayoutEffect(() => {
+    if (!knowledgePickerOpen) return;
+    const el = knowledgePanelRef.current;
+    if (!el) return;
+    el.style.transform = '';
+    const margin = 8;
+    const rect = el.getBoundingClientRect();
+    let dx = 0;
+    if (rect.left < margin) {
+      dx = margin - rect.left;
+    } else if (rect.right > window.innerWidth - margin) {
+      dx = window.innerWidth - margin - rect.right;
+    }
+    if (dx !== 0) el.style.transform = `translateX(${dx}px)`;
+  }, [knowledgePickerOpen]);
+
   useEffect(() => {
+    if (portalConfigLoading) return undefined;
     let active = true;
     void (async () => {
       try {
-        const config = await fetchPortalContentConfig({ force: true });
-        if (!active) return;
-        const modelOptions = await fetchQaModelOptions().then((data) => data.models).catch(() => []);
+        if (!portalConfig) return;
         if (!active) return;
         const qaModelConfig = {
-          selected_model: config.qa.selected_model,
-          general_model: config.qa.general_model,
-          reasoning_model: config.qa.reasoning_model,
-          general_model_display_name: config.qa.general_model_display_name,
-          reasoning_model_display_name: config.qa.reasoning_model_display_name,
+          selected_model: portalConfig.qa.selected_model,
+          general_model: portalConfig.qa.general_model,
+          reasoning_model: portalConfig.qa.reasoning_model,
+          general_model_display_name: portalConfig.qa.general_model_display_name,
+          reasoning_model_display_name: portalConfig.qa.reasoning_model_display_name,
         };
-        const choices = buildConfiguredQaModelChoices(qaModelConfig, modelOptions);
-        setAssistantGreeting(getWelcomeMessage(config.qa.welcome_message));
-        setTemplateCategories(config.qa.template_categories);
-        setWritingTemplates(config.qa.templates);
+        const choices = buildConfiguredQaModelChoices(qaModelConfig, []);
+        setAssistantGreeting(getWelcomeMessage(portalConfig.qa.welcome_message));
+        setTemplateCategories(portalConfig.qa.template_categories);
+        setWritingTemplates(portalConfig.qa.templates);
         setModelChoices(choices);
       } catch {
         // 配置失败时保留页面本地默认值，保证问答页可用。
@@ -487,29 +507,15 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => {
       active = false;
     };
-  }, [user?.account]);
+  }, [portalConfig, portalConfigLoading, user?.account]);
 
   useEffect(() => {
-    let active = true;
-    setLoadingKnowledgeSpaces(true);
-    void fetchQaKnowledgeTreeSpaces()
-      .then(({ data: spaces }) => {
-        if (!active) return;
-        setAvailableSpaces(spaces);
-        setSelectedKnowledgeScope({ mode: 'none' });
-        if (!spaces.length) {
-          setComposerTip(user?.account ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
-        }
-      })
-      .catch(() => {
-        if (active) setComposerTip(user?.account ? '知识库列表加载失败，请确认登录状态后重试。' : '公共知识库列表加载失败，请稍后重试。');
-      })
-      .finally(() => {
-        if (active) setLoadingKnowledgeSpaces(false);
-      });
-    return () => {
-      active = false;
-    };
+    knowledgeSpacesRequestRef.current += 1;
+    setAvailableSpaces([]);
+    setSelectedKnowledgeScope({ mode: 'none' });
+    setLoadingKnowledgeSpaces(false);
+    setKnowledgeSpacesLoaded(false);
+    setKnowledgePickerOpen(false);
   }, [user?.account]);
 
   useEffect(() => {
@@ -553,6 +559,38 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const timer = window.setTimeout(() => setComposerTip(''), 2200);
     return () => window.clearTimeout(timer);
   }, [composerTip]);
+
+  async function ensureKnowledgeSpacesLoaded() {
+    if (knowledgeSpacesLoaded || loadingKnowledgeSpaces) return;
+    const requestId = knowledgeSpacesRequestRef.current + 1;
+    knowledgeSpacesRequestRef.current = requestId;
+    setLoadingKnowledgeSpaces(true);
+    try {
+      const { data: spaces } = await fetchQaKnowledgeTreeSpaces();
+      if (knowledgeSpacesRequestRef.current !== requestId) return;
+      setAvailableSpaces(spaces);
+      setSelectedKnowledgeScope({ mode: 'none' });
+      setKnowledgeSpacesLoaded(true);
+      if (!spaces.length) {
+        setComposerTip(user?.account ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
+      }
+    } catch {
+      if (knowledgeSpacesRequestRef.current === requestId) {
+        setComposerTip(user?.account ? '知识库列表加载失败，请确认登录状态后重试。' : '公共知识库列表加载失败，请稍后重试。');
+      }
+    } finally {
+      if (knowledgeSpacesRequestRef.current === requestId) {
+        setLoadingKnowledgeSpaces(false);
+      }
+    }
+  }
+
+  function toggleKnowledgePicker() {
+    setKnowledgePickerOpen((value) => !value);
+    if (!knowledgePickerOpen) {
+      void ensureKnowledgeSpacesLoaded();
+    }
+  }
 
   const updateLastBotMessage = (sessionId: string, mutator: (last: Message) => Message) => {
     setSessions((prev) =>
@@ -1047,15 +1085,15 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
             <button
               type="button"
               className={s.smartAppToolItem}
-              disabled={loadingKnowledgeSpaces || !availableSpaces.length}
-              onClick={() => setKnowledgePickerOpen((value) => !value)}
+              disabled={loadingKnowledgeSpaces}
+              onClick={toggleKnowledgePicker}
             >
               <img className={s.smartAppToolIcon} src={composerKnowledgeIcon} alt="" aria-hidden="true" />
               <span>{knowledgePickerLabel}</span>
               <ChevronDown size={12} className={s.smartAppToolCaret} />
             </button>
             {knowledgePickerOpen ? (
-              <div className={s.knowledgePanel}>
+              <div className={s.knowledgePanel} ref={knowledgePanelRef}>
                 <QAKnowledgeTreePicker
                   spaces={availableSpaces}
                   scope={selectedKnowledgeScope}
@@ -1148,15 +1186,15 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               <button
                 type="button"
                 className={s.pillButton}
-                disabled={loadingKnowledgeSpaces || !availableSpaces.length}
-                onClick={() => setKnowledgePickerOpen((value) => !value)}
+                disabled={loadingKnowledgeSpaces}
+                onClick={toggleKnowledgePicker}
               >
                 <Search size={15} />
                 {knowledgePickerLabel}
                 <ChevronDown size={14} />
               </button>
               {knowledgePickerOpen ? (
-                <div className={s.knowledgePanel}>
+                <div className={s.knowledgePanel} ref={knowledgePanelRef}>
                   <QAKnowledgeTreePicker
                     spaces={availableSpaces}
                     scope={selectedKnowledgeScope}

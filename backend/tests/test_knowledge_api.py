@@ -2040,25 +2040,25 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
             return await super().post_json(path, json=json, headers=headers)
 
         async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/workstation/app/conversations":
+            if path == "/api/v1/workstation/app/portal-agent-conversations":
                 self.calls.append(params)
                 return {
                     "status_code": 200,
-                    "data": {
-                        "list": [
-                            {
-                                "chat_id": f"chat-{params['flow_id']}",
-                                "name": f"{params['flow_id']} 历史会话",
-                                "flow_id": params["flow_id"],
-                                "flow_name": f"{params['flow_id']} 工作流",
-                                "flow_type": 10,
-                                "create_time": "2026-06-25T09:00:00",
-                                "update_time": "2026-06-25T10:00:00",
-                                "latest_message": {"message": "workflow 已运行"},
-                            }
-                        ],
-                        "total": 1,
-                    },
+                    "data": [
+                        {
+                            "agent_id": "agent-a",
+                            "agent_name": "智能体 A",
+                            "workflow_id": "wf-a",
+                            "chat_id": "chat-wf-a",
+                            "name": "wf-a 历史会话",
+                            "flow_id": "wf-a",
+                            "flow_name": "wf-a 工作流",
+                            "flow_type": 10,
+                            "create_time": "2026-06-25T09:00:00",
+                            "update_time": "2026-06-25T10:00:00",
+                            "latest_message": {"message": "workflow 已运行"},
+                        }
+                    ],
                 }
             return await super().get_json(path, params=params, headers=headers)
 
@@ -2102,8 +2102,8 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
                 client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
-    assert user_bisheng.agent_workflow_calls == [{"workflow_ids": ["wf-a"]}]
-    assert user_bisheng.calls == [{"flow_id": "wf-a", "page": 1, "limit": 20}]
+    assert user_bisheng.agent_workflow_calls == []
+    assert user_bisheng.calls == [{"page": 1, "limit": 20}]
     body = response.json()["data"]
     assert body[0]["chat_id"] == "chat-wf-a"
     assert body[0]["agent_id"] == "agent-a"
