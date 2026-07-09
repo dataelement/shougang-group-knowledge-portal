@@ -248,7 +248,7 @@ function splitStoredList(value?: string | null): string[] {
 }
 
 function splitInvitedNames(value?: string | null): string[] {
-  if (!value?.trim()) return [];
+  if (typeof value !== 'string' || !value.trim()) return [];
   return value
     .split(INVITED_NAME_SPLIT_PATTERN)
     .map((item) => item.trim())
@@ -307,9 +307,7 @@ async function mapQuestionDetail(
   );
   const results = await Promise.allSettled(
     invitedNames.map(async (name, index) => {
-      // 1. 去掉多余的 await
-      const expert = buildInvitedExpert(name, index, question.created_at);
-      
+      const expert = await buildInvitedExpert(name, index, question.created_at);
       let status: 'answered' | 'pending' = 'pending';
       try {
         const res = await fetchExpertAnswerDetail(question.id, name);

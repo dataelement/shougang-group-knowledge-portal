@@ -286,6 +286,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
                 value={form.expert_name}
                 placeholder="选择关联用户后自动填充"
                 readOnly
+                disabled={true}
               />
             </div>
             <div className={s.field}>
@@ -355,6 +356,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
               value={form.depart_ment ?? ''}
               placeholder="选择关联用户后自动填充"
               readOnly
+              disabled={true}
             />
           </div>
 

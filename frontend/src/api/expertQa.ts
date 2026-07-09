@@ -660,7 +660,7 @@ export async function fetchExpertAnswerDetail(
 ): Promise<ApiAnswer | null> {
   try {
     const res = await req<unknown>(
-      `${BASE}/answers/${encodeURIComponent(questionId)}${qs({ expert_name: expertName })}`,
+      `${BASE}/questions/${encodeURIComponent(questionId)}/answers${qs({ expert_name: expertName })}`,
     );
     if (Array.isArray(res)) return (res[0] as ApiAnswer | undefined) ?? null;
     if (!res || typeof res !== 'object') return null;
