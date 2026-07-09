@@ -27,7 +27,6 @@ from app.schemas.knowledge import (
     FilePreviewMode,
     FilePreviewSourceKind,
     FileTag,
-    HomeKnowledgeData,
     KnowledgeFileDetail,
     KnowledgeFileItem,
     KnowledgeFileSpace,
@@ -218,133 +217,58 @@ class KnowledgeService:
             builtin_key = str(getattr(section, "builtin_key", "") or "")
         return builtin_key == TYPICAL_CASE_SECTION_KEY
 
-    async def get_home_content(self, extra_space_ids: Optional[list[int]] = None) -> HomeKnowledgeData:
+    async def iter_home_content(
+        self, extra_space_ids: Optional[list[int]] = None
+    ) -> AsyncIterator[tuple[str, list[KnowledgeFileItem]]]:
+        """Yield ``(tag, items)`` for each enabled home section as soon as it is ready.
+
+        Every section is fetched through an independent ``search_files`` request that
+        runs concurrently; results are emitted in completion order so the caller can
+        stream each section without waiting for the slowest one. A failing section
+        yields an empty list instead of aborting the whole stream.
+        """
         config = self._config_service.get_config()
         space_ids = await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
         sections = [section for section in config.sections if section.enabled and section.tag]
         if not space_ids or not sections:
-            return HomeKnowledgeData(
-                sections={section.tag: [] for section in sections},
-                tags=[],
-            )
-        try:
-            direct_section_results = await asyncio.gather(
-                *[
-                    self.search_files(
-                        q=None,
-                        tag=None if self._is_latest_selected_section(section, index) else section.tag,
-                        base_tag=None,
-                        requested_space_ids=space_ids,
-                        space_level=None,
-                        file_ext=None,
-                        document_type=None,
-                        business_domain_code=None,
-                        recommendation=(
-                            LATEST_SELECTED_RECOMMENDATION
-                            if self._is_latest_selected_section(section, index)
-                            else None
-                        ),
-                        sort=(
-                            "portal_read_count_desc"
-                            if self._is_latest_selected_section(section, index)
-                            else "updated_at_desc"
-                        ),
-                        cursor=None,
-                        limit=config.display.home.section_page_size,
-                        extra_space_ids=extra_space_ids,
-                    )
-                    for index, section in enumerate(sections)
-                    if self._is_latest_selected_section(section, index)
-                    or self._is_typical_case_section(section)
-                ],
-                return_exceptions=True,
-            )
-            direct_result_by_tag = {
-                section.tag: result
-                for section, result in zip(
-                    [
-                        section
-                        for index, section in enumerate(sections)
-                        if self._is_latest_selected_section(section, index)
-                        or self._is_typical_case_section(section)
-                    ],
-                    direct_section_results,
-                )
-            }
-            section_payloads: list[dict[str, Any]] = []
-            for index, section in enumerate(sections):
-                if self._is_latest_selected_section(section, index) or self._is_typical_case_section(section):
-                    continue
-                section_payload: dict[str, Any] = {
-                    "tag": section.tag,
-                    "page_size": config.display.home.section_page_size,
-                }
-                section_payloads.append(section_payload)
+            for section in sections:
+                yield section.tag, []
+            return
 
-            data: dict[str, Any] = {"sections": {}, "tags": []}
-            if section_payloads:
-                response = await self._bisheng.post_json(
-                    "/api/v1/knowledge/shougang-portal/home",
-                    json={
-                        "space_ids": space_ids,
-                        "space_level": None,
-                        "sections": section_payloads,
-                        "hot_tags_limit": config.display.home.hot_tags_count,
-                    },
+        async def fetch_section(section: Any, index: int) -> tuple[str, list[KnowledgeFileItem]]:
+            is_latest = self._is_latest_selected_section(section, index)
+            try:
+                result = await self.search_files(
+                    q=None,
+                    tag=None if is_latest else section.tag,
+                    base_tag=None,
+                    requested_space_ids=space_ids,
+                    space_level=None,
+                    file_ext=None,
+                    document_type=None,
+                    business_domain_code=None,
+                    recommendation=LATEST_SELECTED_RECOMMENDATION if is_latest else None,
+                    sort="portal_read_count_desc" if is_latest else "updated_at_desc",
+                    cursor=None,
+                    limit=config.display.home.section_page_size,
+                    extra_space_ids=extra_space_ids,
                 )
-                data = response.get("data") or {}
-            else:
-                data["tags"] = await self.get_aggregated_tags(space_ids, extra_space_ids=extra_space_ids)
-            raw_sections = data.get("sections") if isinstance(data, dict) else {}
-            raw_tags = data.get("tags") if isinstance(data, dict) else []
-            mapped_sections: dict[str, list[KnowledgeFileItem]] = {}
-            for index, section in enumerate(sections):
-                if self._is_latest_selected_section(section, index) or self._is_typical_case_section(section):
-                    result = direct_result_by_tag.get(section.tag)
-                    mapped_sections[section.tag] = [] if isinstance(result, Exception) or result is None else result.data
-                    continue
-                raw_items = raw_sections.get(section.tag, []) if isinstance(raw_sections, dict) else []
-                mapped_sections[section.tag] = self._map_shougang_portal_response_items(raw_items)
-            tags = list(dict.fromkeys(str(tag) for tag in raw_tags if str(tag))) if isinstance(raw_tags, list) else []
-            return HomeKnowledgeData(sections=mapped_sections, tags=tags)
-        except Exception:
-            section_results = await asyncio.gather(
-                *[
-                    self.search_files(
-                        q=None,
-                        tag=None if self._is_latest_selected_section(section, index) else section.tag,
-                        base_tag=None,
-                        requested_space_ids=space_ids,
-                        space_level=None,
-                        file_ext=None,
-                        document_type=None,
-                        business_domain_code=None,
-                        recommendation=LATEST_SELECTED_RECOMMENDATION
-                        if self._is_latest_selected_section(section, index)
-                        else None,
-                        sort=(
-                            "portal_read_count_desc"
-                            if self._is_latest_selected_section(section, index)
-                            else "updated_at_desc"
-                        ),
-                        cursor=None,
-                        limit=config.display.home.section_page_size,
-                        extra_space_ids=extra_space_ids,
-                    )
-                    for index, section in enumerate(sections)
-                ],
-                return_exceptions=True,
-            )
-            tags = await self.get_aggregated_tags(space_ids, extra_space_ids=extra_space_ids)
-            return HomeKnowledgeData(
-                sections={
-                    section.tag: (
-                        [] if isinstance(result, Exception) else result.data
-                    )
-                    for section, result in zip(sections, section_results)
-                },
-                tags=tags[:config.display.home.hot_tags_count],
-            )
+                return section.tag, result.data
+            except Exception:
+                return section.tag, []
+
+        tasks = [
+            asyncio.ensure_future(fetch_section(section, index))
+            for index, section in enumerate(sections)
+        ]
+        try:
+            for completed in asyncio.as_completed(tasks):
+                tag, items = await completed
+                yield tag, items
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
 
     async def list_visible_spaces(self) -> KnowledgeSpaceListData:
         grouped_spaces = await self._fetch_grouped_spaces()
@@ -681,24 +605,11 @@ class KnowledgeService:
                 business_domain_code=normalized_business_domain_code,
             )
 
-        if self._should_use_full_tag_search(
-            q=q,
-            tag=effective_tag,
-            file_ext=file_ext,
-            document_type=document_type,
-            file_subcategory_code=file_subcategory_code,
-            business_domain_code=normalized_business_domain_code,
-            recommendation=recommendation,
-        ):
-            return await self._search_tag_files_across_spaces(
-                tag=effective_tag or "",
-                space_ids=space_ids,
-                sort=sort,
-                cursor=cursor,
-                limit=limit,
-                extra_space_ids=extra_space_ids,
-            )
-
+        # Plain single-tag queries (no q / filters / recommendation) go to the upstream
+        # aggregate endpoint, which resolves the tag and paginates server-side with a real
+        # cursor instead of pulling every tagged file per space and sorting in memory. The
+        # two-level base_tag+tag case above still needs the cross-space merge because the
+        # aggregate endpoint accepts a single tag only.
         return await self._search_shougang_portal_files(
             q=q,
             tag=effective_tag,
@@ -712,27 +623,6 @@ class KnowledgeService:
             sort=sort,
             cursor=cursor,
             limit=limit,
-        )
-
-    @staticmethod
-    def _should_use_full_tag_search(
-        *,
-        q: Optional[str],
-        tag: Optional[str],
-        file_ext: Optional[str],
-        document_type: Optional[str],
-        file_subcategory_code: Optional[str],
-        business_domain_code: Optional[str],
-        recommendation: Optional[str],
-    ) -> bool:
-        return bool(
-            tag
-            and not q
-            and not file_ext
-            and not document_type
-            and not file_subcategory_code
-            and not business_domain_code
-            and not recommendation
         )
 
     async def _search_tag_files_across_spaces(

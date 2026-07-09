@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7,6 +8,26 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.schemas.portal_config import AgentConfig, SectionsConfigUpdate
 from app.services.portal_config_service import PortalConfigService
+
+
+def _parse_home_sse(response) -> tuple[dict, bool]:
+    """Parse the SSE body of ``/api/v1/knowledge/home`` into ``(sections_by_tag, done)``.
+
+    Section events arrive in completion order, so results are keyed by tag rather than
+    relying on ordering.
+    """
+    sections: dict = {}
+    done = False
+    for block in response.text.split("\n\n"):
+        data_lines = [line[len("data: "):] for line in block.splitlines() if line.startswith("data: ")]
+        if not data_lines:
+            continue
+        payload = json.loads("\n".join(data_lines))
+        if payload.get("type") == "section":
+            sections[payload["tag"]] = payload["items"]
+        elif payload.get("type") == "done":
+            done = True
+    return sections, done
 
 
 def _seed_test_spaces(service: PortalConfigService) -> None:
@@ -2577,92 +2598,79 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_keyword_search(tmp
     ]
 
 
-def test_search_files_uses_full_space_search_for_plain_tag_query(tmp_path: Path):
-    class FullTagSearchBishengClient(FakeBishengClient):
-        def __init__(self):
-            super().__init__()
-            self.get_calls = []
+def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tmp_path: Path):
+    class BatchTagSearchBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path.endswith("/tag") or path.endswith("/search"):
+                raise AssertionError("plain tag query should use shougang portal batch endpoint")
+            return await super().get_json(path, params=params, headers=headers)
 
         async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
-                raise AssertionError("plain tag query should use full per-space search")
+                base_request = {
+                    "q": None,
+                    "tag": "行业情报",
+                    "space_ids": [12, 18],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "updated_at_desc",
+                    "limit": 2,
+                    "rerank_model_id": "",
+                }
+                if json == {**base_request, "cursor": None}:
+                    return {
+                        "data": {
+                            "data": [
+                                {
+                                    "id": 1801,
+                                    "space_id": 18,
+                                    "title": "行业最新简报.pdf",
+                                    "summary": "最新简报",
+                                    "updated_at": "2026-04-15T08:00:00",
+                                    "tags": ["行业情报"],
+                                    "file_size": "18KB",
+                                    "file_encoding": "SG-NEW",
+                                },
+                                {
+                                    "id": 1202,
+                                    "space_id": 12,
+                                    "title": "行业中期简报.pdf",
+                                    "summary": "中期简报",
+                                    "updated_at": "2026-04-12T08:00:00",
+                                    "tags": ["行业情报"],
+                                    "file_size": "12KB",
+                                    "file_encoding": "SG-MID",
+                                },
+                            ],
+                            "has_more": True,
+                            "next_cursor": "cursor:next",
+                        }
+                    }
+                if json == {**base_request, "cursor": "cursor:next"}:
+                    return {
+                        "data": {
+                            "data": [
+                                {
+                                    "id": 1201,
+                                    "space_id": 12,
+                                    "title": "行业旧简报.pdf",
+                                    "summary": "旧简报",
+                                    "updated_at": "2026-04-10T08:00:00",
+                                    "tags": ["行业情报"],
+                                    "file_size": "10KB",
+                                    "file_encoding": "SG-OLD",
+                                }
+                            ],
+                            "has_more": False,
+                            "next_cursor": None,
+                        }
+                    }
             return await super().post_json(path, json=json, headers=headers)
-
-        async def get_json(self, path: str, params=None, headers=None):
-            self.get_calls.append((path, params))
-            if path == "/api/v1/knowledge/space/12/tag":
-                return {"data": [{"id": 901, "name": "行业情报"}]}
-            if path == "/api/v1/knowledge/space/18/tag":
-                return {"data": [{"id": 902, "name": "行业情报"}]}
-            if path == "/api/v1/knowledge/space/12/search":
-                assert params == {
-                    "page": 1,
-                    "page_size": 100,
-                    "file_status": 2,
-                    "tag_ids": [901],
-                }
-                return {
-                    "data": {
-                        "data": [
-                            {
-                                "id": 1201,
-                                "knowledge_id": 12,
-                                "file_name": "行业旧简报.pdf",
-                                "abstract": "旧简报",
-                                "file_type": 1,
-                                "status": 2,
-                                "file_size": "10KB",
-                                "file_encoding": "SG-OLD",
-                                "update_time": "2026-04-10T08:00:00",
-                                "tags": [{"id": 901, "name": "行业情报"}],
-                            },
-                            {
-                                "id": 1202,
-                                "knowledge_id": 12,
-                                "file_name": "行业中期简报.pdf",
-                                "abstract": "中期简报",
-                                "file_type": 1,
-                                "status": 2,
-                                "file_size": "12KB",
-                                "file_encoding": "SG-MID",
-                                "update_time": "2026-04-12T08:00:00",
-                                "tags": [{"id": 901, "name": "行业情报"}],
-                            },
-                        ],
-                        "total": 2,
-                    }
-                }
-            if path == "/api/v1/knowledge/space/18/search":
-                assert params == {
-                    "page": 1,
-                    "page_size": 100,
-                    "file_status": 2,
-                    "tag_ids": [902],
-                }
-                return {
-                    "data": {
-                        "data": [
-                            {
-                                "id": 1801,
-                                "knowledge_id": 18,
-                                "file_name": "行业最新简报.pdf",
-                                "abstract": "最新简报",
-                                "file_type": 1,
-                                "status": 2,
-                                "file_size": "18KB",
-                                "file_encoding": "SG-NEW",
-                                "update_time": "2026-04-15T08:00:00",
-                                "tags": [{"id": 902, "name": "行业情报"}],
-                            }
-                        ],
-                        "total": 1,
-                    }
-                }
-            return await super().get_json(path, params=params, headers=headers)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
-    fake_bisheng = FullTagSearchBishengClient()
+    fake_bisheng = BatchTagSearchBishengClient()
     with TestClient(app) as client:
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_config_service = config_service
@@ -2673,7 +2681,7 @@ def test_search_files_uses_full_space_search_for_plain_tag_query(tmp_path: Path)
                 "/api/v1/knowledge/files?tag=%E8%A1%8C%E4%B8%9A%E6%83%85%E6%8A%A5&space_ids=12&space_ids=18&sort=updated_at_desc&limit=2"
             )
             second = client.get(
-                "/api/v1/knowledge/files?tag=%E8%A1%8C%E4%B8%9A%E6%83%85%E6%8A%A5&space_ids=12&space_ids=18&sort=updated_at_desc&limit=2&cursor=offset%3A2"
+                "/api/v1/knowledge/files?tag=%E8%A1%8C%E4%B8%9A%E6%83%85%E6%8A%A5&space_ids=12&space_ids=18&sort=updated_at_desc&limit=2&cursor=cursor%3Anext"
             )
         finally:
             if previous_auth is not None:
@@ -2683,14 +2691,43 @@ def test_search_files_uses_full_space_search_for_plain_tag_query(tmp_path: Path)
     first_body = first.json()["data"]
     assert [item["id"] for item in first_body["data"]] == [1801, 1202]
     assert first_body["has_more"] is True
-    assert first_body["next_cursor"] == "offset:2"
+    assert first_body["next_cursor"] == "cursor:next"
 
     assert second.status_code == 200
     second_body = second.json()["data"]
     assert [item["id"] for item in second_body["data"]] == [1201]
     assert second_body["has_more"] is False
     assert second_body["next_cursor"] is None
-    assert fake_bisheng.post_calls == []
+    assert fake_bisheng.post_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/files/search",
+            {
+                "q": None,
+                "tag": "行业情报",
+                "space_ids": [12, 18],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "updated_at_desc",
+                "cursor": None,
+                "limit": 2,
+                "rerank_model_id": "",
+            },
+        ),
+        (
+            "/api/v1/knowledge/shougang-portal/files/search",
+            {
+                "q": None,
+                "tag": "行业情报",
+                "space_ids": [12, 18],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "updated_at_desc",
+                "cursor": "cursor:next",
+                "limit": 2,
+                "rerank_model_id": "",
+            },
+        ),
+    ]
 
 
 def test_search_files_applies_base_tag_and_filter_tag_as_and_query(tmp_path: Path):
@@ -3131,41 +3168,10 @@ def test_related_files_use_full_space_search_without_portal_top50(tmp_path: Path
 
 def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(tmp_path: Path):
     class HomeBuiltinSearchBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/space/18/tag":
-                return {"data": [{"id": 901, "name": "典型案例"}]}
-            if path == "/api/v1/knowledge/space/18/search":
-                assert params == {
-                    "page": 1,
-                    "page_size": 100,
-                    "file_status": 2,
-                    "tag_ids": [901],
-                }
-                return {
-                    "data": {
-                        "data": [
-                            {
-                                "id": 1590,
-                                "knowledge_id": 18,
-                                "file_name": "典型事故案例复盘.docx",
-                                "abstract": "按更多列表口径返回的典型案例",
-                                "file_type": 1,
-                                "status": 2,
-                                "file_size": "128KB",
-                                "file_encoding": "GF-ZD-SC-202604-01202",
-                                "update_time": "2026-04-14T10:30:00",
-                                "tags": [{"id": 901, "name": "典型案例"}],
-                            }
-                        ],
-                        "total": 1,
-                    }
-                }
-            return await super().get_json(path, params=params, headers=headers)
-
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
-                assert json == {
+                if json == {
                     "q": None,
                     "tag": None,
                     "space_ids": [12, 18, 25],
@@ -3176,27 +3182,59 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
                     "limit": 6,
                     "recommendation": "latest_selected",
                     "rerank_model_id": "",
-                }
-                return {
-                    "data": {
-                        "data": [
-                            {
-                                "id": 1580,
-                                "space_id": 12,
-                                "title": "热轧1580产线精轧机振动纹治理实践",
-                                "summary": "振动纹治理实践摘要",
-                                "source": "轧线技术案例库",
-                                "updated_at": "2026-04-13T10:30:00",
-                                "tags": ["热轧"],
-                                "file_ext": "pdf",
-                                "file_size": "949.33KB",
-                                "file_encoding": "GF-ZD-SC-202604-01201",
-                            }
-                        ],
-                        "has_more": False,
-                        "next_cursor": None,
+                }:
+                    return {
+                        "data": {
+                            "data": [
+                                {
+                                    "id": 1580,
+                                    "space_id": 12,
+                                    "title": "热轧1580产线精轧机振动纹治理实践",
+                                    "summary": "振动纹治理实践摘要",
+                                    "source": "轧线技术案例库",
+                                    "updated_at": "2026-04-13T10:30:00",
+                                    "tags": ["热轧"],
+                                    "file_ext": "pdf",
+                                    "file_size": "949.33KB",
+                                    "file_encoding": "GF-ZD-SC-202604-01201",
+                                }
+                            ],
+                            "has_more": False,
+                            "next_cursor": None,
+                        }
                     }
-                }
+                if json == {
+                    "q": None,
+                    "tag": "典型案例",
+                    "space_ids": [12, 18, 25],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "updated_at_desc",
+                    "cursor": None,
+                    "limit": 6,
+                    "rerank_model_id": "",
+                }:
+                    return {
+                        "data": {
+                            "data": [
+                                {
+                                    "id": 1590,
+                                    "space_id": 18,
+                                    "title": "典型事故案例复盘.docx",
+                                    "summary": "按更多列表口径返回的典型案例",
+                                    "source": "事故分析库",
+                                    "updated_at": "2026-04-14T10:30:00",
+                                    "tags": ["典型案例"],
+                                    "file_ext": "docx",
+                                    "file_size": "128KB",
+                                    "file_encoding": "GF-ZD-SC-202604-01202",
+                                }
+                            ],
+                            "has_more": False,
+                            "next_cursor": None,
+                        }
+                    }
+                raise AssertionError(f"Unexpected portal file search request: {json}")
             if path == "/api/v1/knowledge/shougang-portal/home":
                 raise AssertionError("builtin latest selected and typical case should not use home batch endpoint")
             if path == "/api/v1/knowledge/shougang-portal/tags/search":
@@ -3219,91 +3257,99 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
         response = client.get("/api/v1/knowledge/home")
 
     assert response.status_code == 200
-    body = response.json()["data"]
-    assert body["sections"]["知识推荐"][0]["space_id"] == 12
-    assert body["sections"]["典型案例"][0]["id"] == 1590
-    assert body["sections"]["典型案例"][0]["space_id"] == 18
-    assert body["tags"] == ["典型案例", "热轧", "知识推荐"]
-    assert fake_bisheng.post_calls == [
-        (
-            "/api/v1/knowledge/shougang-portal/files/search",
-            {
-                "q": None,
-                "tag": None,
-                "space_ids": [12, 18, 25],
-                "space_level": None,
-                "file_ext": None,
-                "sort": "portal_read_count_desc",
-                "cursor": None,
-                "limit": 6,
-                "recommendation": "latest_selected",
-                "rerank_model_id": "",
-            },
-        ),
-        ("/api/v1/knowledge/shougang-portal/tags/search", {"space_ids": [12, 18, 25], "space_level": None}),
-    ]
+    assert response.headers["content-type"].startswith("text/event-stream")
+    sections, done = _parse_home_sse(response)
+    assert done is True
+    assert sections["知识推荐"][0]["space_id"] == 12
+    assert sections["典型案例"][0]["id"] == 1590
+    assert sections["典型案例"][0]["space_id"] == 18
+    # latest_selected section is fetched via the portal file-search endpoint with the recommendation flag
+    assert (
+        "/api/v1/knowledge/shougang-portal/files/search",
+        {
+            "q": None,
+            "tag": None,
+            "space_ids": [12, 18, 25],
+            "space_level": None,
+            "file_ext": None,
+            "sort": "portal_read_count_desc",
+            "cursor": None,
+            "limit": 6,
+            "recommendation": "latest_selected",
+            "rerank_model_id": "",
+        },
+    ) in fake_bisheng.post_calls
+    assert (
+        "/api/v1/knowledge/shougang-portal/files/search",
+        {
+            "q": None,
+            "tag": "典型案例",
+            "space_ids": [12, 18, 25],
+            "space_level": None,
+            "file_ext": None,
+            "sort": "updated_at_desc",
+            "cursor": None,
+            "limit": 6,
+            "rerank_model_id": "",
+        },
+    ) in fake_bisheng.post_calls
+    # tags are no longer aggregated for the home stream
+    assert all(path != "/api/v1/knowledge/shougang-portal/tags/search" for path, _ in fake_bisheng.post_calls)
 
 
 def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_path: Path):
     class LoggedHomeBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/space/7102/tag":
-                return {"data": [{"id": 902, "name": "典型案例"}]}
-            if path == "/api/v1/knowledge/space/7102/search":
-                assert params == {
-                    "page": 1,
-                    "page_size": 100,
-                    "file_status": 2,
-                    "tag_ids": [902],
-                }
-                return {
-                    "data": {
-                        "data": [
-                            {
-                                "id": 710102,
-                                "knowledge_id": 7102,
-                                "file_name": "登录用户可见典型案例.pdf",
-                                "abstract": "用户可见空间内的典型案例",
-                                "file_type": 1,
-                                "status": 2,
-                                "file_size": "1024",
-                                "file_encoding": "SGGF-CAS-PM-202604-00001",
-                                "update_time": "2026-04-26T09:20:00",
-                                "tags": [{"id": 902, "name": "典型案例"}],
-                            }
-                        ],
-                        "total": 1,
-                    }
-                }
-            return await super().get_json(path, params=params, headers=headers)
-
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
                 assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
-                assert json.get("recommendation") == "latest_selected"
-                assert json["tag"] is None
-                assert json["sort"] == "portal_read_count_desc"
-                return {
-                    "data": {
-                        "data": [
-                            {
-                                "id": 710101,
-                                "space_id": 7101,
-                                "title": "登录用户可见热门文档",
-                                "summary": "用户可见空间内的热门文档",
-                                "source": "冷轧设备故障复盘库",
-                                "updated_at": "2026-04-26T09:20:00",
-                                "tags": ["设备"],
-                                "file_ext": "pdf",
-                                "file_size": "1024",
-                                "file_encoding": "SGGF-CAS-PM-202604-00001",
-                            }
-                        ],
-                        "has_more": False,
-                        "next_cursor": None,
+                if json.get("recommendation") == "latest_selected":
+                    assert json["tag"] is None
+                    assert json["sort"] == "portal_read_count_desc"
+                    return {
+                        "data": {
+                            "data": [
+                                {
+                                    "id": 710101,
+                                    "space_id": 7101,
+                                    "title": "登录用户可见热门文档",
+                                    "summary": "用户可见空间内的热门文档",
+                                    "source": "冷轧设备故障复盘库",
+                                    "updated_at": "2026-04-26T09:20:00",
+                                    "tags": ["设备"],
+                                    "file_ext": "pdf",
+                                    "file_size": "1024",
+                                    "file_encoding": "SGGF-CAS-PM-202604-00001",
+                                }
+                            ],
+                            "has_more": False,
+                            "next_cursor": None,
+                        }
                     }
-                }
+                if json.get("tag") == "典型案例":
+                    assert json.get("recommendation") is None
+                    assert json["sort"] == "updated_at_desc"
+                    return {
+                        "data": {
+                            "data": [
+                                {
+                                    "id": 710102,
+                                    "space_id": 7102,
+                                    "title": "登录用户可见典型案例.pdf",
+                                    "summary": "用户可见空间内的典型案例",
+                                    "source": "冷轧设备故障复盘库",
+                                    "updated_at": "2026-04-26T09:20:00",
+                                    "tags": ["典型案例"],
+                                    "file_ext": "pdf",
+                                    "file_size": "1024",
+                                    "file_encoding": "SGGF-CAS-PM-202604-00001",
+                                }
+                            ],
+                            "has_more": False,
+                            "next_cursor": None,
+                        }
+                    }
+                raise AssertionError(f"Unexpected portal file search request: {json}")
             if path == "/api/v1/knowledge/shougang-portal/home":
                 raise AssertionError("builtin latest selected and typical case should not use home batch endpoint")
             if path == "/api/v1/knowledge/shougang-portal/tags/search":
@@ -3325,9 +3371,11 @@ def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_
                 client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
-    body = response.json()["data"]
-    assert body["sections"]["最新精选"][0]["space_id"] == 7101
-    assert body["sections"]["典型案例"][0]["space_id"] == 7102
+    assert response.headers["content-type"].startswith("text/event-stream")
+    sections, done = _parse_home_sse(response)
+    assert done is True
+    assert sections["最新精选"][0]["space_id"] == 7101
+    assert sections["典型案例"][0]["space_id"] == 7102
 
 
 def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path):
@@ -3398,6 +3446,52 @@ def test_search_and_tags_skip_unauthorized_spaces_instead_of_500(tmp_path: Path)
                 response = httpx.Response(401, request=request)
                 raise httpx.HTTPStatusError("unauthorized", request=request, response=response)
             return await super().get_json(path, params=params)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/files/search" and json == {
+                "q": None,
+                "tag": "热轧",
+                "space_ids": [12, 18],
+                "space_level": None,
+                "file_ext": None,
+                "sort": "relevance",
+                "cursor": None,
+                "limit": 20,
+                "rerank_model_id": "",
+            }:
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "热轧1580产线精轧机振动纹治理实践",
+                                "summary": "振动纹治理实践摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": ["热轧", "振动纹"],
+                                "file_ext": "pdf",
+                                "file_size": "949.33KB",
+                                "file_encoding": "GF-ZD-SC-202604-01201",
+                            },
+                            {
+                                "id": 1590,
+                                "space_id": 12,
+                                "title": "热轧加热炉温度控制",
+                                "summary": "温度控制摘要",
+                                "source": "轧线技术案例库",
+                                "updated_at": "2026-04-10T08:00:00",
+                                "tags": ["热轧"],
+                                "file_ext": "docx",
+                                "file_size": "2.32MB",
+                                "file_encoding": "GF-ZD-SC-202604-01193",
+                            },
+                        ],
+                        "has_more": False,
+                        "next_cursor": None,
+                    }
+                }
+            return await super().post_json(path, json=json, headers=headers)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
@@ -3569,3 +3663,48 @@ def test_list_space_files_closes_per_user_client_when_visible_spaces_fetch_fails
     assert response.status_code == 500
     assert user_client.aclose_calls == 1
     assert system_client.aclose_calls == 0
+
+
+def test_iter_home_content_streams_sections_in_completion_order(tmp_path: Path):
+    """Each section is fetched concurrently and emitted as soon as it is ready:
+    a slow section must not hold back a fast one."""
+    import asyncio
+
+    from app.schemas.knowledge import CursorKnowledgeFileData, KnowledgeFileItem
+    from app.services.knowledge_service import KnowledgeService
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    service = KnowledgeService(bisheng_client=FakeBishengClient(), portal_config_service=config_service)
+
+    async def fake_resolve(*args, **kwargs):
+        return [12]
+
+    async def fake_search_files(**kwargs):
+        is_latest = kwargs.get("recommendation") == "latest_selected"
+        if is_latest:
+            # Make the latest_selected section noticeably slower than the other one.
+            await asyncio.sleep(0.05)
+        item = KnowledgeFileItem(
+            id=1 if is_latest else 2,
+            space_id=12,
+            title="latest" if is_latest else str(kwargs.get("tag")),
+            summary="",
+            source="",
+            updated_at="",
+        )
+        return CursorKnowledgeFileData(data=[item], has_more=False, next_cursor=None)
+
+    service.resolve_requested_space_ids = fake_resolve  # type: ignore[assignment]
+    service.search_files = fake_search_files  # type: ignore[assignment]
+
+    async def collect():
+        emitted = []
+        async for tag, items in service.iter_home_content():
+            emitted.append(tag)
+        return emitted
+
+    tags_in_order = asyncio.run(collect())
+    assert set(tags_in_order) == {"最新精选", "典型案例"}
+    # The fast typical_case section is emitted before the slow latest_selected one.
+    assert tags_in_order.index("典型案例") < tags_in_order.index("最新精选")

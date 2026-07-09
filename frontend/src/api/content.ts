@@ -418,10 +418,9 @@ interface RelatedKnowledgeFileDataDto {
   total: number;
 }
 
-interface HomeKnowledgeDataDto {
-  sections: Record<string, KnowledgeFileItemDto[]>;
-  tags: string[];
-}
+type HomeStreamEvent =
+  | { type: 'section'; tag: string; items: KnowledgeFileItemDto[] }
+  | { type: 'done' };
 
 interface HomeStatsDataDto {
   total_documents: number;
@@ -679,14 +678,55 @@ export async function fetchAggregatedTags(
   return request<string[]>(`/api/v1/knowledge/tags${query ? `?${query}` : ''}`);
 }
 
-export async function fetchHomeContent(): Promise<{ sections: Record<string, FileItem[]>; tags: string[] }> {
-  const data = await request<HomeKnowledgeDataDto>('/api/v1/knowledge/home');
-  return {
-    sections: Object.fromEntries(
-      Object.entries(data.sections ?? {}).map(([tag, items]) => [tag, items.map(mapKnowledgeFileItem)]),
-    ),
-    tags: data.tags ?? [],
-  };
+export async function streamHomeContent(params: {
+  onSection: (tag: string, items: FileItem[]) => void;
+  onDone?: () => void;
+  signal?: AbortSignal;
+}): Promise<void> {
+  const response = await fetch('/api/v1/knowledge/home', {
+    credentials: 'include',
+    signal: params.signal,
+    headers: { Accept: 'text/event-stream' },
+  });
+  if (!response.ok) {
+    const payload = await response.clone().json().catch(() => null) as { detail?: string; status_code?: number; status_message?: string } | null;
+    const message = normalizeUserFacingMessage(
+      payload?.status_message || payload?.detail,
+      '首页数据加载失败，请稍后重试。',
+      response.status,
+    );
+    throw new ApiRequestError(message, response.status, payload?.status_code);
+  }
+  if (!response.body) {
+    throw new Error('首页数据加载失败');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+    for (const event of events) {
+      const dataLines = event.split('\n').filter((line) => line.startsWith('data: '));
+      if (dataLines.length === 0) continue;
+      const raw = dataLines.map((line) => line.slice(6)).join('\n');
+      let payload: HomeStreamEvent;
+      try {
+        payload = JSON.parse(raw) as HomeStreamEvent;
+      } catch {
+        continue;
+      }
+      if (payload.type === 'section') {
+        params.onSection(payload.tag, (payload.items ?? []).map(mapKnowledgeFileItem));
+      } else if (payload.type === 'done') {
+        params.onDone?.();
+      }
+    }
+  }
 }
 
 export async function fetchDomainFileCounts(): Promise<Record<string, number>> {

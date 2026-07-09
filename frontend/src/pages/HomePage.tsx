@@ -12,7 +12,7 @@ import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
-  fetchHomeContent,
+  streamHomeContent,
   fetchDomainFileCounts,
   fetchHomeStats,
   streamChatCompletion,
@@ -445,6 +445,7 @@ export default function HomePage() {
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
+  const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
   const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [sectionDataFailed, setSectionDataFailed] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
@@ -632,17 +633,29 @@ export default function HomePage() {
       active = false;
     };
 
+    const controller = new AbortController();
     setSectionDataFailed(false);
     setSectionDataLoading(true);
+    setSectionData({});
+    setLoadedSectionTags(new Set());
     void (async () => {
       try {
-        const homeContent = await fetchHomeContent();
-        if (!active) return;
-        setSectionData(homeContent.sections);
-        setSectionDataFailed(false);
-        setLoadError('');
+        await streamHomeContent({
+          signal: controller.signal,
+          onSection: (tag, items) => {
+            if (!active) return;
+            setSectionData((prev) => ({ ...prev, [tag]: items }));
+            setLoadedSectionTags((prev) => {
+              const next = new Set(prev);
+              next.add(tag);
+              return next;
+            });
+            setSectionDataFailed(false);
+            setLoadError('');
+          },
+        });
       } catch (err) {
-        if (!active) return;
+        if (!active || controller.signal.aborted) return;
         setSectionDataFailed(true);
         setLoadError(err instanceof Error ? err.message : '首页数据加载失败');
       } finally {
@@ -652,6 +665,7 @@ export default function HomePage() {
 
     return () => {
       active = false;
+      controller.abort();
     };
   }, [config]);
 
@@ -927,7 +941,7 @@ export default function HomePage() {
             {contentSections.map((sec, index) => {
               const fetchedItems = sectionData[sec.tag] || [];
               const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems;
-              const showLoading = sectionDataLoading && !useMockHomeContent;
+              const showLoading = sectionDataLoading && !useMockHomeContent && !loadedSectionTags.has(sec.tag);
               const moreLink = buildSectionMoreLink(sec);
               return (
                 <div
