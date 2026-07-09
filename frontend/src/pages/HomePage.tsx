@@ -253,166 +253,6 @@ const MOCK_DOMAIN_STATS = new Map([
   ['管理', 217],
 ]);
 
-const MOCK_HOME_SECTIONS: SectionConfig[] = [
-  {
-    title: '最新精选',
-    tag: '最新精选',
-    link: '/list?recommendation=latest_selected',
-    icon: 'Star',
-    builtin_key: 'latest_selected',
-    color: '#2563eb',
-    bg: '#eff6ff',
-    enabled: true,
-  },
-  {
-    title: '典型案例',
-    tag: '典型案例',
-    link: '/list?tag=%E5%85%B8%E5%9E%8B%E6%A1%88%E4%BE%8B',
-    icon: 'AlertTriangle',
-    builtin_key: 'typical_case',
-    color: '#dc2626',
-    bg: '#fee2e2',
-    enabled: true,
-  },
-];
-
-const MOCK_HOME_SECTION_DATA: Record<string, FileItem[]> = {
-  最新精选: [
-    {
-      id: 91001,
-      spaceId: 9003,
-      title: '热轧产线设备点检标准化操作指引',
-      summary: '覆盖巡检路线、点检频次、异常记录和交接班协同要求，适合设备岗位日常执行和班组培训使用。',
-      source: '设备业务域演示空间',
-      date: '2026-05-13T09:20:00+08:00',
-      tags: ['最新精选', '设备', '点检'],
-      tag_infos: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '设备', resource_type: 'manual_tag' }, { tag_name: '点检', resource_type: 'manual_tag' }],
-      ext: 'pdf',
-      sizeLabel: '2.4 MB',
-      fileEncoding: 'UTF-8',
-    },
-    {
-      id: 91002,
-      spaceId: 9004,
-      title: '有限空间作业风险辨识与审批要点',
-      summary: '梳理作业前确认、气体检测、监护配置和应急处置的关键控制项。',
-      source: '安全业务域演示空间',
-      date: '2026-05-12T16:45:00+08:00',
-      tags: ['最新精选', '安全生产'],
-      tag_infos: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '安全生产', resource_type: 'manual_tag' }],
-      ext: 'docx',
-      sizeLabel: '1.1 MB',
-      fileEncoding: 'UTF-8',
-    },
-    {
-      id: 91003,
-      spaceId: 9008,
-      title: '能源中心日负荷预测数据看板说明',
-      summary: '说明关键指标口径、异常波动识别方式和调度联动流程。',
-      source: '能源业务域演示空间',
-      date: '2026-05-11T10:12:00+08:00',
-      tags: ['最新精选', '能源管控'],
-      tag_infos: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '能源管控', resource_type: 'manual_tag' }],
-      ext: 'xlsx',
-      sizeLabel: '860 KB',
-      fileEncoding: 'UTF-8',
-    },
-    {
-      id: 91004,
-      spaceId: 9001,
-      title: '重点客户技术协议归档与检索规范',
-      summary: '统一技术协议命名、版本标识和归档字段，提升营销、质量和研发协同查询效率。',
-      source: '营销业务域演示空间',
-      date: '2026-05-10T15:18:00+08:00',
-      tags: ['最新精选', '营销'],
-      tag_infos: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '营销', resource_type: 'manual_tag' }],
-      ext: 'docx',
-      sizeLabel: '1.4 MB',
-      fileEncoding: 'UTF-8',
-    },
-    {
-      id: 91005,
-      spaceId: 9007,
-      title: '生产系统权限申请与变更流程说明',
-      summary: '面向生产一线系统账号开通、权限变更和离岗回收场景，明确审批链路和安全审计要求。',
-      source: '信息业务域演示空间',
-      date: '2026-05-09T09:35:00+08:00',
-      tags: ['最新精选', '信息'],
-      tag_infos: [{ tag_name: '最新精选', resource_type: 'manual_tag' }, { tag_name: '信息', resource_type: 'manual_tag' }],
-      ext: 'pdf',
-      sizeLabel: '980 KB',
-      fileEncoding: 'UTF-8',
-    },
-  ],
-  典型案例: [
-    {
-      id: 92001,
-      spaceId: 9009,
-      title: '高强钢板形波动问题复盘与参数优化',
-      summary: '从订单规格、轧制节奏、温控窗口和在线检测数据四个维度复盘板形波动原因，并形成参数优化建议。',
-      source: '质量业务域演示空间',
-      date: '2026-05-10T14:30:00+08:00',
-      tags: ['典型案例', '质量'],
-      tag_infos: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '质量', resource_type: 'manual_tag' }],
-      ext: 'pdf',
-      sizeLabel: '3.2 MB',
-      fileEncoding: 'UTF-8',
-    },
-    {
-      id: 92002,
-      spaceId: 9003,
-      title: '加热炉燃烧器异响处置案例',
-      summary: '记录异常发现、现场检查、备件替换和复产验证过程，为同类设备故障提供排查路径。',
-      source: '设备业务域演示空间',
-      date: '2026-05-09T11:05:00+08:00',
-      tags: ['典型案例', '设备'],
-      tag_infos: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '设备', resource_type: 'manual_tag' }],
-      ext: 'docx',
-      sizeLabel: '1.8 MB',
-      fileEncoding: 'UTF-8',
-    },
-    {
-      id: 92003,
-      spaceId: 9004,
-      title: '检修交叉作业安全协同案例',
-      summary: '围绕检修窗口压缩、外协人员交叉进入和风险告知不足等问题，沉淀班前会与现场监护改进项。',
-      source: '安全业务域演示空间',
-      date: '2026-05-08T08:40:00+08:00',
-      tags: ['典型案例', '安全生产'],
-      tag_infos: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '安全生产', resource_type: 'manual_tag' }],
-      ext: 'pdf',
-      sizeLabel: '2.0 MB',
-      fileEncoding: 'UTF-8',
-    },
-    {
-      id: 92004,
-      spaceId: 9008,
-      title: '空压站能耗异常波动分析案例',
-      summary: '通过分时负荷、设备启停和管网压力数据定位异常点，并形成运行策略调整建议。',
-      source: '能源业务域演示空间',
-      date: '2026-05-07T13:22:00+08:00',
-      tags: ['典型案例', '能源管控'],
-      tag_infos: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '能源管控', resource_type: 'manual_tag' }],
-      ext: 'xlsx',
-      sizeLabel: '760 KB',
-      fileEncoding: 'UTF-8',
-    },
-    {
-      id: 92005,
-      spaceId: 9002,
-      title: '月度成本归集口径差异处理案例',
-      summary: '对比产线、班组和科目口径差异，沉淀跨部门成本归集校验清单。',
-      source: '财务业务域演示空间',
-      date: '2026-05-06T16:10:00+08:00',
-      tags: ['典型案例', '财务'],
-      tag_infos: [{ tag_name: '典型案例', resource_type: 'manual_tag' }, { tag_name: '财务', resource_type: 'manual_tag' }],
-      ext: 'pdf',
-      sizeLabel: '1.2 MB',
-      fileEncoding: 'UTF-8',
-    },
-  ],
-};
-
 const BANNER_OVERLAY_GRADIENT =
   'linear-gradient(180deg, rgba(43, 118, 246, 0.52) 0%, rgba(59, 143, 246, 0.36) 38%, rgba(22, 98, 178, 0.34) 100%), linear-gradient(90deg, rgba(37, 99, 235, 0.18) 0%, rgba(37, 99, 235, 0.04) 46%, rgba(37, 99, 235, 0.16) 100%)';
 
@@ -447,7 +287,6 @@ export default function HomePage() {
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
   const [sectionDataLoading, setSectionDataLoading] = useState(false);
-  const [sectionDataFailed, setSectionDataFailed] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
@@ -634,7 +473,6 @@ export default function HomePage() {
     };
 
     const controller = new AbortController();
-    setSectionDataFailed(false);
     setSectionDataLoading(true);
     setSectionData({});
     setLoadedSectionTags(new Set());
@@ -650,13 +488,12 @@ export default function HomePage() {
               next.add(tag);
               return next;
             });
-            setSectionDataFailed(false);
             setLoadError('');
           },
         });
       } catch (err) {
         if (!active || controller.signal.aborted) return;
-        setSectionDataFailed(true);
+        setSectionData({});
         setLoadError(err instanceof Error ? err.message : '首页数据加载失败');
       } finally {
         if (active) setSectionDataLoading(false);
@@ -673,14 +510,13 @@ export default function HomePage() {
   const activeBanner = homeBanners[safeBannerIdx] ?? homeBanners[0];
   const configuredHomeDomains = enabledDomains.slice(0, displayConfig.home.domainCount);
   const useMockShellContent = !config && !configLoading;
-  const useMockHomeContent = useMockShellContent || sectionDataFailed;
   const isUsingMockDomains = useMockShellContent && configuredHomeDomains.length === 0;
   const homeDomains = isUsingMockDomains ? MOCK_DOMAIN_NAV_ITEMS : configuredHomeDomains;
   const domainTotals = isUsingMockDomains ? MOCK_DOMAIN_STATS : new Map(homeDomains.map((domain) => {
     const code = (domain.code || '').trim().toUpperCase();
     return [domain.name, code ? (domainCounts[code] ?? 0) : 0] as [string, number];
   }));
-  const homeSections = (useMockHomeContent ? MOCK_HOME_SECTIONS : enabledSections).slice(0, 3);
+  const homeSections = enabledSections.slice(0, 3);
   const contentSections = homeSections;
   const assistantGreeting = getWelcomeMessage(config?.qa.welcome_message);
   const qaHotQuestionsTemp = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
@@ -940,8 +776,8 @@ export default function HomePage() {
           <div className={s.leftColumn}>
             {contentSections.map((sec, index) => {
               const fetchedItems = sectionData[sec.tag] || [];
-              const items = useMockHomeContent ? (MOCK_HOME_SECTION_DATA[sec.tag] || []) : fetchedItems;
-              const showLoading = sectionDataLoading && !useMockHomeContent && !loadedSectionTags.has(sec.tag);
+              const items = fetchedItems;
+              const showLoading = sectionDataLoading && !loadedSectionTags.has(sec.tag);
               const moreLink = buildSectionMoreLink(sec);
               return (
                 <div
