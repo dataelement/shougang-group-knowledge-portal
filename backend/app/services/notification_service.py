@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from app.clients.bisheng import BishengClient
@@ -27,8 +28,10 @@ class NotificationService:
         self._bisheng = bisheng_client
 
     async def get_summary(self) -> NotificationSummary:
-        messages = await self._fetch_unread_messages()
-        todo = await self._fetch_pending_todo_count()
+        messages, todo = await asyncio.gather(
+            self._fetch_unread_messages(),
+            self._fetch_pending_todo_count(),
+        )
         return NotificationSummary(
             todo=todo,
             messages=messages,

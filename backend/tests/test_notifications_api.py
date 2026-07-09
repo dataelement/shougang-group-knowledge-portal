@@ -1,6 +1,10 @@
+import asyncio
+import time
+
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.notification_service import NotificationService
 
 
 def _task(status):
@@ -8,14 +12,17 @@ def _task(status):
 
 
 class FakeBishengClient:
-    def __init__(self, *, unread=None, my_tasks=None, fail_paths=None):
+    def __init__(self, *, unread=None, my_tasks=None, fail_paths=None, delay_seconds=0):
         self._unread = unread
         self._my_tasks = my_tasks
         self._fail_paths = set(fail_paths or [])
+        self._delay_seconds = delay_seconds
         self.calls = []
 
     async def get_json(self, path: str, params=None):
         self.calls.append(path)
+        if self._delay_seconds:
+            await asyncio.sleep(self._delay_seconds)
         if path in self._fail_paths:
             raise RuntimeError("upstream boom")
         if path == "/api/v1/message/unread_count":
@@ -78,6 +85,21 @@ def test_summary_uses_total_unread_and_pending_only_todo():
     assert response.status_code == 200
     data = response.json()["data"]
     assert data == {"messages": 12, "todo": 2, "total": 14}
+
+
+def test_summary_fetches_upstream_counts_concurrently():
+    fake = FakeBishengClient(
+        unread={"total": 12, "notify": 7, "approve": 5},
+        my_tasks={"data": [_task("pending"), _task("approved")], "total": 2},
+        delay_seconds=0.1,
+    )
+
+    started = time.perf_counter()
+    result = asyncio.run(NotificationService(fake).get_summary())
+    elapsed = time.perf_counter() - started
+
+    assert result.model_dump() == {"messages": 12, "todo": 1, "total": 13}
+    assert elapsed < 0.17
 
 
 def test_summary_degrades_when_one_upstream_fails():
