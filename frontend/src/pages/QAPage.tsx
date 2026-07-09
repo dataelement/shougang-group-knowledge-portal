@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Bot,
@@ -386,6 +386,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const abortControllerRef = useRef<AbortController | null>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
+  const knowledgePanelRef = useRef<HTMLDivElement>(null);
   const knowledgeSpacesRequestRef = useRef(0);
 
   const activeSession = sessions.find((ss) => ss.id === activeId) ?? sessions[0];
@@ -460,6 +461,23 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [modelMenuOpen, knowledgePickerOpen]);
+
+  // 知识库下拉框:打开后按视口横向夹取,按钮靠右时也不会超出屏幕左/右边缘。
+  useLayoutEffect(() => {
+    if (!knowledgePickerOpen) return;
+    const el = knowledgePanelRef.current;
+    if (!el) return;
+    el.style.transform = '';
+    const margin = 8;
+    const rect = el.getBoundingClientRect();
+    let dx = 0;
+    if (rect.left < margin) {
+      dx = margin - rect.left;
+    } else if (rect.right > window.innerWidth - margin) {
+      dx = window.innerWidth - margin - rect.right;
+    }
+    if (dx !== 0) el.style.transform = `translateX(${dx}px)`;
+  }, [knowledgePickerOpen]);
 
   useEffect(() => {
     if (portalConfigLoading) return undefined;
@@ -1075,7 +1093,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               <ChevronDown size={12} className={s.smartAppToolCaret} />
             </button>
             {knowledgePickerOpen ? (
-              <div className={s.knowledgePanel}>
+              <div className={s.knowledgePanel} ref={knowledgePanelRef}>
                 <QAKnowledgeTreePicker
                   spaces={availableSpaces}
                   scope={selectedKnowledgeScope}
@@ -1176,7 +1194,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                 <ChevronDown size={14} />
               </button>
               {knowledgePickerOpen ? (
-                <div className={s.knowledgePanel}>
+                <div className={s.knowledgePanel} ref={knowledgePanelRef}>
                   <QAKnowledgeTreePicker
                     spaces={availableSpaces}
                     scope={selectedKnowledgeScope}
