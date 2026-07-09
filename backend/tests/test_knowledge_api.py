@@ -73,6 +73,43 @@ class FakeBishengClient:
         self.preview_asset_requests.append({"path": path, "params": params})
         return await self.get(path, params=params)
 
+    @staticmethod
+    def _portal_file_1580() -> dict:
+        return {
+            "id": 1580,
+            "space_id": 12,
+            "title": "热轧1580产线精轧机振动纹治理实践",
+            "summary": "振动纹治理实践摘要",
+            "source": "轧线技术案例库",
+            "updated_at": "2026-04-13T10:30:00",
+            "tags": ["热轧", "振动纹"],
+            "tag_infos": [
+                {"tag_name": "热轧", "resource_type": ""},
+                {"tag_name": "振动纹", "resource_type": ""},
+            ],
+            "file_ext": "pdf",
+            "file_size": "949.33KB",
+            "file_encoding": "GF-ZD-SC-202604-01201",
+            "source_path": "轧线技术案例库>热轧/热轧1580产线精轧机振动纹治理实践.pdf",
+        }
+
+    @staticmethod
+    def _portal_file_1590() -> dict:
+        return {
+            "id": 1590,
+            "space_id": 12,
+            "title": "热轧加热炉温度控制",
+            "summary": "温度控制摘要",
+            "source": "轧线技术案例库",
+            "updated_at": "2026-04-10T08:00:00",
+            "tags": ["热轧"],
+            "tag_infos": [{"tag_name": "热轧", "resource_type": ""}],
+            "file_ext": "docx",
+            "file_size": "2.32MB",
+            "file_encoding": "GF-ZD-SC-202604-01193",
+            "source_path": "轧线技术案例库>热轧/热轧加热炉温度控制.docx",
+        }
+
     async def get_json(self, path: str, params=None, headers=None):
         params = params or {}
         if path == "/api/v1/workstation/config":
@@ -87,6 +124,17 @@ class FakeBishengClient:
                         }
                     }
                 }
+            }
+        if path == "/api/v1/knowledge/shougang-portal/files/12/1580":
+            return {"status_code": 200, "data": {"data": self._portal_file_1580()}}
+        if path == "/api/v1/knowledge/shougang-portal/files/12/1580/related":
+            assert params == {"limit": 5} or params == {"limit": 3}
+            return {
+                "status_code": 200,
+                "data": {
+                    "data": [self._portal_file_1590()],
+                    "total": 1,
+                },
             }
         if path == "/api/v1/knowledge/space/12/search":
             keyword = params.get("keyword")
@@ -1032,15 +1080,19 @@ def test_get_doc_file_preview_uses_bisheng_preview_resource(tmp_path: Path):
             return await super().get(path, params=params)
 
         async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/file/info/1591":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1591":
                 return {
-                    "data": {
+                    "status_code": 200,
+                    "data": {"data": {
                         "id": 1591,
-                        "knowledge_id": 12,
-                        "file_name": "首钢测试环境统一身份认证oauth集成指南v1.0.2.doc",
-                        "abstract": "认证集成指南",
-                        "update_time": "2026-04-14T09:00:00",
-                    }
+                        "space_id": 12,
+                        "title": "首钢测试环境统一身份认证oauth集成指南v1.0.2",
+                        "summary": "认证集成指南",
+                        "source": "轧线技术案例库",
+                        "updated_at": "2026-04-14T09:00:00",
+                        "tags": [],
+                        "file_ext": "doc",
+                    }},
                 }
             if path == "/api/v1/knowledge/space/12/files/1591/preview":
                 return {
@@ -1080,15 +1132,19 @@ def test_get_doc_file_preview_uses_bisheng_preview_resource(tmp_path: Path):
 def test_get_doc_file_preview_returns_unsupported_when_no_preview_source(tmp_path: Path):
     class MissingDocPreviewBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/file/info/1591":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1591":
                 return {
-                    "data": {
+                    "status_code": 200,
+                    "data": {"data": {
                         "id": 1591,
-                        "knowledge_id": 12,
-                        "file_name": "首钢测试环境统一身份认证oauth集成指南v1.0.2.doc",
-                        "abstract": "认证集成指南",
-                        "update_time": "2026-04-14T09:00:00",
-                    }
+                        "space_id": 12,
+                        "title": "首钢测试环境统一身份认证oauth集成指南v1.0.2",
+                        "summary": "认证集成指南",
+                        "source": "轧线技术案例库",
+                        "updated_at": "2026-04-14T09:00:00",
+                        "tags": [],
+                        "file_ext": "doc",
+                    }},
                 }
             if path == "/api/v1/knowledge/space/12/files/1591/preview":
                 return {"data": {"original_url": "", "preview_url": ""}}
@@ -1118,15 +1174,19 @@ def test_get_doc_file_preview_returns_unsupported_when_no_preview_source(tmp_pat
 def test_get_ppt_file_preview_remains_unsupported(tmp_path: Path):
     class PptPreviewBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/file/info/1592":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1592":
                 return {
-                    "data": {
+                    "status_code": 200,
+                    "data": {"data": {
                         "id": 1592,
-                        "knowledge_id": 12,
-                        "file_name": "设备培训材料.ppt",
-                        "abstract": "培训材料",
-                        "update_time": "2026-04-14T09:30:00",
-                    }
+                        "space_id": 12,
+                        "title": "设备培训材料",
+                        "summary": "培训材料",
+                        "source": "轧线技术案例库",
+                        "updated_at": "2026-04-14T09:30:00",
+                        "tags": [],
+                        "file_ext": "ppt",
+                    }},
                 }
             if path == "/api/v1/knowledge/space/12/files/1592/preview":
                 return {
@@ -1359,8 +1419,8 @@ def test_get_file_preview_content_proxies_selected_source(tmp_path: Path):
 def test_get_file_preview_content_returns_chinese_message_when_source_missing(tmp_path: Path):
     class MissingPreviewSourceBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/file/info/1580":
-                return {"data": {}}
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1580":
+                return {"status_code": 200, "data": {"data": None}}
             if path == "/api/v1/knowledge/space/12/files/1580/preview":
                 return {"data": {"original_url": "", "preview_url": ""}}
             return await super().get_json(path, params=params, headers=headers)
@@ -1399,15 +1459,19 @@ def test_get_file_preview_content_uses_preview_asset_fetcher_for_original_urls(t
                         "preview_url": "",
                     }
                 }
-            if path == "/api/v1/knowledge/file/info/1580":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1580":
                 return {
-                    "data": {
+                    "status_code": 200,
+                    "data": {"data": {
                         "id": 1580,
-                        "knowledge_id": 12,
-                        "file_name": "热轧1580产线精轧机振动纹治理实践.md",
-                        "abstract": "振动纹治理实践摘要",
-                        "update_time": "2026-04-13T10:30:00",
-                    }
+                        "space_id": 12,
+                        "title": "热轧1580产线精轧机振动纹治理实践",
+                        "summary": "振动纹治理实践摘要",
+                        "source": "轧线技术案例库",
+                        "updated_at": "2026-04-13T10:30:00",
+                        "tags": ["热轧", "振动纹"],
+                        "file_ext": "md",
+                    }},
                 }
             return await super().get_json(path, params=params)
 
@@ -2730,8 +2794,62 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tm
     ]
 
 
-def test_search_files_applies_base_tag_and_filter_tag_as_and_query(tmp_path: Path):
-    fake_bisheng = FakeBishengClient()
+def test_search_files_applies_base_tag_and_filter_tag_via_shougang_portal_search(tmp_path: Path):
+    class FilteredTagSearchBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path.endswith("/tag") or path.endswith("/search"):
+                raise AssertionError("base_tag + tag query should use shougang portal batch endpoint")
+            return await super().get_json(path, params=params, headers=headers)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": None,
+                    "tag": "热轧",
+                    "space_ids": [12, 18],
+                    "space_level": None,
+                    "file_ext": None,
+                    "sort": "updated_at_desc",
+                    "cursor": None,
+                    "limit": 100,
+                    "rerank_model_id": "",
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1582,
+                                "space_id": 18,
+                                "title": "热轧振动纹复盘二.pdf",
+                                "summary": "第二篇振动纹复盘",
+                                "updated_at": "2026-04-16T10:30:00",
+                                "tags": ["热轧", "振动纹"],
+                            },
+                            {
+                                "id": 1581,
+                                "space_id": 12,
+                                "title": "热轧加热炉温度控制.pdf",
+                                "summary": "不包含二级标签",
+                                "updated_at": "2026-04-15T10:30:00",
+                                "tags": ["热轧"],
+                            },
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "热轧1580产线精轧机振动纹治理实践.pdf",
+                                "summary": "振动纹治理实践摘要",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": ["热轧", "振动纹"],
+                            },
+                        ],
+                        "has_more": False,
+                        "next_cursor": None,
+                    }
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    fake_bisheng = FilteredTagSearchBishengClient()
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
     with TestClient(app) as client:
@@ -2740,25 +2858,43 @@ def test_search_files_applies_base_tag_and_filter_tag_as_and_query(tmp_path: Pat
         client.app.state.bisheng_client = fake_bisheng
         client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
         try:
-            response = client.get(
+            first = client.get(
                 "/api/v1/knowledge/files"
                 "?base_tag=%E7%83%AD%E8%BD%A7"
                 "&tag=%E6%8C%AF%E5%8A%A8%E7%BA%B9"
                 "&space_ids=12&space_ids=18"
                 "&sort=updated_at_desc"
-                "&limit=10"
+                "&limit=1"
+            )
+            next_cursor = first.json()["data"]["next_cursor"]
+            second = client.get(
+                "/api/v1/knowledge/files"
+                "?base_tag=%E7%83%AD%E8%BD%A7"
+                "&tag=%E6%8C%AF%E5%8A%A8%E7%BA%B9"
+                "&space_ids=12&space_ids=18"
+                "&sort=updated_at_desc"
+                "&limit=1"
+                f"&cursor={next_cursor}"
             )
         finally:
             if previous_auth is not None:
                 client.app.state.portal_auth_service = previous_auth
 
-    assert response.status_code == 200
-    body = response.json()["data"]
-    assert body["has_more"] is False
-    assert body["next_cursor"] is None
-    assert [item["id"] for item in body["data"]] == [1580]
-    assert body["data"][0]["tags"][0]["tag_name"] == "热轧"
-    assert fake_bisheng.post_calls == []
+    assert first.status_code == 200
+    first_body = first.json()["data"]
+    assert [item["id"] for item in first_body["data"]] == [1582]
+    assert first_body["has_more"] is True
+    assert str(first_body["next_cursor"]).startswith("tagfilter:")
+
+    assert second.status_code == 200
+    second_body = second.json()["data"]
+    assert [item["id"] for item in second_body["data"]] == [1580]
+    assert second_body["has_more"] is False
+    assert second_body["next_cursor"] is None
+    assert [call[0] for call in fake_bisheng.post_calls] == [
+        "/api/v1/knowledge/shougang-portal/files/search",
+        "/api/v1/knowledge/shougang-portal/files/search",
+    ]
 
 
 def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path: Path):
@@ -3143,12 +3279,22 @@ def test_search_files_file_subcategory_request_uses_cursor_protocol_without_lega
     assert [item["id"] for item in body["data"]] == [1580]
 
 
-def test_related_files_use_full_space_search_without_portal_top50(tmp_path: Path):
+def test_related_files_use_shougang_portal_related_endpoint(tmp_path: Path):
     class RelatedFilesBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.get_calls = []
+
+        async def get_json(self, path: str, params=None, headers=None):
+            self.get_calls.append((path, params))
+            if path == "/api/v1/knowledge/space/12/search":
+                raise AssertionError("related files should not use legacy space search")
+            return await super().get_json(path, params=params, headers=headers)
+
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
             if path == "/api/v1/knowledge/shougang-portal/files/search":
-                raise AssertionError("related files should not use shougang portal Top 50 search endpoint")
+                raise AssertionError("related files should not use generic shougang portal file search")
             return await super().post_json(path, json=json)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
@@ -3163,6 +3309,10 @@ def test_related_files_use_full_space_search_without_portal_top50(tmp_path: Path
     body = response.json()["data"]
     assert body["total"] == 1
     assert [item["id"] for item in body["data"]] == [1590]
+    assert (
+        "/api/v1/knowledge/shougang-portal/files/12/1580/related",
+        {"limit": 5},
+    ) in fake_bisheng.get_calls
     assert fake_bisheng.post_calls == []
 
 
@@ -3535,15 +3685,20 @@ class _VisibleNonEnabledSpaceBishengClient(FakeBishengClient):
                     "public_spaces": [],
                 },
             }
-        if path == "/api/v1/knowledge/file/info/2580":
+        if path == "/api/v1/knowledge/shougang-portal/files/120/2580":
             return {
-                "data": {
+                "status_code": 200,
+                "data": {"data": {
                     "id": 2580,
-                    "knowledge_id": 120,
-                    "file_name": "个人库内文档.pdf",
-                    "abstract": "个人可见库文档摘要",
-                    "update_time": "2026-05-01T09:20:00",
-                }
+                    "space_id": 120,
+                    "title": "个人库内文档",
+                    "summary": "个人可见库文档摘要",
+                    "source": "个人可见但未启用库",
+                    "updated_at": "2026-05-01T09:20:00",
+                    "tags": [],
+                    "file_ext": "pdf",
+                    "file_size": "100KB",
+                }},
             }
         if path == "/api/v1/knowledge/space/120/search":
             return {

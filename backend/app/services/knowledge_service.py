@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import json
 import logging
 import secrets
 import time
@@ -70,6 +72,7 @@ SHARE_ACCESS_COOKIE_NAME = "portal_share_access"
 LATEST_SELECTED_RECOMMENDATION = "latest_selected"
 TYPICAL_CASE_SECTION_KEY = "typical_case"
 LOCAL_OFFSET_CURSOR_PREFIX = "offset:"
+FILTERED_TAG_CURSOR_PREFIX = "tagfilter:"
 SHARE_ACCESS_TTL_SECONDS = 3600
 SPACE_LIST_ENDPOINTS = (
     ("mine", "/api/v1/knowledge/space/mine"),
@@ -591,13 +594,13 @@ class KnowledgeService:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
 
         if normalized_base_tag and normalized_tag and normalized_base_tag != normalized_tag and not q and not recommendation:
-            return await self._search_tag_files_across_spaces(
+            return await self._search_shougang_portal_files_with_filter_tag(
                 tag=normalized_base_tag,
                 space_ids=space_ids,
+                space_level=space_level,
                 sort=sort,
                 cursor=cursor,
                 limit=limit,
-                extra_space_ids=extra_space_ids,
                 filter_tag=normalized_tag,
                 file_ext=file_ext,
                 document_type=document_type,
@@ -605,11 +608,9 @@ class KnowledgeService:
                 business_domain_code=normalized_business_domain_code,
             )
 
-        # Plain single-tag queries (no q / filters / recommendation) go to the upstream
-        # aggregate endpoint, which resolves the tag and paginates server-side with a real
-        # cursor instead of pulling every tagged file per space and sorting in memory. The
-        # two-level base_tag+tag case above still needs the cross-space merge because the
-        # aggregate endpoint accepts a single tag only.
+        # Plain single-tag queries go to the upstream aggregate endpoint, which resolves
+        # the tag and paginates server-side with a real cursor instead of pulling every
+        # tagged file per space and sorting in memory.
         return await self._search_shougang_portal_files(
             q=q,
             tag=effective_tag,
@@ -624,6 +625,108 @@ class KnowledgeService:
             cursor=cursor,
             limit=limit,
         )
+
+    async def _search_shougang_portal_files_with_filter_tag(
+        self,
+        *,
+        tag: str,
+        space_ids: list[int],
+        space_level: Optional[str],
+        sort: str,
+        cursor: Optional[str],
+        limit: int,
+        filter_tag: str,
+        file_ext: Optional[str] = None,
+        document_type: Optional[str] = None,
+        file_subcategory_code: Optional[str] = None,
+        business_domain_code: Optional[str] = None,
+    ) -> CursorKnowledgeFileData:
+        page_limit = min(max(int(limit or 20), 1), self._page_size_limit)
+        upstream_cursor, filtered_offset = self._parse_filtered_tag_cursor(cursor)
+        collected: list[KnowledgeFileItem] = []
+        fetch_limit = self._page_size_limit
+
+        while True:
+            result = await self._search_shougang_portal_files(
+                q=None,
+                tag=tag,
+                space_ids=space_ids,
+                space_level=space_level,
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=business_domain_code,
+                recommendation=None,
+                sort=sort,
+                cursor=upstream_cursor,
+                limit=fetch_limit,
+            )
+            filtered_items = [
+                item for item in result.data
+                if self._matches_file_item_tag_name(item, filter_tag)
+            ]
+            if filtered_offset:
+                filtered_items = filtered_items[filtered_offset:]
+
+            remaining = page_limit - len(collected)
+            if len(filtered_items) > remaining:
+                collected.extend(filtered_items[:remaining])
+                next_cursor = self._encode_filtered_tag_cursor(
+                    upstream_cursor=upstream_cursor,
+                    filtered_offset=filtered_offset + remaining,
+                )
+                return CursorKnowledgeFileData(data=collected, has_more=True, next_cursor=next_cursor)
+
+            collected.extend(filtered_items)
+            if len(collected) >= page_limit:
+                next_cursor = (
+                    self._encode_filtered_tag_cursor(upstream_cursor=result.next_cursor, filtered_offset=0)
+                    if result.has_more and result.next_cursor
+                    else None
+                )
+                return CursorKnowledgeFileData(
+                    data=collected[:page_limit],
+                    has_more=next_cursor is not None,
+                    next_cursor=next_cursor,
+                )
+
+            if not result.has_more or not result.next_cursor:
+                return CursorKnowledgeFileData(data=collected, has_more=False, next_cursor=None)
+
+            upstream_cursor = result.next_cursor
+            filtered_offset = 0
+
+    @staticmethod
+    def _parse_filtered_tag_cursor(cursor: Optional[str]) -> tuple[Optional[str], int]:
+        if not cursor or not cursor.startswith(FILTERED_TAG_CURSOR_PREFIX):
+            return cursor, 0
+        payload = cursor[len(FILTERED_TAG_CURSOR_PREFIX):]
+        try:
+            padding = "=" * (-len(payload) % 4)
+            decoded = base64.urlsafe_b64decode(f"{payload}{padding}".encode("ascii"))
+            data = json.loads(decoded.decode("utf-8"))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return None, 0
+        upstream_cursor = data.get("cursor") if isinstance(data, dict) else None
+        filtered_offset = data.get("offset") if isinstance(data, dict) else 0
+        try:
+            parsed_offset = max(int(filtered_offset or 0), 0)
+        except (TypeError, ValueError):
+            parsed_offset = 0
+        return (
+            str(upstream_cursor) if upstream_cursor else None,
+            parsed_offset,
+        )
+
+    @staticmethod
+    def _encode_filtered_tag_cursor(*, upstream_cursor: Optional[str], filtered_offset: int) -> str:
+        payload = json.dumps(
+            {"cursor": upstream_cursor, "offset": max(int(filtered_offset or 0), 0)},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        encoded = base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+        return f"{FILTERED_TAG_CURSOR_PREFIX}{encoded}"
 
     async def _search_tag_files_across_spaces(
         self,
@@ -873,32 +976,35 @@ class KnowledgeService:
         if space_id not in await self._allowed_detail_space_ids(extra_space_ids):
             return None
 
-        file_info_resp = await self._bisheng.get_json(f"/api/v1/knowledge/file/info/{file_id}")
-        file_info = file_info_resp.get("data") or {}
-        if not file_info or int(file_info.get("knowledge_id", 0)) != space_id:
+        response = await self._bisheng.get_json(
+            f"/api/v1/knowledge/shougang-portal/files/{space_id}/{file_id}"
+        )
+        data = self._extract_success_data(response)
+        raw_item = data.get("data") if isinstance(data, dict) else None
+        if not isinstance(raw_item, dict):
             return None
 
-        search_item = await self._get_file_search_item(
-            space_id=space_id,
-            file_id=file_id,
-            file_name=file_info.get("file_name", ""),
-        )
-        tags = self._extract_file_tag_infos(search_item or {})
-        tag_infos = self._extract_file_tag_infos(search_item or {})
-        source = (await self.get_space_name_map(extra_space_ids)).get(space_id, str(space_id))
+        mapped_items = self._map_shougang_portal_response_items([raw_item])
+        if not mapped_items:
+            return None
+        item = mapped_items[0]
+        if item.id != file_id or item.space_id != space_id:
+            return None
+
+        source = item.source or (await self.get_space_name_map(extra_space_ids)).get(space_id, str(space_id))
         return KnowledgeFileDetail(
             id=file_id,
             space_id=space_id,
-            title=self._clean_title(file_info.get("file_name", "")),
-            summary=file_info.get("abstract") or "",
+            title=item.title,
+            summary=item.summary,
             source=source,
-            updated_at=self._serialize_datetime(file_info.get("update_time")),
-            tags=tags,
-            tag_infos=tag_infos,
-            file_ext=self._get_file_ext(file_info.get("file_name", "")),
-            file_size=self._extract_file_size_label(file_info, search_item),
-            file_encoding=self._extract_file_encoding(file_info, search_item),
-            file_subcategory_code=self._extract_file_subcategory_code(file_info, search_item),
+            updated_at=item.updated_at,
+            tags=item.tags,
+            tag_infos=item.tag_infos,
+            file_ext=item.file_ext,
+            file_size=item.file_size,
+            file_encoding=item.file_encoding,
+            file_subcategory_code=item.file_subcategory_code,
             space=KnowledgeFileSpace(id=space_id, name=source),
         )
 
@@ -1260,38 +1366,26 @@ class KnowledgeService:
         limit: int,
         extra_space_ids: Optional[list[int]] = None,
     ) -> RelatedKnowledgeFileData:
-        detail = await self.get_file_detail(
-            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
-        )
-        if detail is None or not detail.tags:
+        if space_id not in await self._allowed_detail_space_ids(extra_space_ids):
             return RelatedKnowledgeFileData(data=[], total=0)
 
-        candidate_map: dict[int, dict[str, Any]] = {}
-        space_name_map = await self.get_space_name_map(extra_space_ids)
-        for tag in detail.tags:
-            search_result = await self._fetch_space_files(
-                space_id=space_id,
-                keyword=None,
-                tag_name=tag.tag_name,
-            )
-            for item in self._map_items(search_result.items, space_name_map):
-                if item.id == file_id:
-                    continue
-                entry = candidate_map.setdefault(
-                    item.id,
-                    {"item": item, "score": 0},
-                )
-                entry["score"] += 1
-
-        sorted_candidates = sorted(
-            candidate_map.values(),
-            key=lambda value: (
-                -value["score"],
-                value["item"].updated_at,
-            ),
+        response = await self._bisheng.get_json(
+            f"/api/v1/knowledge/shougang-portal/files/{space_id}/{file_id}/related",
+            params={"limit": limit},
         )
-        data = [value["item"] for value in sorted_candidates[:limit]]
-        return RelatedKnowledgeFileData(data=data[:limit], total=len(data[:limit]))
+        data = self._extract_success_data(response)
+        raw_items = data.get("data") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        items = [
+            item
+            for item in self._map_shougang_portal_response_items(raw_items)
+            if item.space_id == space_id and item.id != file_id
+        ]
+        safe_limit = max(int(limit or 3), 0)
+        items = items[:safe_limit]
+        total = int(data.get("total") or len(items)) if isinstance(data, dict) else len(items)
+        return RelatedKnowledgeFileData(data=items, total=min(total, len(items)))
 
     async def _fetch_space_files(
         self,
@@ -1422,6 +1516,23 @@ class KnowledgeService:
         if not normalized:
             return True
         return normalized in cls._extract_tag_names(item)
+
+    @staticmethod
+    def _matches_file_item_tag_name(item: KnowledgeFileItem, tag_name: str) -> bool:
+        normalized = tag_name.strip()
+        if not normalized:
+            return True
+        names: list[str] = []
+        for tag in [*(item.tag_infos or []), *(item.tags or [])]:
+            if isinstance(tag, FileTag):
+                names.append(tag.tag_name)
+            elif isinstance(tag, dict):
+                name = tag.get("tag_name") or tag.get("name")
+                if name:
+                    names.append(str(name))
+            elif tag not in (None, ""):
+                names.append(str(tag))
+        return normalized in names
 
     @classmethod
     def _matches_business_domain_code(cls, item: dict[str, Any], business_domain_code: str) -> bool:

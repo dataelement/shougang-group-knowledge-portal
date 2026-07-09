@@ -192,9 +192,10 @@ export default function ListPage() {
       && (!isDomainList || spaceIds.includes(selectedSpaceFilterId))
       && (!spaceId || selectedSpaceFilterId === spaceId);
     const requestedSpaceIds = selectedSpaceAllowed ? [selectedSpaceFilterId] : undefined;
+    const hasUserFilterTag = Boolean(filterTag);
     const baseParams = {
-      baseTag: isLatestSelectedRecommendation ? undefined : tagParam || undefined,
-      tag: filterTag || undefined,
+      baseTag: !isLatestSelectedRecommendation && hasUserFilterTag ? tagParam || undefined : undefined,
+      tag: isLatestSelectedRecommendation ? undefined : filterTag || tagParam || undefined,
       spaceLevel: spaceLevel || undefined,
       fileExt: fileExt || undefined,
       documentType: documentType || undefined,
