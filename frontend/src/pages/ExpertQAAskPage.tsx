@@ -476,7 +476,7 @@ export default function ExpertQAAskPage() {
   async function handlePublish() {
     // 修复：拆分标题与正文的缺失校验，给出明确提示
     const missingTitle = !title.trim();
-    const missingBody = !body.trim();
+    // const missingBody = !body.trim();
     const missingDomain = !selectedDomain;
 
     setDomainError(missingDomain);
@@ -485,10 +485,10 @@ export default function ExpertQAAskPage() {
       setSubmitError('请填写问题标题');
       return;
     }
-    if (missingBody) {
+    /*if (missingBody) {
       setSubmitError('请填写问题描述');
       return;
-    }
+    }*/
     if (missingDomain) {
       setSubmitError(null);
       return;
@@ -558,11 +558,11 @@ export default function ExpertQAAskPage() {
             {/* 标题 */}
             <div className={s.field}>
               <label className={s.fieldLabel}>
-                标题<span className={s.req}>*</span>
+                问题<span className={s.req}>*</span>
               </label>
               <input
                 className={s.input}
-                placeholder="请输入问题标题"
+                placeholder="请输入问题"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
@@ -604,7 +604,7 @@ export default function ExpertQAAskPage() {
             {/* 问题描述编辑器 */}
             <div className={s.field}>
               <label className={s.fieldLabel}>
-                问题描述<span className={s.req}>*</span>
+                问题描述
               </label>
               <div className={s.editorBar}>
                 {TOOLBAR_BUTTONS.map((btn) => {

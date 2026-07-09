@@ -28,6 +28,9 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
+import {
+  handleCheckQuestion,
+} from '../api/expertQa';
 import CommonFileUploadModal, {
   type CommonUploadedFile,
 } from '../components/CommonFileUploadModal';
@@ -165,6 +168,7 @@ interface AnswerCardProps {
   onAccept: () => void;
   onCommentTotalChange?: (total: number) => void;
   usefulDisabled?: boolean;
+  isQuestionOwner?: boolean;
 }
 
 function mergeUniqueComments(current: ApiComment[], incoming: ApiComment[]): ApiComment[] {
@@ -759,6 +763,8 @@ function CommentThread({
     setState((prev) => ({ ...prev, submitting: true, error: null }));
 
     try {
+      // 校验问题是否存在安全内容
+      await handleCheckQuestion(content);
       const createdComment = await createComment({
         answer_id: answerId,
         question_id: questionId,
@@ -807,10 +813,11 @@ function CommentThread({
       onTotalChange?.(refreshedTotal);
     } catch (err) {
       console.error('评论发布失败:', err);
+      const errorMessage = err instanceof Error ? err.message : '评论发布失败，请稍后重试';
       setState((prev) => ({
         ...prev,
         submitting: false,
-        error: '评论发布失败，请稍后重试',
+        error: errorMessage,
       }));
     }
   }
@@ -913,6 +920,7 @@ function AnswerCard({
   onAccept,
   onCommentTotalChange,
   usefulDisabled = false,
+  isQuestionOwner = false,
 }: AnswerCardProps) {
   const commentThreadRef = useRef<HTMLDivElement>(null);
   const wrapClass = [
@@ -1015,7 +1023,7 @@ function AnswerCard({
           </div>
         ) : null}
 
-        {!answer.adopted ? (
+        {isQuestionOwner && !answer.adopted ? (
           <button type="button" className={s.acceptCta} onClick={onAccept}>
             <Check size={13} />
             采纳为最佳回答
@@ -1089,14 +1097,14 @@ export default function ExpertQADetailPage() {
 
   const questionNumericId = question ? Number(question.id) : null;
   const currentUserKey = user?.externalId || user?.account || user?.name || 'anonymous';
-  // const canManageQuestion = Boolean(
-  //   user &&
-  //     question &&
-  //     (question.createdBy === user.name ||
-  //       question.createdBy === user.account ||
-  //       String(question.ownerUserId) === user.externalId ||
-  //       String(question.ownerUserId) === user.account),
-  // );
+  const isQuestionOwner = Boolean(
+    user &&
+      question &&
+      (question.createdBy === user.name ||
+        question.createdBy === user.account ||
+        String(question.ownerUserId) === user.externalId ||
+        String(question.ownerUserId) === user.account),
+  );
   const answerHasMore = answers.length < answerTotal;
   const answeredInvitedCount = question
     ? question.invitedExperts.filter((item) => item.status === 'answered').length
@@ -1334,6 +1342,8 @@ export default function ExpertQADetailPage() {
     setSubmitError(null);
 
     try {
+      // 校验问题是否存在安全内容
+      await handleCheckQuestion(content);
       const payload: CreateAnswerPayload = {
         question_id: questionNumericId,
         content,
@@ -1659,6 +1669,7 @@ export default function ExpertQADetailPage() {
                   )
                 }
                 usefulDisabled={votedTargets.has(`answer-helpful:${answer.id}`)}
+                isQuestionOwner={isQuestionOwner}
               />
             ))}
 

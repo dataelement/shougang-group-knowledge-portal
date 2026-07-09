@@ -636,6 +636,10 @@ export default function AppsPage() {
                             role="tab"
                             type="button"
                           >
+                            <span
+                              className={`${s.mainTabIcon} ${tab.id === 'qa' ? s.mainTabIconQa : s.mainTabIconAgent}`}
+                              aria-hidden="true"
+                            />
                             {tab.label}
                           </button>
                         ))}

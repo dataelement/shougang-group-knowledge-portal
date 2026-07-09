@@ -320,7 +320,7 @@ export default function QAKnowledgeTreePicker({
       : isFolderSelected);
     return (
       <div key={`${node.spaceId}-${node.id}`} className={s.treeNode}>
-        <div className={s.nodeRow} style={{ paddingLeft: 12 + depth * 18 }}>
+        <div className={s.nodeRow} style={{ paddingLeft: 14 + depth * 24 }}>
           {node.type === 'folder' ? (
             <button
               type="button"
@@ -343,10 +343,9 @@ export default function QAKnowledgeTreePicker({
           >
             {selected ? <Check size={13} /> : null}
           </button>
-          <span className={s.nodeIcon}>{node.type === 'folder' ? <Folder size={15} /> : <FileText size={15} />}</span>
-          <span className={s.nodeText}>
-            <strong>{node.name}</strong>
-            <span>{node.type === 'folder' ? `${node.resolvedFileCount} 个文件` : node.fileExt || '文件'}</span>
+          <span className={`${s.nodeIcon} ${node.type === 'folder' ? s.folderIcon : ''}`}>{node.type === 'folder' ? <Folder size={15} /> : <FileText size={15} />}</span>
+          <span className={`${s.nodeText} ${selected && node.type === 'file' ? s.nodeTextActive : ''}`}>
+            <strong>{node.type === 'folder' ? `${node.name}（${node.resolvedFileCount}个文件）` : node.name}</strong>
           </span>
         </div>
         {expanded ? (
@@ -368,33 +367,15 @@ export default function QAKnowledgeTreePicker({
   return (
     <div className={s.panel}>
       <div className={s.header}>
-        <div className={s.headerInfo}>
-          <strong>知识库范围</strong>
-          <span>支持选择单一整库或跨库选择不超过20个文件</span>
-        </div>
-        <div className={s.headerActions}>
-          {scope.mode !== 'none' ? (
-            <button
-              type="button"
-              className={s.clearButton}
-              onClick={() => onChange({ mode: 'none' })}
-              title="清空已选"
-            >
-              清空选择
-            </button>
-          ) : null}
-          <span className={s.headerStatus}>
-            {scope.mode === 'knowledge_space' ? '整库' : scope.mode === 'files' ? `${getScopeFileCount(scope)} 文件` : '未选择'}
-          </span>
-          <button
-            type="button"
-            onClick={() => onClose?.()}
-            className={s.closeButton}
-            title="关闭"
-          >
-            <X size={15} />
-          </button>
-        </div>
+        <strong className={s.headerTitle}>知识库范围</strong>
+        <button
+          type="button"
+          onClick={() => onClose?.()}
+          className={s.closeButton}
+          title="关闭"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       {inlineTip ? <div className={s.inlineTip}>{inlineTip}</div> : null}
@@ -407,6 +388,29 @@ export default function QAKnowledgeTreePicker({
           placeholder="文件名搜索/编码搜索"
         />
       </label>
+
+      <div className={s.searchDivider} />
+
+      <div className={s.selectedBar}>
+        <span className={s.selectedBarLeft}>
+          <i className={s.selectedBarMark} />
+          <span className={s.selectedText}>
+            已选择 <b>{scope.mode === 'knowledge_space' ? 1 : getScopeFileCount(scope)}</b>
+            {scope.mode === 'knowledge_space' ? ' 个整库' : ' 个文件'}
+          </span>
+          {scope.mode !== 'none' ? (
+            <button
+              type="button"
+              className={s.clearButton}
+              onClick={() => onChange({ mode: 'none' })}
+              title="清空已选"
+            >
+              清空选择
+            </button>
+          ) : null}
+        </span>
+        <span className={s.selectedHint}>整库限选1个，文件最多20个</span>
+      </div>
 
       <div className={s.spaceList} ref={scrollRootRef}>
         {searchMode ? (
@@ -469,32 +473,8 @@ export default function QAKnowledgeTreePicker({
               const loadingRoot = loadingKeys.has(rootKey);
               const erroredRoot = errorKeys.has(rootKey);
               return (
-                <section key={space.id} className={s.spaceBlock}>
+                <section key={space.id} className={`${s.spaceBlock} ${expanded ? s.spaceBlockExpanded : ''}`}>
                   <div className={`${s.spaceRow} ${full ? s.spaceRowActive : ''}`}>
-                    <button
-                      type="button"
-                      className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
-                      onClick={() => toggleWholeSpace(space)}
-                      aria-label={`选择知识库 ${space.name}`}
-                    >
-                      {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
-                    </button>
-                    <Database size={16} className={s.spaceIcon} />
-                    <div className={s.spaceContent}>
-                      <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
-                        <strong>{space.name}</strong>
-                      </button>
-                      <button
-                        type="button"
-                        className={`${s.spaceAction} ${expanded ? s.spaceActionActive : ''}`}
-                        onClick={() => toggleExpand(space.id)}
-                      >
-                        {loadingRoot ? <Loader2 size={13} className={s.spin} /> : expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                        <span className={s.spaceActionText}>
-                          {expanded ? '收起目录（可多选子项）' : '展开目录（可多选子项）'}
-                        </span>
-                      </button>
-                    </div>
                     <button
                       type="button"
                       className={s.expandButton}
@@ -504,6 +484,19 @@ export default function QAKnowledgeTreePicker({
                     >
                       {loadingRoot ? <Loader2 size={14} className={s.spin} /> : expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
+                    <button
+                      type="button"
+                      className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
+                      onClick={() => toggleWholeSpace(space)}
+                      aria-label={`选择知识库 ${space.name}`}
+                    >
+                      {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
+                    </button>
+                    <div className={s.spaceContent}>
+                      <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
+                        <strong>{space.name}</strong>
+                      </button>
+                    </div>
                   </div>
                   {expanded ? (
                     <div className={s.rootChildren}>
