@@ -68,22 +68,25 @@ def test_agent_config_defaults_are_returned_for_old_configs(tmp_path):
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["agent_config"] == {"categories": [], "agents": []}
+    assert data["agent_config"] == {"categories": [], "applications": []}
 
 
 def test_agent_config_can_be_saved_and_reloaded(tmp_path):
     client, _ = setup_client(tmp_path)
     payload = {
         "categories": [{"id": "qa", "name": "AI问答", "enabled": True}],
-        "agents": [
+        "applications": [
             {
                 "id": "policy",
+                "type": "workflow",
                 "workflow_id": "wf-1",
+                "url": "",
                 "name": "制度专家",
                 "desc": "制度问答",
                 "category_id": "qa",
                 "tags": ["制度"],
                 "icon": "BookOpen",
+                "icon_image_url": "",
                 "color": "#0f766e",
                 "bg": "#ccfbf1",
                 "enabled": True,
@@ -96,34 +99,40 @@ def test_agent_config_can_be_saved_and_reloaded(tmp_path):
 
     assert post_response.status_code == 200
     assert get_response.status_code == 200
-    assert get_response.json()["data"]["agents"][0]["workflow_id"] == "wf-1"
+    assert get_response.json()["data"]["applications"][0]["workflow_id"] == "wf-1"
 
 
 def test_agent_config_rejects_duplicate_workflows_and_invalid_categories(tmp_path):
     client, _ = setup_client(tmp_path)
     payload = {
         "categories": [{"id": "qa", "name": "AI问答", "enabled": True}],
-        "agents": [
+        "applications": [
             {
                 "id": "policy",
+                "type": "workflow",
                 "workflow_id": "wf-1",
+                "url": "",
                 "name": "制度专家",
                 "desc": "",
                 "category_id": "qa",
                 "tags": [],
                 "icon": "BookOpen",
+                "icon_image_url": "",
                 "color": "#0f766e",
                 "bg": "#ccfbf1",
                 "enabled": True,
             },
             {
                 "id": "policy-copy",
+                "type": "workflow",
                 "workflow_id": "wf-1",
+                "url": "",
                 "name": "制度专家副本",
                 "desc": "",
                 "category_id": "missing",
                 "tags": [],
                 "icon": "BookOpen",
+                "icon_image_url": "",
                 "color": "#0f766e",
                 "bg": "#ccfbf1",
                 "enabled": True,

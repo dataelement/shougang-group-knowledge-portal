@@ -73,8 +73,10 @@ function getSnapshot(): PortalUser | null {
 }
 
 export function savePortalUser(user: PortalUser) {
-  invalidatePortalContentConfigCache();
+  const userChanged = !usersEqual(currentUser, user);
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  if (!userChanged) return;
+  invalidatePortalContentConfigCache();
   setCurrentUser(user);
   window.dispatchEvent(new Event(PORTAL_USER_CHANGED_EVENT));
   invalidatePortalConfigStore();

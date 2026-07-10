@@ -12,6 +12,8 @@ test('auth hook checks the server session even when the local portal user cache 
 test('auth hook syncs portal user changes inside the same browser tab', () => {
   assert.match(useAuthSource, /PORTAL_USER_CHANGED_EVENT/);
   assert.match(useAuthSource, /invalidatePortalContentConfigCache/);
+  assert.match(useAuthSource, /const userChanged = !usersEqual\(currentUser, user\);/);
+  assert.match(useAuthSource, /if \(!userChanged\) return;/);
   assert.match(useAuthSource, /function savePortalUser[\s\S]*invalidatePortalContentConfigCache\(\)/);
   assert.match(useAuthSource, /function clearPortalUser[\s\S]*invalidatePortalContentConfigCache\(\)/);
   assert.match(useAuthSource, /window\.dispatchEvent\(new Event\(PORTAL_USER_CHANGED_EVENT\)\)/);

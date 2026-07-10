@@ -5,6 +5,7 @@ from app.schemas.portal_admin_config import PortalBishengPersistentConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService, PortalSession
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_home_cache_service import PortalHomeCacheService
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
@@ -15,6 +16,10 @@ ADMIN_ACCOUNTS = {"admin"}
 
 def get_portal_config_service(request: Request) -> PortalConfigService:
     return request.app.state.portal_config_service
+
+
+def get_portal_home_cache_service(request: Request) -> PortalHomeCacheService:
+    return getattr(request.app.state, "portal_home_cache_service", PortalHomeCacheService())
 
 
 def get_bisheng_runtime_service(request: Request) -> BishengRuntimeService:

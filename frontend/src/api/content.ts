@@ -478,12 +478,15 @@ interface AgentFavoriteWorkflowsDto {
 
 interface AgentWorkflowItemDto {
   id?: string;
+  type?: 'workflow' | 'url';
   workflow_id?: string;
+  url?: string;
   name?: string;
   desc?: string;
   category_id?: string;
   tags?: string[];
   icon?: string;
+  icon_image_url?: string;
   color?: string;
   bg?: string;
   enabled?: boolean;
@@ -1131,12 +1134,15 @@ function normalizeWorkflowIds(dto: AgentFavoriteWorkflowsDto): string[] {
 function mapAgentWorkflowItem(dto: AgentWorkflowItemDto): AgentItemConfig {
   return {
     id: String(dto.id ?? ''),
+    type: dto.type === 'url' ? 'url' : 'workflow',
     workflow_id: String(dto.workflow_id ?? ''),
+    url: String(dto.url ?? ''),
     name: String(dto.name ?? ''),
     desc: String(dto.desc ?? ''),
     category_id: String(dto.category_id ?? ''),
     tags: Array.isArray(dto.tags) ? dto.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
     icon: String(dto.icon ?? 'Bot'),
+    icon_image_url: String(dto.icon_image_url ?? ''),
     color: String(dto.color ?? '#2563eb'),
     bg: String(dto.bg ?? '#dbeafe'),
     enabled: dto.enabled !== false,
@@ -1245,7 +1251,10 @@ export async function fetchAgentWorkflowConversations(params: {
 
 export async function fetchAgentWorkflows(): Promise<AgentItemConfig[]> {
   const data = await request<AgentWorkflowItemDto[]>('/api/v1/workstation/workflow/agents');
-  return data.map(mapAgentWorkflowItem).filter((item) => item.id && item.workflow_id);
+  return data.map(mapAgentWorkflowItem).filter((item) => (
+    Boolean(item.id)
+    && (item.type === 'url' ? Boolean(item.url) : Boolean(item.workflow_id))
+  ));
 }
 
 export async function fetchAgentFavoriteWorkflowIds(): Promise<string[]> {

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.schemas.portal_config import AgentConfig, SectionsConfigUpdate
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_home_cache_service import PortalHomeCacheService
 
 
 def _parse_home_sse(response) -> tuple[dict, bool]:
@@ -612,6 +613,20 @@ class FakeBishengClient:
         return None
 
 
+class InMemoryRedis:
+    def __init__(self):
+        self.values: dict[str, str] = {}
+        self.set_calls: list[tuple[str, str, int]] = []
+
+    async def get(self, name: str):
+        return self.values.get(name)
+
+    async def set(self, name: str, value: str, ex: int):
+        self.values[name] = value
+        self.set_calls.append((name, value, ex))
+        return True
+
+
 def make_client(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
@@ -620,6 +635,63 @@ def make_client(tmp_path: Path):
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         yield client, config_service, fake_bisheng
+
+
+def test_home_stats_uses_redis_cache(tmp_path: Path):
+    class TrackingStatsBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.stats_requests = 0
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/home/stats":
+                self.stats_requests += 1
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = TrackingStatsBishengClient()
+    redis = InMemoryRedis()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_home_cache_service = PortalHomeCacheService(redis)
+        first = client.get("/api/v1/knowledge/home/stats")
+        second = client.get("/api/v1/knowledge/home/stats")
+
+    assert first.status_code == 200
+    assert second.json() == first.json()
+    assert fake_bisheng.stats_requests == 1
+    assert redis.set_calls[0][0] == PortalHomeCacheService.home_stats_key()
+    assert redis.set_calls[0][2] == 1800
+
+
+def test_home_content_serves_cached_sse_without_upstream_request(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    redis = InMemoryRedis()
+    cache_service = PortalHomeCacheService(redis)
+    key = cache_service.home_content_key(config=config_service.get_config())
+    redis.values[key] = json.dumps(
+        {
+            "sections": [
+                {
+                    "tag": "缓存栏目",
+                    "items": [{"id": 1, "title": "缓存文档"}],
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = FakeBishengClient()
+        client.app.state.portal_home_cache_service = cache_service
+        response = client.get("/api/v1/knowledge/home")
+
+    assert response.status_code == 200
+    sections, done = _parse_home_sse(response)
+    assert done is True
+    assert sections == {"缓存栏目": [{"id": 1, "title": "缓存文档"}]}
 
 
 class FakePortalAuthService:
@@ -2150,7 +2222,10 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     config_service.update_agent_config(
         AgentConfig(
-            categories=[{"id": "general", "name": "通用"}],
+            categories=[
+                {"id": "general", "name": "通用"},
+                {"id": "disabled", "name": "已停用分类", "enabled": False},
+            ],
             agents=[
                 {
                     "id": "agent-a",
@@ -2171,6 +2246,27 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
                     "color": "#2563eb",
                     "bg": "#dbeafe",
                     "enabled": False,
+                },
+                {
+                    "id": "url-disabled-category",
+                    "type": "url",
+                    "url": "https://apps.example.com/hidden",
+                    "name": "停用分类 URL",
+                    "category_id": "disabled",
+                    "icon": "Globe",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                },
+                {
+                    "id": "agent-disabled-category",
+                    "workflow_id": "wf-disabled-category",
+                    "name": "停用分类智能体",
+                    "category_id": "disabled",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
                 },
             ],
         )
@@ -2239,6 +2335,20 @@ def test_chat_proxy_lists_visible_agent_workflows_with_bisheng_tags(tmp_path: Pa
                     "enabled": True,
                 },
                 {
+                    "id": "url-app",
+                    "type": "url",
+                    "url": "https://apps.example.com/analysis",
+                    "name": "经营分析",
+                    "desc": "URL 应用",
+                    "category_id": "general",
+                    "tags": ["经营"],
+                    "icon": "Globe",
+                    "icon_image_url": "/uploads/app-icons/demo.png",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                },
+                {
                     "id": "agent-b",
                     "workflow_id": "wf-b",
                     "name": "智能体 B",
@@ -2275,11 +2385,14 @@ def test_chat_proxy_lists_visible_agent_workflows_with_bisheng_tags(tmp_path: Pa
     assert response.status_code == 200
     assert user_bisheng.agent_workflow_calls == [{"workflow_ids": ["wf-a", "wf-b"]}]
     body = response.json()["data"]
-    assert [agent["id"] for agent in body] == ["agent-a", "agent-b"]
+    assert [agent["id"] for agent in body] == ["agent-a", "url-app", "agent-b"]
     assert body[0]["name"] == "智能体 A"
     assert body[0]["desc"] == "门户描述 A"
     assert body[0]["tags"] == ["制度", "合规"]
-    assert body[1]["tags"] == ["AI写作"]
+    assert body[1]["type"] == "url"
+    assert body[1]["url"] == "https://apps.example.com/analysis"
+    assert body[1]["tags"] == ["经营"]
+    assert body[2]["tags"] == ["AI写作"]
 
 
 def test_chat_proxy_maps_workflow_conversation_upstream_error_to_chinese(tmp_path: Path):

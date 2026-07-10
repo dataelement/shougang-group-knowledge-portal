@@ -521,7 +521,7 @@ async def update_display_config(
 async def get_apps_config(
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok({"apps": service.get_config().apps})
+    return response_ok({"apps": service.get_legacy_apps()})
 
 
 @router.post("/apps")
@@ -529,7 +529,8 @@ async def update_apps_config(
     payload: AppsConfigUpdate,
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok({"apps": service.update_apps(payload).apps})
+    service.update_apps(payload)
+    return response_ok({"apps": service.get_legacy_apps()})
 
 
 @router.get("/banners")

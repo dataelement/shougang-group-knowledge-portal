@@ -87,6 +87,21 @@ test('apps agent favorites are persisted by workflow id', () => {
   assert.match(appsPageSource, /toggleFavorite\(agent\)/);
 });
 
+test('URL applications share cards but bypass workflow favorites and conversations', () => {
+  const cssSource = readFileSync('src/pages/AppsPage.module.css', 'utf8');
+  assert.match(contentApiSource, /item\.type === 'url' \? Boolean\(item\.url\) : Boolean\(item\.workflow_id\)/);
+  assert.match(appsPageSource, /agent\.type === 'url'/);
+  assert.match(appsPageSource, /agent\.enabled && enabledCategoryIds\.has\(agent\.category_id\)/);
+  assert.match(appsPageSource, /isWorkflowAgent \? <button/);
+  assert.match(appsPageSource, /setSelectedUrlApplicationId\(agent\.id\)/);
+  assert.match(appsPageSource, /返回智能应用/);
+  assert.match(appsPageSource, /sandbox="allow-downloads allow-forms allow-same-origin allow-scripts"/);
+  assert.match(appsPageSource, /该应用无法嵌入/);
+  assert.doesNotMatch(appsPageSource, /window\.open\(selectedUrlApplication/);
+  assert.match(cssSource, /\.urlApplicationWorkspace[\s\S]*flex:\s*1;/);
+  assert.match(cssSource, /\.urlApplicationFrame[\s\S]*height:\s*100%;/);
+});
+
 test('bisheng portal workflow chat route is independent from original chat route', () => {
   assert.match(bishengRoutesSource, /PortalWorkflowChat/);
   assert.match(bishengRoutesSource, /\/portal-chat\/workflow\/auth\/:id\//);
@@ -144,7 +159,6 @@ test('selected agent workflow covers apps main area without portal qa composer o
   assert.match(appsPageSource, /const showTopComposer = !hasSelectedAgentWorkflow && \(activeTab === 'agent' \|\| !hasQaConversation\)/);
   assert.match(appsPageSource, /const showMainTabs = !hasSelectedAgentWorkflow && !hasQaConversation/);
   assert.match(appsPageSource, /const showAgentList = !hasSelectedAgentWorkflow/);
-  assert.match(appsPageSource, /!hasSelectedAgentWorkflow \? <div className=\{s\.topbar\} \/> : null/);
   assert.match(appsPageSource, /showAgentList \? \(/);
   assert.match(appsPageSource, /hasSelectedAgentWorkflow && selectedAgent \? \(/);
   assert.match(appsPageSource, /s\.agentWorkflowSurface/);

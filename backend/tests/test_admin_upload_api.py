@@ -173,6 +173,22 @@ def test_upload_banner_image_rejects_forged_extension(tmp_path: Path):
     assert response.status_code == 415
 
 
+def test_upload_image_rejects_oversized_dimensions(tmp_path: Path):
+    runtime_service = create_runtime_service(tmp_path)
+    uploads_root = tmp_path / "uploads"
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.uploads_root = uploads_root
+        response = client.post(
+            "/api/v1/admin/upload/app-icon",
+            files={"file": ("wide.png", make_image_bytes("PNG", size=(4097, 1)), "image/png")},
+        )
+
+    assert response.status_code == 413
+    assert "4096" in response.json()["detail"]
+
+
 def test_upload_banner_image_accepts_png_and_webp(tmp_path: Path):
     runtime_service = create_runtime_service(tmp_path)
     uploads_root = tmp_path / "uploads"
@@ -193,3 +209,21 @@ def test_upload_banner_image_accepts_png_and_webp(tmp_path: Path):
     assert png_response.json()["data"]["image_url"].endswith(".png")
     assert webp_response.status_code == 200
     assert webp_response.json()["data"]["image_url"].endswith(".webp")
+
+
+def test_upload_application_icon_persists_valid_image_for_admin(tmp_path: Path):
+    runtime_service = create_runtime_service(tmp_path)
+    uploads_root = tmp_path / "uploads"
+
+    with TestClient(app) as client:
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.uploads_root = uploads_root
+        response = client.post(
+            "/api/v1/admin/upload/app-icon",
+            files={"file": ("app.png", make_image_bytes("PNG"), "image/png")},
+        )
+
+    assert response.status_code == 200
+    image_url = response.json()["data"]["image_url"]
+    assert image_url.startswith("/uploads/app-icons/")
+    assert (uploads_root / "app-icons" / image_url.rsplit("/", 1)[-1]).exists()

@@ -1787,6 +1787,7 @@ def test_get_admin_site_defaults_to_brand_values(tmp_path: Path):
         "browser_title": "首钢股份知库",
         "favicon_url": "/site-favicon-horizontal-v2.png",
         "domain_count_cache_ttl_seconds": 43200,
+        "home_cache_ttl_seconds": 1800,
     }
 
 
@@ -1802,6 +1803,7 @@ def test_post_admin_site_persists_brand_values(tmp_path: Path):
         "browser_title": "集团知识门户",
         "favicon_url": "/custom-favicon.svg",
         "domain_count_cache_ttl_seconds": 43200,
+        "home_cache_ttl_seconds": 1800,
     }
     with TestClient(app) as client:
         client.app.state.portal_config_service = service

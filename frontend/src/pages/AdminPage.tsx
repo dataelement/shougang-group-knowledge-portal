@@ -1,11 +1,10 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, LayoutGrid, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, Trash2, Link2,
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, Download, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, Trash2, Link2,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
-  type AppConfig,
   type AgentCategoryConfig,
   type AgentConfig,
   type AgentItemConfig,
@@ -44,7 +43,6 @@ import {
   type SiteConfig,
   type SpaceOption,
   type QAConfig,
-  updateAppsConfig,
   updateAgentConfig,
   updateBannersConfig,
   updateBishengRuntimeConfig,
@@ -59,6 +57,7 @@ import {
   updateSectionsConfig,
   updateSiteConfig,
   uploadBannerImage,
+  uploadApplicationIcon,
 } from '../api/adminConfig';
 import {
   buildDomainCodeOptions,
@@ -101,6 +100,7 @@ import {
   canDeleteAgentCategory,
   createAgentCategoryDraft,
   createAgentDraft,
+  createUrlApplicationDraft,
   toAgentCategoryConfig,
   toAgentItemConfig,
   validateAgentCategoryDraft,
@@ -131,17 +131,6 @@ function isLatestSelectedSectionDraft(draft: Pick<SectionDraft, 'builtinKey'>): 
   return draft.builtinKey === LATEST_SELECTED_SECTION_KEY;
 }
 
-const APP_ICON_OPTIONS = [
-  'PenLine',
-  'Search',
-  'MessageSquare',
-  'Globe',
-  'BarChart3',
-  'Network',
-  'Bot',
-  'FileText',
-] as const;
-
 const NAV_ITEMS = [
   { key: 'domains', label: '业务域', icon: Building },
   { key: 'sections', label: '首页分区', icon: Tag },
@@ -153,7 +142,6 @@ const NAV_ITEMS = [
   { key: 'search', label: '搜索配置', icon: SearchIcon },
   { key: 'recommend', label: '推荐策略', icon: Star },
   { key: 'display', label: '展示配置', icon: SlidersHorizontal },
-  { key: 'apps', label: '应用市场', icon: LayoutGrid },
   { key: 'bisheng', label: '数据源配置', icon: Server },
   { key: 'unifiedAuth', label: '统一认证', icon: KeyRound },
   { key: 'deptBinding', label: '科室知识库绑定', icon: Link2 },
@@ -199,17 +187,6 @@ type RecommendationDialogKey = 'home_strategy' | 'detail_strategy' | null;
 interface QaModelDraft {
   general_model: string;
   reasoning_model: string;
-}
-
-interface AppDraft {
-  id: string;
-  name: string;
-  icon: string;
-  desc: string;
-  color: string;
-  bg: string;
-  url: string;
-  enabled: boolean;
 }
 
 type QaCategoryDeleteTarget = {
@@ -275,6 +252,7 @@ interface SiteDraft {
   browser_title: string;
   favicon_url: string;
   domain_count_cache_ttl_seconds: string;
+  home_cache_ttl_seconds: string;
 }
 
 interface DocumentTypeDraft {
@@ -349,6 +327,11 @@ export default function AdminPage() {
   const [agentEditorIndex, setAgentEditorIndex] = useState<number | null>(null);
   const [agentDraft, setAgentDraft] = useState<AgentDraft>(createAgentDraft());
   const [agentFormError, setAgentFormError] = useState('');
+  const [urlApplicationEditorOpen, setUrlApplicationEditorOpen] = useState(false);
+  const [urlApplicationEditorIndex, setUrlApplicationEditorIndex] = useState<number | null>(null);
+  const [urlApplicationDraft, setUrlApplicationDraft] = useState<AgentDraft>(createUrlApplicationDraft());
+  const [urlApplicationFormError, setUrlApplicationFormError] = useState('');
+  const [urlApplicationIconUploading, setUrlApplicationIconUploading] = useState(false);
   const [agentDeleteTarget, setAgentDeleteTarget] = useState<AgentDeleteTarget | null>(null);
   const [agentWorkflowOptions, setAgentWorkflowOptions] = useState<AgentWorkflowOption[]>([]);
   const [agentWorkflowLoading, setAgentWorkflowLoading] = useState(false);
@@ -360,11 +343,6 @@ export default function AdminPage() {
   const [agentWorkflowNextCursor, setAgentWorkflowNextCursor] = useState('');
   const [recommendDialogKey, setRecommendDialogKey] = useState<RecommendationDialogKey>(null);
   const [recommendDraft, setRecommendDraft] = useState('');
-  const [appEditorOpen, setAppEditorOpen] = useState(false);
-  const [appEditorIndex, setAppEditorIndex] = useState<number | null>(null);
-  const [appDraft, setAppDraft] = useState<AppDraft>(createAppDraft());
-  const [appFormError, setAppFormError] = useState('');
-  const [appDeleteIndex, setAppDeleteIndex] = useState<number | null>(null);
   const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
   const [bannerEditorIndex, setBannerEditorIndex] = useState<number | null>(null);
   const [bannerDraft, setBannerDraft] = useState<BannerDraft>(createBannerDraft());
@@ -747,23 +725,27 @@ export default function AdminPage() {
     void loadAgentWorkflowOptions('');
   }
 
+  function openCreateUrlApplicationDialog() {
+    setUrlApplicationEditorOpen(true);
+    setUrlApplicationEditorIndex(null);
+    setUrlApplicationDraft(createUrlApplicationDraft(config?.agent_config.categories[0]?.id ?? ''));
+    setUrlApplicationFormError('');
+  }
+
+  function openEditApplicationDialog(application: AgentItemConfig, index: number) {
+    if (application.type === 'url') {
+      setUrlApplicationEditorOpen(true);
+      setUrlApplicationEditorIndex(index);
+      setUrlApplicationDraft(createUrlApplicationDraft(application.category_id, application));
+      setUrlApplicationFormError('');
+      return;
+    }
+    openEditAgentDialog(application, index);
+  }
+
   function openRecommendationDialog(key: Exclude<RecommendationDialogKey, null>, value: string) {
     setRecommendDialogKey(key);
     setRecommendDraft(value);
-  }
-
-  function openCreateAppDialog() {
-    setAppEditorOpen(true);
-    setAppEditorIndex(null);
-    setAppDraft(createAppDraft());
-    setAppFormError('');
-  }
-
-  function openEditAppDialog(app: AppConfig, index: number) {
-    setAppEditorOpen(true);
-    setAppEditorIndex(index);
-    setAppDraft(createAppDraft(app));
-    setAppFormError('');
   }
 
   function openCreateBannerDialog() {
@@ -825,7 +807,6 @@ export default function AdminPage() {
 
   const displayItems = config ? getDisplayItems(config.display) : [];
   const domainCodeOptions = config ? buildDomainCodeOptions(config.domains) : [];
-  const deletingApp = config && appDeleteIndex !== null ? config.apps[appDeleteIndex] : null;
   const deletingBanner = config && bannerDeleteIndex !== null ? config.banners[bannerDeleteIndex] : null;
 
   return (
@@ -1016,20 +997,21 @@ export default function AdminPage() {
                 void runSave(() => persistAgentConfig({ ...config.agent_config, categories: updated }, setConfig));
               }}
               onAddAgent={openCreateAgentDialog}
-              onEditAgent={(index) => openEditAgentDialog(config.agent_config.agents[index], index)}
-              onDeleteAgent={(index) => setAgentDeleteTarget({ agent: config.agent_config.agents[index], index })}
+              onAddUrlApplication={openCreateUrlApplicationDialog}
+              onEditAgent={(index) => openEditApplicationDialog(config.agent_config.applications[index], index)}
+              onDeleteAgent={(index) => setAgentDeleteTarget({ agent: config.agent_config.applications[index], index })}
               onMoveAgent={(index, direction) => {
                 const nextIndex = index + direction;
-                if (nextIndex < 0 || nextIndex >= config.agent_config.agents.length) return;
-                const updated = [...config.agent_config.agents];
+                if (nextIndex < 0 || nextIndex >= config.agent_config.applications.length) return;
+                const updated = [...config.agent_config.applications];
                 const [moved] = updated.splice(index, 1);
                 updated.splice(nextIndex, 0, moved);
-                void runSave(() => persistAgentConfig({ ...config.agent_config, agents: updated }, setConfig));
+                void runSave(() => persistAgentConfig({ ...config.agent_config, applications: updated }, setConfig));
               }}
               onToggleAgent={(index, enabled) => {
-                const updated = [...config.agent_config.agents];
+                const updated = [...config.agent_config.applications];
                 updated[index] = { ...updated[index], enabled };
-                void runSave(() => persistAgentConfig({ ...config.agent_config, agents: updated }, setConfig));
+                void runSave(() => persistAgentConfig({ ...config.agent_config, applications: updated }, setConfig));
               }}
             />
           )}
@@ -1078,15 +1060,6 @@ export default function AdminPage() {
               items={displayItems}
               saving={saving}
               onAdjust={(key, delta) => void handleAdjustDisplay(config.display, key, delta, runSave, setConfig)}
-            />
-          )}
-          {config && active === 'apps' && (
-            <AppsTable
-              apps={config.apps}
-              saving={saving}
-              onAdd={openCreateAppDialog}
-              onEdit={(index) => openEditAppDialog(config.apps[index], index)}
-              onDelete={(index) => setAppDeleteIndex(index)}
             />
           )}
           {config && active === 'banners' && (
@@ -1589,12 +1562,12 @@ export default function AdminPage() {
               } else {
                 categories[agentCategoryEditorIndex] = nextCategory;
               }
-              const agents = config.agent_config.agents.map((agent) => (
-                currentId && agent.category_id === currentId
-                  ? { ...agent, category_id: nextCategory.id }
-                  : agent
+              const applications = config.agent_config.applications.map((application) => (
+                currentId && application.category_id === currentId
+                  ? { ...application, category_id: nextCategory.id }
+                  : application
               ));
-              await persistAgentConfig({ categories, agents }, setConfig);
+              await persistAgentConfig({ categories, applications }, setConfig);
               setAgentCategoryEditorOpen(false);
             });
           }}
@@ -1608,7 +1581,7 @@ export default function AdminPage() {
           onClose={() => setAgentCategoryDeleteTarget(null)}
           onConfirm={() => {
             const target = agentCategoryDeleteTarget;
-            const deleteState = canDeleteAgentCategory(target.category, config.agent_config.agents);
+            const deleteState = canDeleteAgentCategory(target.category, config.agent_config.applications);
             if (!deleteState.canDelete) {
               setAgentCategoryDeleteTarget(null);
               setError(deleteState.reason);
@@ -1663,20 +1636,70 @@ export default function AdminPage() {
               return;
             }
             const nextAgent = toAgentItemConfig(agentDraft);
-            const agents = [...config.agent_config.agents];
+            const applications = [...config.agent_config.applications];
             if (agentEditorIndex === null) {
-              agents.push(nextAgent);
+              applications.push(nextAgent);
             } else {
-              agents[agentEditorIndex] = nextAgent;
+              applications[agentEditorIndex] = nextAgent;
             }
-            const configError = validateAgentConfig({ ...config.agent_config, agents });
+            const configError = validateAgentConfig({ ...config.agent_config, applications });
             if (configError) {
               setAgentFormError(configError);
               return;
             }
             void runSave(async () => {
-              await persistAgentConfig({ ...config.agent_config, agents }, setConfig);
+              await persistAgentConfig({ ...config.agent_config, applications }, setConfig);
               setAgentEditorOpen(false);
+            });
+          }}
+        />
+      ) : null}
+      {config && urlApplicationEditorOpen ? (
+        <UrlApplicationDialog
+          open
+          draft={urlApplicationDraft}
+          categories={config.agent_config.categories}
+          saving={saving}
+          uploading={urlApplicationIconUploading}
+          error={urlApplicationFormError}
+          onClose={() => setUrlApplicationEditorOpen(false)}
+          onChange={(patch) => {
+            setUrlApplicationDraft((current) => ({ ...current, ...patch }));
+            setUrlApplicationFormError('');
+          }}
+          onUploadIcon={async (file) => {
+            setUrlApplicationIconUploading(true);
+            setUrlApplicationFormError('');
+            try {
+              const data = await uploadApplicationIcon(file);
+              setUrlApplicationDraft((current) => ({ ...current, iconImageUrl: data.image_url }));
+            } catch (uploadError) {
+              setUrlApplicationFormError(uploadError instanceof Error ? uploadError.message : '图标上传失败');
+            } finally {
+              setUrlApplicationIconUploading(false);
+            }
+          }}
+          onSubmit={() => {
+            const draftError = validateAgentDraft(urlApplicationDraft);
+            if (draftError) {
+              setUrlApplicationFormError(draftError);
+              return;
+            }
+            const nextApplication = toAgentItemConfig(urlApplicationDraft);
+            const applications = [...config.agent_config.applications];
+            if (urlApplicationEditorIndex === null) {
+              applications.push(nextApplication);
+            } else {
+              applications[urlApplicationEditorIndex] = nextApplication;
+            }
+            const configError = validateAgentConfig({ ...config.agent_config, applications });
+            if (configError) {
+              setUrlApplicationFormError(configError);
+              return;
+            }
+            void runSave(async () => {
+              await persistAgentConfig({ ...config.agent_config, applications }, setConfig);
+              setUrlApplicationEditorOpen(false);
             });
           }}
         />
@@ -1692,7 +1715,7 @@ export default function AdminPage() {
             void runSave(async () => {
               await persistAgentConfig({
                 ...config.agent_config,
-                agents: config.agent_config.agents.filter((_, index) => index !== target.index),
+                applications: config.agent_config.applications.filter((_, index) => index !== target.index),
               }, setConfig);
               setAgentDeleteTarget(null);
             });
@@ -1716,52 +1739,6 @@ export default function AdminPage() {
             void runSave(async () => {
               await persistRecommendation({ ...config.recommendation, [recommendDialogKey]: trimmed }, setConfig);
               setRecommendDialogKey(null);
-            });
-          }}
-        />
-      ) : null}
-      {config && appEditorOpen ? (
-        <AppEditorDialog
-          open
-          draft={appDraft}
-          saving={saving}
-          error={appFormError}
-          onClose={() => setAppEditorOpen(false)}
-          onChange={(patch) => {
-            setAppDraft((current) => ({ ...current, ...patch }));
-            setAppFormError('');
-          }}
-          onSubmit={() => {
-            const result = validateAppDraft(appDraft);
-            if (!result.app) {
-              setAppFormError(result.error || '应用配置无效');
-              return;
-            }
-            const nextApp = result.app;
-            void runSave(async () => {
-              if (appEditorIndex === null) {
-                await persistApps([...config.apps, nextApp], setConfig);
-              } else {
-                const updated = [...config.apps];
-                updated[appEditorIndex] = nextApp;
-                await persistApps(updated, setConfig);
-              }
-              setAppEditorOpen(false);
-            });
-          }}
-        />
-      ) : null}
-      {config && deletingApp ? (
-        <AppDeleteDialog
-          open
-          app={deletingApp}
-          saving={saving}
-          onClose={() => setAppDeleteIndex(null)}
-          onConfirm={() => {
-            if (appDeleteIndex === null) return;
-            void runSave(async () => {
-              await persistApps(config.apps.filter((_, index) => index !== appDeleteIndex), setConfig);
-              setAppDeleteIndex(null);
             });
           }}
         />
@@ -3248,6 +3225,7 @@ function AgentConfigTable({
   onMoveCategory,
   onToggleCategory,
   onAddAgent,
+  onAddUrlApplication,
   onEditAgent,
   onDeleteAgent,
   onMoveAgent,
@@ -3269,6 +3247,7 @@ function AgentConfigTable({
   onMoveCategory: (index: number, direction: -1 | 1) => void;
   onToggleCategory: (index: number, enabled: boolean) => void;
   onAddAgent: () => void;
+  onAddUrlApplication: () => void;
   onEditAgent: (index: number) => void;
   onDeleteAgent: (index: number) => void;
   onMoveAgent: (index: number, direction: -1 | 1) => void;
@@ -3288,13 +3267,16 @@ function AgentConfigTable({
           <button className={s.addBtn} onClick={onAddAgent} disabled={saving || !agentConfig.categories.length}>
             <Plus size={14} /> 添加 Agent
           </button>
+          <button className={s.addBtn} onClick={onAddUrlApplication} disabled={saving || !agentConfig.categories.length}>
+            <Plus size={14} /> 添加 URL 应用
+          </button>
           <button className={s.addBtn} onClick={onAddCategory} disabled={saving}>
             <Plus size={14} /> 添加分类
           </button>
         </div>
       </div>
       <p className={s.pageNote}>
-        Agent 智能体来源于 Bisheng 已发布 workflow。前台智能应用页按这里的分类和 Agent 顺序展示，iframe 运行态由 Bisheng portal 专用 workflow 页面承接。
+        统一维护 Bisheng workflow Agent 与 URL 应用。前台按这里的分类和顺序混合展示，两类应用使用各自的 iframe 运行方式。
       </p>
       {workflowError ? <div className={s.errorBox}>{workflowError}</div> : null}
       {workflowLoading ? <div className={s.emptyState}>正在加载 Bisheng workflow 候选项...</div> : null}
@@ -3332,21 +3314,22 @@ function AgentConfigTable({
         </tbody>
       </table>
 
-      <h3 className={s.sectionTitle}>Agent 列表</h3>
+      <h3 className={s.sectionTitle}>智能应用列表</h3>
       <table className={s.table}>
         <thead>
           <tr>
             <th>名称</th>
+            <th>类型</th>
             <th>分类</th>
-            <th>workflow</th>
+            <th>目标</th>
             <th>标签</th>
             <th>状态</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
-          {agentConfig.agents.map((agent, index) => {
-            const sourceAbnormal = workflowSourceReliable && !workflowIds.has(agent.workflow_id);
+          {agentConfig.applications.map((agent, index) => {
+            const sourceAbnormal = agent.type === 'workflow' && workflowSourceReliable && !workflowIds.has(agent.workflow_id);
             return (
               <tr key={agent.id}>
                 <td>
@@ -3355,10 +3338,11 @@ function AgentConfigTable({
                     <span className={s.inlineHint}>{agent.desc || '未配置描述'}</span>
                   </div>
                 </td>
+                <td><span className={s.keyBadge}>{agent.type === 'url' ? 'URL 应用' : 'Agent'}</span></td>
                 <td>{categoryNameById.get(agent.category_id) || agent.category_id}</td>
                 <td>
                   <div className={s.spaceNameCell}>
-                    <span>{agent.workflow_id}</span>
+                    <span>{agent.type === 'url' ? agent.url : agent.workflow_id}</span>
                     {sourceAbnormal ? <span className={s.errorText}>未在已发布 workflow 候选项中</span> : null}
                   </div>
                 </td>
@@ -3370,14 +3354,14 @@ function AgentConfigTable({
                     <button className={s.inlineBtn} onClick={() => onToggleAgent(index, !agent.enabled)} disabled={saving}>{agent.enabled ? '停用' : '启用'}</button>
                     <button className={s.inlineDangerBtn} onClick={() => onDeleteAgent(index)} disabled={saving}>删除</button>
                     <button className={s.iconActionBtn} onClick={() => onMoveAgent(index, -1)} disabled={saving || index === 0} title="上移"><ArrowUp size={15} /></button>
-                    <button className={s.iconActionBtn} onClick={() => onMoveAgent(index, 1)} disabled={saving || index === agentConfig.agents.length - 1} title="下移"><ArrowDown size={15} /></button>
+                    <button className={s.iconActionBtn} onClick={() => onMoveAgent(index, 1)} disabled={saving || index === agentConfig.applications.length - 1} title="下移"><ArrowDown size={15} /></button>
                   </div>
                 </td>
               </tr>
             );
           })}
-          {!agentConfig.agents.length ? (
-            <tr><td colSpan={6}><div className={s.emptyState}>暂无 Agent，添加后会在前台智能应用页展示。</div></td></tr>
+          {!agentConfig.applications.length ? (
+            <tr><td colSpan={7}><div className={s.emptyState}>暂无智能应用，添加后会在前台智能应用页展示。</div></td></tr>
           ) : null}
         </tbody>
       </table>
@@ -3593,6 +3577,130 @@ function AgentDialog({
   );
 }
 
+function UrlApplicationDialog({
+  open,
+  draft,
+  categories,
+  saving,
+  uploading,
+  error,
+  onClose,
+  onChange,
+  onUploadIcon,
+  onSubmit,
+}: {
+  open: boolean;
+  draft: AgentDraft;
+  categories: AgentCategoryConfig[];
+  saving: boolean;
+  uploading: boolean;
+  error: string;
+  onClose: () => void;
+  onChange: (patch: Partial<AgentDraft>) => void;
+  onUploadIcon: (file: File) => Promise<void>;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={`${s.modalCard} ${s.qaTemplateModal}`} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>URL 应用</h3>
+            <p className={s.modalNote}>配置可在门户智能应用工作区内通过 iframe 打开的 HTTP/HTTPS 应用。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.modalScrollBody}>
+          <div className={s.formGrid}>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>展示名称</span>
+              <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：经营分析系统" />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>分类</span>
+              <select className={s.formInput} value={draft.categoryId} onChange={(event) => onChange({ categoryId: event.target.value })}>
+                <option value="">请选择分类</option>
+                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>应用 URL</span>
+              <input className={s.formInput} value={draft.url} onChange={(event) => onChange({ url: event.target.value })} placeholder="https://example.com/app" />
+              <span className={s.fieldHint}>仅支持完整的 http:// 或 https:// 地址；目标站点必须允许 iframe 嵌入。</span>
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>标签</span>
+              <input className={s.formInput} value={draft.tagsText} onChange={(event) => onChange({ tagsText: event.target.value })} placeholder="多个标签用逗号分隔" />
+            </label>
+            <label className={s.formField}>
+              <span className={s.fieldLabel}>启用状态</span>
+              <span className={s.toggleRow}>
+                <span>{draft.enabled ? '已启用' : '已停用'}</span>
+                <input type="checkbox" checked={draft.enabled} onChange={(event) => onChange({ enabled: event.target.checked })} />
+              </span>
+            </label>
+            <label className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>描述</span>
+              <textarea className={s.formTextarea} value={draft.desc} onChange={(event) => onChange({ desc: event.target.value })} rows={3} />
+            </label>
+            <div className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>预设图标</span>
+              <div className={s.optionPickerRow}>
+                {AGENT_ICON_OPTIONS.map((icon) => (
+                  <button key={icon} type="button" className={`${s.iconOptionBtn} ${draft.icon === icon ? s.iconOptionBtnActive : ''}`} onClick={() => onChange({ icon })}>
+                    <DomainIcon icon={icon} color={draft.color} bg={draft.bg} size={40} />
+                    <span className={s.optionLabel}>{icon}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>本地图标</span>
+              <div className={s.optionPickerRow}>
+                {draft.iconImageUrl ? <img src={draft.iconImageUrl} alt="应用图标预览" className={s.siteFaviconPreview} /> : null}
+                <label className={s.subtleBtn}>
+                  <Upload size={14} />{uploading ? '上传中...' : '上传图片'}
+                  <input
+                    hidden
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={uploading || saving}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void onUploadIcon(file);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+                {draft.iconImageUrl ? <button type="button" className={s.subtleBtn} onClick={() => onChange({ iconImageUrl: '' })}>使用预设图标</button> : null}
+              </div>
+            </div>
+            <div className={`${s.formField} ${s.formFieldWide}`}>
+              <span className={s.fieldLabel}>颜色</span>
+              <div className={s.optionPickerRow}>
+                {AGENT_COLOR_PRESETS.map((option) => (
+                  <button key={`${option.color}-${option.bg}`} type="button" className={`${s.colorOptionBtn} ${draft.color === option.color && draft.bg === option.bg ? s.colorOptionBtnActive : ''}`} onClick={() => onChange({ color: option.color, bg: option.bg })}>
+                    <span className={s.colorPairPreview}>
+                      <span className={s.colorSwatchMain} style={{ background: option.color }} />
+                      <span className={s.colorSwatchBg} style={{ background: option.bg }} />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving || uploading}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AgentCategoryDeleteDialog({
   open,
   category,
@@ -3635,8 +3743,8 @@ function AgentDeleteDialog({
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
       <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
-        <div className={s.modalHeader}><h3 className={s.modalTitle}>删除 Agent</h3><button className={s.subtleBtn} onClick={onClose}>取消</button></div>
-        <div className={s.confirmBody}><div className={s.confirmLine}><strong>Agent：</strong>{agent.name}</div><div className={s.confirmLine}><strong>workflow：</strong>{agent.workflow_id}</div></div>
+        <div className={s.modalHeader}><h3 className={s.modalTitle}>删除智能应用</h3><button className={s.subtleBtn} onClick={onClose}>取消</button></div>
+        <div className={s.confirmBody}><div className={s.confirmLine}><strong>应用：</strong>{agent.name}</div><div className={s.confirmLine}><strong>{agent.type === 'url' ? 'URL' : 'workflow'}：</strong>{agent.type === 'url' ? agent.url : agent.workflow_id}</div></div>
         <div className={s.confirmActions}><button className={s.subtleBtn} onClick={onClose}>关闭</button><button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button></div>
       </div>
     </div>
@@ -4216,6 +4324,11 @@ function SiteConfigTable({
             <td><div className={s.valueStack}><span className={s.valueTitle}>{site.domain_count_cache_ttl_seconds} 秒</span></div></td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
           </tr>
+          <tr>
+            <td>首页数据缓存有效期</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{site.home_cache_ttl_seconds} 秒</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
+          </tr>
         </tbody>
       </table>
     </>
@@ -4273,69 +4386,6 @@ function DisplayConfigTable({
                   >
                     +
                   </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
-  );
-}
-
-function AppsTable({
-  apps,
-  saving,
-  onAdd,
-  onEdit,
-  onDelete,
-}: {
-  apps: AppConfig[];
-  saving: boolean;
-  onAdd: () => void;
-  onEdit: (index: number) => void;
-  onDelete: (index: number) => void;
-}) {
-  return (
-    <>
-      <div className={s.titleBar}>
-        <h2 className={s.pageTitle}>应用市场管理</h2>
-        <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
-      </div>
-      <p className={s.pageNote}>
-        应用市场和首页应用入口共用这一份配置。这里维护展示顺序、名称、描述、跳转地址和启用状态。
-      </p>
-      <table className={s.table}>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>应用名称</th>
-            <th>图标</th>
-            <th>描述</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {apps.map((app, index) => (
-            <tr key={app.id}>
-              <td>{app.id}</td>
-              <td>
-                <div className={s.valueStack}>
-                  <span className={s.valueTitle}>{app.name}</span>
-                  <span className={s.valueMeta}>{app.enabled ? '当前已启用' : '当前已停用'}</span>
-                </div>
-              </td>
-              <td><span className={s.keyBadge}>{app.icon}</span></td>
-              <td>
-                <div className={s.valueStack}>
-                  <span className={s.valueTitle}>{truncateText(app.desc, 44)}</span>
-                  <span className={s.valueMeta}>{app.url || '未配置跳转地址'}</span>
-                </div>
-              </td>
-              <td>
-                <div className={s.actionGroup}>
-                  <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
-                  <button className={s.inlineDangerBtn} onClick={() => onDelete(index)} disabled={saving}>删除</button>
                 </div>
               </td>
             </tr>
@@ -4542,6 +4592,17 @@ function SiteEditorDialog({
               value={draft.domain_count_cache_ttl_seconds}
               onChange={(event) => onChange({ ...draft, domain_count_cache_ttl_seconds: event.target.value })}
               placeholder="例如：43200（12 小时）"
+            />
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>首页数据缓存有效期（秒）</span>
+            <input
+              className={s.formInput}
+              type="number"
+              min={60}
+              value={draft.home_cache_ttl_seconds}
+              onChange={(event) => onChange({ ...draft, home_cache_ttl_seconds: event.target.value })}
+              placeholder="例如：1800（30 分钟）"
             />
           </label>
         </div>
@@ -4850,148 +4911,6 @@ function QaModelCascaderSelect({
   );
 }
 
-function AppEditorDialog({
-  open,
-  draft,
-  saving,
-  error,
-  onClose,
-  onChange,
-  onSubmit,
-}: {
-  open: boolean;
-  draft: AppDraft;
-  saving: boolean;
-  error: string;
-  onClose: () => void;
-  onChange: (patch: Partial<AppDraft>) => void;
-  onSubmit: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className={s.modalBackdrop} onClick={onClose}>
-      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
-        <div className={s.modalHeader}>
-          <div>
-            <h3 className={s.modalTitle}>{draft.name.trim() ? `编辑应用 · ${draft.name}` : '新增应用'}</h3>
-            <p className={s.modalNote}>统一在这里维护应用名称、图标、跳转地址和卡片颜色。</p>
-          </div>
-          <div className={s.modalHeaderActions}>
-            <button type="button" className={s.headerSwitch} onClick={() => onChange({ enabled: !draft.enabled })}>
-              <span>{draft.enabled ? '已启用' : '已停用'}</span>
-              <span className={`${s.switchTrack} ${draft.enabled ? s.switchTrackActive : ''}`}>
-                <span className={`${s.switchThumb} ${draft.enabled ? s.switchThumbActive : ''}`} />
-              </span>
-            </button>
-            <button className={s.subtleBtn} onClick={onClose}>关闭</button>
-          </div>
-        </div>
-        {error ? <div className={s.errorBox}>{error}</div> : null}
-        <div className={s.modalScrollBody}>
-          <div className={s.formGrid}>
-            <label className={s.formField}>
-              <span className={s.fieldLabel}>应用 ID</span>
-              <input className={s.formInput} value={draft.id} onChange={(event) => onChange({ id: event.target.value })} placeholder="例如：7" />
-            </label>
-            <label className={s.formField}>
-              <span className={s.fieldLabel}>应用名称</span>
-              <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：智能问答" />
-            </label>
-            <label className={s.formField}>
-              <span className={s.fieldLabel}>跳转 URL</span>
-              <input className={s.formInput} value={draft.url} onChange={(event) => onChange({ url: event.target.value })} placeholder="例如：https://example.com/app" />
-              <span className={s.fieldHint}>只接受以 `http://` 或 `https://` 开头的外链地址。</span>
-            </label>
-            <div className={`${s.formField} ${s.formFieldWide}`}>
-              <span className={s.fieldLabel}>图标</span>
-              <div className={s.optionPickerRow}>
-                {APP_ICON_OPTIONS.map((icon) => (
-                  <button
-                    key={icon}
-                    type="button"
-                    className={`${s.iconOptionBtn} ${draft.icon === icon ? s.iconOptionBtnActive : ''}`}
-                    onClick={() => onChange({ icon })}
-                  >
-                    <DomainIcon icon={icon} color={draft.color} bg={draft.bg} size={40} />
-                    <span className={s.optionLabel}>{icon}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className={`${s.formField} ${s.formFieldWide}`}>
-              <span className={s.fieldLabel}>颜色</span>
-              <div className={s.optionPickerRow}>
-                {DOMAIN_COLOR_OPTIONS.map((option) => (
-                  <button
-                    key={option.label}
-                    type="button"
-                    className={`${s.colorOptionBtn} ${isSelectedDomainColor(draft, option) ? s.colorOptionBtnActive : ''}`}
-                    onClick={() => onChange({ color: option.color, bg: option.bg })}
-                  >
-                    <span className={s.colorPairPreview}>
-                      <span className={s.colorSwatchMain} style={{ background: option.color }} />
-                      <span className={s.colorSwatchBg} style={{ background: option.bg }} />
-                    </span>
-                    <span className={s.optionLabel}>{option.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className={`${s.formField} ${s.formFieldWide}`}>
-              <span className={s.fieldLabel}>应用描述</span>
-              <textarea className={s.formTextarea} value={draft.desc} onChange={(event) => onChange({ desc: event.target.value })} placeholder="一句话描述应用用途" />
-            </label>
-          </div>
-        </div>
-        <div className={s.confirmActions}>
-          <button className={s.subtleBtn} onClick={onClose}>取消</button>
-          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AppDeleteDialog({
-  open,
-  app,
-  saving,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean;
-  app: AppConfig;
-  saving: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className={s.modalBackdrop} onClick={onClose}>
-      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
-        <div className={s.modalHeader}>
-          <div>
-            <h3 className={s.modalTitle}>删除应用</h3>
-            <p className={s.modalNote}>删除后应用市场和首页入口都会同步下线。</p>
-          </div>
-          <button className={s.subtleBtn} onClick={onClose}>取消</button>
-        </div>
-        <div className={s.confirmBody}>
-          <div className={s.confirmLine}><strong>应用名称：</strong>{app.name}</div>
-          <div className={s.confirmLine}><strong>图标：</strong>{app.icon}</div>
-          <div className={s.confirmLine}><strong>跳转地址：</strong>{app.url || '未配置'}</div>
-        </div>
-        <div className={s.confirmActions}>
-          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
-          <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function getQaDialogTitle(mode: Exclude<QaDialogMode, null>) {
   switch (mode) {
     case 'welcome_message':
@@ -5058,57 +4977,6 @@ function getQaDialogPlaceholder(mode: Exclude<QaDialogMode, null>) {
     default:
       return '请输入内容';
   }
-}
-
-function createAppDraft(current?: AppConfig): AppDraft {
-  return {
-    id: current ? String(current.id) : '',
-    name: current?.name ?? '',
-    icon: current?.icon ?? 'Bot',
-    desc: current?.desc ?? '',
-    color: current?.color ?? '#2563eb',
-    bg: current?.bg ?? '#eff6ff',
-    url: current?.url ?? '',
-    enabled: current?.enabled ?? true,
-  };
-}
-
-function validateAppDraft(draft: AppDraft): { app?: AppConfig; error?: string } {
-  const id = Number(draft.id.trim());
-  if (!Number.isFinite(id) || id <= 0) return { error: '请输入有效的应用 ID' };
-
-  const name = draft.name.trim();
-  if (!name) return { error: '请输入应用名称' };
-
-  const icon = draft.icon.trim();
-  if (!icon) return { error: '请输入图标名' };
-
-  const desc = draft.desc.trim();
-  if (!desc) return { error: '请输入应用描述' };
-
-  const color = draft.color.trim();
-  if (!color) return { error: '请输入主色' };
-
-  const bg = draft.bg.trim();
-  if (!bg) return { error: '请输入背景色' };
-
-  const url = draft.url.trim();
-  if (url && !/^https?:\/\//i.test(url)) {
-    return { error: '跳转 URL 只接受以 http:// 或 https:// 开头的地址' };
-  }
-
-  return {
-    app: {
-      id,
-      name,
-      icon,
-      desc,
-      color,
-      bg,
-      url,
-      enabled: draft.enabled,
-    },
-  };
 }
 
 function getDisplayItems(display: DisplayConfig): DisplayItem[] {
@@ -5237,11 +5105,6 @@ async function persistRecommendation(recommendation: RecommendationConfig, setCo
 async function persistDisplay(display: DisplayConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
   const data = await updateDisplayConfig(display);
   setConfig((current) => (current ? { ...current, display: data } : current));
-}
-
-async function persistApps(apps: AppConfig[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
-  const data = await updateAppsConfig(apps);
-  setConfig((current) => (current ? { ...current, apps: data.apps } : current));
 }
 
 async function persistIntegrations(integrations: IntegrationsConfig, setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
@@ -5508,6 +5371,7 @@ function createSiteDraft(current?: SiteConfig): SiteDraft {
     browser_title: current?.browser_title ?? '首钢股份知库',
     favicon_url: current?.favicon_url ?? '/site-favicon-horizontal-v2.png',
     domain_count_cache_ttl_seconds: String(current?.domain_count_cache_ttl_seconds ?? 43200),
+    home_cache_ttl_seconds: String(current?.home_cache_ttl_seconds ?? 1800),
   };
 }
 
@@ -5515,6 +5379,10 @@ function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: strin
   const ttl = Number(draft.domain_count_cache_ttl_seconds.trim());
   if (!Number.isInteger(ttl) || ttl < 60) {
     return { error: '业务域计数缓存有效期需为不小于 60 的整数（秒）' };
+  }
+  const homeTtl = Number(draft.home_cache_ttl_seconds.trim());
+  if (!Number.isInteger(homeTtl) || homeTtl < 60) {
+    return { error: '首页数据缓存有效期需为不小于 60 的整数（秒）' };
   }
   const site: SiteConfig = {
     header_brand_name: draft.header_brand_name.trim(),
@@ -5524,6 +5392,7 @@ function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: strin
     browser_title: draft.browser_title.trim(),
     favicon_url: normalizeAssetUrl(draft.favicon_url),
     domain_count_cache_ttl_seconds: ttl,
+    home_cache_ttl_seconds: homeTtl,
   };
   if (!site.header_brand_name) return { error: '请输入顶部品牌名' };
   if (!site.login_brand_name) return { error: '请输入登录页品牌名' };
