@@ -30,6 +30,7 @@ const BASE = '/workspace/api/v1/qa_experts';
 /** 单次请求超时毫秒数 */
 const DEFAULT_TIMEOUT = 8_000;
 const KNOWLEDGE_TREE_TIMEOUT = 90_000;
+const UPLOAD_TIMEOUT = 120_000;
 
 // ─── 错误类 ──────────────────────────────────────────────────
 
@@ -1134,10 +1135,14 @@ export async function uploadQaImage(file: File): Promise<QaUploadResult> {
   const form = new FormData();
   form.append('file', file);
 
-  const data = await req<QaUploadResponse>(`${BASE}/upload`, {
-    method: 'POST',
-    body: form,
-  });
+  const data = await req<QaUploadResponse>(
+    `${BASE}/upload`,
+    {
+      method: 'POST',
+      body: form,
+    },
+    UPLOAD_TIMEOUT,
+  );
 
   return {
     image_url: data?.file_path ?? data?.image_url ?? '',
