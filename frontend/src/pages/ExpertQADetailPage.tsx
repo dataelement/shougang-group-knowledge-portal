@@ -66,6 +66,7 @@ import {
 } from '../types/expertQa';
 import askBadge from '../assets/ask-badge.png';
 import { resolveQaImageUrl } from '../utils/qaImageUrl';
+import { isPortalAdmin } from '../utils/adminAccess';
 import s from './ExpertQADetailPage.module.css';
 
 const ANSWERS_PAGE_SIZE = 10;
@@ -1108,6 +1109,7 @@ export default function ExpertQADetailPage() {
   const answeredInvitedCount = question
     ? question.invitedExperts.filter((item) => item.status === 'answered').length
     : 0;
+  const canAnswer = Boolean(currentExpert) || isPortalAdmin(user);
   const sortedAnswers = useMemo(
     () =>
       [...answers].sort((a, b) =>
@@ -1707,142 +1709,144 @@ export default function ExpertQADetailPage() {
               </div>
             ) : null}
 
-            <div className={s.yourAnswerCard}>
-              <h3 className={s.yourAnswerTitle}>发布回答</h3>
-              <input
-                ref={answerImageInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                style={{ display: 'none' }}
-                onChange={(event) => {
-                  const files = Array.from(event.target.files ?? []);
-                  if (files.length) void handleAnswerImageUpload(files);
-                  event.target.value = '';
-                }}
-              />
-              <div className={s.answerComposerBox}>
-                <textarea
-                  className={s.yourAnswerInput}
-                  placeholder={ANSWER_PLACEHOLDER}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  disabled={submitting}
+            {canAnswer ? (
+              <div className={s.yourAnswerCard}>
+                <h3 className={s.yourAnswerTitle}>发布回答</h3>
+                <input
+                  ref={answerImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files ?? []);
+                    if (files.length) void handleAnswerImageUpload(files);
+                    event.target.value = '';
+                  }}
                 />
+                <div className={s.answerComposerBox}>
+                  <textarea
+                    className={s.yourAnswerInput}
+                    placeholder={ANSWER_PLACEHOLDER}
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    disabled={submitting}
+                  />
 
-                {answerImageUrls.length > 0 || answerUploadingImages ? (
-                  <div className={s.commentPreviewGrid}>
-                    {answerImageUrls.map((url) => (
-                      <div key={url} className={s.commentImagePreview}>
-                        <img src={resolveQaImageUrl(url)} alt="已上传回答图片" />
-                        <button
-                          type="button"
-                          onClick={() => removeAnswerImage(url)}
-                          aria-label="移除图片"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                    {answerUploadingImages ? (
-                      <div className={`${s.commentImagePreview} ${s.commentUploading}`}>
-                        <Loader2 size={16} className={s.spin} />
-                        <span>上传中</span>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {answerRelatedDocs.length > 0 ? (
-                  <div className={s.commentAttachmentList}>
-                    {answerRelatedDocs.map((item) => (
-                      <span
-                        key={`${item.spaceId}-${item.id}`}
-                        className={s.commentAttachmentChip}
-                      >
-                        <FileText size={13} />
-                        <span>{item.title}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeAnswerRelatedDoc(item)}
-                          aria-label="移除关联文档"
-                        >
-                          <X size={12} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-
-                <div className={s.answerComposerToolbar}>
-                  <div className={s.answerPlusWrap}>
-                    <button
-                      type="button"
-                      className={s.composerPlusBtn}
-                      disabled={submitting}
-                      onClick={() => setAnswerToolMenuOpen((prev) => !prev)}
-                      aria-label="添加附件"
-                    >
-                      <Plus size={18} />
-                    </button>
-                    {answerToolMenuOpen ? (
-                      <>
-                        <div
-                          className={s.composerMenuMask}
-                          onClick={() => setAnswerToolMenuOpen(false)}
-                        />
-                        <div className={s.composerMenu}>
+                  {answerImageUrls.length > 0 || answerUploadingImages ? (
+                    <div className={s.commentPreviewGrid}>
+                      {answerImageUrls.map((url) => (
+                        <div key={url} className={s.commentImagePreview}>
+                          <img src={resolveQaImageUrl(url)} alt="已上传回答图片" />
                           <button
                             type="button"
-                            disabled={submitting || answerUploadingImages}
-                            onClick={() => {
-                              setAnswerToolMenuOpen(false);
-                              answerImageInputRef.current?.click();
-                            }}
+                            onClick={() => removeAnswerImage(url)}
+                            aria-label="移除图片"
                           >
-                            <ImageIcon size={15} />
-                            图片
-                          </button>
-                          <button
-                            type="button"
-                            disabled={submitting}
-                            onClick={() => {
-                              setAnswerToolMenuOpen(false);
-                              openAnswerKnowledgeDialog();
-                            }}
-                          >
-                            <FileText size={15} />
-                            选择文档
+                            <X size={12} />
                           </button>
                         </div>
-                      </>
-                    ) : null}
+                      ))}
+                      {answerUploadingImages ? (
+                        <div className={`${s.commentImagePreview} ${s.commentUploading}`}>
+                          <Loader2 size={16} className={s.spin} />
+                          <span>上传中</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {answerRelatedDocs.length > 0 ? (
+                    <div className={s.commentAttachmentList}>
+                      {answerRelatedDocs.map((item) => (
+                        <span
+                          key={`${item.spaceId}-${item.id}`}
+                          className={s.commentAttachmentChip}
+                        >
+                          <FileText size={13} />
+                          <span>{item.title}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeAnswerRelatedDoc(item)}
+                            aria-label="移除关联文档"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className={s.answerComposerToolbar}>
+                    <div className={s.answerPlusWrap}>
+                      <button
+                        type="button"
+                        className={s.composerPlusBtn}
+                        disabled={submitting}
+                        onClick={() => setAnswerToolMenuOpen((prev) => !prev)}
+                        aria-label="添加附件"
+                      >
+                        <Plus size={18} />
+                      </button>
+                      {answerToolMenuOpen ? (
+                        <>
+                          <div
+                            className={s.composerMenuMask}
+                            onClick={() => setAnswerToolMenuOpen(false)}
+                          />
+                          <div className={s.composerMenu}>
+                            <button
+                              type="button"
+                              disabled={submitting || answerUploadingImages}
+                              onClick={() => {
+                                setAnswerToolMenuOpen(false);
+                                answerImageInputRef.current?.click();
+                              }}
+                            >
+                              <ImageIcon size={15} />
+                              图片
+                            </button>
+                            <button
+                              type="button"
+                              disabled={submitting}
+                              onClick={() => {
+                                setAnswerToolMenuOpen(false);
+                                openAnswerKnowledgeDialog();
+                              }}
+                            >
+                              <FileText size={15} />
+                              选择文档
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className={s.sendRoundBtn}
+                      disabled={submitting || answerUploadingImages || !draft.trim()}
+                      onClick={() => void handleSubmitAnswer()}
+                      aria-label="发布回答"
+                    >
+                      {submitting ? (
+                        <Loader2 size={14} className={s.spin} />
+                      ) : (
+                        <ArrowUp size={16} />
+                      )}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className={s.sendRoundBtn}
-                    disabled={submitting || answerUploadingImages || !draft.trim()}
-                    onClick={() => void handleSubmitAnswer()}
-                    aria-label="发布回答"
-                  >
-                    {submitting ? (
-                      <Loader2 size={14} className={s.spin} />
-                    ) : (
-                      <ArrowUp size={16} />
-                    )}
-                  </button>
                 </div>
+
+                {answerUploadError ? (
+                  <p className={s.answerError}>{answerUploadError}</p>
+                ) : null}
+                {submitError ? <p className={s.answerError}>{submitError}</p> : null}
+
+                <p className={s.yourAnswerHint}>
+                  支持图片和知识库文档，回答可被采纳为最佳答案
+                </p>
               </div>
-
-              {answerUploadError ? (
-                <p className={s.answerError}>{answerUploadError}</p>
-              ) : null}
-              {submitError ? <p className={s.answerError}>{submitError}</p> : null}
-
-              <p className={s.yourAnswerHint}>
-                支持图片和知识库文档，回答可被采纳为最佳答案
-              </p>
-            </div>
+            ) : null}
             </div>
           </main>
 

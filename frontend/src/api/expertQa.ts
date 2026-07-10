@@ -836,6 +836,16 @@ export async function adoptAnswer(questionId: number, answerId: number): Promise
   });
 }
 
+/** 业务域回答数（GET /questions/answer_count） */
+export interface DomainAnswerCountItem {
+  business_domain: string;
+  answer_count: number;
+}
+
+export async function fetchAnswerCountByDomain(): Promise<DomainAnswerCountItem[]> {
+  return req<DomainAnswerCountItem[]>(`${BASE}/questions/answer_count/domain`);
+}
+
 // ─── 相似问题搜索（本地 token 匹配） ─────────────────────────
 
 /** 从标题文本中提取搜索词（支持中文分词与英文词拆分） */

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -18,12 +18,14 @@ import {
 import PageShell from '../components/PageShell';
 import {
   deleteExpertQuestion,
+  fetchAnswerCountByDomain,
   fetchAnswersPaged,
   fetchConfigData,
   fetchExpertProfiles,
   fetchExpertQuestions,
   type ApiAnswer,
   type ApiQuestion,
+  type DomainAnswerCountItem,
   type ExpertProfileResponse,
 } from '../api/expertQa';
 import { SORT_TABS, STATUS_FILTERS } from '../data/expertQaData';
@@ -321,9 +323,18 @@ export default function ExpertQAPage() {
 
   const [experts, setExperts] = useState<ExpertProfileResponse[]>([]);
   const [domains, setDomains] = useState<DomainConfig[]>([]);
+  const [domainAnswerCounts, setDomainAnswerCounts] = useState<DomainAnswerCountItem[]>([]);
   const { user } = useAuth();
 
   const maxPage = Math.max(1, Math.ceil(total / pageSize));
+
+  const domainAnswerCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    domainAnswerCounts.forEach((item) => {
+      map.set(item.business_domain, item.answer_count);
+    });
+    return map;
+  }, [domainAnswerCounts]);
 
   // 删除确认弹窗状态
   const [deleteModal, setDeleteModal] = useState<{
@@ -453,6 +464,16 @@ export default function ExpertQAPage() {
           console.error('获取专家列表失败:', err);
           setSidebarError('获取专家列表失败');
         }),
+
+      fetchAnswerCountByDomain()
+        .then((data) => {
+          if (!active) return;
+          setDomainAnswerCounts(data || []);
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.error('获取业务域回答数失败:', err);
+        }),
     ];
 
     Promise.allSettled(tasks).then(() => {
@@ -526,6 +547,7 @@ export default function ExpertQAPage() {
                 domains.map((d) => {
                   const Icon = iconMap[d.icon] || Tag;
                   const active = d.name === activeDomain;
+                  const answerCount = domainAnswerCountMap.get(d.name);
                   return (
                     <button
                       key={d.name}
@@ -537,6 +559,7 @@ export default function ExpertQAPage() {
                         <Icon size={14} className={s.filterIco} />
                         {d.name}
                       </span>
+                      <span className={s.filterCt}>({answerCount})</span>
                     </button>
                   );
                 })
