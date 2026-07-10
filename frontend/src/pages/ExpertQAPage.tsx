@@ -205,7 +205,7 @@ function QuestionCard({
               <span className={s.countItem}>
                 <img src={iconVote} alt="" className={s.countIcon} />
                 <span className={s.countNum}>{q.votes}</span>
-                <span className={s.countLb}>投票</span>
+                <span className={s.countLb}>点赞</span>
               </span>
               <span className={s.countItem}>
                 <img src={iconAnswer} alt="" className={s.countIcon} />
