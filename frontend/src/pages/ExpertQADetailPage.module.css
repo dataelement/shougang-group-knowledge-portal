@@ -204,6 +204,11 @@
   padding: 16px;
 }
 
+.answersCardRefreshing {
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+}
+
 /* 卡片内的回答条目保留轻量卡片感 */
 .answersCard .answer {
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
@@ -739,6 +744,9 @@
 
 .sortToggle button {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 0 0 14px;
   color: var(--neutral-500);
   transition: color 0.15s ease;

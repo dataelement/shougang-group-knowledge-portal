@@ -934,8 +934,9 @@ export async function fetchAnswersPaged(
   questionId: number,
   page = 1,
   pageSize = 10,
+  sort_by = 'top',
 ): Promise<PagedAnswerResponse> {
-  const raw = await req<unknown>(`${BASE}/answers/${questionId}${qs({ page, page_size: pageSize })}`);
+  const raw = await req<unknown>(`${BASE}/answers/${questionId}${qs({ page, page_size: pageSize, sort_by })}`);  
   const { items, total, page: p, pageSize: ps } = normalizePaged<ApiAnswer>(raw, 'answers', {
     page,
     pageSize,

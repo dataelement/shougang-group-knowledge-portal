@@ -1,11 +1,13 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import type { MouseEvent } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowUp,
@@ -162,6 +164,7 @@ interface CommentThreadProps {
 }
 
 interface AnswerCardProps {
+  key?: string;
   answer: DetailAnswerEntry;
   questionId: number;
   showComments: boolean;
@@ -171,6 +174,19 @@ interface AnswerCardProps {
   onCommentTotalChange?: (total: number) => void;
   usefulDisabled?: boolean;
   isQuestionOwner?: boolean;
+}
+
+interface AnswerListSectionProps {
+  questionId: number;
+  currentExpert: ExpertProfileResponse | null;
+  isQuestionOwner: boolean;
+  onAnswerAccepted?: () => void;
+  onAnswersChange?: (answers: DetailAnswerEntry[]) => void;
+  children?: ReactNode;
+}
+
+export interface AnswerListSectionRef {
+  refresh: () => void;
 }
 
 function mergeUniqueComments(current: ApiComment[], incoming: ApiComment[]): ApiComment[] {
@@ -1072,6 +1088,309 @@ function AnswerCard({
   );
 }
 
+const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProps>(
+  ({ questionId, currentExpert, isQuestionOwner, onAnswerAccepted, onAnswersChange, children }, ref) => {
+    const { user } = useAuth();
+    const currentUserKey = user?.externalId || user?.account || user?.name || 'anonymous';
+
+    const [answers, setAnswers] = useState<DetailAnswerEntry[]>([]);
+    const [answerTotal, setAnswerTotal] = useState(0);
+    const [answerPage, setAnswerPage] = useState(0);
+    const [answerLoading, setAnswerLoading] = useState(false);
+    const [answerError, setAnswerError] = useState<string | null>(null);
+    const [sortMode, setSortMode] = useState<SortMode>('top');
+    const [pendingSortMode, setPendingSortMode] = useState<SortMode | null>(null);
+    const [initialLoaded, setInitialLoaded] = useState(false);
+    const [openComments, setOpenComments] = useState<Set<string>>(new Set());
+    const [votedTargets, setVotedTargets] = useState<Set<string>>(new Set());
+
+    const answerLoadingRef = useRef(false);
+    const activeSortRef = useRef<SortMode>('top');
+    const answerRequestIdRef = useRef(0);
+
+    const displaySortMode = pendingSortMode ?? sortMode;
+    const answerHasMore = answers.length < answerTotal;
+    const sortedAnswers = useMemo(
+      () =>
+        [...answers].sort((a, b) =>
+          displaySortMode === 'top'
+            ? b.helpful - a.helpful || b.createdAtMs - a.createdAtMs
+            : b.createdAtMs - a.createdAtMs,
+        ),
+      [answers, displaySortMode],
+    );
+
+    const loadAnswers = useCallback(
+      async (
+        targetQuestionId: number,
+        page: number,
+        replace = false,
+        mode: SortMode = activeSortRef.current,
+        force = false,
+      ): Promise<boolean> => {
+        if (!force && answerLoadingRef.current) return false;
+        answerLoadingRef.current = true;
+        activeSortRef.current = mode;
+        const requestId = ++answerRequestIdRef.current;
+        setAnswerLoading(true);
+        setAnswerError(null);
+
+        try {
+          const res: PagedAnswerResponse = await fetchAnswersPaged(
+            targetQuestionId,
+            page,
+            ANSWERS_PAGE_SIZE,
+            mode,
+          );
+          const entries = (res.answers ?? []).map((answer) =>
+            buildAnswerEntry(answer, currentExpert),
+          );
+          if (activeSortRef.current !== mode) return false;
+          if (answerRequestIdRef.current !== requestId) return false;
+
+          setAnswers((prev) => {
+            if (replace) return entries;
+
+            const existingIds = new Set(prev.map((item) => item.id));
+            const newEntries = entries.filter((item) => !existingIds.has(item.id));
+            return [...prev, ...newEntries];
+          });
+
+          const nextTotal = typeof res.total === 'number' ? res.total : entries.length;
+          setAnswerTotal(nextTotal);
+          setAnswerPage(page);
+          setInitialLoaded(true);
+          return true;
+        } catch (err) {
+          if (answerRequestIdRef.current !== requestId) return false;
+          console.error('回答列表加载失败:', err);
+          setAnswerError(err instanceof Error ? err.message : '回答列表加载失败');
+          return false;
+        } finally {
+          if (answerRequestIdRef.current === requestId) {
+            answerLoadingRef.current = false;
+            setAnswerLoading(false);
+          }
+        }
+      },
+      [currentExpert],
+    );
+
+    useImperativeHandle(ref, () => ({
+      refresh: () => void loadAnswers(questionId, 1, true, sortMode, true),
+    }));
+
+    useEffect(() => {
+      activeSortRef.current = sortMode;
+    }, [sortMode]);
+
+    useEffect(() => {
+      void loadAnswers(questionId, 1, true, sortMode, true);
+    }, [questionId, loadAnswers]);
+
+    useEffect(() => {
+      const next = new Set<string>();
+      answers.forEach((answer) => {
+        if (hasStoredVote(currentUserKey, 'answer-helpful', answer.id)) {
+          next.add(`answer-helpful:${answer.id}`);
+        }
+      });
+      setVotedTargets(next);
+    }, [answers, currentUserKey]);
+
+    useEffect(() => {
+      if (answerLoading || !initialLoaded) return;
+      onAnswersChange?.(answers);
+    }, [answers, answerLoading, initialLoaded, onAnswersChange]);
+
+    const handleSortChange = useCallback(
+      async (mode: SortMode) => {
+        if (mode === sortMode || pendingSortMode || answerLoadingRef.current) return;
+        setPendingSortMode(mode);
+        const ok = await loadAnswers(questionId, 1, true, mode, true);
+        if (ok) {
+          setSortMode(mode);
+        }
+        setPendingSortMode(null);
+      },
+      [sortMode, pendingSortMode, questionId, loadAnswers],
+    );
+
+    async function handleAnswerUseful(answerId: string) {
+      const voteKey = `answer-helpful:${answerId}`;
+      if (votedTargets.has(voteKey)) {
+        setAnswerError('你已经点过有用了');
+        return;
+      }
+
+      storeVote(currentUserKey, 'answer-helpful', answerId);
+      setVotedTargets((prev) => new Set(prev).add(voteKey));
+      setAnswers((prev) =>
+        prev.map((answer) =>
+          answer.id === answerId
+            ? { ...answer, helpful: answer.helpful + 1 }
+            : answer,
+        ),
+      );
+      try {
+        await markAnswerUseful({ target_id: Number(answerId), target_type: 'helpful' });
+      } catch (err) {
+        removeStoredVote(currentUserKey, 'answer-helpful', answerId);
+        setVotedTargets((prev) => {
+          const next = new Set(prev);
+          next.delete(voteKey);
+          return next;
+        });
+        setAnswers((prev) =>
+          prev.map((answer) =>
+            answer.id === answerId
+              ? { ...answer, helpful: Math.max(answer.helpful - 1, 0) }
+              : answer,
+          ),
+        );
+        setAnswerError(err instanceof Error ? err.message : '投票失败，请稍后重试');
+      }
+    }
+
+    async function handleAcceptAnswer(answerId: string) {
+      setAnswers((prev) =>
+        prev.map((answer) => ({
+          ...answer,
+          adopted: answer.id === answerId,
+        })),
+      );
+      try {
+        await acceptAnswer(questionId, Number(answerId));
+        onAnswerAccepted?.();
+        await loadAnswers(questionId, 1, true, sortMode, true);
+      } catch (err) {
+        setAnswerError(err instanceof Error ? err.message : '采纳失败，请稍后重试');
+        await loadAnswers(questionId, 1, true, sortMode, true);
+      }
+    }
+
+    function toggleComments(id: string, event?: MouseEvent<HTMLButtonElement>) {
+      event?.preventDefault();
+      event?.stopPropagation();
+
+      setOpenComments((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
+
+    const isRefreshingSort = Boolean(answerLoading && pendingSortMode);
+
+    return (
+      <div
+        className={
+          isRefreshingSort ? `${s.answersCard} ${s.answersCardRefreshing}` : s.answersCard
+        }
+      >
+        <div className={s.answersHeader}>
+          <h2>
+            共 <strong>{answerTotal}</strong> 个回答
+          </h2>
+          <div className={s.sortToggle}>
+            <button
+              type="button"
+              className={displaySortMode === 'top' ? s.sortActive : ''}
+              disabled={Boolean(pendingSortMode)}
+              onClick={() => void handleSortChange('top')}
+            >
+              {pendingSortMode === 'top' ? (
+                <>
+                  <Loader2 size={12} className={s.spin} />
+                  最高赞
+                </>
+              ) : (
+                '最高赞'
+              )}
+            </button>
+            <button
+              type="button"
+              className={displaySortMode === 'latest' ? s.sortActive : ''}
+              disabled={Boolean(pendingSortMode)}
+              onClick={() => void handleSortChange('latest')}
+            >
+              {pendingSortMode === 'latest' ? (
+                <>
+                  <Loader2 size={12} className={s.spin} />
+                  最新
+                </>
+              ) : (
+                '最新'
+              )}
+            </button>
+          </div>
+        </div>
+
+        {answerError ? <p className={s.answerError}>{answerError}</p> : null}
+
+        {sortedAnswers.map((answer) => (
+          <AnswerCard
+            key={answer.id}
+            answer={answer}
+            questionId={questionId}
+            showComments={openComments.has(answer.id)}
+            onToggleComments={(event) => toggleComments(answer.id, event)}
+            onUseful={() => void handleAnswerUseful(answer.id)}
+            onAccept={() => void handleAcceptAnswer(answer.id)}
+            onCommentTotalChange={(total) =>
+              setAnswers((prev) =>
+                prev.map((item) =>
+                  item.id === answer.id ? { ...item, commentCount: total } : item,
+                ),
+              )
+            }
+            usefulDisabled={votedTargets.has(`answer-helpful:${answer.id}`)}
+            isQuestionOwner={isQuestionOwner}
+          />
+        ))}
+
+        {answerLoading && answers.length === 0 ? (
+          <div className={s.emptyAnswers}>
+            <Loader2 size={16} className={s.spin} />
+            正在加载回答...
+          </div>
+        ) : null}
+
+        {!answerLoading && answerTotal === 0 ? (
+          <div className={s.emptyAnswers}>
+            <div className={s.emptyAnswersInner}>
+              暂无回答，你可以率先作答，或点击“追问”补充信息。
+            </div>
+          </div>
+        ) : null}
+
+        {answerHasMore ? (
+          <div className={s.loadMoreWrap}>
+            <button
+              type="button"
+              className={s.btnGhost}
+              disabled={answerLoading}
+              onClick={() => void loadAnswers(questionId, answerPage + 1)}
+            >
+              {answerLoading ? (
+                <>
+                  <Loader2 size={14} className={s.spin} />
+                  加载中...
+                </>
+              ) : (
+                `加载更多回答（还剩 ${answerTotal - answers.length} 个）`
+              )}
+            </button>
+          </div>
+        ) : null}
+
+        {children}
+      </div>
+    );
+  },
+);
+
 export default function ExpertQADetailPage() {
   const params = useParams<{ questionId?: string }>();
   // const navigate = useNavigate();
@@ -1081,13 +1400,6 @@ export default function ExpertQADetailPage() {
   const [qLoading, setQLoading] = useState(true);
   const [qError, setQError] = useState<string | null>(null);
 
-  const [answers, setAnswers] = useState<DetailAnswerEntry[]>([]);
-  const [answerTotal, setAnswerTotal] = useState(0);
-  const [answerPage, setAnswerPage] = useState(0);
-  const [answerLoading, setAnswerLoading] = useState(false);
-  const [answerError, setAnswerError] = useState<string | null>(null);
-
-  const [sortMode, setSortMode] = useState<SortMode>('top');
   const [openComments, setOpenComments] = useState<Set<string>>(
     new Set([QUESTION_FOLLOWUP_THREAD_ID]),
   );
@@ -1102,14 +1414,12 @@ export default function ExpertQADetailPage() {
   const [answerUploadError, setAnswerUploadError] = useState<string | null>(null);
   const [answerKnowledgeDialogOpen, setAnswerKnowledgeDialogOpen] = useState(false);
   const [answerToolMenuOpen, setAnswerToolMenuOpen] = useState(false);
-  const [votedTargets, setVotedTargets] = useState<Set<string>>(new Set());
   const [currentExpert, setCurrentExpert] = useState<ExpertProfileResponse | null>(null);
   const answerImageInputRef = useRef<HTMLInputElement>(null);
-  const answerLoadingRef = useRef(false);
   const activeQuestionIdRef = useRef<number | null>(null);
+  const answerListRef = useRef<AnswerListSectionRef | null>(null);
 
   const questionNumericId = question ? Number(question.id) : null;
-  const currentUserKey = user?.externalId || user?.account || user?.name || 'anonymous';
   const isQuestionOwner = Boolean(
     user &&
       question &&
@@ -1118,20 +1428,10 @@ export default function ExpertQADetailPage() {
         String(question.ownerUserId) === user.externalId ||
         String(question.ownerUserId) === user.account),
   );
-  const answerHasMore = answers.length < answerTotal;
   const answeredInvitedCount = question
     ? question.invitedExperts.filter((item) => item.status === 'answered').length
     : 0;
   const canAnswer = Boolean(currentExpert) || isPortalAdmin(user);
-  const sortedAnswers = useMemo(
-    () =>
-      [...answers].sort((a, b) =>
-        sortMode === 'top'
-          ? b.helpful - a.helpful || b.createdAtMs - a.createdAtMs
-          : b.createdAtMs - a.createdAtMs,
-      ),
-    [answers, sortMode],
-  );
   const followupsOpen = openComments.has(QUESTION_FOLLOWUP_THREAD_ID);
 
   useEffect(() => {
@@ -1163,60 +1463,7 @@ export default function ExpertQADetailPage() {
     };
   }, [user?.account, user?.name]);
 
-  const loadAnswers = useCallback(
-    async (targetQuestionId: number, page: number, replace = false) => {
-      if (answerLoadingRef.current) return;
-      answerLoadingRef.current = true;
-      setAnswerLoading(true);
-      setAnswerError(null);
-
-      try {
-        const res: PagedAnswerResponse = await fetchAnswersPaged(
-          targetQuestionId,
-          page,
-          ANSWERS_PAGE_SIZE,
-        );
-        const entries = (res.answers ?? []).map((answer) =>
-          buildAnswerEntry(answer, currentExpert),
-        );
-        if (activeQuestionIdRef.current !== targetQuestionId) return;
-
-        setAnswers((prev) => {
-          if (replace) return entries;
-
-          const existingIds = new Set(prev.map((item) => item.id));
-          const newEntries = entries.filter((item) => !existingIds.has(item.id));
-          return [...prev, ...newEntries];
-        });
-         
-        const nextTotal = typeof res.total === 'number' ? res.total : entries.length;
-        setAnswerTotal(nextTotal);
-        setQuestion((prev) =>
-          prev
-            ? {
-                ...prev,
-                answers: nextTotal,
-                status: formatQuestionStatus(
-                  prev.acceptedAnswers > 0 ? SOLVED_QUESTION_STATUS : 0,
-                  nextTotal,
-                  prev.acceptedAnswers > 0 ? 1 : null,
-                ),
-              }
-            : prev,
-        );
-        setAnswerPage(page);
-      } catch (err) {
-        console.error('回答列表加载失败:', err);
-        setAnswerError(err instanceof Error ? err.message : '回答列表加载失败');
-      } finally {
-        answerLoadingRef.current = false;
-        setAnswerLoading(false);
-      }
-    },
-    [currentExpert],
-  );
-
-  const refreshQuestionAndAnswers = useCallback(
+  const refreshQuestionDetail = useCallback(
     async (targetQuestionId: number) => {
       if (!routeQuestionId) return;
 
@@ -1231,11 +1478,9 @@ export default function ExpertQADetailPage() {
 
       const mappedQuestion = await mapQuestionDetail(detail, related);
       setQuestion(mappedQuestion);
-      setAnswerTotal(detail.answer_count ?? 0);
       setFollowupCount(detail.comment_count ?? 0);
-      await loadAnswers(targetQuestionId, 1, true);
     },
-    [loadAnswers, routeQuestionId],
+    [routeQuestionId],
   );
 
   useEffect(() => {
@@ -1249,11 +1494,8 @@ export default function ExpertQADetailPage() {
 
     setQLoading(true);
     setQError(null);
-    setAnswers([]);
-    setAnswerTotal(0);
-    setAnswerPage(0);
     setOpenComments(new Set([QUESTION_FOLLOWUP_THREAD_ID]));
-  
+
     activeQuestionIdRef.current = null;
 
     void (async () => {
@@ -1271,11 +1513,8 @@ export default function ExpertQADetailPage() {
         const mappedQuestion = await mapQuestionDetail(detail, related);
         activeQuestionIdRef.current = detail.id;
         setQuestion(mappedQuestion);
-        setAnswerTotal(detail.answer_count ?? 0);
         setQLoading(false);
         setFollowupCount(detail.comment_count ?? 0);
-        await loadAnswers(detail.id, 1, true);
-
       } catch (err) {
         if (!active) return;
         setQError(err instanceof Error ? err.message : '加载问题详情失败');
@@ -1286,27 +1525,13 @@ export default function ExpertQADetailPage() {
     return () => {
       active = false;
     };
-  }, [loadAnswers, routeQuestionId]);
+  }, [routeQuestionId]);
 
-  useEffect(() => {
+  const handleAnswersChange = useCallback((nextAnswers: DetailAnswerEntry[]) => {
     setQuestion((prev) =>
-      prev ? markAnsweredInvitedExperts(prev, answers) : prev,
+      prev ? markAnsweredInvitedExperts(prev, nextAnswers) : prev,
     );
-  }, [answers, question?.id]);
-
-  useEffect(() => {
-    if (!questionNumericId) return;
-    const next = new Set<string>();
-    if (hasStoredVote(currentUserKey, 'question', questionNumericId)) {
-      next.add(`question:${questionNumericId}`);
-    }
-    answers.forEach((answer) => {
-      if (hasStoredVote(currentUserKey, 'answer-helpful', answer.id)) {
-        next.add(`answer-helpful:${answer.id}`);
-      }
-    });
-    setVotedTargets(next);
-  }, [answers, currentUserKey, questionNumericId]);
+  }, []);
 
   async function handleAnswerImageUpload(files: File[]) {
     const availableSlots = MAX_ANSWER_IMAGE_COUNT - answerImageUrls.length;
@@ -1358,39 +1583,14 @@ export default function ExpertQADetailPage() {
         attachments: serializeKnowledgeDocumentNames(answerRelatedDocs),
         related_docs: serializeKnowledgeDocumentIds(answerRelatedDocs),
       };
-      const newAnswer = await createAnswer(payload);
-      const answerWithExpert: ApiAnswer = {
-        ...newAnswer,
-        expert_id: newAnswer.expert_id ?? currentExpert?.id ?? null,
-        expert_name: newAnswer.expert_name ?? currentExpert?.expert_name ?? null,
-        expert: newAnswer.expert ?? currentExpert ?? undefined,
-      };
+      await createAnswer(payload);
 
-      if (typeof answerWithExpert.id === 'number') {
-        const newEntry = buildAnswerEntry(answerWithExpert, currentExpert);
-        setAnswers((prev) => {
-          const withoutDuplicate = prev.filter((item) => item.id !== newEntry.id);
-          return [newEntry, ...withoutDuplicate];
-        });
-        setAnswerTotal((prev) => Math.max(prev + 1, 1));
-        setQuestion((prev) =>
-          prev
-            ? markAnsweredInvitedExperts(
-                {
-                  ...prev,
-                  answers: Math.max(prev.answers + 1, 1),
-                  status: prev.status === 'pending' ? 'unsolved' : prev.status,
-                },
-                [newEntry],
-              )
-            : prev,
-        );
-      }
       setDraft('');
       setAnswerImageUrls([]);
       setAnswerRelatedDocs([]);
       setAnswerUploadError(null);
-      await refreshQuestionAndAnswers(questionNumericId);
+      await refreshQuestionDetail(questionNumericId);
+      answerListRef.current?.refresh();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : '发布失败，请重试');
     } finally {
@@ -1411,63 +1611,6 @@ export default function ExpertQADetailPage() {
   }
 
 
-
-  async function handleAnswerUseful(answerId: string) {
-    const voteKey = `answer-helpful:${answerId}`;
-    if (votedTargets.has(voteKey)) {
-      setAnswerError('你已经点过有用了');
-      return;
-    }
-
-    storeVote(currentUserKey, 'answer-helpful', answerId);
-    setVotedTargets((prev) => new Set(prev).add(voteKey));
-    setAnswers((prev) =>
-      prev.map((answer) =>
-        answer.id === answerId
-          ? { ...answer, helpful: answer.helpful + 1 }
-          : answer,
-      ),
-    );
-    try {
-      await markAnswerUseful({ target_id: Number(answerId), target_type: 'helpful' });
-    } catch (err) {
-      removeStoredVote(currentUserKey, 'answer-helpful', answerId);
-      setVotedTargets((prev) => {
-        const next = new Set(prev);
-        next.delete(voteKey);
-        return next;
-      });
-      setAnswers((prev) =>
-        prev.map((answer) =>
-          answer.id === answerId
-            ? { ...answer, helpful: Math.max(answer.helpful - 1, 0) }
-            : answer,
-        ),
-      );
-      setAnswerError(err instanceof Error ? err.message : '投票失败，请稍后重试');
-    }
-  }
-
-  async function handleAcceptAnswer(answerId: string) {
-    if (!questionNumericId) return;
-
-    setAnswers((prev) =>
-      prev.map((answer) => ({
-        ...answer,
-        adopted: answer.id === answerId,
-      })),
-    );
-    setQuestion((prev) =>
-      prev ? { ...prev, status: 'solved', acceptedAnswers: 1 } : prev,
-    );
-    try {
-      await acceptAnswer(questionNumericId, Number(answerId));
-      await refreshQuestionAndAnswers(questionNumericId);
-    } catch (err) {
-      setAnswerError(err instanceof Error ? err.message : '采纳失败，请稍后重试');
-      await refreshQuestionAndAnswers(questionNumericId);
-    }
-  }
 
   function removeAnswerImage(url: string) {
     setAnswerImageUrls((current) => current.filter((item) => item !== url));
@@ -1635,86 +1778,15 @@ export default function ExpertQADetailPage() {
               </div>
             </div>
 
-            <div className={s.answersCard}>
-            <div className={s.answersHeader}>
-              <h2>共 <strong>{answerTotal}</strong> 个回答</h2>
-              <div className={s.sortToggle}>
-                <button
-                  type="button"
-                  className={sortMode === 'top' ? s.sortActive : ''}
-                  onClick={() => setSortMode('top')}
-                >
-                  最高赞
-                </button>
-                <button
-                  type="button"
-                  className={sortMode === 'latest' ? s.sortActive : ''}
-                  onClick={() => setSortMode('latest')}
-                >
-                  最新
-                </button>
-              </div>
-            </div>
-
-            {answerError ? <p className={s.answerError}>{answerError}</p> : null}
-
-            {sortedAnswers.map((answer) => (
-              <AnswerCard
-                key={answer.id}
-                answer={answer}
-                questionId={questionNumericId}
-                showComments={openComments.has(answer.id)}
-                onToggleComments={(event) => toggleComments(answer.id, event)}
-                onUseful={() => void handleAnswerUseful(answer.id)}
-                onAccept={() => void handleAcceptAnswer(answer.id)}
-                onCommentTotalChange={(total) =>
-                  setAnswers((prev) =>
-                    prev.map((item) =>
-                      item.id === answer.id ? { ...item, commentCount: total } : item,
-                    ),
-                  )
-                }
-                usefulDisabled={votedTargets.has(`answer-helpful:${answer.id}`)}
-                isQuestionOwner={isQuestionOwner}
-              />
-            ))}
-
-            {answerLoading && answers.length === 0 ? (
-              <div className={s.emptyAnswers}>
-                <Loader2 size={16} className={s.spin} />
-                正在加载回答...
-              </div>
-            ) : null}
-
-            {!answerLoading && answerTotal === 0 ? (
-              <div className={s.emptyAnswers}>
-                <div className={s.emptyAnswersInner}>
-                  暂无回答，你可以率先作答，或点击“追问”补充信息。
-                </div>
-              </div>
-            ) : null}
-
-            {answerHasMore ? (
-              <div className={s.loadMoreWrap}>
-                <button
-                  type="button"
-                  className={s.btnGhost}
-                  disabled={answerLoading}
-                  onClick={() => void loadAnswers(questionNumericId, answerPage + 1)}
-                >
-                  {answerLoading ? (
-                    <>
-                      <Loader2 size={14} className={s.spin} />
-                      加载中...
-                    </>
-                  ) : (
-                    `加载更多回答（还剩 ${answerTotal - answers.length} 个）`
-                  )}
-                </button>
-              </div>
-            ) : null}
-
-            {canAnswer ? (
+            <AnswerListSection
+              ref={answerListRef}
+              questionId={questionNumericId}
+              currentExpert={currentExpert}
+              isQuestionOwner={isQuestionOwner}
+              onAnswerAccepted={() => void refreshQuestionDetail(questionNumericId)}
+              onAnswersChange={handleAnswersChange}
+            >
+              {canAnswer ? (
               <div className={s.yourAnswerCard}>
                 <h3 className={s.yourAnswerTitle}>发布回答</h3>
                 <input
@@ -1852,7 +1924,7 @@ export default function ExpertQADetailPage() {
                 </p>
               </div>
             ) : null}
-            </div>
+            </AnswerListSection>
           </main>
 
           <aside className={s.right}>
