@@ -114,6 +114,36 @@ class PortalConfigService:
                     **data["site"],
                 }
                 self._write_data(data)
+        if "recommendation" not in data:
+            data["recommendation"] = dict(DEFAULT_PORTAL_CONFIG.get("recommendation") or {})
+            self._write_data(data)
+        else:
+            default_recommendation = DEFAULT_PORTAL_CONFIG.get("recommendation") or {}
+            missing_recommendation_keys = [
+                key for key in default_recommendation
+                if key not in data["recommendation"]
+            ]
+            if missing_recommendation_keys:
+                data["recommendation"] = {
+                    **default_recommendation,
+                    **data["recommendation"],
+                }
+                self._write_data(data)
+        if "display" not in data:
+            data["display"] = dict(DEFAULT_PORTAL_CONFIG.get("display") or {})
+            self._write_data(data)
+        else:
+            default_display = DEFAULT_PORTAL_CONFIG.get("display") or {}
+            missing_display_keys = [
+                key for key in default_display
+                if key not in data["display"]
+            ]
+            if missing_display_keys:
+                data["display"] = {
+                    **default_display,
+                    **data["display"],
+                }
+                self._write_data(data)
         config = PortalConfig.model_validate(data)
         normalized_data = config.model_dump(mode="json")
         if normalized_data != data:

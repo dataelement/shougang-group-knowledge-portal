@@ -352,10 +352,10 @@ export default function ExpertQAPage() {
     }, 0);
 
     const statusMap: Record<string, number> = {
-      unsolved: 0,
-      solved: 1,
-      my_question: 2,
-      invited: 3,
+      unsolved: 1,
+      solved: 2,
+      my_question: 3,
+      invited: 4,
     };
 
     fetchExpertQuestions({
@@ -648,6 +648,9 @@ export default function ExpertQAPage() {
               >
                 <ChevronRight size={14} />
               </button>
+              <span className={s.countLb} style={{ fontSize: 14 }}>
+                共 {maxPage} 页
+              </span>
             </div>
           </main>
 
