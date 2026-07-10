@@ -3,7 +3,12 @@ from fastapi import HTTPException, Request
 from app.clients.bisheng import BishengClient
 from app.schemas.portal_admin_config import PortalBishengPersistentConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
-from app.services.portal_auth_service import PortalAuthError, PortalAuthService, PortalSession
+from app.services.portal_auth_service import (
+    PortalAuthError,
+    PortalAuthService,
+    PortalSession,
+    require_portal_session,
+)
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
@@ -79,10 +84,10 @@ def is_portal_admin_account(account: str | None) -> bool:
     return _normalize_identity(account) in ADMIN_ACCOUNTS
 
 
-def require_admin_session(request: Request) -> PortalSession:
+async def require_admin_session(request: Request) -> PortalSession:
     auth_service = get_portal_auth_service(request)
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 

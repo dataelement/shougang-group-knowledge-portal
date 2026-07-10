@@ -181,7 +181,7 @@ docker run -d --name frontend --network portal-net -p 3002:80 \
 | `PORTAL_BISHENG_PASSWORD` | 空 | 可选。系统数据源密码；用于 token 自动续期和认证失败后的自动重登。 |
 | `PORTAL_BISHENG_DEFAULT_MODEL` | 空 | 可选。问答默认模型。 |
 | `PORTAL_BISHENG_PAGE_SIZE_LIMIT` | `100` | 知识列表分页上限。 |
-| `PORTAL_REDIS_URL` | 空 | 可选。Redis 连接地址；配置后缓存首页内容、首页统计和业务域文件数量接口。 |
+| `PORTAL_REDIS_URL` | 空 | 生产环境必填。Redis 连接地址；用于跨 worker 共享门户登录会话，同时缓存首页内容、首页统计和业务域文件数量接口。 |
 
 前端容器内 Nginx 变量控制同源代理：
 

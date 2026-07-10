@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.api.dependencies import get_portal_auth_service
 from app.schemas.common import response_ok
 from app.services.notification_service import NotificationService
-from app.services.portal_auth_service import PortalAuthError, PortalAuthService
+from app.services.portal_auth_service import PortalAuthError, PortalAuthService, require_portal_session
 
 router = APIRouter(prefix="/api/v1/portal/notifications", tags=["notifications"])
 
@@ -14,7 +14,7 @@ async def get_notification_summary(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
 ):
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 

@@ -37,7 +37,12 @@ from app.services.knowledge_service import (
     KnowledgeService,
     ShareAccessSession,
 )
-from app.services.portal_auth_service import PortalAuthError, PortalAuthService
+from app.services.portal_auth_service import (
+    PortalAuthError,
+    PortalAuthService,
+    get_portal_session,
+    require_portal_session,
+)
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
 from app.services.portal_telemetry_service import PortalTelemetryService, PortalTelemetryStatsError
@@ -190,7 +195,7 @@ async def _scoped_service_and_extra_ids(
     - Logged in: per-user token client, scope = enabled ∪ personal-visible libraries,
       and the user client is returned so the caller can aclose() it in a finally.
     """
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
     if session is None:
         service = KnowledgeService(
             bisheng_client=bisheng_client,
@@ -251,7 +256,7 @@ async def search_files(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
 
     # 未登录：系统客户端（常驻单例，勿关闭），范围 = 后台启用库
     if session is None:
@@ -389,7 +394,7 @@ async def get_home_content(
     cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
 ):
     """Stream home sections over SSE, emitting each section as soon as it is ready."""
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
     config = portal_config_service.get_config()
     ttl_seconds = _home_cache_ttl_seconds(config)
 
@@ -550,7 +555,7 @@ async def list_visible_spaces(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 
@@ -571,7 +576,7 @@ async def list_qa_tree_spaces(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
     if session is None:
         service = KnowledgeService(
             bisheng_client=await get_bisheng_client(request),
@@ -600,7 +605,7 @@ async def list_qa_tree_children(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
     if session is None:
         service = KnowledgeService(
             bisheng_client=await get_bisheng_client(request),
@@ -654,7 +659,7 @@ async def search_qa_files_by_name(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
     if session is None:
         service = KnowledgeService(
             bisheng_client=await get_bisheng_client(request),
@@ -697,7 +702,7 @@ async def list_personal_spaces(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 
@@ -720,7 +725,7 @@ async def create_favorite(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 
@@ -759,7 +764,7 @@ async def remove_favorite(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 
@@ -784,7 +789,7 @@ async def favorite_status(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 
@@ -810,7 +815,7 @@ async def list_favorites(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 
@@ -835,7 +840,7 @@ async def create_share_link(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     try:
-        session = auth_service.require_session(request)
+        session = await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 
@@ -873,7 +878,7 @@ async def access_share_link(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
     metadata_service = KnowledgeService(
         bisheng_client=bisheng_client,
         portal_config_service=portal_config_service,

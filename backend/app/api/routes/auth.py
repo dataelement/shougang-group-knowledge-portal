@@ -134,7 +134,7 @@ async def start_unified_auth_logout(
         safe_redirect = "/login"
 
     response = RedirectResponse(safe_redirect)
-    auth_service.logout(request)
+    await auth_service.logout(request)
     auth_service.clear_session_cookie(response)
     return response
 
@@ -149,7 +149,7 @@ async def unified_auth_logout_callback(
     if safe_redirect == "/":
         safe_redirect = "/login"
     response = RedirectResponse(safe_redirect)
-    auth_service.logout(request)
+    await auth_service.logout(request)
     auth_service.clear_session_cookie(response)
     return response
 
@@ -190,6 +190,6 @@ async def logout(
     response: Response,
     service: PortalAuthService = Depends(get_portal_auth_service),
 ):
-    service.logout(request)
+    await service.logout(request)
     service.clear_session_cookie(response)
     return response_ok({"ok": True})

@@ -17,7 +17,12 @@ from app.schemas.common import response_ok
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.chat_proxy_service import ChatProxyService
 from app.services.error_messages import normalize_user_facing_message
-from app.services.portal_auth_service import PortalAuthError, PortalAuthService
+from app.services.portal_auth_service import (
+    PortalAuthError,
+    PortalAuthService,
+    get_portal_session,
+    require_portal_session,
+)
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_telemetry_service import PortalTelemetryService
 from app.settings import get_settings
@@ -46,9 +51,9 @@ def get_chat_proxy_service(
     )
 
 
-def _require_portal_session(request: Request, auth_service: PortalAuthService):
+async def _require_portal_session(request: Request, auth_service: PortalAuthService):
     try:
-        return auth_service.require_session(request)
+        return await require_portal_session(auth_service, request)
     except PortalAuthError as err:
         raise HTTPException(status_code=err.status_code, detail=err.message) from err
 
@@ -86,7 +91,7 @@ async def list_conversations(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = _require_portal_session(request, auth_service)
+    session = await _require_portal_session(request, auth_service)
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
         service = ChatProxyService(
@@ -114,7 +119,7 @@ async def rename_conversation(
         raise HTTPException(status_code=422, detail="conversation_id 不能为空")
     if not name:
         raise HTTPException(status_code=422, detail="会话名称不能为空")
-    session = _require_portal_session(request, auth_service)
+    session = await _require_portal_session(request, auth_service)
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
         service = ChatProxyService(
@@ -138,7 +143,7 @@ async def list_workflow_conversations(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = _require_portal_session(request, auth_service)
+    session = await _require_portal_session(request, auth_service)
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
         service = ChatProxyService(
@@ -159,7 +164,7 @@ async def list_workflow_agents(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = _require_portal_session(request, auth_service)
+    session = await _require_portal_session(request, auth_service)
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
         service = ChatProxyService(
@@ -180,7 +185,7 @@ async def list_workflow_favorites(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = _require_portal_session(request, auth_service)
+    session = await _require_portal_session(request, auth_service)
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
         service = ChatProxyService(
@@ -202,7 +207,7 @@ async def add_workflow_favorite(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = _require_portal_session(request, auth_service)
+    session = await _require_portal_session(request, auth_service)
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
         if not payload.workflow_id.strip():
@@ -226,7 +231,7 @@ async def delete_workflow_favorite(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = _require_portal_session(request, auth_service)
+    session = await _require_portal_session(request, auth_service)
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
         if not payload.workflow_id.strip():
@@ -250,7 +255,7 @@ async def get_conversation_messages(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = _require_portal_session(request, auth_service)
+    session = await _require_portal_session(request, auth_service)
     bisheng_client = auth_service.create_bisheng_client(session)
     try:
         service = ChatProxyService(
@@ -272,7 +277,7 @@ async def upload_chat_attachment(
     file_id: str = Form(default=""),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
 ):
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
     is_anonymous = session is None
     bisheng_client = await get_bisheng_client(request) if is_anonymous else auth_service.create_bisheng_client(session)
     temp_file_id = file_id.strip() or uuid4().hex
@@ -299,7 +304,7 @@ async def chat_completions(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    session = auth_service.get_session(request)
+    session = await get_portal_session(auth_service, request)
     is_anonymous = session is None
     if is_anonymous:
         # 未登录：系统客户端（常驻单例，请求结束后勿关闭）

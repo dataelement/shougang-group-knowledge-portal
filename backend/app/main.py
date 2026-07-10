@@ -12,7 +12,11 @@ from app.schemas.portal_admin_config import PortalBishengPersistentConfig
 from app.services.error_messages import normalize_user_facing_message
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.config_store import InMemoryConfigStore
-from app.services.portal_auth_service import PortalAuthService
+from app.services.portal_auth_service import (
+    InMemoryPortalSessionStore,
+    PortalAuthService,
+    RedisPortalSessionStore,
+)
 from app.services.portal_admin_config_store import RemotePortalAdminConfigStore
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
@@ -53,11 +57,26 @@ async def lifespan(app: FastAPI):
             )
     except Exception:
         logger.exception("BiSheng 远程门户运行时配置加载失败")
+    redis_client = (
+        redis_asyncio.from_url(settings.redis_url, decode_responses=True)
+        if settings.redis_url
+        else None
+    )
+    if settings.app_env.lower() == "production" and redis_client is None:
+        raise RuntimeError("生产环境必须配置 PORTAL_REDIS_URL 以共享门户登录会话")
+    if redis_client is not None:
+        try:
+            await redis_client.ping()
+        except Exception as err:
+            await redis_client.aclose()
+            raise RuntimeError("Redis 不可用，无法启动门户认证服务") from err
+    session_store = RedisPortalSessionStore(redis_client) if redis_client else InMemoryPortalSessionStore()
     app.state.portal_auth_service = PortalAuthService(
         runtime_service=app.state.bisheng_runtime_service,
         cookie_name=settings.portal_session_cookie_name,
         ttl_seconds=settings.portal_session_ttl_seconds,
         cookie_secure=settings.portal_session_cookie_secure,
+        session_store=session_store,
     )
     app.state.unified_auth_runtime_service = UnifiedAuthRuntimeService(
         settings=settings,
@@ -73,11 +92,6 @@ async def lifespan(app: FastAPI):
     app.state.portal_config_service = PortalConfigService(
         config_path=settings.portal_config_path,
         store=app.state.portal_admin_config_store,
-    )
-    redis_client = (
-        redis_asyncio.from_url(settings.redis_url, decode_responses=True)
-        if settings.redis_url
-        else None
     )
     app.state.portal_home_cache_service = PortalHomeCacheService(redis_client)
     try:
