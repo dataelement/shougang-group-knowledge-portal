@@ -154,6 +154,33 @@ async def _build_public_qa_model_options(
     return portal_config_service.build_qa_model_options(raw_servers)
 
 
+async def _qa_model_name_by_id(bisheng_client: BishengClient) -> dict[str, str]:
+    """实时模型列表的 id -> 展示名映射（不落库）。
+
+    bisheng 侧 PortalQAConfig schema 会丢弃 general_model_display_name/
+    reasoning_model_display_name 字段，导致 config 读回来永远为空。这里按实时
+    /api/v1/llm 列表回填，保证前端问答页能显示模型名而非模型 ID。
+    """
+    try:
+        raw_servers = await _fetch_public_qa_model_raw_servers(bisheng_client)
+    except Exception:
+        logger.warning("failed to fetch qa model names for config enrichment", exc_info=True)
+        return {}
+    name_by_id: dict[str, str] = {}
+    for server in raw_servers:
+        if not isinstance(server, dict):
+            continue
+        server_models = server.get("models")
+        if not isinstance(server_models, list):
+            continue
+        for item in server_models:
+            if not isinstance(item, dict) or item.get("id") is None:
+                continue
+            model_id = str(item["id"])
+            name_by_id[model_id] = str(item.get("model_name") or item.get("name") or model_id)
+    return name_by_id
+
+
 async def _fetch_public_qa_model_raw_servers(bisheng_client: BishengClient) -> list[dict[str, Any]]:
     now = monotonic()
     cached_raw_servers = _qa_model_raw_servers_cache["raw_servers"]
@@ -503,8 +530,22 @@ async def get_portal_config(
 
     business_domain_options = _build_business_domain_options(config)
 
+    config_dict = config.model_dump(mode="json")
+
+    # 回填 QA 模型展示名（bisheng 侧 schema 丢弃了 display_name 字段，按实时列表补齐）
+    qa = config_dict.get("qa")
+    if isinstance(qa, dict):
+        name_by_id = await _qa_model_name_by_id(bisheng_client)
+        if name_by_id:
+            general_id = str(qa.get("general_model") or qa.get("selected_model") or "").strip()
+            reasoning_id = str(qa.get("reasoning_model") or "").strip()
+            if general_id in name_by_id and not str(qa.get("general_model_display_name") or "").strip():
+                qa["general_model_display_name"] = name_by_id[general_id]
+            if reasoning_id in name_by_id and not str(qa.get("reasoning_model_display_name") or "").strip():
+                qa["reasoning_model_display_name"] = name_by_id[reasoning_id]
+
     return response_ok({
-        **config.model_dump(mode="json"),
+        **config_dict,
         "document_types": document_types,
         "business_domain_options": business_domain_options,
     })
@@ -1191,27 +1232,6 @@ async def record_file_download_event(
         )
     background_tasks.add_task(_record)
     return response_ok({"accepted": True})
-
-
-@router.get("/qa/model-options")
-async def get_qa_model_options_public(
-    request: Request,
-    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
-    bisheng_client: BishengClient = Depends(get_bisheng_client),
-    auth_service: PortalAuthService = Depends(get_portal_auth_service),
-):
-    try:
-        auth_service.require_session(request)
-    except PortalAuthError as err:
-        raise HTTPException(status_code=err.status_code, detail=err.message) from err
-    try:
-        response = await bisheng_client.get_json("/api/v1/llm")
-    except Exception:
-        return response_ok(portal_config_service.build_qa_model_options([]))
-    raw_servers = response.get("data") if isinstance(response, dict) else []
-    if not isinstance(raw_servers, list):
-        raw_servers = []
-    return response_ok(portal_config_service.build_qa_model_options(raw_servers))
 
 
 @router.post("/publish/precheck")

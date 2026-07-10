@@ -5,7 +5,7 @@ const backendProxyTarget = process.env.VITE_BACKEND_PROXY_TARGET || 'http://loca
 const bishengWebProxyTarget = process.env.VITE_BISHENG_WEB_PROXY_TARGET || 'http://127.0.0.1:4001'
 const bishengApiProxyTarget = process.env.VITE_BISHENG_API_PROXY_TARGET || 'http://127.0.0.1:7860'
 const bishengMinioProxyTarget = process.env.VITE_BISHENG_MINIO_PROXY_TARGET || 'http://192.168.106.171:9100'
-const bishengMinioSignedHost = process.env.BISHENG_MINIO_SIGNED_HOST || 'minio:9100'
+const bishengMinioSignedHost = process.env.BISHENG_MINIO_SIGNED_HOST || 'milvus-minio.stpaas-workspace-model:9000'
 
 // https://vite.dev/config/
 export default defineConfig({

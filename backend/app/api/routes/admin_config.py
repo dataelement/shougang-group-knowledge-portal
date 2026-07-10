@@ -320,12 +320,15 @@ async def update_domains_config(
 
     bindable_space_ids = {int(space["id"]) for space in bindable_spaces if space.get("id") is not None}
     requested_space_ids = _collect_domain_space_ids(payload.domains)
-    invalid_space_ids = sorted(requested_space_ids - bindable_space_ids)
+    invalid_space_ids = requested_space_ids - bindable_space_ids
     if invalid_space_ids:
-        return response_error(
-            f"绑定空间必须是公共或部门知识空间：{', '.join(str(space_id) for space_id in invalid_space_ids)}",
-            status_code=400,
+        logger.warning(
+            "stripping %d invalid/deleted knowledge space IDs from domain config: %s",
+            len(invalid_space_ids),
+            sorted(invalid_space_ids),
         )
+        for domain in payload.domains:
+            domain.space_ids = [sid for sid in domain.space_ids if int(sid) not in invalid_space_ids]
 
     old_space_ids = _collect_domain_space_ids(current_config.domains)
     sync_space_ids = old_space_ids | requested_space_ids
