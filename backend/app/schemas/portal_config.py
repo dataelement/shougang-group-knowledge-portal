@@ -288,6 +288,7 @@ class SearchRerankModelOptionsResponse(BaseModel):
 class DocumentTypeChildConfig(BaseModel):
     code: str = ""
     label: str = ""
+    description_examples: str = ""
 
     @field_validator("code", mode="before")
     @classmethod
@@ -297,6 +298,11 @@ class DocumentTypeChildConfig(BaseModel):
     @field_validator("label", mode="before")
     @classmethod
     def normalize_label(cls, value):
+        return _clean_config_text(value)
+
+    @field_validator("description_examples", mode="before")
+    @classmethod
+    def normalize_description_examples(cls, value):
         return _clean_config_text(value)
 
     @model_validator(mode="after")

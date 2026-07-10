@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from time import monotonic
 from typing import Annotated, Any, NoReturn, Optional
@@ -342,22 +343,40 @@ async def get_aggregated_tags(
             await client_to_close.aclose()
 
 
+def _home_sse_event(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
 @router.get("/home")
 async def get_home_content(
     request: Request,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
+    """Stream home sections over SSE, emitting each section as soon as it is ready."""
     session = auth_service.get_session(request)
+
     if session is None:
         service = KnowledgeService(
             bisheng_client=await get_bisheng_client(request),
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
-        return response_ok(await service.get_home_content())
+
+        async def anonymous_stream():
+            async for tag, items in service.iter_home_content():
+                yield _home_sse_event({
+                    "type": "section",
+                    "tag": tag,
+                    "items": [item.model_dump(mode="json") for item in items],
+                })
+            yield _home_sse_event({"type": "done"})
+
+        return StreamingResponse(anonymous_stream(), media_type="text/event-stream")
 
     bisheng_client = auth_service.create_bisheng_client(session)
+    # Resolve visible spaces before streaming starts so an auth/upstream failure here
+    # surfaces as a clean HTTP error instead of aborting an already-open SSE stream.
     try:
         service = KnowledgeService(
             bisheng_client=bisheng_client,
@@ -366,9 +385,23 @@ async def get_home_content(
         )
         visible_spaces = await service.list_visible_spaces()
         extra_space_ids = [space.id for space in visible_spaces.data]
-        return response_ok(await service.get_home_content(extra_space_ids=extra_space_ids))
-    finally:
+    except BaseException:
         await bisheng_client.aclose()
+        raise
+
+    async def authenticated_stream():
+        try:
+            async for tag, items in service.iter_home_content(extra_space_ids=extra_space_ids):
+                yield _home_sse_event({
+                    "type": "section",
+                    "tag": tag,
+                    "items": [item.model_dump(mode="json") for item in items],
+                })
+            yield _home_sse_event({"type": "done"})
+        finally:
+            await bisheng_client.aclose()
+
+    return StreamingResponse(authenticated_stream(), media_type="text/event-stream")
 
 
 @router.get("/home/stats")

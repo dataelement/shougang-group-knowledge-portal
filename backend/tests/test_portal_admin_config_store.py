@@ -90,7 +90,7 @@ def test_get_document_normalizes_legacy_empty_document_type_children():
     assert unified_auth_payload["provider"] == "stock"
     assert portal_payload is not None
     assert portal_payload["document_types"][0]["children"] == [
-        {"code": "POL", "label": "政策制度"},
+        {"code": "POL", "label": "政策制度", "description_examples": ""},
     ]
 
 
@@ -172,7 +172,7 @@ def test_load_remote_aggregate_backfills_legacy_empty_document_type_children():
     payload = store.get_document("portal_config")
 
     assert payload is not None
-    assert payload["document_types"][0]["children"] == [{"code": "POL", "label": "政策制度"}]
+    assert payload["document_types"][0]["children"] == [{"code": "POL", "label": "政策制度", "description_examples": ""}]
 
 
 def test_bisheng_runtime_service_can_store_runtime_state_in_memory(tmp_path):

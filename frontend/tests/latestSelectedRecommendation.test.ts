@@ -16,8 +16,8 @@ test('home latest selected more link uses recommendation mode instead of tag que
 
 test('list page recommendation mode does not send tag filter', () => {
   assert.ok(listPageSource.includes("const LATEST_SELECTED_RECOMMENDATION = 'latest_selected'"));
-  assert.ok(listPageSource.includes('baseTag: isLatestSelectedRecommendation ? undefined : tagParam || undefined'));
-  assert.ok(listPageSource.includes('tag: filterTag || undefined'));
+  assert.ok(listPageSource.includes('baseTag: !isLatestSelectedRecommendation && hasUserFilterTag ? tagParam || undefined : undefined'));
+  assert.ok(listPageSource.includes('tag: isLatestSelectedRecommendation ? undefined : filterTag || tagParam || undefined'));
   assert.ok(
     listPageSource.includes(
       'recommendation: isLatestSelectedRecommendation ? LATEST_SELECTED_RECOMMENDATION : undefined',
