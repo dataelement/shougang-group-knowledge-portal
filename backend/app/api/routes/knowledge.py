@@ -1193,6 +1193,27 @@ async def record_file_download_event(
     return response_ok({"accepted": True})
 
 
+@router.get("/qa/model-options")
+async def get_qa_model_options_public(
+    request: Request,
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+):
+    try:
+        auth_service.require_session(request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+    try:
+        response = await bisheng_client.get_json("/api/v1/llm")
+    except Exception:
+        return response_ok(portal_config_service.build_qa_model_options([]))
+    raw_servers = response.get("data") if isinstance(response, dict) else []
+    if not isinstance(raw_servers, list):
+        raw_servers = []
+    return response_ok(portal_config_service.build_qa_model_options(raw_servers))
+
+
 @router.post("/publish/precheck")
 async def publish_precheck(
     payload: PublishPrecheckRequest,
