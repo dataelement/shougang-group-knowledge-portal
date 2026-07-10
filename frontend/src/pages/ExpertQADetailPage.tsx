@@ -1107,7 +1107,6 @@ export default function ExpertQADetailPage() {
   const answerImageInputRef = useRef<HTMLInputElement>(null);
   const answerLoadingRef = useRef(false);
   const activeQuestionIdRef = useRef<number | null>(null);
-  const followupThreadRef = useRef<HTMLDivElement>(null);
 
   const questionNumericId = question ? Number(question.id) : null;
   const currentUserKey = user?.externalId || user?.account || user?.name || 'anonymous';
@@ -1308,14 +1307,6 @@ export default function ExpertQADetailPage() {
     });
     setVotedTargets(next);
   }, [answers, currentUserKey, questionNumericId]);
-
-  useEffect(() => {
-    if (!openComments.has(QUESTION_FOLLOWUP_THREAD_ID)) return;
-    followupThreadRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-    });
-  }, [openComments]);
 
   async function handleAnswerImageUpload(files: File[]) {
     const availableSlots = MAX_ANSWER_IMAGE_COUNT - answerImageUrls.length;
@@ -1613,7 +1604,7 @@ export default function ExpertQADetailPage() {
                 </span>
               </div>
 
-              <div className={s.questionFollowupCard} ref={followupThreadRef}>
+              <div className={s.questionFollowupCard}>
                 <div className={s.followupHead}>
                   <button
                     type="button"

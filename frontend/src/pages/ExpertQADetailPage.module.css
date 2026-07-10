@@ -154,7 +154,9 @@
 .followupThreadWrap .commentSection {
   border-top: none;
   margin-top: 0;
-  padding-top: 0;
+  padding: 12px 0 0;
+  background: transparent;
+  border-radius: 0;
 }
 
 .followupThreadWrap .commentSectionTitle {
@@ -202,17 +204,45 @@
   padding: 16px;
 }
 
-/* 卡片内的回答条目去掉独立卡感,用分隔线 */
+/* 卡片内的回答条目保留轻量卡片感 */
 .answersCard .answer {
-  box-shadow: none;
-  border-radius: 0;
-  padding: 16px 0;
-  margin: 0;
-  border-bottom: 1px solid #EEEEEE;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  border-radius: 10px;
+  padding: 18px;
+  margin: 0 0 14px;
+  border: 1px solid var(--neutral-100);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.answersCard .answer:hover {
+  border-color: var(--neutral-200);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.answersCard .answer:last-child {
+  margin-bottom: 0;
 }
 
 .answersCard .answer::before {
-  border-radius: 0;
+  border-radius: 10px 0 0 10px;
+}
+
+.answersCard .answerExpert {
+  border-color: #bae6fd;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.answersCard .answerExpert:hover {
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.08), 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.answersCard .answerAccepted {
+  border-color: #86efac;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1), 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.answersCard .answerAccepted:hover {
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1), 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .answersCard .emptyAnswers {
@@ -382,9 +412,10 @@
 }
 
 .avatarLg {
-  width: 56px;
-  height: 56px;
-  font-size: 1.1rem;
+  width: 52px;
+  height: 52px;
+  font-size: 1.05rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .avatarExpert::after {
@@ -681,45 +712,45 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 0 0 16px;
+  margin: 0 0 18px;
   padding: 0;
-  border-bottom: 1px solid #EEEEEE;
+  border-bottom: 1px solid var(--neutral-100);
 }
 
 .answersHeader h2 {
   order: 2;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 400;
-  color: #545A60;
+  color: var(--neutral-500);
 }
 
 .answersHeader h2 :global(b),
 .answersHeader h2 strong {
-  color: #3662E3;
-  font-weight: 500;
+  color: var(--neutral-800);
+  font-weight: 600;
 }
 
 .sortToggle {
   order: 1;
   display: flex;
-  gap: 24px;
-  font-size: 15px;
+  gap: 20px;
+  font-size: 14px;
 }
 
 .sortToggle button {
   position: relative;
-  padding: 0 0 16px;
-  color: #545A60;
+  padding: 0 0 14px;
+  color: var(--neutral-500);
   transition: color 0.15s ease;
 }
 
 .sortToggle button:hover {
-  color: #3662E3;
+  color: var(--primary-600);
 }
 
 .sortActive {
-  color: #3662E3 !important;
-  font-weight: 500;
+  color: var(--primary-600) !important;
+  font-weight: 600;
 }
 
 .sortActive::after {
@@ -728,9 +759,9 @@
   left: 0;
   bottom: -1px;
   width: 100%;
-  height: 3px;
-  border-radius: 2px;
-  background: #3662E3;
+  height: 2.5px;
+  border-radius: 2px 2px 0 0;
+  background: var(--primary-600);
 }
 
 /* === Answer card === */
@@ -794,15 +825,15 @@
 
 .answerHead {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .answerAuthor {
   flex: 1;
   min-width: 0;
+  padding-top: 2px;
 }
 
 .answerName {
@@ -815,15 +846,17 @@
 }
 
 .answerRole {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--neutral-500);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .answerTs {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: var(--neutral-400);
   margin-left: auto;
+  white-space: nowrap;
+  padding-top: 4px;
 }
 
 .answerBody {
@@ -880,9 +913,9 @@
 }
 
 .answerFoot {
-  margin-top: 14px;
+  margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px dashed var(--neutral-200);
+  border-top: 1px solid var(--neutral-100);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -890,27 +923,29 @@
 
 .answerActions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   font-size: 0.82rem;
   color: var(--neutral-500);
   flex-wrap: wrap;
- 
-       
 }
 
 .answerActions button {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 4px;
-  color: var(--neutral-500);
-  transition: background 0.15s ease, color 0.15s ease;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: var(--neutral-600);
+  background: var(--neutral-50);
+  border: 1px solid var(--neutral-200);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .answerActions button:hover {
-  background: var(--neutral-50);
+  background: #fff;
   color: var(--primary-600);
+  border-color: var(--primary-300);
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.08);
 }
 
 .answerActions button:disabled {
@@ -926,16 +961,18 @@
 
 /* === Comments === */
 .commentSection {
-  padding: 12px 0 0;
-  border-top: 1px dashed var(--neutral-200);
-  margin-top: 14px;
+  padding: 16px;
+  border-top: 1px solid var(--neutral-200);
+  margin-top: 16px;
+  background: var(--neutral-50);
+  border-radius: 10px;
 }
 
 .commentSectionTitle {
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: var(--neutral-800);
-  margin-bottom: 6px;
+  margin-bottom: 12px;
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -945,7 +982,7 @@
 
 .commentSectionTitle span:last-child {
   color: var(--neutral-500);
-  font-size: 0.76rem;
+  font-size: 0.75rem;
   font-weight: 500;
 }
 
@@ -953,30 +990,41 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px 0;
+  padding: 12px;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.6;
   color: var(--neutral-700);
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.comment:hover {
+  border-color: var(--neutral-300);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
 }
 
 .commentHead {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .commentAv {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: #E6E7EB;
   color: #333333;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .commentText {
@@ -985,20 +1033,32 @@
 }
 
 .commentName {
-  color: #545A60;
-  font-weight: 400;
-  font-size: 14px;
+  color: var(--neutral-800);
+  font-weight: 600;
+  font-size: 13px;
 }
 
 .commentTs {
-  color: #86909C;
-  font-size: 14px;
+  color: var(--neutral-500);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.commentTs::before {
+  content: '';
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--neutral-400);
 }
 
 .commentBody {
-  font-size: 15px;
-  line-height: 1.6;
-  color: #545A60;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--neutral-700);
+  padding-left: 38px;
 }
 
 .commentUseful {
@@ -1068,11 +1128,12 @@
 }
 
 .commentComposer {
-  margin-top: 10px;
-  padding: 10px;
+  margin-top: 12px;
+  padding: 12px;
   border: 1px solid var(--neutral-200);
-  border-radius: 8px;
-  background: var(--neutral-50);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
 }
 
 .commentComposer textarea {
@@ -1080,13 +1141,14 @@
   min-height: 70px;
   resize: vertical;
   border: 1px solid var(--neutral-200);
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
   background: #fff;
   color: var(--neutral-800);
-  font-size: 0.84rem;
+  font-size: 0.85rem;
   line-height: 1.6;
   font-family: var(--font-sans);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .commentComposer textarea:focus {
@@ -1095,8 +1157,12 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+.commentComposer textarea::placeholder {
+  color: var(--neutral-400);
+}
+
 .commentError {
-  margin-top: 6px;
+  margin-top: 8px;
   color: #b91c1c;
   font-size: 0.78rem;
 }
