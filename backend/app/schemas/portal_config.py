@@ -541,6 +541,7 @@ class SiteConfig(BaseModel):
     browser_title: str = "首钢股份知库"
     favicon_url: str = "/site-favicon-horizontal-v2.png"
     domain_count_cache_ttl_seconds: int = 43200
+    home_cache_ttl_seconds: int = Field(default=1800, ge=60)
 
 
 DEFAULT_DOCUMENT_TYPES: list[dict[str, str]] = [

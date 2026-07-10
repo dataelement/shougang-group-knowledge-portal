@@ -17,4 +17,4 @@ RUN mkdir -p /app/app/config/data
 VOLUME ["/app/app/config/data"]
 
 EXPOSE 8010
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010", "--workers", "4"]

@@ -8,7 +8,12 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import get_bisheng_client, get_portal_auth_service, get_portal_config_service
+from app.api.dependencies import (
+    get_bisheng_client,
+    get_portal_auth_service,
+    get_portal_config_service,
+    get_portal_home_cache_service,
+)
 from app.clients.bisheng import BishengClient
 from app.schemas.common import response_ok
 from app.schemas.knowledge import (
@@ -34,6 +39,7 @@ from app.services.knowledge_service import (
 )
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_home_cache_service import PortalHomeCacheService
 from app.services.portal_telemetry_service import PortalTelemetryService, PortalTelemetryStatsError
 from app.settings import get_settings
 
@@ -347,16 +353,52 @@ def _home_sse_event(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+def _home_cache_ttl_seconds(config: PortalConfig) -> int:
+    return config.site.home_cache_ttl_seconds
+
+
+def _extract_cached_home_sections(payload: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(payload, dict):
+        return None
+    sections = payload.get("sections")
+    if not isinstance(sections, list):
+        return None
+    normalized: list[dict[str, Any]] = []
+    for section in sections:
+        if not isinstance(section, dict):
+            return None
+        tag = section.get("tag")
+        items = section.get("items")
+        if not isinstance(tag, str) or not isinstance(items, list):
+            return None
+        normalized.append({"tag": tag, "items": items})
+    return normalized
+
+
+async def _cached_home_stream(sections: list[dict[str, Any]]):
+    for section in sections:
+        yield _home_sse_event({"type": "section", **section})
+    yield _home_sse_event({"type": "done"})
+
+
 @router.get("/home")
 async def get_home_content(
     request: Request,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
 ):
     """Stream home sections over SSE, emitting each section as soon as it is ready."""
     session = auth_service.get_session(request)
+    config = portal_config_service.get_config()
+    ttl_seconds = _home_cache_ttl_seconds(config)
 
     if session is None:
+        cache_key = cache_service.home_content_key(config=config)
+        cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
+        if cached_sections is not None:
+            return StreamingResponse(_cached_home_stream(cached_sections), media_type="text/event-stream")
+
         service = KnowledgeService(
             bisheng_client=await get_bisheng_client(request),
             portal_config_service=portal_config_service,
@@ -364,13 +406,13 @@ async def get_home_content(
         )
 
         async def anonymous_stream():
+            sections: list[dict[str, Any]] = []
             async for tag, items in service.iter_home_content():
-                yield _home_sse_event({
-                    "type": "section",
-                    "tag": tag,
-                    "items": [item.model_dump(mode="json") for item in items],
-                })
+                section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
+                sections.append(section)
+                yield _home_sse_event({"type": "section", **section})
             yield _home_sse_event({"type": "done"})
+            await cache_service.set_json(cache_key, {"sections": sections}, ttl_seconds)
 
         return StreamingResponse(anonymous_stream(), media_type="text/event-stream")
 
@@ -389,15 +431,25 @@ async def get_home_content(
         await bisheng_client.aclose()
         raise
 
+    cache_key = cache_service.home_content_key(
+        config=config,
+        account=getattr(getattr(session, "user", None), "account", ""),
+        visible_space_ids=extra_space_ids,
+    )
+    cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
+    if cached_sections is not None:
+        await bisheng_client.aclose()
+        return StreamingResponse(_cached_home_stream(cached_sections), media_type="text/event-stream")
+
     async def authenticated_stream():
         try:
+            sections: list[dict[str, Any]] = []
             async for tag, items in service.iter_home_content(extra_space_ids=extra_space_ids):
-                yield _home_sse_event({
-                    "type": "section",
-                    "tag": tag,
-                    "items": [item.model_dump(mode="json") for item in items],
-                })
+                section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
+                sections.append(section)
+                yield _home_sse_event({"type": "section", **section})
             yield _home_sse_event({"type": "done"})
+            await cache_service.set_json(cache_key, {"sections": sections}, ttl_seconds)
         finally:
             await bisheng_client.aclose()
 
@@ -407,13 +459,29 @@ async def get_home_content(
 @router.get("/home/stats")
 async def get_home_stats(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
 ):
+    cache_key = cache_service.home_stats_key()
+    cached = await cache_service.get_json(cache_key)
+    required_fields = {"total_documents", "read_count", "favorite_count", "qa_count"}
+    if isinstance(cached, dict) and required_fields.issubset(cached):
+        try:
+            return response_ok(HomeStatsData.model_validate(cached))
+        except (TypeError, ValueError):
+            logger.warning("portal home stats cache payload is invalid key=%s", cache_key, exc_info=True)
     try:
         counts = await PortalTelemetryService(bisheng_client).fetch_home_stats_counts()
     except PortalTelemetryStatsError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     total_documents = counts.pop("total_files", 0)
-    return response_ok(HomeStatsData(total_documents=total_documents, **counts))
+    data = HomeStatsData(total_documents=total_documents, **counts)
+    await cache_service.set_json(
+        cache_key,
+        data.model_dump(mode="json"),
+        _home_cache_ttl_seconds(portal_config_service.get_config()),
+    )
+    return response_ok(data)
 
 
 @router.get("/config")
@@ -450,12 +518,28 @@ async def get_domain_file_counts(
     background_tasks: BackgroundTasks,
     service: DomainFileCountService = Depends(get_domain_file_count_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
 ):
     domains = portal_config_service.get_config().domains
     codes = sorted({d.code.strip().upper() for d in domains if d.code and d.code.strip()})
+    cache_key = cache_service.domain_file_counts_key(codes)
+    cached = await cache_service.get_json(cache_key)
+    if isinstance(cached, dict):
+        cached_counts = cached.get("counts")
+        if isinstance(cached_counts, dict) and set(cached_counts) == set(codes):
+            try:
+                return response_ok({"counts": {code: int(cached_counts[code]) for code in codes}})
+            except (TypeError, ValueError):
+                logger.warning("domain file counts cache payload is invalid key=%s", cache_key, exc_info=True)
     counts, stale = service.read_cached(codes)
     if stale and codes:
         background_tasks.add_task(service.refresh_in_background, codes)
+    if not stale:
+        await cache_service.set_json(
+            cache_key,
+            {"counts": counts},
+            _home_cache_ttl_seconds(portal_config_service.get_config()),
+        )
     return response_ok({"counts": counts})
 
 

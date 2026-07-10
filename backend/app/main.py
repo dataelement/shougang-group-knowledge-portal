@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from redis import asyncio as redis_asyncio
 
 from app.api.router import api_router
 from app.clients.bisheng import BishengAuthRefreshError
@@ -14,6 +15,7 @@ from app.services.config_store import InMemoryConfigStore
 from app.services.portal_auth_service import PortalAuthService
 from app.services.portal_admin_config_store import RemotePortalAdminConfigStore
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_home_cache_service import PortalHomeCacheService
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 from app.settings import get_settings
@@ -72,8 +74,18 @@ async def lifespan(app: FastAPI):
         config_path=settings.portal_config_path,
         store=app.state.portal_admin_config_store,
     )
-    yield
-    await app.state.bisheng_runtime_service.aclose()
+    redis_client = (
+        redis_asyncio.from_url(settings.redis_url, decode_responses=True)
+        if settings.redis_url
+        else None
+    )
+    app.state.portal_home_cache_service = PortalHomeCacheService(redis_client)
+    try:
+        yield
+    finally:
+        if redis_client is not None:
+            await redis_client.aclose()
+        await app.state.bisheng_runtime_service.aclose()
 
 
 def create_app() -> FastAPI:

@@ -252,6 +252,7 @@ interface SiteDraft {
   browser_title: string;
   favicon_url: string;
   domain_count_cache_ttl_seconds: string;
+  home_cache_ttl_seconds: string;
 }
 
 interface DocumentTypeDraft {
@@ -4323,6 +4324,11 @@ function SiteConfigTable({
             <td><div className={s.valueStack}><span className={s.valueTitle}>{site.domain_count_cache_ttl_seconds} 秒</span></div></td>
             <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
           </tr>
+          <tr>
+            <td>首页数据缓存有效期</td>
+            <td><div className={s.valueStack}><span className={s.valueTitle}>{site.home_cache_ttl_seconds} 秒</span></div></td>
+            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEdit} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
+          </tr>
         </tbody>
       </table>
     </>
@@ -4586,6 +4592,17 @@ function SiteEditorDialog({
               value={draft.domain_count_cache_ttl_seconds}
               onChange={(event) => onChange({ ...draft, domain_count_cache_ttl_seconds: event.target.value })}
               placeholder="例如：43200（12 小时）"
+            />
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>首页数据缓存有效期（秒）</span>
+            <input
+              className={s.formInput}
+              type="number"
+              min={60}
+              value={draft.home_cache_ttl_seconds}
+              onChange={(event) => onChange({ ...draft, home_cache_ttl_seconds: event.target.value })}
+              placeholder="例如：1800（30 分钟）"
             />
           </label>
         </div>
@@ -5354,6 +5371,7 @@ function createSiteDraft(current?: SiteConfig): SiteDraft {
     browser_title: current?.browser_title ?? '首钢股份知库',
     favicon_url: current?.favicon_url ?? '/site-favicon-horizontal-v2.png',
     domain_count_cache_ttl_seconds: String(current?.domain_count_cache_ttl_seconds ?? 43200),
+    home_cache_ttl_seconds: String(current?.home_cache_ttl_seconds ?? 1800),
   };
 }
 
@@ -5361,6 +5379,10 @@ function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: strin
   const ttl = Number(draft.domain_count_cache_ttl_seconds.trim());
   if (!Number.isInteger(ttl) || ttl < 60) {
     return { error: '业务域计数缓存有效期需为不小于 60 的整数（秒）' };
+  }
+  const homeTtl = Number(draft.home_cache_ttl_seconds.trim());
+  if (!Number.isInteger(homeTtl) || homeTtl < 60) {
+    return { error: '首页数据缓存有效期需为不小于 60 的整数（秒）' };
   }
   const site: SiteConfig = {
     header_brand_name: draft.header_brand_name.trim(),
@@ -5370,6 +5392,7 @@ function validateSiteDraft(draft: SiteDraft): { site?: SiteConfig; error?: strin
     browser_title: draft.browser_title.trim(),
     favicon_url: normalizeAssetUrl(draft.favicon_url),
     domain_count_cache_ttl_seconds: ttl,
+    home_cache_ttl_seconds: homeTtl,
   };
   if (!site.header_brand_name) return { error: '请输入顶部品牌名' };
   if (!site.login_brand_name) return { error: '请输入登录页品牌名' };

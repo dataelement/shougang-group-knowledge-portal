@@ -156,6 +156,7 @@ def test_site_config_has_default_cache_ttl(tmp_path):
 
     service = PortalConfigService(config_path=tmp_path / "portal.json")
     assert service.get_config().site.domain_count_cache_ttl_seconds == 43200
+    assert service.get_config().site.home_cache_ttl_seconds == 1800
 
 
 def test_portal_config_migrates_legacy_agents_and_only_valid_url_apps():

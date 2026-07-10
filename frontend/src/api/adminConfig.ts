@@ -267,6 +267,7 @@ export interface SiteConfig {
   browser_title: string;
   favicon_url: string;
   domain_count_cache_ttl_seconds: number;
+  home_cache_ttl_seconds: number;
 }
 
 export interface PortalConfig {

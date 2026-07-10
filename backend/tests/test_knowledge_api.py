@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.schemas.portal_config import AgentConfig, SectionsConfigUpdate
 from app.services.portal_config_service import PortalConfigService
+from app.services.portal_home_cache_service import PortalHomeCacheService
 
 
 def _parse_home_sse(response) -> tuple[dict, bool]:
@@ -612,6 +613,20 @@ class FakeBishengClient:
         return None
 
 
+class InMemoryRedis:
+    def __init__(self):
+        self.values: dict[str, str] = {}
+        self.set_calls: list[tuple[str, str, int]] = []
+
+    async def get(self, name: str):
+        return self.values.get(name)
+
+    async def set(self, name: str, value: str, ex: int):
+        self.values[name] = value
+        self.set_calls.append((name, value, ex))
+        return True
+
+
 def make_client(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
@@ -620,6 +635,63 @@ def make_client(tmp_path: Path):
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         yield client, config_service, fake_bisheng
+
+
+def test_home_stats_uses_redis_cache(tmp_path: Path):
+    class TrackingStatsBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.stats_requests = 0
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/home/stats":
+                self.stats_requests += 1
+            return await super().get_json(path, params=params, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = TrackingStatsBishengClient()
+    redis = InMemoryRedis()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_home_cache_service = PortalHomeCacheService(redis)
+        first = client.get("/api/v1/knowledge/home/stats")
+        second = client.get("/api/v1/knowledge/home/stats")
+
+    assert first.status_code == 200
+    assert second.json() == first.json()
+    assert fake_bisheng.stats_requests == 1
+    assert redis.set_calls[0][0] == PortalHomeCacheService.home_stats_key()
+    assert redis.set_calls[0][2] == 1800
+
+
+def test_home_content_serves_cached_sse_without_upstream_request(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    redis = InMemoryRedis()
+    cache_service = PortalHomeCacheService(redis)
+    key = cache_service.home_content_key(config=config_service.get_config())
+    redis.values[key] = json.dumps(
+        {
+            "sections": [
+                {
+                    "tag": "缓存栏目",
+                    "items": [{"id": 1, "title": "缓存文档"}],
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = FakeBishengClient()
+        client.app.state.portal_home_cache_service = cache_service
+        response = client.get("/api/v1/knowledge/home")
+
+    assert response.status_code == 200
+    sections, done = _parse_home_sse(response)
+    assert done is True
+    assert sections == {"缓存栏目": [{"id": 1, "title": "缓存文档"}]}
 
 
 class FakePortalAuthService:
