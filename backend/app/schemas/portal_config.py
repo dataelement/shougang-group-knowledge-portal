@@ -1,5 +1,8 @@
 import secrets
 import string
+from copy import deepcopy
+from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -11,6 +14,22 @@ _DOCUMENT_TYPE_CHILD_CODE_RANDOM_LENGTH = 4
 
 def _clean_config_text(value: str) -> str:
     return str(value or "").translate({ord(char): None for char in _HIDDEN_TEXT_CHARS}).strip()
+
+
+def _is_http_url(value: str) -> bool:
+    normalized = str(value or "").strip()
+    if any(ord(char) < 32 for char in normalized):
+        return False
+    try:
+        parsed = urlparse(normalized)
+    except ValueError:
+        return False
+    return (
+        parsed.scheme.lower() in {"http", "https"}
+        and bool(parsed.netloc)
+        and parsed.username is None
+        and parsed.password is None
+    )
 
 
 def _generate_document_type_child_code(parent_code: str, used_codes: set[str]) -> str:
@@ -195,12 +214,15 @@ class AgentCategoryConfig(BaseModel):
 
 class AgentItemConfig(BaseModel):
     id: str
-    workflow_id: str
+    type: Literal["workflow", "url"] = "workflow"
+    workflow_id: str = ""
+    url: str = ""
     name: str
     desc: str = ""
     category_id: str
     tags: list[str] = Field(default_factory=list)
     icon: str
+    icon_image_url: str = ""
     color: str
     bg: str
     enabled: bool = True
@@ -209,33 +231,50 @@ class AgentItemConfig(BaseModel):
     def normalize_and_validate(self):
         self.id = self.id.strip()
         self.workflow_id = self.workflow_id.strip()
+        self.url = self.url.strip()
         self.name = self.name.strip()
         self.desc = self.desc.strip()
         self.category_id = self.category_id.strip()
         self.tags = [tag.strip() for tag in self.tags if tag.strip()]
         self.icon = self.icon.strip()
+        self.icon_image_url = self.icon_image_url.strip()
         self.color = self.color.strip()
         self.bg = self.bg.strip()
         if not self.id:
-            raise ValueError("Agent id is required")
-        if not self.workflow_id:
+            raise ValueError("Application id is required")
+        if self.type == "workflow" and not self.workflow_id:
             raise ValueError("Agent workflow_id is required")
+        if self.type == "url" and not _is_http_url(self.url):
+            raise ValueError("URL application requires a valid http/https URL")
         if not self.name:
-            raise ValueError("Agent name is required")
+            raise ValueError("Application name is required")
         if not self.category_id:
-            raise ValueError("Agent category is required")
+            raise ValueError("Application category is required")
         if not self.icon:
-            raise ValueError("Agent icon is required")
+            raise ValueError("Application icon is required")
         if not self.color:
-            raise ValueError("Agent color is required")
+            raise ValueError("Application color is required")
         if not self.bg:
-            raise ValueError("Agent background color is required")
+            raise ValueError("Application background color is required")
+        if self.icon_image_url and not self.icon_image_url.startswith("/uploads/app-icons/"):
+            raise ValueError("Application icon image URL is invalid")
         return self
 
 
 class AgentConfig(BaseModel):
     categories: list[AgentCategoryConfig] = Field(default_factory=list)
-    agents: list[AgentItemConfig] = Field(default_factory=list)
+    applications: list[AgentItemConfig] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_agents(cls, value: Any):
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        if "applications" not in data and isinstance(data.get("agents"), list):
+            data["applications"] = data["agents"]
+        data.pop("agents", None)
+        return data
 
     @model_validator(mode="after")
     def normalize_and_validate(self):
@@ -243,22 +282,30 @@ class AgentConfig(BaseModel):
         duplicate_category_ids = {category_id for category_id in category_ids if category_ids.count(category_id) > 1}
         if duplicate_category_ids:
             raise ValueError("Agent category ids must be unique")
-        agent_ids = [agent.id for agent in self.agents]
-        duplicate_agent_ids = {agent_id for agent_id in agent_ids if agent_ids.count(agent_id) > 1}
-        if duplicate_agent_ids:
-            raise ValueError("Agent ids must be unique")
-        workflow_ids = [agent.workflow_id for agent in self.agents]
+        application_ids = [application.id for application in self.applications]
+        duplicate_application_ids = {
+            application_id
+            for application_id in application_ids
+            if application_ids.count(application_id) > 1
+        }
+        if duplicate_application_ids:
+            raise ValueError("Application ids must be unique")
+        workflow_ids = [
+            application.workflow_id
+            for application in self.applications
+            if application.type == "workflow"
+        ]
         duplicate_workflow_ids = {workflow_id for workflow_id in workflow_ids if workflow_ids.count(workflow_id) > 1}
         if duplicate_workflow_ids:
             raise ValueError("Agent workflow_ids must be unique")
         valid_category_ids = set(category_ids)
-        orphan_agents = [
-            agent.id
-            for agent in self.agents
-            if agent.category_id not in valid_category_ids
+        orphan_applications = [
+            application.id
+            for application in self.applications
+            if application.category_id not in valid_category_ids
         ]
-        if orphan_agents:
-            raise ValueError("Agent category must exist")
+        if orphan_applications:
+            raise ValueError("Application category must exist")
         return self
 
 
@@ -519,10 +566,79 @@ class PortalConfig(BaseModel):
     search: SearchConfig = Field(default_factory=SearchConfig)
     recommendation: RecommendationConfig
     display: DisplayConfig
-    apps: list[AppConfig] = Field(default_factory=list)
     banners: list[BannerSlide] = Field(default_factory=list)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
     site: SiteConfig = Field(default_factory=SiteConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_applications(cls, value: Any):
+        if not isinstance(value, dict):
+            return value
+        data = deepcopy(value)
+        raw_agent_config = data.get("agent_config")
+        agent_config = dict(raw_agent_config) if isinstance(raw_agent_config, dict) else {}
+        raw_applications = agent_config.get("applications")
+        if isinstance(raw_applications, list):
+            applications = [dict(item) for item in raw_applications if isinstance(item, dict)]
+        else:
+            raw_agents = agent_config.get("agents")
+            applications = [dict(item) for item in raw_agents if isinstance(item, dict)] if isinstance(raw_agents, list) else []
+        for application in applications:
+            application.setdefault("type", "workflow")
+            application.setdefault("workflow_id", "")
+            application.setdefault("url", "")
+            application.setdefault("icon_image_url", "")
+
+        raw_categories = agent_config.get("categories")
+        categories = [dict(item) for item in raw_categories if isinstance(item, dict)] if isinstance(raw_categories, list) else []
+        legacy_apps = data.get("apps")
+        valid_legacy_apps = [
+            dict(item)
+            for item in legacy_apps
+            if isinstance(item, dict) and _is_http_url(str(item.get("url") or ""))
+        ] if isinstance(legacy_apps, list) else []
+        if valid_legacy_apps and not any(str(category.get("id") or "").strip() == "url-apps" for category in categories):
+            categories.append({"id": "url-apps", "name": "URL 应用", "enabled": True})
+
+        existing_ids = {str(item.get("id") or "").strip() for item in applications}
+        for legacy in valid_legacy_apps:
+            base_id = f"url-app-{legacy.get('id')}"
+            existing = next((item for item in applications if str(item.get("id") or "").strip() == base_id), None)
+            if existing is not None:
+                if str(existing.get("type") or "") == "url" and str(existing.get("url") or "").strip() == str(legacy.get("url") or "").strip():
+                    continue
+                suffix = 2
+                candidate = f"{base_id}-{suffix}"
+                while candidate in existing_ids:
+                    suffix += 1
+                    candidate = f"{base_id}-{suffix}"
+                application_id = candidate
+            else:
+                application_id = base_id
+            existing_ids.add(application_id)
+            applications.append({
+                "id": application_id,
+                "type": "url",
+                "workflow_id": "",
+                "url": str(legacy.get("url") or "").strip(),
+                "name": str(legacy.get("name") or "").strip(),
+                "desc": str(legacy.get("desc") or "").strip(),
+                "category_id": "url-apps",
+                "tags": [],
+                "icon": str(legacy.get("icon") or "Globe").strip() or "Globe",
+                "icon_image_url": "",
+                "color": str(legacy.get("color") or "#2563eb").strip() or "#2563eb",
+                "bg": str(legacy.get("bg") or "#eff6ff").strip() or "#eff6ff",
+                "enabled": bool(legacy.get("enabled", True)),
+            })
+
+        agent_config["categories"] = categories
+        agent_config["applications"] = applications
+        agent_config.pop("agents", None)
+        data["agent_config"] = agent_config
+        data.pop("apps", None)
+        return data
 
 
 class DomainsConfigUpdate(BaseModel):

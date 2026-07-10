@@ -2150,7 +2150,10 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     config_service.update_agent_config(
         AgentConfig(
-            categories=[{"id": "general", "name": "通用"}],
+            categories=[
+                {"id": "general", "name": "通用"},
+                {"id": "disabled", "name": "已停用分类", "enabled": False},
+            ],
             agents=[
                 {
                     "id": "agent-a",
@@ -2171,6 +2174,27 @@ def test_chat_proxy_lists_configured_agent_workflow_conversations(tmp_path: Path
                     "color": "#2563eb",
                     "bg": "#dbeafe",
                     "enabled": False,
+                },
+                {
+                    "id": "url-disabled-category",
+                    "type": "url",
+                    "url": "https://apps.example.com/hidden",
+                    "name": "停用分类 URL",
+                    "category_id": "disabled",
+                    "icon": "Globe",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                },
+                {
+                    "id": "agent-disabled-category",
+                    "workflow_id": "wf-disabled-category",
+                    "name": "停用分类智能体",
+                    "category_id": "disabled",
+                    "icon": "Bot",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
                 },
             ],
         )
@@ -2239,6 +2263,20 @@ def test_chat_proxy_lists_visible_agent_workflows_with_bisheng_tags(tmp_path: Pa
                     "enabled": True,
                 },
                 {
+                    "id": "url-app",
+                    "type": "url",
+                    "url": "https://apps.example.com/analysis",
+                    "name": "经营分析",
+                    "desc": "URL 应用",
+                    "category_id": "general",
+                    "tags": ["经营"],
+                    "icon": "Globe",
+                    "icon_image_url": "/uploads/app-icons/demo.png",
+                    "color": "#2563eb",
+                    "bg": "#dbeafe",
+                    "enabled": True,
+                },
+                {
                     "id": "agent-b",
                     "workflow_id": "wf-b",
                     "name": "智能体 B",
@@ -2275,11 +2313,14 @@ def test_chat_proxy_lists_visible_agent_workflows_with_bisheng_tags(tmp_path: Pa
     assert response.status_code == 200
     assert user_bisheng.agent_workflow_calls == [{"workflow_ids": ["wf-a", "wf-b"]}]
     body = response.json()["data"]
-    assert [agent["id"] for agent in body] == ["agent-a", "agent-b"]
+    assert [agent["id"] for agent in body] == ["agent-a", "url-app", "agent-b"]
     assert body[0]["name"] == "智能体 A"
     assert body[0]["desc"] == "门户描述 A"
     assert body[0]["tags"] == ["制度", "合规"]
-    assert body[1]["tags"] == ["AI写作"]
+    assert body[1]["type"] == "url"
+    assert body[1]["url"] == "https://apps.example.com/analysis"
+    assert body[1]["tags"] == ["经营"]
+    assert body[2]["tags"] == ["AI写作"]
 
 
 def test_chat_proxy_maps_workflow_conversation_upstream_error_to_chinese(tmp_path: Path):

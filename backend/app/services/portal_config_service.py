@@ -6,6 +6,7 @@ from typing import Any
 from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.portal_config import (
     AgentConfig,
+    AppConfig,
     AgentWorkflowOption,
     AgentWorkflowOptionsResponse,
     AppsConfigUpdate,
@@ -113,7 +114,11 @@ class PortalConfigService:
                     **data["site"],
                 }
                 self._write_data(data)
-        return PortalConfig.model_validate(data)
+        config = PortalConfig.model_validate(data)
+        normalized_data = config.model_dump(mode="json")
+        if normalized_data != data:
+            self._write_data(normalized_data)
+        return config
 
     def replace_config(self, payload: PortalConfig) -> PortalConfig:
         data = payload.model_dump(mode="json")
@@ -367,16 +372,22 @@ class PortalConfigService:
 
     @staticmethod
     def _ensure_agent_config_compat(data: dict[str, Any]) -> bool:
-        default_agent_config = DEFAULT_PORTAL_CONFIG.get("agent_config") or {"categories": [], "agents": []}
+        default_agent_config = DEFAULT_PORTAL_CONFIG.get("agent_config") or {"categories": [], "applications": []}
         agent_config = data.get("agent_config")
         if not isinstance(agent_config, dict):
             data["agent_config"] = dict(default_agent_config)
             return True
         changed = False
-        for key in ("categories", "agents"):
-            if key not in agent_config or not isinstance(agent_config.get(key), list):
-                agent_config[key] = list(default_agent_config.get(key) or [])
-                changed = True
+        if "categories" not in agent_config or not isinstance(agent_config.get("categories"), list):
+            agent_config["categories"] = list(default_agent_config.get("categories") or [])
+            changed = True
+        if "applications" not in agent_config or not isinstance(agent_config.get("applications"), list):
+            legacy_agents = agent_config.get("agents")
+            agent_config["applications"] = list(legacy_agents) if isinstance(legacy_agents, list) else []
+            changed = True
+        if "agents" in agent_config:
+            agent_config.pop("agents", None)
+            changed = True
         return changed
 
     @staticmethod
@@ -536,8 +547,35 @@ class PortalConfigService:
 
     def update_apps(self, payload: AppsConfigUpdate) -> PortalConfig:
         data = self.get_config().model_dump()
+        agent_config = dict(data.get("agent_config") or {})
+        applications = agent_config.get("applications")
+        agent_config["applications"] = [
+            application
+            for application in applications
+            if isinstance(application, dict) and application.get("type") != "url"
+        ] if isinstance(applications, list) else []
+        data["agent_config"] = agent_config
         data["apps"] = payload.model_dump()["apps"]
         return self._write_config(PortalConfig.model_validate(data))
+
+    def get_legacy_apps(self) -> list[AppConfig]:
+        result: list[AppConfig] = []
+        for index, application in enumerate(self.get_config().agent_config.applications, start=1):
+            if application.type != "url":
+                continue
+            raw_suffix = application.id.removeprefix("url-app-")
+            legacy_id = int(raw_suffix) if raw_suffix.isdigit() else index
+            result.append(AppConfig(
+                id=legacy_id,
+                name=application.name,
+                icon=application.icon,
+                desc=application.desc,
+                color=application.color,
+                bg=application.bg,
+                url=application.url,
+                enabled=application.enabled,
+            ))
+        return result
 
     def update_banners(self, payload: BannersConfigUpdate) -> PortalConfig:
         data = self.get_config().model_dump()

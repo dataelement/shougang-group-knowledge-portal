@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
+  ArrowLeft,
   BarChart3,
   BookOpen,
   Bot,
@@ -336,6 +337,7 @@ export default function AppsPage() {
   const [favoriteWorkflowIds, setFavoriteWorkflowIds] = useState<Set<string>>(() => new Set());
   const [updatingFavoriteWorkflowIds, setUpdatingFavoriteWorkflowIds] = useState<Set<string>>(() => new Set());
   const [selectedAgentId, setSelectedAgentId] = useState('');
+  const [selectedUrlApplicationId, setSelectedUrlApplicationId] = useState('');
   const [selectedAgentConversationId, setSelectedAgentConversationId] = useState('');
   const [agentWorkflowConversations, setAgentWorkflowConversations] = useState<AgentWorkflowConversation[]>([]);
   const [loadingAgentWorkflowConversations, setLoadingAgentWorkflowConversations] = useState(false);
@@ -344,12 +346,15 @@ export default function AppsPage() {
   const [iframeLoading, setIframeLoading] = useState(false);
   const [iframeLoadTimedOut, setIframeLoadTimedOut] = useState(false);
   const iframeLoadTimerRef = useRef<number | null>(null);
-  const agentConfig = config?.agent_config ?? { categories: [], agents: [] };
+  const [urlIframeLoading, setUrlIframeLoading] = useState(false);
+  const [urlIframeLoadFailed, setUrlIframeLoadFailed] = useState(false);
+  const urlIframeLoadTimerRef = useRef<number | null>(null);
+  const agentConfig = config?.agent_config ?? { categories: [], applications: [] };
   const agentConfigSignature = useMemo(
-    () => agentConfig.agents
-      .map((agent) => `${agent.id}:${agent.workflow_id}:${agent.enabled ? '1' : '0'}`)
+    () => agentConfig.applications
+      .map((agent) => `${agent.id}:${agent.type}:${agent.workflow_id}:${agent.url}:${agent.enabled ? '1' : '0'}`)
       .join('|'),
-    [agentConfig.agents],
+    [agentConfig.applications],
   );
 
   useEffect(() => {
@@ -394,13 +399,21 @@ export default function AppsPage() {
     () => agentConfig.categories.filter((category) => category.enabled),
     [agentConfig.categories],
   );
+  const enabledCategoryIds = useMemo(
+    () => new Set(enabledCategories.map((category) => category.id)),
+    [enabledCategories],
+  );
   const enabledAgents = useMemo(
-    () => agentWorkflows.filter((agent) => agent.enabled),
-    [agentWorkflows],
+    () => agentWorkflows.filter((agent) => agent.enabled && enabledCategoryIds.has(agent.category_id)),
+    [agentWorkflows, enabledCategoryIds],
   );
   const selectedAgent = useMemo(
-    () => enabledAgents.find((agent) => agent.id === selectedAgentId) ?? null,
+    () => enabledAgents.find((agent) => agent.type === 'workflow' && agent.id === selectedAgentId) ?? null,
     [enabledAgents, selectedAgentId],
+  );
+  const selectedUrlApplication = useMemo(
+    () => enabledAgents.find((agent) => agent.type === 'url' && agent.id === selectedUrlApplicationId) ?? null,
+    [enabledAgents, selectedUrlApplicationId],
   );
   const agentFilters = useMemo<AgentFilterOption[]>(
     () => [
@@ -415,10 +428,12 @@ export default function AppsPage() {
   );
   const visibleAgents = useMemo(() => {
     if (activeAgentFilter === 'all') return enabledAgents;
-    if (activeAgentFilter === 'favorite') return enabledAgents.filter((agent) => favoriteWorkflowIds.has(agent.workflow_id));
+    if (activeAgentFilter === 'favorite') return enabledAgents.filter((agent) => (
+      agent.type === 'workflow' && favoriteWorkflowIds.has(agent.workflow_id)
+    ));
     const categoryId = activeAgentFilter.replace(/^category:/, '');
     return enabledAgents.filter((agent) => agent.category_id === categoryId);
-  }, [activeAgentFilter, enabledAgents, enabledCategories, favoriteWorkflowIds]);
+  }, [activeAgentFilter, enabledAgents, favoriteWorkflowIds]);
   const bishengBaseUrl = getBishengBaseUrl(config);
   const iframeResult = useMemo(
     () => (selectedAgent
@@ -435,7 +450,8 @@ export default function AppsPage() {
 
   useEffect(() => {
     if (configLoading || configError || loadingAgentWorkflows || agentWorkflowsError) return undefined;
-    if (!enabledAgents.length) {
+    const enabledWorkflowAgents = enabledAgents.filter((agent) => agent.type === 'workflow');
+    if (!enabledWorkflowAgents.length) {
       setAgentWorkflowConversations([]);
       setLoadingAgentWorkflowConversations(false);
       return undefined;
@@ -508,6 +524,7 @@ export default function AppsPage() {
   }
 
   async function toggleFavorite(agent: AgentItemConfig) {
+    if (agent.type !== 'workflow') return;
     const workflowId = agent.workflow_id.trim();
     if (!workflowId || updatingFavoriteWorkflowIds.has(workflowId)) return;
     const shouldFavorite = !favoriteWorkflowIds.has(workflowId);
@@ -537,11 +554,90 @@ export default function AppsPage() {
   }
 
   function selectAgent(agent: AgentItemConfig) {
+    if (agent.type === 'url') {
+      setSelectedUrlApplicationId(agent.id);
+      setSelectedAgentId('');
+      setSelectedAgentConversationId('');
+      setActiveAgentRecordId('');
+      return;
+    }
+    setSelectedUrlApplicationId('');
     setSelectedAgentId(agent.id);
     setSelectedAgentConversationId('');
     setAgentLaunchKey((current) => current + 1);
     const recordId = `agent_new_${agent.id}`;
     setActiveAgentRecordId(recordId);
+  }
+
+  useEffect(() => {
+    if (urlIframeLoadTimerRef.current !== null) {
+      window.clearTimeout(urlIframeLoadTimerRef.current);
+      urlIframeLoadTimerRef.current = null;
+    }
+    if (!selectedUrlApplication) {
+      setUrlIframeLoading(false);
+      setUrlIframeLoadFailed(false);
+      return undefined;
+    }
+    setUrlIframeLoading(true);
+    setUrlIframeLoadFailed(false);
+    urlIframeLoadTimerRef.current = window.setTimeout(() => {
+      setUrlIframeLoading(false);
+      setUrlIframeLoadFailed(true);
+      urlIframeLoadTimerRef.current = null;
+    }, 15000);
+    return () => {
+      if (urlIframeLoadTimerRef.current !== null) {
+        window.clearTimeout(urlIframeLoadTimerRef.current);
+        urlIframeLoadTimerRef.current = null;
+      }
+    };
+  }, [selectedUrlApplication]);
+
+  if (selectedUrlApplication) {
+    return (
+      <PageShell hideFooter mainClassName={s.urlApplicationMain}>
+        <div className={s.urlApplicationWorkspace}>
+          <div className={s.urlApplicationToolbar}>
+            <button type="button" className={s.urlApplicationBack} onClick={() => setSelectedUrlApplicationId('')}>
+              <ArrowLeft size={16} /> 返回智能应用
+            </button>
+            <span className={s.urlApplicationTitle}>{selectedUrlApplication.name}</span>
+          </div>
+          <div className={s.urlApplicationFrameWrap}>
+            {urlIframeLoading ? (
+              <div className={s.iframeStatus}><Loader2 className={s.spinner} size={18} /><span>正在加载 URL 应用...</span></div>
+            ) : null}
+            {urlIframeLoadFailed ? (
+              <div className={s.urlApplicationError}>
+                <AlertCircle size={24} />
+                <strong>该应用无法嵌入</strong>
+                <span>目标页面加载失败、超时，或禁止被 iframe 嵌入。</span>
+                <button type="button" className={s.urlApplicationBack} onClick={() => setSelectedUrlApplicationId('')}>返回智能应用</button>
+              </div>
+            ) : null}
+            <iframe
+              className={s.urlApplicationFrame}
+              src={selectedUrlApplication.url}
+              title={selectedUrlApplication.name}
+              sandbox="allow-downloads allow-forms allow-same-origin allow-scripts"
+              allow="clipboard-read; clipboard-write"
+              onLoad={() => {
+                if (urlIframeLoadTimerRef.current !== null) {
+                  window.clearTimeout(urlIframeLoadTimerRef.current);
+                  urlIframeLoadTimerRef.current = null;
+                }
+                setUrlIframeLoading(false);
+              }}
+              onError={() => {
+                setUrlIframeLoading(false);
+                setUrlIframeLoadFailed(true);
+              }}
+            />
+          </div>
+        </div>
+      </PageShell>
+    );
   }
 
   return (
@@ -699,9 +795,10 @@ export default function AppsPage() {
                           <div className={s.agentGrid}>
                             {visibleAgents.map((agent) => {
                               const Icon = AGENT_ICON_MAP[agent.icon] || Bot;
-                              const agentImage = AGENT_IMAGE_MAP[agent.name.trim()];
-                              const isFavorite = favoriteWorkflowIds.has(agent.workflow_id);
-                              const isFavoriteUpdating = updatingFavoriteWorkflowIds.has(agent.workflow_id);
+                              const agentImage = agent.icon_image_url || AGENT_IMAGE_MAP[agent.name.trim()];
+                              const isWorkflowAgent = agent.type === 'workflow';
+                              const isFavorite = isWorkflowAgent && favoriteWorkflowIds.has(agent.workflow_id);
+                              const isFavoriteUpdating = isWorkflowAgent && updatingFavoriteWorkflowIds.has(agent.workflow_id);
                               return (
                                 <article
                                   className={`${s.agentCard} ${selectedAgentId === agent.id ? s.agentCardActive : ''}`}
@@ -722,7 +819,7 @@ export default function AppsPage() {
                                         {getAgentCategoryName(agent, config)}
                                       </span>
                                     </div>
-                                    <button
+                                    {isWorkflowAgent ? <button
                                       aria-label={isFavorite ? `取消收藏${agent.name}` : `收藏${agent.name}`}
                                       className={`${s.favoriteButton} ${isFavorite ? s.favoriteButtonActive : ''}`}
                                       onClick={(event) => {
@@ -734,7 +831,7 @@ export default function AppsPage() {
                                       type="button"
                                     >
                                       <Star size={16} strokeWidth={2} />
-                                    </button>
+                                    </button> : null}
                                   </div>
                                   <div className={s.agentDesc}>{agent.desc}</div>
                                   <div className={s.agentTags}>

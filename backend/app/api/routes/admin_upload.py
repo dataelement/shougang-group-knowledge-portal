@@ -15,7 +15,9 @@ router = APIRouter(
     dependencies=[Depends(require_admin_session)],
 )
 
-MAX_BANNER_BYTES: Final[int] = 5 * 1024 * 1024
+MAX_IMAGE_BYTES: Final[int] = 5 * 1024 * 1024
+MAX_IMAGE_EDGE: Final[int] = 4096
+MAX_IMAGE_PIXELS: Final[int] = 16 * 1024 * 1024
 ALLOWED_MIME: Final[set[str]] = {"image/jpeg", "image/png", "image/webp"}
 PILLOW_FORMAT_TO_EXT: Final[dict[str, str]] = {
     "JPEG": "jpg",
@@ -34,20 +36,37 @@ async def upload_banner_image(
     file: UploadFile = File(...),
     uploads_root: Path = Depends(get_uploads_root),
 ):
+    return await _upload_image(file, uploads_root, "banners")
+
+
+@router.post("/app-icon")
+async def upload_application_icon(
+    file: UploadFile = File(...),
+    uploads_root: Path = Depends(get_uploads_root),
+):
+    return await _upload_image(file, uploads_root, "app-icons")
+
+
+async def _upload_image(file: UploadFile, uploads_root: Path, directory: str):
     if file.content_type not in ALLOWED_MIME:
         raise HTTPException(status_code=415, detail=f"不支持的图片类型: {file.content_type}")
 
-    payload = await file.read(MAX_BANNER_BYTES + 1)
-    if len(payload) > MAX_BANNER_BYTES:
+    payload = await file.read(MAX_IMAGE_BYTES + 1)
+    if len(payload) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="图片不得超过 5MB")
     if not payload:
         raise HTTPException(status_code=422, detail="文件为空")
 
     try:
         with Image.open(io.BytesIO(payload)) as img:
+            width, height = img.size
+            if width > MAX_IMAGE_EDGE or height > MAX_IMAGE_EDGE or width * height > MAX_IMAGE_PIXELS:
+                raise HTTPException(status_code=413, detail="图片尺寸不得超过 4096×4096")
             img.verify()
         with Image.open(io.BytesIO(payload)) as img:
             pillow_format = (img.format or "").upper()
+    except HTTPException:
+        raise
     except (UnidentifiedImageError, OSError, ValueError):
         raise HTTPException(status_code=415, detail="图片解析失败，可能不是有效的图片")
 
@@ -55,10 +74,10 @@ async def upload_banner_image(
     if not ext:
         raise HTTPException(status_code=415, detail=f"不支持的图片格式: {pillow_format or '未知'}")
 
-    banners_dir = uploads_root / "banners"
-    banners_dir.mkdir(parents=True, exist_ok=True)
+    target_dir = uploads_root / directory
+    target_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid.uuid4().hex}.{ext}"
-    target_path = banners_dir / filename
+    target_path = target_dir / filename
     target_path.write_bytes(payload)
 
-    return response_ok({"image_url": f"/uploads/banners/{filename}"})
+    return response_ok({"image_url": f"/uploads/{directory}/{filename}"})

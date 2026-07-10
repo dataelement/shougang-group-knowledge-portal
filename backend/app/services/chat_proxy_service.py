@@ -308,7 +308,21 @@ class ChatProxyService:
 
     async def list_agent_workflows(self):
         config = self._config_service.get_config()
-        configured_agents = [agent for agent in config.agent_config.agents if agent.enabled]
+        enabled_category_ids = {
+            category.id
+            for category in config.agent_config.categories
+            if category.enabled
+        }
+        configured_applications = [
+            application
+            for application in config.agent_config.applications
+            if application.enabled and application.category_id in enabled_category_ids
+        ]
+        configured_agents = [
+            application
+            for application in configured_applications
+            if application.type == "workflow"
+        ]
         workflow_ids = []
         seen_workflow_ids: set[str] = set()
         for agent in configured_agents:
@@ -317,17 +331,16 @@ class ChatProxyService:
                 continue
             seen_workflow_ids.add(workflow_id)
             workflow_ids.append(workflow_id)
-        if not workflow_ids:
-            return []
-
-        payload = await self._bisheng.post_json(
-            "/api/v1/workstation/app/portal-agent-workflows",
-            json={"workflow_ids": workflow_ids},
-        )
-        data = self._unwrap_bisheng_data(payload)
-        raw_workflows = data.get("workflows") if isinstance(data, dict) else data
-        if not isinstance(raw_workflows, list):
-            return []
+        raw_workflows = []
+        if workflow_ids:
+            payload = await self._bisheng.post_json(
+                "/api/v1/workstation/app/portal-agent-workflows",
+                json={"workflow_ids": workflow_ids},
+            )
+            data = self._unwrap_bisheng_data(payload)
+            raw_workflows = data.get("workflows") if isinstance(data, dict) else data
+            if not isinstance(raw_workflows, list):
+                raw_workflows = []
 
         visible_workflows: dict[str, dict] = {}
         for item in raw_workflows:
@@ -338,13 +351,16 @@ class ChatProxyService:
                 visible_workflows[workflow_id] = item
 
         result = []
-        for agent in configured_agents:
-            workflow = visible_workflows.get(agent.workflow_id)
+        for application in configured_applications:
+            if application.type == "url":
+                result.append(application.model_dump())
+                continue
+            workflow = visible_workflows.get(application.workflow_id)
             if not workflow:
                 continue
-            agent_data = agent.model_dump()
-            agent_data["tags"] = self._normalize_agent_workflow_tags(workflow.get("tags"))
-            result.append(agent_data)
+            application_data = application.model_dump()
+            application_data["tags"] = self._normalize_agent_workflow_tags(workflow.get("tags"))
+            result.append(application_data)
         return result
 
     async def get_conversation_messages(self, conversation_id: str):

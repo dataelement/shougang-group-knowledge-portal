@@ -86,12 +86,15 @@ export interface AgentCategoryConfig {
 
 export interface AgentItemConfig {
   id: string;
+  type: 'workflow' | 'url';
   workflow_id: string;
+  url: string;
   name: string;
   desc: string;
   category_id: string;
   tags: string[];
   icon: string;
+  icon_image_url: string;
   color: string;
   bg: string;
   enabled: boolean;
@@ -99,7 +102,7 @@ export interface AgentItemConfig {
 
 export interface AgentConfig {
   categories: AgentCategoryConfig[];
-  agents: AgentItemConfig[];
+  applications: AgentItemConfig[];
 }
 
 export interface AgentWorkflowOption {
@@ -275,7 +278,6 @@ export interface PortalConfig {
   search: SearchConfig;
   recommendation: RecommendationConfig;
   display: DisplayConfig;
-  apps: AppConfig[];
   banners: BannerSlide[];
   integrations: IntegrationsConfig;
   site: SiteConfig;
@@ -556,10 +558,18 @@ export function updateDocumentTypesConfig(document_types: DocumentTypeConfig[]) 
 }
 
 export async function uploadBannerImage(file: File): Promise<{ image_url: string }> {
+  return uploadAdminImage('/api/v1/admin/upload/banner', file);
+}
+
+export async function uploadApplicationIcon(file: File): Promise<{ image_url: string }> {
+  return uploadAdminImage('/api/v1/admin/upload/app-icon', file);
+}
+
+async function uploadAdminImage(path: string, file: File): Promise<{ image_url: string }> {
   const form = new FormData();
   form.append('file', file);
   try {
-    const response = await fetch('/api/v1/admin/upload/banner', {
+    const response = await fetch(path, {
       method: 'POST',
       body: form,
     });

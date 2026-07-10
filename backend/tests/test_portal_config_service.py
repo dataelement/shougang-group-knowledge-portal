@@ -1,5 +1,11 @@
+from copy import deepcopy
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
+from app.config.portal_config import DEFAULT_PORTAL_CONFIG
+from app.schemas.portal_config import AgentConfig, PortalConfig
 from app.services.config_store import InMemoryConfigStore
 from app.services.portal_config_service import PortalConfigService
 from app.schemas.portal_config import DomainsConfigUpdate
@@ -150,3 +156,126 @@ def test_site_config_has_default_cache_ttl(tmp_path):
 
     service = PortalConfigService(config_path=tmp_path / "portal.json")
     assert service.get_config().site.domain_count_cache_ttl_seconds == 43200
+
+
+def test_portal_config_migrates_legacy_agents_and_only_valid_url_apps():
+    payload = deepcopy(DEFAULT_PORTAL_CONFIG)
+    payload["agent_config"] = {
+        "categories": [{"id": "qa", "name": "AI问答", "enabled": True}],
+        "agents": [
+            {
+                "id": "policy",
+                "workflow_id": "wf-1",
+                "name": "制度专家",
+                "desc": "制度问答",
+                "category_id": "qa",
+                "tags": ["制度"],
+                "icon": "BookOpen",
+                "color": "#0f766e",
+                "bg": "#ccfbf1",
+                "enabled": True,
+            }
+        ],
+    }
+    payload["apps"] = [
+        {
+            "id": 7,
+            "name": "有效 URL",
+            "icon": "Globe",
+            "desc": "可嵌入应用",
+            "color": "#2563eb",
+            "bg": "#eff6ff",
+            "url": "https://apps.example.com/demo",
+            "enabled": True,
+        },
+        {
+            "id": 8,
+            "name": "空 URL",
+            "icon": "Globe",
+            "desc": "不迁移",
+            "color": "#2563eb",
+            "bg": "#eff6ff",
+            "url": "",
+            "enabled": True,
+        },
+        {
+            "id": 9,
+            "name": "危险 URL",
+            "icon": "Globe",
+            "desc": "不迁移",
+            "color": "#2563eb",
+            "bg": "#eff6ff",
+            "url": "javascript:alert(1)",
+            "enabled": True,
+        },
+    ]
+
+    config = PortalConfig.model_validate(payload)
+
+    assert [category.id for category in config.agent_config.categories] == ["qa", "url-apps"]
+    assert [item.id for item in config.agent_config.applications] == ["policy", "url-app-7"]
+    assert config.agent_config.applications[0].type == "workflow"
+    assert config.agent_config.applications[1].type == "url"
+    assert config.agent_config.applications[1].url == "https://apps.example.com/demo"
+    assert "apps" not in config.model_dump(mode="json")
+
+
+def test_portal_config_legacy_url_migration_is_idempotent():
+    payload = deepcopy(DEFAULT_PORTAL_CONFIG)
+    payload["agent_config"] = {"categories": [], "applications": []}
+    payload["apps"] = [
+        {
+            "id": 1,
+            "name": "门户应用",
+            "icon": "Globe",
+            "desc": "门户应用",
+            "color": "#2563eb",
+            "bg": "#eff6ff",
+            "url": "https://apps.example.com",
+            "enabled": True,
+        }
+    ]
+
+    first = PortalConfig.model_validate(payload)
+    second_payload = first.model_dump(mode="json")
+    second_payload["apps"] = payload["apps"]
+    second = PortalConfig.model_validate(second_payload)
+
+    assert [category.id for category in second.agent_config.categories] == ["url-apps"]
+    assert [item.id for item in second.agent_config.applications] == ["url-app-1"]
+
+
+def test_unified_application_validation_is_type_specific():
+    category = {"id": "apps", "name": "应用", "enabled": True}
+    shared = {
+        "id": "item",
+        "name": "应用",
+        "desc": "",
+        "category_id": "apps",
+        "tags": [],
+        "icon": "Globe",
+        "icon_image_url": "",
+        "color": "#2563eb",
+        "bg": "#eff6ff",
+        "enabled": True,
+    }
+
+    with pytest.raises(ValidationError):
+        AgentConfig.model_validate({
+            "categories": [category],
+            "applications": [{**shared, "type": "workflow", "workflow_id": "", "url": ""}],
+        })
+    with pytest.raises(ValidationError):
+        AgentConfig.model_validate({
+            "categories": [category],
+            "applications": [{**shared, "type": "url", "workflow_id": "", "url": "data:text/html,x"}],
+        })
+
+    config = AgentConfig.model_validate({
+        "categories": [category],
+        "applications": [
+            {**shared, "id": "wf", "type": "workflow", "workflow_id": "wf-1", "url": ""},
+            {**shared, "id": "url", "type": "url", "workflow_id": "", "url": "https://apps.example.com"},
+        ],
+    })
+    assert [item.type for item in config.applications] == ["workflow", "url"]
