@@ -693,6 +693,7 @@ function CommentThread({
   const hasMore = state.hasMore && visibleComments.length < totalCount;
   const notLoaded = state.page === 0;
   const hasDraftContent = Boolean(state.draft.trim());
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const loadMore = useCallback(async () => {
     if (state.loading) return;
@@ -811,6 +812,17 @@ function CommentThread({
       }));
       onCommentCreated?.();
       onTotalChange?.(refreshedTotal);
+      window.setTimeout(() => {
+        textareaRef.current?.focus();
+        window.requestAnimationFrame(() => {
+          if (textareaRef.current) {
+            const rect = textareaRef.current.getBoundingClientRect();
+            const targetTop = window.innerHeight * (2 / 3);
+            const nextScrollTop = window.scrollY + rect.top - targetTop;
+            window.scrollTo({ top: nextScrollTop, behavior: 'auto' });
+          }
+        });
+      }, 0);
     } catch (err) {
       console.error('评论发布失败:', err);
       const errorMessage = err instanceof Error ? err.message : '评论发布失败，请稍后重试';
@@ -883,12 +895,13 @@ function CommentThread({
 
       <div className={s.commentComposer}>
         <textarea
+          ref={textareaRef}
           placeholder={isFollowUpThread ? '发起追问...' : '添加评论...'}
           value={state.draft}
           onChange={(event) =>
             setState((prev) => ({ ...prev, draft: event.target.value }))
           }
-          disabled={state.submitting}
+          readOnly={state.submitting}
         />
         <div className={s.commentComposerFoot}>
           <span />
@@ -896,6 +909,7 @@ function CommentThread({
             type="button"
             className={s.sendRoundBtn}
             onClick={() => void handleSubmit()}
+            onMouseDown={(event) => event.preventDefault()}
             disabled={state.submitting || !hasDraftContent}
             aria-label="发布"
           >
