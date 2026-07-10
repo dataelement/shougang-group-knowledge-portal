@@ -1,10 +1,14 @@
+import json
+import logging
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Callable
+from inspect import isawaitable
+from typing import Any, Callable, Protocol
 
 import httpx
 from fastapi import Request
+from redis.exceptions import RedisError
 from fastapi.responses import Response
 
 from app.clients.bisheng import BishengClient
@@ -16,6 +20,10 @@ from app.services.bisheng_runtime_service import (
     encrypt_bisheng_password,
 )
 from app.services.error_messages import normalize_user_facing_message
+
+logger = logging.getLogger(__name__)
+
+_SESSION_KEY_PREFIX = "shougang_portal:session:v1"
 
 
 class PortalAuthError(Exception):
@@ -44,6 +52,156 @@ class PortalSession:
     auth_trace_id: str = ""
 
 
+class PortalSessionStoreError(RuntimeError):
+    """Raised when the shared portal session store cannot be used."""
+
+
+class PortalSessionStore(Protocol):
+    async def get(self, session_id: str) -> PortalSession | None: ...
+
+    async def save(self, session: PortalSession, *, replace_existing: bool) -> None: ...
+
+    async def delete(self, session_id: str) -> None: ...
+
+
+class InMemoryPortalSessionStore:
+    """Development-only session store used when Redis is not configured."""
+
+    def __init__(self):
+        self._sessions: dict[str, PortalSession] = {}
+        self._session_by_account: dict[str, str] = {}
+
+    async def get(self, session_id: str) -> PortalSession | None:
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        if session.expires_at > time.time():
+            return session
+        await self.delete(session_id)
+        return None
+
+    async def save(self, session: PortalSession, *, replace_existing: bool) -> None:
+        account_key = _session_account_key(session.user.account)
+        if replace_existing and account_key:
+            previous_session_id = self._session_by_account.get(account_key)
+            if previous_session_id and previous_session_id != session.session_id:
+                self._sessions.pop(previous_session_id, None)
+        self._sessions[session.session_id] = session
+        if account_key:
+            self._session_by_account[account_key] = session.session_id
+
+    async def delete(self, session_id: str) -> None:
+        session = self._sessions.pop(session_id, None)
+        if session is None:
+            return
+        account_key = _session_account_key(session.user.account)
+        if self._session_by_account.get(account_key) == session_id:
+            self._session_by_account.pop(account_key, None)
+
+
+class RedisPortalSessionStore:
+    """Redis-backed session store shared by all portal workers."""
+
+    def __init__(self, redis_client: Any):
+        self._redis = redis_client
+
+    async def get(self, session_id: str) -> PortalSession | None:
+        try:
+            raw = await self._redis.get(self._session_key(session_id))
+        except (RedisError, OSError, TypeError, ValueError) as err:
+            raise PortalSessionStoreError("Redis 会话读取失败") from err
+        if raw is None:
+            return None
+        try:
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            session = self._deserialize_session(json.loads(raw))
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+            logger.warning("门户 Redis 会话数据无效，已忽略")
+            return None
+        if session.expires_at > time.time():
+            return session
+        try:
+            await self._redis.delete(self._session_key(session_id))
+        except (RedisError, OSError, TypeError, ValueError) as err:
+            raise PortalSessionStoreError("Redis 过期会话清理失败") from err
+        return None
+
+    async def save(self, session: PortalSession, *, replace_existing: bool) -> None:
+        ttl_seconds = max(1, int(session.expires_at - time.time()))
+        account_key = _session_account_key(session.user.account)
+        try:
+            if replace_existing and account_key:
+                previous_session_id = await self._redis.get(self._account_key(account_key))
+                if isinstance(previous_session_id, bytes):
+                    previous_session_id = previous_session_id.decode("utf-8")
+                if previous_session_id and previous_session_id != session.session_id:
+                    await self._redis.delete(self._session_key(str(previous_session_id)))
+            payload = json.dumps(self._serialize_session(session), ensure_ascii=False, separators=(",", ":"))
+            await self._redis.set(self._session_key(session.session_id), payload, ex=ttl_seconds)
+            if account_key:
+                await self._redis.set(self._account_key(account_key), session.session_id, ex=ttl_seconds)
+        except (RedisError, OSError, TypeError, ValueError) as err:
+            raise PortalSessionStoreError("Redis 会话写入失败") from err
+
+    async def delete(self, session_id: str) -> None:
+        try:
+            session = await self.get(session_id)
+            await self._redis.delete(self._session_key(session_id))
+            if session is None:
+                return
+            account_key = _session_account_key(session.user.account)
+            if not account_key:
+                return
+            mapped_session_id = await self._redis.get(self._account_key(account_key))
+            if isinstance(mapped_session_id, bytes):
+                mapped_session_id = mapped_session_id.decode("utf-8")
+            if mapped_session_id == session_id:
+                await self._redis.delete(self._account_key(account_key))
+        except PortalSessionStoreError:
+            raise
+        except (RedisError, OSError, TypeError, ValueError) as err:
+            raise PortalSessionStoreError("Redis 会话删除失败") from err
+
+    @staticmethod
+    def _session_key(session_id: str) -> str:
+        return f"{_SESSION_KEY_PREFIX}:id:{session_id}"
+
+    @staticmethod
+    def _account_key(account: str) -> str:
+        return f"{_SESSION_KEY_PREFIX}:account:{account}"
+
+    @staticmethod
+    def _serialize_session(session: PortalSession) -> dict[str, Any]:
+        return {
+            "session_id": session.session_id,
+            "access_token": session.access_token,
+            "user": session.user.model_dump(mode="json"),
+            "base_url": session.base_url,
+            "timeout_seconds": session.timeout_seconds,
+            "expires_at": session.expires_at,
+            "auth_source": session.auth_source,
+            "auth_trace_id": session.auth_trace_id,
+        }
+
+    @staticmethod
+    def _deserialize_session(payload: dict[str, Any]) -> PortalSession:
+        return PortalSession(
+            session_id=str(payload["session_id"]),
+            access_token=str(payload["access_token"]),
+            user=PortalUserView.model_validate(payload["user"]),
+            base_url=str(payload["base_url"]),
+            timeout_seconds=float(payload["timeout_seconds"]),
+            expires_at=float(payload["expires_at"]),
+            auth_source=str(payload.get("auth_source") or ""),
+            auth_trace_id=str(payload.get("auth_trace_id") or ""),
+        )
+
+
+def _session_account_key(account: str | None) -> str:
+    return (account or "").strip().lower()
+
+
 class PortalAuthService:
     _bisheng_cookie_name = "access_token_cookie"
     _auth_source_cookie_name = "sg_portal_auth_source"
@@ -57,6 +215,7 @@ class PortalAuthService:
         cookie_secure: bool,
         client_factory: Callable[[str, float, str | None], BishengClient] = BishengClient,
         password_encryptor: Callable[[str, str], str] = encrypt_bisheng_password,
+        session_store: PortalSessionStore | None = None,
     ):
         self._runtime_service = runtime_service
         self._cookie_name = cookie_name
@@ -64,8 +223,7 @@ class PortalAuthService:
         self._cookie_secure = cookie_secure
         self._client_factory = client_factory
         self._password_encryptor = password_encryptor
-        self._sessions: dict[str, PortalSession] = {}
-        self._session_by_account: dict[str, str] = {}
+        self._session_store = session_store or InMemoryPortalSessionStore()
 
     @property
     def cookie_name(self) -> str:
@@ -106,10 +264,9 @@ class PortalAuthService:
             timeout_seconds=timeout_seconds,
             expires_at=expires_at,
         )
-        self._cleanup_expired()
         if not remember:
             session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
-        self._store_session(session, replace_existing=force_login)
+        await self._store_session(session, replace_existing=force_login)
         return session
 
     async def create_session_from_access_token(
@@ -143,10 +300,9 @@ class PortalAuthService:
             auth_source=auth_source,
             auth_trace_id=auth_trace_id,
         )
-        self._cleanup_expired()
         if not remember:
             session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
-        self._store_session(session, replace_existing=replace_existing)
+        await self._store_session(session, replace_existing=replace_existing)
         return session
 
     def attach_session_cookie(self, response: Response, session: PortalSession, remember: bool) -> None:
@@ -211,27 +367,24 @@ class PortalAuthService:
             path="/",
         )
 
-    def get_session(self, request: Request) -> PortalSession | None:
+    async def get_session(self, request: Request) -> PortalSession | None:
         session_id = request.cookies.get(self._cookie_name, "")
         if not session_id:
             return None
-        session = self._sessions.get(session_id)
-        if session is None:
+        try:
+            return await self._session_store.get(session_id)
+        except PortalSessionStoreError:
+            logger.exception("门户会话读取失败")
             return None
-        if session.expires_at <= time.time():
-            self._sessions.pop(session_id, None)
-            self._remove_session_index(session)
-            return None
-        return session
 
-    def require_session(self, request: Request) -> PortalSession:
-        session = self.get_session(request)
+    async def require_session(self, request: Request) -> PortalSession:
+        session = await self.get_session(request)
         if session is None:
             raise PortalAuthError("请先登录", status_code=401)
         return session
 
     async def require_session_or_bisheng_cookie(self, request: Request) -> tuple[PortalSession, bool]:
-        session = self.get_session(request)
+        session = await self.get_session(request)
         if session is not None:
             return session, False
 
@@ -260,16 +413,16 @@ class PortalAuthService:
             expires_at=expires_at,
             auth_source=request.cookies.get(self._auth_source_cookie_name, "").strip(),
         )
-        self._cleanup_expired()
-        self._store_session(session, replace_existing=False)
+        await self._store_session(session, replace_existing=False)
         return session, True
 
-    def logout(self, request: Request) -> None:
+    async def logout(self, request: Request) -> None:
         session_id = request.cookies.get(self._cookie_name, "")
         if session_id:
-            session = self._sessions.pop(session_id, None)
-            if session is not None:
-                self._remove_session_index(session)
+            try:
+                await self._session_store.delete(session_id)
+            except PortalSessionStoreError:
+                logger.exception("门户会话删除失败")
 
     def create_bisheng_client(self, session: PortalSession) -> BishengClient:
         return self._client_factory(session.base_url, session.timeout_seconds, session.access_token)
@@ -383,32 +536,12 @@ class PortalAuthService:
             return default_expires_at
         return min(default_expires_at, token_exp.timestamp())
 
-    def _cleanup_expired(self) -> None:
-        now = time.time()
-        expired = [session_id for session_id, session in self._sessions.items() if session.expires_at <= now]
-        for session_id in expired:
-            session = self._sessions.pop(session_id, None)
-            if session is not None:
-                self._remove_session_index(session)
-
-    def _store_session(self, session: PortalSession, *, replace_existing: bool) -> None:
-        account_key = self._session_account_key(session.user.account)
-        if replace_existing and account_key:
-            old_session_id = self._session_by_account.get(account_key)
-            if old_session_id and old_session_id != session.session_id:
-                self._sessions.pop(old_session_id, None)
-        self._sessions[session.session_id] = session
-        if account_key:
-            self._session_by_account[account_key] = session.session_id
-
-    def _remove_session_index(self, session: PortalSession) -> None:
-        account_key = self._session_account_key(session.user.account)
-        if account_key and self._session_by_account.get(account_key) == session.session_id:
-            self._session_by_account.pop(account_key, None)
-
-    @staticmethod
-    def _session_account_key(account: str | None) -> str:
-        return (account or "").strip().lower()
+    async def _store_session(self, session: PortalSession, *, replace_existing: bool) -> None:
+        try:
+            await self._session_store.save(session, replace_existing=replace_existing)
+        except PortalSessionStoreError as err:
+            logger.exception("门户会话写入失败")
+            raise PortalAuthError("登录服务暂不可用，请稍后重试", status_code=503) from err
 
     @staticmethod
     def _first_str(data: dict, *keys: str) -> str:
@@ -417,3 +550,15 @@ class PortalAuthService:
             if value not in (None, ""):
                 return str(value)
         return ""
+
+
+async def get_portal_session(auth_service: Any, request: Request) -> PortalSession | None:
+    """Read a session while retaining compatibility with synchronous test doubles."""
+    result = auth_service.get_session(request)
+    return await result if isawaitable(result) else result
+
+
+async def require_portal_session(auth_service: Any, request: Request) -> PortalSession:
+    """Require a session while retaining compatibility with synchronous test doubles."""
+    result = auth_service.require_session(request)
+    return await result if isawaitable(result) else result

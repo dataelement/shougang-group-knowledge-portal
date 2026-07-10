@@ -3,7 +3,7 @@ import asyncio
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.portal_auth_service import PortalAuthService
+from app.services.portal_auth_service import PortalAuthError, PortalAuthService, RedisPortalSessionStore
 
 
 class FakeRuntimeService:
@@ -73,6 +73,30 @@ class FakeAuthConflictBishengClient(FakeAuthBishengClient):
                 "data": {},
             }
         raise AssertionError(f"Unexpected post path: {path}")
+
+
+class FakeRedis:
+    def __init__(self):
+        self.values: dict[str, str] = {}
+
+    async def get(self, name: str):
+        return self.values.get(name)
+
+    async def set(self, name: str, value: str, ex: int):
+        self.values[name] = value
+        return True
+
+    async def delete(self, *names: str):
+        for name in names:
+            self.values.pop(name, None)
+        return len(names)
+
+
+class FailingRedis(FakeRedis):
+    async def set(self, name: str, value: str, ex: int):
+        from redis.exceptions import ConnectionError
+
+        raise ConnectionError("unavailable")
 
 
 def make_auth_service() -> PortalAuthService:
@@ -225,5 +249,61 @@ def test_force_login_replaces_existing_portal_session_for_same_account():
     )
 
     assert first.session_id != second.session_id
-    assert first.session_id not in service._sessions
-    assert service._sessions[second.session_id] is second
+    assert asyncio.run(service._session_store.get(first.session_id)) is None
+    assert asyncio.run(service._session_store.get(second.session_id)) is second
+
+
+def test_redis_session_store_is_shared_by_separate_auth_service_instances():
+    async def run():
+        redis = FakeRedis()
+        first_service = PortalAuthService(
+            runtime_service=FakeRuntimeService(),
+            cookie_name="test_portal_session",
+            ttl_seconds=7 * 24 * 60 * 60,
+            cookie_secure=False,
+            client_factory=FakeAuthBishengClient,
+            password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+            session_store=RedisPortalSessionStore(redis),
+        )
+        second_service = PortalAuthService(
+            runtime_service=FakeRuntimeService(),
+            cookie_name="test_portal_session",
+            ttl_seconds=7 * 24 * 60 * 60,
+            cookie_secure=False,
+            client_factory=FakeAuthBishengClient,
+            password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+            session_store=RedisPortalSessionStore(redis),
+        )
+        session = await first_service.login(account="bisheng-user", password="secret", remember=True)
+        request = type("RequestWithCookies", (), {"cookies": {"test_portal_session": session.session_id}})()
+
+        recovered = await second_service.require_session(request)
+        assert recovered.session_id == session.session_id
+        assert recovered.user.account == "bisheng-user"
+
+        await second_service.logout(request)
+        assert await first_service.get_session(request) is None
+
+    asyncio.run(run())
+
+
+def test_login_fails_closed_when_redis_session_store_is_unavailable():
+    async def run():
+        service = PortalAuthService(
+            runtime_service=FakeRuntimeService(),
+            cookie_name="test_portal_session",
+            ttl_seconds=7 * 24 * 60 * 60,
+            cookie_secure=False,
+            client_factory=FakeAuthBishengClient,
+            password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+            session_store=RedisPortalSessionStore(FailingRedis()),
+        )
+        try:
+            await service.login(account="bisheng-user", password="secret", remember=True)
+        except PortalAuthError as err:
+            assert err.status_code == 503
+            assert err.message == "登录服务暂不可用，请稍后重试"
+        else:
+            raise AssertionError("Redis 不可用时不应创建门户会话")
+
+    asyncio.run(run())

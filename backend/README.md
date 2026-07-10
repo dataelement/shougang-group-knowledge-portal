@@ -43,7 +43,7 @@ The current workspace has been verified with Python 3.13. Running tests with the
 - `PORTAL_BISHENG_PASSWORD`
 - `PORTAL_BISHENG_DEFAULT_MODEL`
 - `PORTAL_BISHENG_PAGE_SIZE_LIMIT`
-- `PORTAL_REDIS_URL`（可选；配置后为首页接口启用 Redis 缓存）
+- `PORTAL_REDIS_URL`（生产环境必填；用于跨 worker 共享门户登录会话，同时缓存首页接口）
 
 The app loads `backend/.env` automatically when present.
 
