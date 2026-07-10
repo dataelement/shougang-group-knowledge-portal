@@ -738,7 +738,7 @@ export async function fetchExpertQuestions(params: {
     `${BASE}/questions${qs({
       domain: params.domain,
       status: params.status,
-      sort: params.sort,
+      sort_by: params.sort,
       page: params.page,
       page_size: params.pageSize,
     })}`,
