@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowUp,
   BadgeCheck,
@@ -182,6 +182,8 @@ interface AnswerListSectionProps {
   isQuestionOwner: boolean;
   onAnswerAccepted?: () => void;
   onAnswersChange?: (answers: DetailAnswerEntry[]) => void;
+  highlightAnswerId?: string | null;
+  highlightCommentId?: string | null;
   children?: ReactNode;
 }
 
@@ -870,7 +872,7 @@ function CommentThread({
       </div>
 
       {visibleComments.map((comment) => (
-        <div key={comment.id} className={s.comment}>
+        <div id={`comment-${comment.id}`} key={comment.id} className={s.comment}>
           <div className={s.commentHead}>
             <span
               className={s.commentAv}
@@ -976,7 +978,7 @@ function AnswerCard({
   }, [showComments]);
 
   return (
-    <article className={wrapClass}>
+    <article id={`answer-${answer.id}`} className={wrapClass}>
       <div className={s.answerMain}>
         {answer.adopted ? (
           <div className={s.acceptedBanner}>
@@ -1089,7 +1091,19 @@ function AnswerCard({
 }
 
 const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProps>(
-  ({ questionId, currentExpert, isQuestionOwner, onAnswerAccepted, onAnswersChange, children }, ref) => {
+  (
+    {
+      questionId,
+      currentExpert,
+      isQuestionOwner,
+      onAnswerAccepted,
+      onAnswersChange,
+      highlightAnswerId,
+      highlightCommentId,
+      children,
+    },
+    ref,
+  ) => {
     const { user } = useAuth();
     const currentUserKey = user?.externalId || user?.account || user?.name || 'anonymous';
 
@@ -1107,6 +1121,7 @@ const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProp
     const answerLoadingRef = useRef(false);
     const activeSortRef = useRef<SortMode>('top');
     const answerRequestIdRef = useRef(0);
+    const highlightTargetRef = useRef<{ answerId: string; commentId?: string } | null>(null);
 
     const displaySortMode = pendingSortMode ?? sortMode;
     const answerHasMore = answers.length < answerTotal;
@@ -1202,6 +1217,57 @@ const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProp
       if (answerLoading || !initialLoaded) return;
       onAnswersChange?.(answers);
     }, [answers, answerLoading, initialLoaded, onAnswersChange]);
+
+    useEffect(() => {
+      if (highlightAnswerId) {
+        highlightTargetRef.current = {
+          answerId: highlightAnswerId,
+          commentId: highlightCommentId ?? undefined,
+        };
+      }
+    }, [highlightAnswerId, highlightCommentId]);
+
+    useEffect(() => {
+      if (!highlightTargetRef.current || answerLoading) return;
+
+      const { answerId, commentId } = highlightTargetRef.current;
+      const found = answers.find((answer) => String(answer.id) === answerId);
+
+      if (found) {
+        if (commentId) {
+          setOpenComments((prev) => new Set(prev).add(found.id));
+        }
+        window.requestAnimationFrame(() => {
+          const answerEl = document.getElementById(`answer-${answerId}`);
+          answerEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (commentId) {
+            window.setTimeout(() => {
+              const commentEl = document.getElementById(`comment-${commentId}`);
+              commentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 350);
+          }
+        });
+        highlightTargetRef.current = null;
+        if (window.history.replaceState) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('answerId');
+          url.searchParams.delete('commentId');
+          window.history.replaceState(null, '', url.toString());
+        }
+      } else if (answerHasMore) {
+        void loadAnswers(questionId, answerPage + 1, false, sortMode, true);
+      } else {
+        highlightTargetRef.current = null;
+      }
+    }, [
+      answers,
+      answerLoading,
+      answerHasMore,
+      answerPage,
+      questionId,
+      loadAnswers,
+      sortMode,
+    ]);
 
     const handleSortChange = useCallback(
       async (mode: SortMode) => {
@@ -1393,9 +1459,12 @@ const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProp
 
 export default function ExpertQADetailPage() {
   const params = useParams<{ questionId?: string }>();
+  const [searchParams] = useSearchParams();
   // const navigate = useNavigate();
   const { user } = useAuth();
   const routeQuestionId = params.questionId;
+  const highlightAnswerId = searchParams.get('answerId');
+  const highlightCommentId = searchParams.get('commentId');
   const [question, setQuestion] = useState<DetailQuestion | null>(null);
   const [qLoading, setQLoading] = useState(true);
   const [qError, setQError] = useState<string | null>(null);
@@ -1785,6 +1854,8 @@ export default function ExpertQADetailPage() {
               isQuestionOwner={isQuestionOwner}
               onAnswerAccepted={() => void refreshQuestionDetail(questionNumericId)}
               onAnswersChange={handleAnswersChange}
+              highlightAnswerId={highlightAnswerId}
+              highlightCommentId={highlightCommentId}
             >
               {canAnswer ? (
               <div className={s.yourAnswerCard}>
