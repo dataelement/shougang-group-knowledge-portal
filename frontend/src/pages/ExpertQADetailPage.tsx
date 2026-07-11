@@ -1269,11 +1269,12 @@ const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProp
       if (found) {
         if (commentId) {
           setOpenComments((prev) => new Set(prev).add(found.id));
+        } else {
+          window.requestAnimationFrame(() => {
+            const answerEl = document.getElementById(`answer-${answerId}`);
+            answerEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
         }
-        window.requestAnimationFrame(() => {
-          const answerEl = document.getElementById(`answer-${answerId}`);
-          answerEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
       } else if (answerHasMore) {
         void loadAnswers(questionId, answerPage + 1, false, sortMode, true);
       } else {
