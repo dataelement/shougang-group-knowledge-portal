@@ -1228,7 +1228,7 @@ const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProp
     }, [highlightAnswerId, highlightCommentId]);
 
     useEffect(() => {
-      if (!highlightTargetRef.current || answerLoading) return;
+      if (!highlightTargetRef.current || answerLoading || !initialLoaded) return;
 
       const { answerId, commentId } = highlightTargetRef.current;
       const found = answers.find((answer) => String(answer.id) === answerId);
@@ -1264,6 +1264,7 @@ const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProp
       answerLoading,
       answerHasMore,
       answerPage,
+      initialLoaded,
       questionId,
       loadAnswers,
       sortMode,
