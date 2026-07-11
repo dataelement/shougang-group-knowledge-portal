@@ -1008,6 +1008,7 @@
   border-radius: 10px;
   margin-bottom: 10px;
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  scroll-margin-top: calc(var(--header-h) + 16px);
 }
 
 .comment:hover {

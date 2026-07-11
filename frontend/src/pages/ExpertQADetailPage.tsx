@@ -161,6 +161,8 @@ interface CommentThreadProps {
   initialCount: number;
   onCommentCreated?: () => void;
   onTotalChange?: (total: number) => void;
+  highlightCommentId?: number;
+  onHighlightDone?: () => void;
 }
 
 interface AnswerCardProps {
@@ -174,6 +176,8 @@ interface AnswerCardProps {
   onCommentTotalChange?: (total: number) => void;
   usefulDisabled?: boolean;
   isQuestionOwner?: boolean;
+  highlightCommentId?: number;
+  onHighlightDone?: () => void;
 }
 
 interface AnswerListSectionProps {
@@ -688,6 +692,8 @@ function CommentThread({
   initialCount,
   onCommentCreated,
   onTotalChange,
+  highlightCommentId,
+  onHighlightDone,
 }: CommentThreadProps) {
   const [state, setState] = useState<CommentState>({
     items: [],
@@ -712,6 +718,7 @@ function CommentThread({
   const notLoaded = state.page === 0;
   const hasDraftContent = Boolean(state.draft.trim());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightDoneRef = useRef(false);
 
   const loadMore = useCallback(async () => {
     if (state.loading) return;
@@ -774,6 +781,28 @@ function CommentThread({
 
     return () => window.clearTimeout(timer);
   }, [initialCount, isFollowUpThread, loadMore, notLoaded]);
+
+  useEffect(() => {
+    if (!highlightCommentId || highlightDoneRef.current || state.loading) return;
+
+    const found = visibleComments.find((comment) => comment.id === highlightCommentId);
+    if (found) {
+      window.requestAnimationFrame(() => {
+        const el = document.getElementById(`comment-${highlightCommentId}`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      highlightDoneRef.current = true;
+      window.setTimeout(() => onHighlightDone?.(), 600);
+      return;
+    }
+
+    if (hasMore) {
+      void loadMore();
+    } else {
+      highlightDoneRef.current = true;
+      onHighlightDone?.();
+    }
+  }, [highlightCommentId, visibleComments, hasMore, loadMore, state.loading, onHighlightDone]);
 
   async function handleSubmit() {
     const content = state.draft.trim();
@@ -953,6 +982,8 @@ function AnswerCard({
   onCommentTotalChange,
   usefulDisabled = false,
   isQuestionOwner = false,
+  highlightCommentId,
+  onHighlightDone,
 }: AnswerCardProps) {
   const commentThreadRef = useRef<HTMLDivElement>(null);
   const wrapClass = [
@@ -1082,6 +1113,8 @@ function AnswerCard({
               questionId={questionId}
               initialCount={answer.commentCount}
               onTotalChange={onCommentTotalChange}
+              highlightCommentId={highlightCommentId}
+              onHighlightDone={onHighlightDone}
             />
           </div>
         ) : null}
@@ -1240,20 +1273,7 @@ const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProp
         window.requestAnimationFrame(() => {
           const answerEl = document.getElementById(`answer-${answerId}`);
           answerEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          if (commentId) {
-            window.setTimeout(() => {
-              const commentEl = document.getElementById(`comment-${commentId}`);
-              commentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 350);
-          }
         });
-        highlightTargetRef.current = null;
-        if (window.history.replaceState) {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('answerId');
-          url.searchParams.delete('commentId');
-          window.history.replaceState(null, '', url.toString());
-        }
       } else if (answerHasMore) {
         void loadAnswers(questionId, answerPage + 1, false, sortMode, true);
       } else {
@@ -1414,6 +1434,24 @@ const AnswerListSection = forwardRef<AnswerListSectionRef, AnswerListSectionProp
             }
             usefulDisabled={votedTargets.has(`answer-helpful:${answer.id}`)}
             isQuestionOwner={isQuestionOwner}
+            highlightCommentId={
+              highlightTargetRef.current?.answerId === String(answer.id)
+                ? Number(highlightTargetRef.current.commentId)
+                : undefined
+            }
+            onHighlightDone={
+              highlightTargetRef.current?.answerId === String(answer.id)
+                ? () => {
+                    highlightTargetRef.current = null;
+                    if (window.history.replaceState) {
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete('answerId');
+                      url.searchParams.delete('commentId');
+                      window.history.replaceState(null, '', url.toString());
+                    }
+                  }
+                : undefined
+            }
           />
         ))}
 
