@@ -51,6 +51,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isValidIdString(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim() === '') return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized !== 'none' && normalized !== 'null' && normalized !== 'undefined';
+}
+
 function extractExpertQaQuestionId(raw: unknown): string | number | null {
   if (raw == null) return null;
 
@@ -210,9 +216,14 @@ export default function ApprovalDialogHost() {
       // BiSheng may host the detail page under a /workspace prefix.
       const normalized = pathname.replace(/^\/workspace/, '') || '/';
       if (!normalized.startsWith(EXPERT_QA_PATH_PREFIX)) return false;
+      // Backend sometimes serializes missing ids as the string "None".
+      const params = new URLSearchParams(search);
+      if (!isValidIdString(params.get('answerId'))) params.delete('answerId');
+      if (!isValidIdString(params.get('commentId'))) params.delete('commentId');
+      const cleanedSearch = params.toString() ? `?${params.toString()}` : '';
       setOpen(false);
       finishPendingAction();
-      navigate(`${normalized}${search}${hash}`);
+      navigate(`${normalized}${cleanedSearch}${hash}`);
       return true;
     },
     [navigate, finishPendingAction],
@@ -292,8 +303,8 @@ export default function ApprovalDialogHost() {
           console.warn('[portal] QA expert navigate message without question id:', payload);
           return;
         }
-        const answerId = typeof payload?.answerId === 'string' ? payload.answerId : null;
-        const commentId = typeof payload?.commentId === 'string' ? payload.commentId : null;
+        const answerId = isValidIdString(payload?.answerId) ? (payload.answerId as string) : null;
+        const commentId = isValidIdString(payload?.commentId) ? (payload.commentId as string) : null;
         const params = new URLSearchParams();
         if (answerId) params.set('answerId', answerId);
         if (commentId) params.set('commentId', commentId);
