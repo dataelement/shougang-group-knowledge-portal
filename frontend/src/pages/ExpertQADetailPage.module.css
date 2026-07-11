@@ -783,6 +783,7 @@
   grid-template-columns: 1fr;
   gap: 18px;
   position: relative;
+  scroll-margin-top: calc(var(--header-h) + 16px);
 }
 
 .answerExpert {
