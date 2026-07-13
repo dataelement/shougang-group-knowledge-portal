@@ -40,6 +40,7 @@ import iconAnswer from '../assets/icon-answer.png';
 import iconViews from '../assets/icon-views.png';
 import type { DomainConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
+import { toQuestionDescriptionPlainText } from '../utils/questionRichText';
 
 type SortKey = 'latest' | 'hot' | 'unanswered';
 
@@ -85,7 +86,7 @@ function getStatusFromApi(status: number, answerCount: number): { text: string; 
 }
 
 function textExcerpt(text: string | null | undefined, max = 96): string {
-  const value = (text ?? '').trim();
+  const value = toQuestionDescriptionPlainText(text);
   return value.length > max ? `${value.slice(0, max)}...` : value;
 }
 

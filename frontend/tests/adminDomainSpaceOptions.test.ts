@@ -28,3 +28,14 @@ test('admin domain space selector keeps candidates in a scrollable area', () => 
   assert.match(adminPageStyles, /\.spaceMultiPicker\s*{[^}]*max-height:\s*420px;[^}]*overflow-y:\s*auto;/s);
   assert.match(adminPageStyles, /\.spaceMultiPicker\s*{[^}]*scrollbar-gutter:\s*stable;/s);
 });
+
+test('admin domain space selector uses the full form row while keeping two groups side by side', () => {
+  assert.match(
+    adminPageSource,
+    /<div className=\{`\$\{s\.formField\} \$\{s\.formFieldWide\}`\}>\s*<span className=\{s\.fieldLabel\}>绑定空间<\/span>\s*<div className=\{s\.spaceMultiPicker\}>/s,
+  );
+  assert.match(
+    adminPageStyles,
+    /\.spaceMultiPicker\s*{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/s,
+  );
+});

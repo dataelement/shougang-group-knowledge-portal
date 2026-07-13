@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import type { ClipboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Bold,
@@ -39,6 +40,11 @@ import type { DomainConfig } from '../api/adminConfig';
 import { ASK_DRAFT } from '../data/expertQaMock';
 import askBanner from '../assets/ask-banner@2x.png';
 import { resolveQaImageUrl } from '../utils/qaImageUrl';
+import {
+  normalizeQuestionDescriptionEditorHtml,
+  toQuestionDescriptionEditorHtml,
+  toQuestionDescriptionPlainText,
+} from '../utils/questionRichText';
 
 // 颜色缓存，避免每次渲染重新计算
 const colorCache = new Map<string, string>();
@@ -251,6 +257,8 @@ export default function ExpertQAAskPage() {
   const [uploadingImages, setUploadingImages] = useState(false);
   const [attachments, setAttachments] = useState<KnowledgeAttachment[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const richTextEditorRef = useRef<HTMLDivElement>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
 
   // 是否还有更多专家（仅在非搜索态有意义；搜索态由服务端决定）
   const hasMoreExperts = expertList.length < expertTotal;
@@ -354,7 +362,7 @@ export default function ExpertQAAskPage() {
       .then((question) => {
         if (!active) return;
         setTitle(question.title || '');
-        setBody(question.description || '');
+        setBody(toQuestionDescriptionEditorHtml(question.description || ''));
         if (question.business_domain) setSelectedDomain(question.business_domain);
         setImageUrls(splitStoredList(question.image_url));
         setInvited(parseInvitedExperts(question.invited_experts, question.experts_names));
@@ -436,12 +444,92 @@ export default function ExpertQAAskPage() {
     setUploadError(null);
   }
 
+  useEffect(() => {
+    const editor = richTextEditorRef.current;
+    if (editor && editor.innerHTML !== body) editor.innerHTML = body;
+  }, [body]);
+
+  function saveEditorSelection() {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (richTextEditorRef.current?.contains(range.commonAncestorContainer)) {
+      savedSelectionRef.current = range.cloneRange();
+    }
+  }
+
+  function restoreEditorSelection() {
+    const selection = window.getSelection();
+    const range = savedSelectionRef.current;
+    if (!selection || !range) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function syncEditorContent() {
+    const editor = richTextEditorRef.current;
+    if (!editor) return;
+    const html = normalizeQuestionDescriptionEditorHtml(editor.innerHTML);
+    if (editor.innerHTML !== html) editor.innerHTML = html;
+    setBody(html);
+  }
+
+  function toggleBlockCode() {
+    const editor = richTextEditorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    const ancestor = range.commonAncestorContainer;
+    const element = ancestor.nodeType === Node.ELEMENT_NODE
+      ? ancestor as HTMLElement
+      : ancestor.parentElement;
+    const existingPre = element?.closest('pre');
+    if (existingPre && editor.contains(existingPre)) {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = existingPre.textContent || '';
+      existingPre.replaceWith(paragraph);
+      return;
+    }
+
+    const selectedText = range.toString();
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = selectedText || '代码';
+    pre.appendChild(code);
+    range.deleteContents();
+    range.insertNode(pre);
+    range.setStartAfter(pre);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function handleEditorPaste(event: ClipboardEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const plainText = event.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, plainText);
+    syncEditorContent();
+  }
+
   function handleToolbarClick(key: string) {
     if (key === 'image') {
       imageInputRef.current?.click();
-    } else if (key === 'attach' || key === 'related') {
-      openUploadModal();
+      return;
     }
+    if (key === 'attach' || key === 'related') {
+      openUploadModal();
+      return;
+    }
+
+    richTextEditorRef.current?.focus();
+    restoreEditorSelection();
+    if (key === 'bold') document.execCommand('bold');
+    if (key === 'italic') document.execCommand('italic');
+    if (key === 'list') document.execCommand('insertUnorderedList');
+    if (key === 'quote') document.execCommand('formatBlock', false, 'blockquote');
+    if (key === 'code') toggleBlockCode();
+    syncEditorContent();
   }
 
   // 类似问题搜索
@@ -504,11 +592,12 @@ export default function ExpertQAAskPage() {
     setDomainError(false);
 
     try {
-      // 校验问题是否存在安全内容
-      await handleCheckQuestion(title.trim()+"\n"+ body.trim());
+      const safeBody = normalizeQuestionDescriptionEditorHtml(body);
+      // 内容安全检测只检查用户可见文本，避免 HTML 标签干扰命中规则。
+      await handleCheckQuestion(`${title.trim()}\n${toQuestionDescriptionPlainText(safeBody)}`);
       const payload = {
         title: title.trim(),
-        body: body.trim(),
+        body: safeBody,
         domain: selectedDomain,
         invited_expert_ids: invited.map((e) => e.id).join(';'),
         invited_expert_names: invited.map((e) => e.expert_name).join(';'),
@@ -618,6 +707,12 @@ export default function ExpertQAAskPage() {
                       type="button"
                       title={btn.title}
                       className={s.editorBtn}
+                      onMouseDown={(event) => {
+                        if (['bold', 'italic', 'list', 'quote', 'code'].includes(btn.key)) {
+                          event.preventDefault();
+                          saveEditorSelection();
+                        }
+                      }}
                       onClick={() => handleToolbarClick(btn.key)}
                     >
                       <Icon size={15} />
@@ -640,12 +735,19 @@ export default function ExpertQAAskPage() {
                 }}
               />
 
-              <textarea
-                className={`${s.input} ${s.textarea}`}
-                placeholder="请详细描述您的问题…"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                style={{ height: '120px', resize: 'vertical' }}
+              <div
+                ref={richTextEditorRef}
+                className={`${s.input} ${s.textarea} ${s.richTextEditor}`}
+                contentEditable
+                role="textbox"
+                aria-multiline="true"
+                data-placeholder="请详细描述您的问题…"
+                suppressContentEditableWarning
+                onInput={syncEditorContent}
+                onBlur={syncEditorContent}
+                onPaste={handleEditorPaste}
+                onKeyUp={saveEditorSelection}
+                onMouseUp={saveEditorSelection}
               />
 
               {/* 图片上传错误（独立显示，不与提交错误混用）*/}

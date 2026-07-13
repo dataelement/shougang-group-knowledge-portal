@@ -94,6 +94,24 @@ def _collect_domain_space_ids(domains: list[DomainConfig]) -> set[int]:
     return space_ids
 
 
+def _sanitize_domain_space_ids(
+    domains: list[DomainConfig],
+    bindable_space_ids: set[int],
+) -> tuple[list[DomainConfig], set[int]]:
+    sanitized_domains: list[DomainConfig] = []
+    removed_space_ids: set[int] = set()
+    for domain in domains:
+        valid_space_ids: list[int] = []
+        for raw_space_id in domain.space_ids:
+            space_id = int(raw_space_id)
+            if space_id > 0 and space_id in bindable_space_ids:
+                valid_space_ids.append(space_id)
+            else:
+                removed_space_ids.add(space_id)
+        sanitized_domains.append(domain.model_copy(update={"space_ids": valid_space_ids}))
+    return sanitized_domains, removed_space_ids
+
+
 def _build_space_business_domain_code_bindings(
     domains: list[DomainConfig],
     sync_space_ids: set[int],
@@ -319,21 +337,28 @@ async def update_domains_config(
         )
 
     bindable_space_ids = {int(space["id"]) for space in bindable_spaces if space.get("id") is not None}
-    requested_space_ids = _collect_domain_space_ids(payload.domains)
-    invalid_space_ids = requested_space_ids - bindable_space_ids
-    if invalid_space_ids:
+    sanitized_previous_domains, removed_previous_space_ids = _sanitize_domain_space_ids(
+        current_config.domains,
+        bindable_space_ids,
+    )
+    sanitized_requested_domains, removed_requested_space_ids = _sanitize_domain_space_ids(
+        payload.domains,
+        bindable_space_ids,
+    )
+    removed_space_ids = removed_previous_space_ids | removed_requested_space_ids
+    if removed_space_ids:
         logger.warning(
-            "stripping %d invalid/deleted knowledge space IDs from domain config: %s",
-            len(invalid_space_ids),
-            sorted(invalid_space_ids),
+            "stripping %d invalid/deleted knowledge space IDs from domain config before sync: %s",
+            len(removed_space_ids),
+            sorted(removed_space_ids),
         )
-        for domain in payload.domains:
-            domain.space_ids = [sid for sid in domain.space_ids if int(sid) not in invalid_space_ids]
 
-    old_space_ids = _collect_domain_space_ids(current_config.domains)
+    sanitized_payload = DomainsConfigUpdate(domains=sanitized_requested_domains)
+    old_space_ids = _collect_domain_space_ids(sanitized_previous_domains)
+    requested_space_ids = _collect_domain_space_ids(sanitized_requested_domains)
     sync_space_ids = old_space_ids | requested_space_ids
-    new_bindings = _build_space_business_domain_code_bindings(payload.domains, sync_space_ids)
-    old_bindings = _build_space_business_domain_code_bindings(current_config.domains, sync_space_ids)
+    new_bindings = _build_space_business_domain_code_bindings(sanitized_requested_domains, sync_space_ids)
+    old_bindings = _build_space_business_domain_code_bindings(sanitized_previous_domains, sync_space_ids)
 
     try:
         await _sync_space_business_domain_codes(bisheng_client, new_bindings)
@@ -348,14 +373,17 @@ async def update_domains_config(
         )
 
     try:
-        updated = service.update_domains(payload)
+        updated = service.update_domains(sanitized_payload)
     except Exception as err:
         logger.exception("portal domains save failed after BiSheng sync")
         try:
             await _sync_space_business_domain_codes(bisheng_client, old_bindings)
         except Exception:
             logger.exception("failed to restore BiSheng business domain codes after portal save failure")
-        return response_error(f"业务域配置保存失败，已阻止保存：{err}", status_code=500)
+        return response_error(
+            "门户业务域配置保存失败，已尝试恢复 BiSheng 业务域编码，请检查日志并重试",
+            status_code=500,
+        )
 
     return response_ok({"domains": updated.domains})
 

@@ -69,6 +69,10 @@ import {
 import askBadge from '../assets/ask-badge.png';
 import { resolveQaImageUrl } from '../utils/qaImageUrl';
 import { isPortalAdmin } from '../utils/adminAccess';
+import {
+  toQuestionDescriptionPlainText,
+  toQuestionDescriptionRenderModel,
+} from '../utils/questionRichText';
 import s from './ExpertQADetailPage.module.css';
 
 const ANSWERS_PAGE_SIZE = 10;
@@ -325,7 +329,11 @@ async function mapQuestionDetail(
   relatedQuestions: SimilarQuestionItem[] = [],
 ): Promise<DetailQuestion> {
   const relatedDocs = parseAttachments(question.attachments,question.related_docs);
-  const bodyParagraphs = splitParagraphs(question.description);
+  const bodyRenderModel = toQuestionDescriptionRenderModel(question.description);
+  const bodyParagraphs = bodyRenderModel.kind === 'text'
+    ? bodyRenderModel.paragraphs
+    : [];
+  const bodyHtml = bodyRenderModel.kind === 'html' ? bodyRenderModel.html : undefined;
   const invitedNames = splitInvitedNames(
     question.experts_names || question.invited_experts,
   );
@@ -352,7 +360,7 @@ async function mapQuestionDetail(
   return {
     id: String(question.id),
     title: question.title,
-    excerpt: bodyParagraphs[0] ?? '',
+    excerpt: toQuestionDescriptionPlainText(question.description),
     domain: question.business_domain || EMPTY_TEXT,
     domainKey: 'all',
     status: formatQuestionStatus(
@@ -372,6 +380,7 @@ async function mapQuestionDetail(
     askedAt: formatDateOnly(question.created_at),
     tags: extractQuestionTags(question.title, question.business_domain),
     bodyParagraphs,
+    bodyHtml,
     checkedItems: [],
     followups: '',
     relatedDoc: relatedDocs[0]
@@ -533,14 +542,6 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function splitParagraphs(value?: string | null): string[] {
-  if (!value?.trim()) return [];
-  return value
-    .split(/\r?\n\s*\r?\n/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
 }
 
 function extractQuestionTags(title: string, domain: string): string[] {
@@ -1796,7 +1797,12 @@ export default function ExpertQADetailPage() {
               </h1>
 
               <div className={s.qBodyText}>
-                {question.bodyParagraphs.length > 0 ? (
+                {question.bodyHtml ? (
+                  <div
+                    className={s.questionRichText}
+                    dangerouslySetInnerHTML={{ __html: question.bodyHtml }}
+                  />
+                ) : question.bodyParagraphs.length > 0 ? (
                   question.bodyParagraphs.map((paragraph) => (
                     <p key={paragraph}>{paragraph}</p>
                   ))
