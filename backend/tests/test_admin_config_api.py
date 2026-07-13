@@ -9,7 +9,7 @@ from app.api.dependencies import require_admin_session
 from app.main import app
 from app.schemas.auth import PortalUserView
 from app.schemas.bisheng_runtime import BishengRuntimeConfig
-from app.schemas.portal_config import PortalConfig
+from app.schemas.portal_config import DomainsConfigUpdate, PortalConfig
 from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.portal_auth_service import PortalAuthError
@@ -1088,6 +1088,130 @@ def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
     ]
 
 
+def test_post_admin_domains_cleans_invalid_spaces_before_sync_and_persist(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
+    service.update_domains(
+        DomainsConfigUpdate.model_validate(
+            {
+                "domains": [
+                    {
+                        "name": "旧业务域",
+                        "space_ids": [19, 21, 999],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "",
+                        "enabled": True,
+                        "code": "OLD",
+                    }
+                ]
+            }
+        )
+    )
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
+        response = client.post(
+            "/api/v1/admin/config/domains",
+            json={
+                "domains": [
+                    {
+                        "name": "炼钢",
+                        "space_ids": [19, 20, 21, 22, 999],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "/steel.png",
+                        "enabled": True,
+                        "code": "PP",
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["domains"][0]["space_ids"] == [19, 20]
+    assert service.get_config().domains[0].space_ids == [19, 20]
+    synced_space_ids = {
+        binding["space_id"]
+        for _, payload in bisheng_client.put_calls
+        for binding in payload["bindings"]
+    }
+    assert synced_space_ids == {19, 20}
+
+
+def test_post_admin_domains_invalid_history_does_not_block_valid_save(tmp_path: Path):
+    class RejectInvalidSpaceSyncBishengClient(FakeBishengClient):
+        async def put_json(self, path: str, json=None):
+            self.put_calls.append((path, json))
+            space_ids = {binding["space_id"] for binding in (json or {}).get("bindings", [])}
+            if space_ids - {19, 20}:
+                return {"status_code": 18026, "status_message": "invalid space", "data": {}}
+            return {"status_code": 200, "status_message": "SUCCESS", "data": {}}
+
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = RejectInvalidSpaceSyncBishengClient()
+    service.update_domains(
+        DomainsConfigUpdate.model_validate(
+            {
+                "domains": [
+                    {
+                        "name": "历史业务域",
+                        "space_ids": [19, 999],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "",
+                        "enabled": True,
+                        "code": "OLD",
+                    }
+                ]
+            }
+        )
+    )
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
+        response = client.post(
+            "/api/v1/admin/config/domains",
+            json={
+                "domains": [
+                    {
+                        "name": "炼钢",
+                        "space_ids": [20],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "/steel.png",
+                        "enabled": True,
+                        "code": "PP",
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 200
+    assert service.get_config().domains[0].space_ids == [20]
+    assert bisheng_client.put_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes",
+            {
+                "bindings": [
+                    {"space_id": 19, "business_domain_codes": []},
+                    {"space_id": 20, "business_domain_codes": ["PP"]},
+                ]
+            },
+        )
+    ]
+
+
 def test_post_admin_domains_sync_ignores_disabled_domain_bindings(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
@@ -1133,6 +1257,24 @@ def test_post_admin_domains_does_not_persist_when_bisheng_sync_fails(tmp_path: P
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
     bisheng_client = FailingSyncBishengClient()
+    service.update_domains(
+        DomainsConfigUpdate.model_validate(
+            {
+                "domains": [
+                    {
+                        "name": "历史业务域",
+                        "space_ids": [19, 999],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "",
+                        "enabled": True,
+                        "code": "OLD",
+                    }
+                ]
+            }
+        )
+    )
     before = service.get_config().domains
 
     with TestClient(app) as client:
@@ -1145,7 +1287,7 @@ def test_post_admin_domains_does_not_persist_when_bisheng_sync_fails(tmp_path: P
                 "domains": [
                     {
                         "name": "炼钢",
-                        "space_ids": [19],
+                        "space_ids": [19, 999],
                         "color": "#111111",
                         "bg": "#eeeeee",
                         "icon": "Factory",
@@ -1160,6 +1302,88 @@ def test_post_admin_domains_does_not_persist_when_bisheng_sync_fails(tmp_path: P
     assert response.status_code == 502
     assert response.json()["status_message"] == "业务域编码无效，请从业务域编码候选中选择"
     assert service.get_config().domains == before
+    assert bisheng_client.put_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes",
+            {"bindings": [{"space_id": 19, "business_domain_codes": ["PP"]}]},
+        )
+    ]
+
+
+def test_post_admin_domains_restores_only_valid_bindings_when_portal_save_fails(tmp_path: Path, monkeypatch):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
+    service.update_domains(
+        DomainsConfigUpdate.model_validate(
+            {
+                "domains": [
+                    {
+                        "name": "历史业务域",
+                        "space_ids": [19, 999],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "",
+                        "enabled": True,
+                        "code": "OLD",
+                    }
+                ]
+            }
+        )
+    )
+    before = service.get_config().domains
+
+    def fail_update_domains(_payload):
+        raise RuntimeError("portal config write failed")
+
+    monkeypatch.setattr(service, "update_domains", fail_update_domains)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
+        response = client.post(
+            "/api/v1/admin/config/domains",
+            json={
+                "domains": [
+                    {
+                        "name": "炼钢",
+                        "space_ids": [20, 999],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "/steel.png",
+                        "enabled": True,
+                        "code": "PP",
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 500
+    assert "已尝试恢复" in response.json()["status_message"]
+    assert service.get_config().domains == before
+    assert bisheng_client.put_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes",
+            {
+                "bindings": [
+                    {"space_id": 19, "business_domain_codes": []},
+                    {"space_id": 20, "business_domain_codes": ["PP"]},
+                ]
+            },
+        ),
+        (
+            "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes",
+            {
+                "bindings": [
+                    {"space_id": 19, "business_domain_codes": ["OLD"]},
+                    {"space_id": 20, "business_domain_codes": []},
+                ]
+            },
+        ),
+    ]
 
 
 def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):

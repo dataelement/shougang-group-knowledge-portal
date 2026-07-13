@@ -93,6 +93,7 @@ export interface QuestionEntry {
 
 export interface QuestionDetail extends QuestionEntry {
   bodyParagraphs: string[];
+  bodyHtml?: string;
   checkedItems: string[];
   followups: string;
   relatedDoc?: { label: string };

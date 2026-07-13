@@ -145,6 +145,91 @@
   border-top: none;
 }
 
+
+.richTextEditor {
+  min-height: 120px;
+  height: auto;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.richTextEditor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--neutral-400);
+  pointer-events: none;
+}
+
+.richTextEditor p,
+.richTextEditor ul,
+.richTextEditor blockquote,
+.richTextEditor pre {
+  margin: 0 0 10px;
+}
+
+.richTextEditor ul {
+  padding-left: 22px;
+  list-style: disc;
+}
+
+.richTextEditor blockquote {
+  padding: 8px 12px;
+  border-left: 3px solid var(--primary-300);
+  background: var(--primary-50);
+  color: var(--neutral-600);
+}
+
+.richTextEditor pre {
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  white-space: pre;
+}
+
+.richTextEditor {
+  min-height: 120px;
+  height: auto;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.richTextEditor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--neutral-400);
+  pointer-events: none;
+}
+
+.richTextEditor p,
+.richTextEditor ul,
+.richTextEditor blockquote,
+.richTextEditor pre {
+  margin: 0 0 10px;
+}
+
+.richTextEditor ul {
+  padding-left: 22px;
+  list-style: disc;
+}
+
+.richTextEditor blockquote {
+  padding: 8px 12px;
+  border-left: 3px solid var(--primary-300);
+  background: var(--primary-50);
+  color: var(--neutral-600);
+}
+
+.richTextEditor pre {
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  white-space: pre;
+}
+
 /* === Domain pills === */
 .domainGrid {
   display: flex;

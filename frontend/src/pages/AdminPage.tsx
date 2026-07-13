@@ -2089,7 +2089,7 @@ function DomainEditorDialog({
             </datalist>
             <span className={s.fieldHint}>对应文件编码第 3 段（如 SGGF-STD-PP-… 中的 PP）。可从候选快速选择，也可手动填写；留空则该业务域知识数量按 0 计。保存时统一转大写。</span>
           </label>
-          <div className={s.formField}>
+          <div className={`${s.formField} ${s.formFieldWide}`}>
             <span className={s.fieldLabel}>绑定空间</span>
             <div className={s.spaceMultiPicker}>
               {spacesLoading ? <div className={s.spacePickerEmpty}>正在加载候选空间...</div> : null}
