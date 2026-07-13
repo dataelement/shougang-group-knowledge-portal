@@ -233,7 +233,6 @@ export default function SearchPage() {
 
   const spaceById = useMemo(() => new Map(searchSpaces.map((sp) => [sp.id, sp])), [searchSpaces]);
   const selectedSpaceId = Number(spaceId);
-  const selectedSpace = Number.isFinite(selectedSpaceId) ? spaceById.get(selectedSpaceId) : undefined;
   const documentTypeGroups = useMemo(
     () => getRuntimeDocumentTypeGroups(config?.document_types),
     [config?.document_types],
@@ -330,12 +329,6 @@ export default function SearchPage() {
     addStringOption(tagSet, tag);
     return [...tagSet].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
   }, [rawFiles, tag]);
-
-  const resultHeading = q
-    ? `搜索 “${q}”`
-    : selectedSpace
-      ? `知识库 “${selectedSpace.name}”`
-      : `筛选 “${displayKeyword}”`;
 
   useEffect(() => {
     let active = true;
@@ -474,57 +467,58 @@ export default function SearchPage() {
           <div className={s.resultBar}>
             <div className={s.resultCount}>
               <span className={s.resultMark} />
-              {resultHeading} 共找到 <strong className={s.resultTotal}>{total}</strong> 个相关文件
+              {/* {resultHeading}  */}
+              共找到 <strong className={s.resultTotal}>{total}</strong> 个相关文件
             </div>
             <div className={s.filters}>
-            <select
-              className={s.filterSelect}
-              value={spaceLevel}
-              onChange={(e) => {
-                const next = new URLSearchParams(params);
-                if (e.target.value) next.set('space_level', e.target.value);
-                else next.delete('space_level');
-                next.delete('space_id'); // 切换级别时重置二级「知识空间」
-                next.delete('page');
-                setParams(next);
-              }}
-            >
-              <option value="">知识库类型</option>
-              {resultSpaceLevelOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
-            <select className={s.filterSelect} value={spaceId} onChange={(e) => setFilter('space_id', e.target.value, false)}>
-              <option value="">知识库</option>
-              {resultSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
-            </select>
-            <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value, false)}>
-              <option value="">文件格式</option>
-              {resultFileExtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-            <DocumentTypeFilterDropdown
-              groups={documentTypeGroups}
-              documentType={documentType}
-              fileSubcategoryCode={fileSubcategoryCode}
-              compact
-              onChange={(next) => {
-                setFilters({
-                  document_type: next.documentType,
-                  file_subcategory_code: next.fileSubcategoryCode,
-                }, false);
-              }}
-            />
-            <select className={s.filterSelect} value={businessDomainCode} onChange={(e) => setFilter('business_domain_code', e.target.value, false)}>
-              <option value="">业务域</option>
-              {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
-            </select>
-            <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
-              <option value="">标签</option>
-              {resultTagOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-            <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value, false)}>
-              {SEARCH_SORT_OPTIONS.map((item) => (
-                <option key={item.value} value={item.value}>{item.label}</option>
-              ))}
-            </select>
+              <select
+                className={s.filterSelect}
+                value={spaceLevel}
+                onChange={(e) => {
+                  const next = new URLSearchParams(params);
+                  if (e.target.value) next.set('space_level', e.target.value);
+                  else next.delete('space_level');
+                  next.delete('space_id'); // 切换级别时重置二级「知识空间」
+                  next.delete('page');
+                  setParams(next);
+                }}
+              >
+                <option value="">知识库类型</option>
+                {resultSpaceLevelOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+              <select className={s.filterSelect} value={spaceId} onChange={(e) => setFilter('space_id', e.target.value, false)}>
+                <option value="">知识库</option>
+                {resultSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
+              </select>
+              <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value, false)}>
+                <option value="">文件格式</option>
+                {resultFileExtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <DocumentTypeFilterDropdown
+                groups={documentTypeGroups}
+                documentType={documentType}
+                fileSubcategoryCode={fileSubcategoryCode}
+                compact
+                onChange={(next) => {
+                  setFilters({
+                    document_type: next.documentType,
+                    file_subcategory_code: next.fileSubcategoryCode,
+                  }, false);
+                }}
+              />
+              <select className={s.filterSelect} value={businessDomainCode} onChange={(e) => setFilter('business_domain_code', e.target.value, false)}>
+                <option value="">业务域</option>
+                {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+              </select>
+              <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
+                <option value="">标签</option>
+                {resultTagOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value, false)}>
+                {SEARCH_SORT_OPTIONS.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
             </div>
           </div>
         )}
