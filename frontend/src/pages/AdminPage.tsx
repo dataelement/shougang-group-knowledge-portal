@@ -3985,7 +3985,7 @@ function QaTemplateCategoryDialog({
         <div className={s.formGrid}>
           <label className={`${s.formField} ${s.formFieldWide}`}>
             <span className={s.fieldLabel}>分类名称</span>
-            <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：工作汇报" />
+            <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：工作汇报" maxLength={10} />
           </label>
         </div>
         <div className={s.confirmActions}>
@@ -4114,7 +4114,7 @@ function QaTemplateDialog({
             </div>
             <label className={`${s.formField} ${s.formFieldWide}`}>
               <span className={s.fieldLabel}>模板描述</span>
-              <textarea className={`${s.formTextarea} ${s.qaTemplateDescInput}`} value={draft.desc} onChange={(event) => onChange({ desc: event.target.value })} placeholder="一句话说明模板用途" />
+              <textarea className={`${s.formTextarea} ${s.qaTemplateDescInput}`} value={draft.desc} onChange={(event) => onChange({ desc: event.target.value })} placeholder="一句话说明模板用途" maxLength={50} />
             </label>
             <label className={`${s.formField} ${s.formFieldWide}`}>
               <span className={s.fieldLabel}>提示词</span>
