@@ -1,6 +1,7 @@
 import type { DocumentTypeConfig } from '../api/adminConfig';
 
 export type SearchSortValue = 'relevance' | 'updated_at_desc' | 'updated_at_asc';
+export type TimeSortValue = Exclude<SearchSortValue, 'relevance'>;
 
 export interface RuntimeDocumentTypeOption {
   code: string;
@@ -28,9 +29,19 @@ export const SEARCH_SORT_OPTIONS: Array<{ value: SearchSortValue; label: string 
   { value: 'updated_at_asc', label: '更新时间正序' },
 ];
 
+export const TIME_SORT_OPTIONS: Array<{ value: TimeSortValue; label: string }> = [
+  { value: 'updated_at_desc', label: '更新时间倒序' },
+  { value: 'updated_at_asc', label: '更新时间正序' },
+];
+
 export function normalizeSearchSort(value?: string | null): SearchSortValue {
   if (value === 'updated_at_desc' || value === 'updated_at_asc') return value;
   return 'relevance';
+}
+
+export function normalizeTimeSort(value?: string | null): TimeSortValue | '' {
+  if (value === 'updated_at_desc' || value === 'updated_at_asc') return value;
+  return '';
 }
 
 export function normalizeDocumentTypeCode(value?: string | null): string {

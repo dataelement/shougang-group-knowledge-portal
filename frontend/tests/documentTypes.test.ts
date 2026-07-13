@@ -7,7 +7,9 @@ import {
   getRuntimeDocumentTypes,
   matchesDocumentType,
   normalizeSearchSort,
+  normalizeTimeSort,
   SEARCH_SORT_OPTIONS,
+  TIME_SORT_OPTIONS,
 } from '../src/utils/documentTypes';
 
 test('document type code is parsed from the second file encoding segment', () => {
@@ -70,4 +72,15 @@ test('search sort defaults to relevance and keeps updated time modes', () => {
   assert.equal(normalizeSearchSort('updated_at_asc'), 'updated_at_asc');
   assert.equal(normalizeSearchSort(null), 'relevance');
   assert.equal(normalizeSearchSort('unknown'), 'relevance');
+});
+
+test('list time sort only keeps updated time modes', () => {
+  assert.deepEqual(
+    TIME_SORT_OPTIONS.map((item) => item.value),
+    ['updated_at_desc', 'updated_at_asc'],
+  );
+  assert.equal(normalizeTimeSort('updated_at_desc'), 'updated_at_desc');
+  assert.equal(normalizeTimeSort('updated_at_asc'), 'updated_at_asc');
+  assert.equal(normalizeTimeSort('relevance'), '');
+  assert.equal(normalizeTimeSort(null), '');
 });

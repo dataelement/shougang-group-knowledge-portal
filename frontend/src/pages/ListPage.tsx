@@ -23,7 +23,12 @@ import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import { resolveListContext } from '../utils/listPageContext';
-import { getRuntimeDocumentTypeGroups, normalizeDocumentTypeCode } from '../utils/documentTypes';
+import {
+  getRuntimeDocumentTypeGroups,
+  normalizeDocumentTypeCode,
+  normalizeTimeSort,
+  TIME_SORT_OPTIONS,
+} from '../utils/documentTypes';
 import {
   getBusinessDomainFilterOptions,
   normalizeBusinessDomainCode,
@@ -65,6 +70,7 @@ export default function ListPage() {
   const businessDomainFilter = normalizeBusinessDomainCode(params.get('business_domain_code'));
   const documentType = normalizeDocumentTypeCode(params.get('document_type'));
   const fileSubcategoryCode = normalizeDocumentTypeCode(params.get('file_subcategory_code'));
+  const timeSort = normalizeTimeSort(params.get('sort'));
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [visibleSpaces, setVisibleSpaces] = useState<SpaceOption[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -202,7 +208,7 @@ export default function ListPage() {
       fileSubcategoryCode: fileSubcategoryCode || undefined,
       businessDomainCode: showBusinessDomainFilter ? businessDomainFilter || undefined : undefined,
       recommendation: isLatestSelectedRecommendation ? LATEST_SELECTED_RECOMMENDATION : undefined,
-      sort: isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc',
+      sort: timeSort || (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc'),
       cursor: cursor || undefined,
       limit: pageLimit,
     };
@@ -242,6 +248,7 @@ export default function ListPage() {
     spaceIds,
     spaceLevel,
     tagParam,
+    timeSort,
   ]);
 
   useEffect(() => {
@@ -392,6 +399,17 @@ export default function ListPage() {
           <select className={s.filterSelect} value={filterTag} onChange={(e) => setFilter('filter_tag', e.target.value)}>
             <option value="">标签</option>
             {availableTags.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select
+            className={s.filterSelect}
+            value={timeSort}
+            onChange={(e) => setFilter('sort', e.target.value)}
+            aria-label="按更新时间排序"
+          >
+            <option value="">时间排序</option>
+            {TIME_SORT_OPTIONS.map((item) => (
+              <option key={item.value} value={item.value}>{item.label}</option>
+            ))}
           </select>
         </div>
 
