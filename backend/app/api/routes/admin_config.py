@@ -1,11 +1,7 @@
-import json
 import logging
-from datetime import UTC, datetime
 from typing import Any, Final
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import JSONResponse
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, Request
 
 from app.api.dependencies import (
     get_bisheng_client,
@@ -16,7 +12,6 @@ from app.api.dependencies import (
 )
 from app.clients.bisheng import BishengClient
 from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
-from app.schemas.admin_config_transfer import AdminConfigExportPayload, AdminConfigImportPayload
 from app.schemas.common import response_error, response_ok
 from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfigUpdate
 from app.schemas.portal_config import (
@@ -49,12 +44,6 @@ router = APIRouter(
     dependencies=[Depends(require_admin_session)],
 )
 
-MAX_CONFIG_IMPORT_BYTES: Final[int] = 2 * 1024 * 1024
-ALLOWED_CONFIG_IMPORT_MIME: Final[set[str]] = {
-    "application/json",
-    "text/json",
-    "application/octet-stream",
-}
 DOMAIN_BINDABLE_SPACE_LEVELS: Final[set[str]] = {"public", "department"}
 SYNC_SPACE_BUSINESS_DOMAIN_CODES_PATH: Final[str] = (
     "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes"
@@ -155,86 +144,6 @@ async def get_portal_config(
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
     return response_ok(service.get_config())
-
-
-@router.get("/export")
-async def export_admin_config(
-    service: PortalConfigService = Depends(get_portal_config_service),
-    runtime_service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
-    unified_auth_service: UnifiedAuthRuntimeService = Depends(get_unified_auth_runtime_service),
-):
-    payload = AdminConfigExportPayload(
-        exported_at=datetime.now(UTC).isoformat(),
-        portal=service.get_config(),
-        bisheng=runtime_service.export_importable_config(),
-        unified_auth=unified_auth_service.export_importable_config(),
-    )
-    filename = f"portal-config-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.json"
-    return JSONResponse(
-        content=payload.model_dump(mode="json"),
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.post("/import")
-async def import_admin_config(
-    request: Request,
-    file: UploadFile = File(...),
-    service: PortalConfigService = Depends(get_portal_config_service),
-    runtime_service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
-    unified_auth_service: UnifiedAuthRuntimeService = Depends(get_unified_auth_runtime_service),
-):
-    if file.content_type and file.content_type not in ALLOWED_CONFIG_IMPORT_MIME:
-        return response_error(f"不支持的配置文件类型: {file.content_type}", status_code=415)
-
-    payload_bytes = await file.read(MAX_CONFIG_IMPORT_BYTES + 1)
-    if len(payload_bytes) > MAX_CONFIG_IMPORT_BYTES:
-        return response_error("配置文件不得超过 2MB", status_code=413)
-    if not payload_bytes:
-        return response_error("配置文件为空", status_code=400)
-
-    try:
-        raw_payload = json.loads(payload_bytes.decode("utf-8"))
-        payload = AdminConfigImportPayload.model_validate(raw_payload)
-        if payload.version != 1:
-            return response_error("配置文件格式不正确：不支持的配置版本", status_code=400)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as err:
-        return response_error(f"配置文件格式不正确：{err}", status_code=400)
-
-    previous_portal = service.get_config()
-    previous_runtime = runtime_service.snapshot_config()
-    previous_unified_auth = unified_auth_service.snapshot_config()
-    try:
-        updated_portal = service.replace_config(payload.portal)
-        updated_runtime = await runtime_service.replace_importable_config(payload.bisheng)
-        store = _runtime_config_store(request, runtime_service)
-        if store is not None:
-            try:
-                store.upsert_document(
-                    "bisheng_runtime_config",
-                    runtime_service.get_persistent_config().model_dump(mode="json"),
-                )
-            except Exception as store_err:
-                logger.warning("portal admin config store sync failed during import: %s", store_err)
-        updated_unified_auth = (
-            unified_auth_service.replace_importable_config(payload.unified_auth)
-            if payload.unified_auth is not None
-            else unified_auth_service.get_public_config()
-        )
-    except Exception as err:
-        service.replace_config(previous_portal)
-        await runtime_service.restore_config(previous_runtime)
-        unified_auth_service.restore_config(previous_unified_auth)
-        return response_error(f"配置导入失败，已回滚：{err}", status_code=500)
-
-    return response_ok(
-        {
-            "portal": updated_portal,
-            "bisheng": updated_runtime,
-            "unified_auth": updated_unified_auth,
-            "message": "配置导入成功。BiSheng 数据源不包含令牌，必要时请重新输入密码并保存验证。",
-        }
-    )
 
 
 @router.post("")

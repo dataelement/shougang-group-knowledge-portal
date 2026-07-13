@@ -284,13 +284,6 @@ export interface PortalConfig {
   site: SiteConfig;
 }
 
-export interface AdminConfigImportResult {
-  portal: PortalConfig;
-  bisheng: BishengRuntimeConfig;
-  unified_auth: UnifiedAuthRuntimeConfig;
-  message: string;
-}
-
 export interface DeptBinding {
   space_id: number;
   space_name: string;
@@ -342,56 +335,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function fetchAdminConfig() {
   return request<PortalConfig>('/api/v1/admin/config');
-}
-
-async function getErrorMessage(response: Response): Promise<string> {
-  try {
-    const text = await response.text();
-    if (!text) return normalizeUserFacingMessage('', '请求失败，请稍后重试。', response.status);
-    const payload = JSON.parse(text) as Partial<ApiEnvelope<unknown>>;
-    return normalizeUserFacingMessage(payload.status_message, '请求失败，请稍后重试。', response.status);
-  } catch {
-    return normalizeUserFacingMessage('', '请求失败，请稍后重试。', response.status);
-  }
-}
-
-function getDownloadFilename(disposition: string | null): string {
-  const match = disposition?.match(/filename="?([^";]+)"?/i);
-  return match?.[1] || `portal-config-${new Date().toISOString().slice(0, 10)}.json`;
-}
-
-export async function exportAdminConfig(): Promise<void> {
-  try {
-    const response = await fetch('/api/v1/admin/config/export');
-    if (!response.ok) {
-      throw new Error(await getErrorMessage(response));
-    }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = getDownloadFilename(response.headers.get('content-disposition'));
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    throw new Error(normalizeUserFacingErrorMessage(error, '导出配置失败，请稍后重试。'));
-  }
-}
-
-export async function importAdminConfig(file: File): Promise<AdminConfigImportResult> {
-  const form = new FormData();
-  form.append('file', file);
-  try {
-    const response = await fetch('/api/v1/admin/config/import', {
-      method: 'POST',
-      body: form,
-    });
-    return await parseResponse<AdminConfigImportResult>(response);
-  } catch (error) {
-    throw new Error(normalizeUserFacingErrorMessage(error, '导入配置失败，请稍后重试。'));
-  }
 }
 
 export function fetchSpaceOptions() {
