@@ -237,10 +237,74 @@ export default function SearchPage() {
     () => getRuntimeDocumentTypeGroups(config?.document_types),
     [config?.document_types],
   );
-  const businessDomainOptions = useMemo(
+  const configuredBusinessDomainOptions = useMemo(
     () => getBusinessDomainFilterOptions(config?.domains),
     [config?.domains],
   );
+
+  const resultDocumentTypeGroups = useMemo(() => {
+    const parentCodes = new Set<string>();
+    const childCodesByParent = new Map<string, Set<string>>();
+    for (const file of rawFiles) {
+      const parentCode = getFileDocumentTypeCode(file, documentTypeGroups);
+      const childCode = normalizeDocumentTypeCode(file.fileSubcategoryCode);
+      if (parentCode) parentCodes.add(parentCode);
+      if (parentCode && childCode) {
+        const childCodes = childCodesByParent.get(parentCode) ?? new Set<string>();
+        childCodes.add(childCode);
+        childCodesByParent.set(parentCode, childCodes);
+      }
+    }
+    if (documentType) parentCodes.add(documentType);
+    if (fileSubcategoryCode) {
+      const selectedChild = findRuntimeDocumentTypeChild(documentTypeGroups, fileSubcategoryCode);
+      const parentCode = selectedChild?.parentCode || documentType;
+      if (parentCode) {
+        parentCodes.add(parentCode);
+        const childCodes = childCodesByParent.get(parentCode) ?? new Set<string>();
+        childCodes.add(fileSubcategoryCode);
+        childCodesByParent.set(parentCode, childCodes);
+      }
+    }
+
+    const configuredGroups = documentTypeGroups.flatMap((group) => {
+      const children = group.children.filter((child) => childCodesByParent.get(group.code)?.has(child.code));
+      if (!parentCodes.has(group.code) && children.length === 0) return [];
+      return [{ ...group, children }];
+    });
+    const configuredCodes = new Set(documentTypeGroups.map((group) => group.code));
+    const unconfiguredGroups = [...parentCodes]
+      .filter((code) => !configuredCodes.has(code))
+      .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+      .map((code) => ({
+        code,
+        label: code,
+        children: [...(childCodesByParent.get(code) ?? new Set<string>())]
+          .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+          .map((childCode) => ({
+            code: childCode,
+            label: childCode,
+            parentCode: code,
+            parentLabel: code,
+          })),
+      }));
+    return [...configuredGroups, ...unconfiguredGroups];
+  }, [documentType, documentTypeGroups, fileSubcategoryCode, rawFiles]);
+
+  const resultBusinessDomainOptions = useMemo(() => {
+    const domainCodes = new Set<string>();
+    for (const file of rawFiles) {
+      const code = getBusinessDomainCodeFromFileEncoding(file.fileEncoding);
+      if (code) domainCodes.add(code);
+    }
+    if (businessDomainCode) domainCodes.add(businessDomainCode);
+
+    const configuredOptions = configuredBusinessDomainOptions.filter((item) => domainCodes.delete(item.code));
+    const unconfiguredOptions = [...domainCodes]
+      .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+      .map((code) => ({ code, label: code }));
+    return [...configuredOptions, ...unconfiguredOptions];
+  }, [businessDomainCode, configuredBusinessDomainOptions, rawFiles]);
 
   const filteredFiles = useMemo(() => {
     if (!resultsReady) return [];
@@ -495,7 +559,7 @@ export default function SearchPage() {
                 {resultFileExtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
               <DocumentTypeFilterDropdown
-                groups={documentTypeGroups}
+                groups={resultDocumentTypeGroups}
                 documentType={documentType}
                 fileSubcategoryCode={fileSubcategoryCode}
                 compact
@@ -508,7 +572,7 @@ export default function SearchPage() {
               />
               <select className={s.filterSelect} value={businessDomainCode} onChange={(e) => setFilter('business_domain_code', e.target.value, false)}>
                 <option value="">业务域</option>
-                {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+                {resultBusinessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
               </select>
               <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
                 <option value="">标签</option>

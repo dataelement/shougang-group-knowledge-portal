@@ -67,6 +67,7 @@ export interface QAModelOption {
   visual: boolean;
   provider_name: string;
   status: number;
+  remark: string;
 }
 
 export interface QAModelOptionsResponse {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDomainCodeOptions, createDomainDraft, isSelectedDomainColor, validateDomainDraft, getDomainBindableSpaceGroups } from '../src/utils/adminDomains';
+import { buildDomainCodeOptions, createDomainDraft, getDomainBindableSpaceGroups, getDomainBoundSpaceIds, isSelectedDomainColor, validateDomainDraft } from '../src/utils/adminDomains';
 
 test('createDomainDraft maps existing domain values incl. code', () => {
   const draft = createDomainDraft({
@@ -141,44 +141,39 @@ test('validateDomainDraft supports multiple bindable spaces and deduplicates ids
   assert.deepEqual(result.domain?.space_ids, [20, 21]);
 });
 
-test('buildDomainCodeOptions derives code options from configured domains', () => {
-  const options = buildDomainCodeOptions([
-    {
-      name: '生产',
-      space_ids: [],
-      color: '#059669',
-      bg: '#d1fae5',
-      icon: 'Factory',
-      background_image: '',
-      enabled: true,
-      code: 'pp',
-    },
-    {
-      name: '未编码业务域',
-      space_ids: [],
-      color: '#2563eb',
-      bg: '#eff6ff',
-      icon: 'Settings',
-      background_image: '',
-      enabled: true,
-      code: '',
-    },
-    {
-      name: '质量',
-      space_ids: [],
-      color: '#6366f1',
-      bg: '#ede9fe',
-      icon: 'CheckCircle',
-      background_image: '',
-      enabled: true,
-      code: 'QM',
-    },
-  ]);
+test('buildDomainCodeOptions returns the fixed default options in display order', () => {
+  const options = buildDomainCodeOptions();
 
   assert.deepEqual(options, [
     { code: 'PP', label: '生产' },
+    { code: 'SD', label: '营销' },
+    { code: 'FI', label: '财务' },
+    { code: 'PM', label: '设备' },
+    { code: 'SA', label: '安全' },
+    { code: 'EN', label: '环保' },
+    { code: 'HR', label: '人力' },
+    { code: 'IT', label: '信息' },
+    { code: 'EM', label: '能源' },
     { code: 'QM', label: '质量' },
+    { code: 'AD', label: '管理' },
+    { code: 'IM', label: '投资' },
+    { code: 'MM', label: '采购' },
+    { code: 'RD', label: '研发' },
   ]);
+});
+
+test('getDomainBoundSpaceIds only retains currently bindable spaces', () => {
+  const boundSpaceIds = getDomainBoundSpaceIds(
+    { space_ids: [19, 20, 21, 22, 999] },
+    [
+      { id: 19, name: '公共空间', description: '', file_count: 0, space_level: 'public' },
+      { id: 20, name: '部门空间', description: '', file_count: 0, space_level: 'department' },
+      { id: 21, name: '个人空间', description: '', file_count: 0, space_level: 'personal' },
+      { id: 22, name: '团队空间', description: '', file_count: 0, space_level: 'team' },
+    ],
+  );
+
+  assert.deepEqual(boundSpaceIds, [19, 20]);
 });
 
 test('isSelectedDomainColor matches preset color pairs exactly', () => {

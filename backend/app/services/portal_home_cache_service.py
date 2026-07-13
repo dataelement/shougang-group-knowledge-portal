@@ -92,6 +92,21 @@ class PortalHomeCacheService:
         normalized_codes = sorted({code.strip().upper() for code in codes if code and code.strip()})
         return f"{_KEY_PREFIX}:domain-file-counts:{_digest(normalized_codes)}"
 
+    @staticmethod
+    def visible_domain_file_counts_key(domains: list[dict[str, Any]], account: str | None = None) -> str:
+        normalized_domains = sorted(
+            {
+                (
+                    str(domain.get("code") or "").strip().upper(),
+                    tuple(sorted({int(space_id) for space_id in domain.get("space_ids", [])})),
+                )
+                for domain in domains
+                if str(domain.get("code") or "").strip()
+            }
+        )
+        scope = {"account": (account or "").strip().lower() or "anonymous", "domains": normalized_domains}
+        return f"{_KEY_PREFIX}:visible-domain-file-counts:{_digest(scope)}"
+
 
 def _digest(value: Any) -> str:
     encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

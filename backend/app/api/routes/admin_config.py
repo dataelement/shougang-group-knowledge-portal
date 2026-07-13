@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Final
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.dependencies import (
     get_bisheng_client,
@@ -99,6 +99,14 @@ def _sanitize_domain_space_ids(
                 removed_space_ids.add(space_id)
         sanitized_domains.append(domain.model_copy(update={"space_ids": valid_space_ids}))
     return sanitized_domains, removed_space_ids
+
+
+def _collect_bound_domain_names(domains: list[DomainConfig]) -> set[str]:
+    return {
+        domain.name
+        for domain in domains
+        if _collect_domain_space_ids([domain])
+    }
 
 
 def _build_space_business_domain_code_bindings(
@@ -263,6 +271,17 @@ async def update_domains_config(
         )
 
     sanitized_payload = DomainsConfigUpdate(domains=sanitized_requested_domains)
+    removed_bound_domain_names = sorted(
+        _collect_bound_domain_names(sanitized_previous_domains)
+        - {domain.name for domain in sanitized_requested_domains}
+    )
+    if removed_bound_domain_names:
+        return response_error(
+            "业务域已绑定有效知识空间，请先解除绑定后再删除或修改名称："
+            + "、".join(removed_bound_domain_names),
+            status_code=409,
+        )
+
     old_space_ids = _collect_domain_space_ids(sanitized_previous_domains)
     requested_space_ids = _collect_domain_space_ids(sanitized_requested_domains)
     sync_space_ids = old_space_ids | requested_space_ids
@@ -338,7 +357,20 @@ async def get_qa_config(
 async def update_qa_config(
     payload: QAConfig,
     service: PortalConfigService = Depends(get_portal_config_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
+    try:
+        response = await bisheng_client.get_json("/api/v1/llm")
+    except Exception as err:
+        logger.exception("failed to fetch qa model status while updating portal config")
+        raise HTTPException(status_code=503, detail="问答模型状态暂不可确认，请稍后重试") from err
+    raw_models = response.get("data") if isinstance(response, dict) else []
+    if not isinstance(raw_models, list):
+        raw_models = []
+    try:
+        service.ensure_qa_models_enabled(payload, raw_models)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
     return response_ok(service.update_qa(payload).qa)
 
 

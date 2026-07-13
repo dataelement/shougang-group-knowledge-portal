@@ -393,13 +393,14 @@ class KnowledgeService:
         data = self._extract_success_data(response)
         return ShareDocumentAccessData.model_validate(data)
 
-    def stream_document_file_chat(
+    async def prepare_document_file_chat(
         self,
         space_id: int,
         file_id: int,
         req: DocumentFileChatRequest,
     ) -> AsyncIterator[bytes]:
         model_id = self._resolve_document_chat_model_id(req.model)
+        await self._ensure_document_chat_model_enabled(str(model_id))
         return self._bisheng.stream_post(
             f"/api/v1/knowledge/space/{space_id}/chat/file/{file_id}",
             json={
@@ -408,6 +409,17 @@ class KnowledgeService:
             },
             headers=PORTAL_BFF_TELEMETRY_HEADERS,
         )
+
+    async def _ensure_document_chat_model_enabled(self, model_id: str) -> None:
+        try:
+            response = await self._bisheng.get_json("/api/v1/llm")
+        except Exception as err:
+            logger.exception("failed to fetch qa model status before document qa request")
+            raise ValueError("问答模型状态暂不可确认，请稍后重试") from err
+        raw_models = response.get("data") if isinstance(response, dict) else []
+        if not isinstance(raw_models, list):
+            raw_models = []
+        self._config_service.ensure_qa_model_enabled(model_id, raw_models)
 
     @staticmethod
     def create_share_access_session(access: ShareDocumentAccessData) -> ShareAccessSession:
@@ -511,6 +523,44 @@ class KnowledgeService:
                 return sorted(scoped_space_ids)
             return sorted(base_space_ids)
         return sorted(base_space_ids)
+
+    async def resolve_domain_count_scopes(
+        self,
+        domains: list[dict[str, Any]],
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[dict[str, Any]]:
+        allowed_space_ids = {
+            space.id for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)
+        }
+        scopes: list[dict[str, Any]] = []
+        seen_codes: set[str] = set()
+        for domain in domains:
+            code = self._normalize_business_domain_code(domain.get("code"))
+            if not code or code in seen_codes:
+                continue
+            seen_codes.add(code)
+            requested_space_ids = {
+                int(space_id)
+                for space_id in (domain.get("space_ids") or [])
+                if isinstance(space_id, int) or (isinstance(space_id, str) and space_id.isdigit())
+            }
+            scopes.append({"code": code, "space_ids": sorted(allowed_space_ids.intersection(requested_space_ids))})
+        return scopes
+
+    async def count_visible_domain_files(self, domains: list[dict[str, Any]]) -> dict[str, int]:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/domain-file-counts",
+            json={"domains": domains},
+        )
+        data = self._extract_success_data(response)
+        raw_counts = data.get("counts") if isinstance(data, dict) else {}
+        if not isinstance(raw_counts, dict):
+            return {}
+        return {
+            self._normalize_business_domain_code(code): int(count or 0)
+            for code, count in raw_counts.items()
+            if self._normalize_business_domain_code(code)
+        }
 
     def _resolve_document_chat_model_id(self, requested_model: str = "") -> int:
         config = self._config_service.get_config()

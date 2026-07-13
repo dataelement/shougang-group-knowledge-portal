@@ -48,6 +48,7 @@ class FakeBishengClient:
         self.post_calls = []
         self.telemetry_events = []
         self.multipart_payload = None
+        self.model_online = {1: True, 10: True, 20: True}
 
     def resolve_url(self, path_or_url: str) -> str:
         return path_or_url
@@ -115,6 +116,23 @@ class FakeBishengClient:
 
     async def get_json(self, path: str, params=None, headers=None):
         params = params or {}
+        if path == "/api/v1/llm":
+            return {
+                "data": [
+                    {
+                        "name": "测试模型服务商",
+                        "models": [
+                            {
+                                "id": model_id,
+                                "model_name": f"test-model-{model_id}",
+                                "model_type": "llm",
+                                "online": online,
+                            }
+                            for model_id, online in self.model_online.items()
+                        ],
+                    }
+                ]
+            }
         if path == "/api/v1/workstation/config":
             return {
                 "data": {
@@ -1802,6 +1820,33 @@ def test_chat_proxy_expert_mode_uses_reasoning_model_and_prompt(tmp_path: Path):
     assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [7103]
 
 
+def test_chat_proxy_rejects_disabled_general_model_before_upstream_call(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            config_service.update_qa(
+                config_service.get_config().qa.model_copy(update={"general_model": "10"})
+            )
+            fake_bisheng.model_online[10] = "false"
+
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-07-13T10:00:00",
+                    "scene": "qa",
+                    "text": "停用模型不应被调用",
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "当前问答模型已停用，请联系管理员"
+    assert fake_bisheng.chat_payload is None
+
+
 def test_chat_proxy_allows_qa_without_selected_spaces(tmp_path: Path):
     for client, config_service, fake_bisheng in make_client(tmp_path):
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
@@ -2683,6 +2728,21 @@ def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path)
         "space_id": 12,
         "file_id": 1580,
     }
+
+
+def test_document_file_chat_rejects_disabled_model_before_upstream_call(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        config_service.update_qa(config_service.get_config().qa.model_copy(update={"selected_model": "1"}))
+        fake_bisheng.model_online[1] = 0
+
+        response = client.post(
+            "/api/v1/knowledge/space/12/files/1580/chat",
+            json={"query": "停用模型不应被调用"},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "当前问答模型已停用，请联系管理员"
+    assert fake_bisheng.chat_payload is None
 
 
 def test_get_tags_aggregates_enabled_spaces(tmp_path: Path):

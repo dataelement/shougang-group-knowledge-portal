@@ -561,32 +561,56 @@ async def get_public_qa_model_options(
 
 @router.get("/domain-file-counts")
 async def get_domain_file_counts(
-    background_tasks: BackgroundTasks,
-    service: DomainFileCountService = Depends(get_domain_file_count_service),
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
     cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
 ):
-    domains = portal_config_service.get_config().domains
-    codes = sorted({d.code.strip().upper() for d in domains if d.code and d.code.strip()})
-    cache_key = cache_service.domain_file_counts_key(codes)
-    cached = await cache_service.get_json(cache_key)
-    if isinstance(cached, dict):
-        cached_counts = cached.get("counts")
-        if isinstance(cached_counts, dict) and set(cached_counts) == set(codes):
-            try:
-                return response_ok({"counts": {code: int(cached_counts[code]) for code in codes}})
-            except (TypeError, ValueError):
-                logger.warning("domain file counts cache payload is invalid key=%s", cache_key, exc_info=True)
-    counts, stale = service.read_cached(codes)
-    if stale and codes:
-        background_tasks.add_task(service.refresh_in_background, codes)
-    if not stale:
+    config = portal_config_service.get_config()
+    domains = [domain.model_dump() for domain in config.domains if domain.enabled]
+    session = await get_portal_session(auth_service, request)
+    client_to_close: BishengClient | None = None
+    try:
+        if session is None:
+            service = KnowledgeService(
+                bisheng_client=await get_bisheng_client(request),
+                portal_config_service=portal_config_service,
+                default_model=get_settings().bisheng_default_model,
+            )
+            extra_space_ids = None
+            account = None
+        else:
+            client_to_close = auth_service.create_bisheng_client(session)
+            service = KnowledgeService(
+                bisheng_client=client_to_close,
+                portal_config_service=portal_config_service,
+                default_model=get_settings().bisheng_default_model,
+            )
+            visible_spaces = await service.list_visible_spaces()
+            extra_space_ids = [space.id for space in visible_spaces.data]
+            account = getattr(getattr(session, "user", None), "account", "")
+        scopes = await service.resolve_domain_count_scopes(domains, extra_space_ids=extra_space_ids)
+        cache_key = cache_service.visible_domain_file_counts_key(scopes, account=account)
+        expected_codes = {scope["code"] for scope in scopes}
+        cached = await cache_service.get_json(cache_key)
+        if isinstance(cached, dict):
+            cached_counts = cached.get("counts")
+            if isinstance(cached_counts, dict) and set(cached_counts) == expected_codes:
+                try:
+                    return response_ok({"counts": {code: int(cached_counts[code]) for code in expected_codes}})
+                except (TypeError, ValueError):
+                    logger.warning("门户业务域知识数量缓存格式异常，已回源获取")
+        counts = await service.count_visible_domain_files(scopes)
+        normalized_counts = {scope["code"]: int(counts.get(scope["code"], 0)) for scope in scopes}
         await cache_service.set_json(
             cache_key,
-            {"counts": counts},
-            _home_cache_ttl_seconds(portal_config_service.get_config()),
+            {"counts": normalized_counts},
+            _home_cache_ttl_seconds(config),
         )
-    return response_ok({"counts": counts})
+        return response_ok({"counts": normalized_counts})
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/spaces")
@@ -1193,7 +1217,7 @@ async def chat_document_file(
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
     try:
-        upstream = service.stream_document_file_chat(space_id=space_id, file_id=file_id, req=req)
+        upstream = await service.prepare_document_file_chat(space_id=space_id, file_id=file_id, req=req)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
 

@@ -290,6 +290,7 @@ export default function HomePage() {
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
+  const [domainCountsLoading, setDomainCountsLoading] = useState(true);
   const [homeStats, setHomeStats] = useState<HomeStats | null>(null);
   const [homeStatsFailed, setHomeStatsFailed] = useState(false);
   const [welcomeToast, setWelcomeToast] = useState<string>(() => {
@@ -389,6 +390,8 @@ export default function HomePage() {
         if (active) setDomainCounts(counts);
       } catch {
         /* keep empty -> cards show 0; do not block the page */
+      } finally {
+        if (active) setDomainCountsLoading(false);
       }
     })();
     return () => {
@@ -753,7 +756,7 @@ export default function HomePage() {
                     )}
                     <div className={s.domainCardContent}>
                       <div className={s.domainName}>{d.name}</div>
-                      <div className={s.domainMeta}>知识数量 {formatCount(totalFiles)}</div>
+                      <div className={s.domainMeta}>知识数量 {domainCountsLoading ? '加载中…' : formatCount(totalFiles)}</div>
                     </div>
                   </div>
                 );

@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import AsyncIterator
 
 from app.clients.bisheng import BishengClient
@@ -6,6 +7,8 @@ from app.schemas.chat import KnowledgeScopeParam, PortalChatCompletionRequest, U
 from app.schemas.knowledge import KnowledgeFileItem
 from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_config_service import PortalConfigService
+
+logger = logging.getLogger(__name__)
 
 
 class ChatProxyService:
@@ -106,11 +109,24 @@ class ChatProxyService:
                 or self._default_model
             ).strip()
 
+        await self._ensure_qa_model_enabled(selected_model)
+
         prompt_field = self._QA_MODE_PROMPT_FIELDS[answer_mode]
         request_body["model"] = selected_model
         request_body["text"] = payload.text
         request_body["system_prompt"] = str(getattr(config.qa, prompt_field) or "")
         return "/api/v1/workstation/shougang-portal/chat/completions", request_body, []
+
+    async def _ensure_qa_model_enabled(self, model_id: str) -> None:
+        try:
+            response = await self._bisheng.get_json("/api/v1/llm")
+        except Exception as err:
+            logger.exception("failed to fetch qa model status before smart qa request")
+            raise ValueError("问答模型状态暂不可确认，请稍后重试") from err
+        raw_models = response.get("data") if isinstance(response, dict) else []
+        if not isinstance(raw_models, list):
+            raw_models = []
+        self._config_service.ensure_qa_model_enabled(model_id, raw_models)
 
     @staticmethod
     def _build_search_summary_prompt(
