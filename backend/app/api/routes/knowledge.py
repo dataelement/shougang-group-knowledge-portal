@@ -1110,17 +1110,50 @@ async def get_file_preview_content(
         if source is None or not source.url:
             raise HTTPException(status_code=404, detail="未找到可预览内容")
 
-        # Read the asset through the same scoped client so BiSheng authorizes it.
-        upstream = await service._bisheng.get_preview_asset(source.url)
-        headers = {"Cache-Control": "no-store"}
-        content_type = upstream.headers.get("content-type")
-        content_length = upstream.headers.get("content-length")
-        if content_length:
-            headers["Content-Length"] = content_length
-        return Response(
-            content=upstream.content,
-            media_type=content_type,
-            headers=headers,
+        forwarded_headers = {
+            header_name: request.headers[header_name]
+            for header_name in ("range", "if-range", "if-none-match", "if-modified-since")
+            if header_name in request.headers
+        }
+        # Keep the upstream response open until StreamingResponse finishes. This
+        # prevents a large PDF from being buffered in the BFF and preserves 206.
+        upstream = await service._bisheng.open_preview_asset_stream(
+            source.url,
+            headers=forwarded_headers or None,
+        )
+        response_headers = {"Cache-Control": "private, no-store"}
+        for header_name in (
+            "accept-ranges",
+            "content-disposition",
+            "content-length",
+            "content-range",
+            "content-type",
+            "etag",
+            "last-modified",
+        ):
+            header_value = upstream.headers.get(header_name)
+            if header_value:
+                response_headers[header_name] = header_value
+
+        scoped_client = client_to_close
+        client_to_close = None
+
+        async def stream_body():
+            try:
+                if upstream.is_stream_consumed:
+                    yield upstream.content
+                    return
+                async for chunk in upstream.aiter_raw():
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                if scoped_client is not None:
+                    await scoped_client.aclose()
+
+        return StreamingResponse(
+            stream_body(),
+            status_code=upstream.status_code,
+            headers=response_headers,
         )
     finally:
         if client_to_close is not None:

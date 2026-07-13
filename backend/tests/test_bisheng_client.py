@@ -122,6 +122,50 @@ def test_get_preview_asset_keeps_authenticated_client_for_regular_urls():
     assert plain_client.calls == []
 
 
+def test_open_preview_asset_stream_forwards_range_without_buffering():
+    requests: list[httpx.Request] = []
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            206,
+            request=request,
+            headers={
+                "accept-ranges": "bytes",
+                "content-range": "bytes 0-3/12",
+                "content-type": "application/pdf",
+            },
+            content=b"%PDF",
+        )
+
+    async def run_scenario():
+        client = BishengClient("https://bisheng.example.com", 5, api_token="secret")
+        await client._client.aclose()
+        await client._plain_client.aclose()
+        authed_client = httpx.AsyncClient(transport=httpx.MockTransport(handle_request))
+        plain_client = httpx.AsyncClient(transport=httpx.MockTransport(handle_request))
+        client._client = authed_client
+        client._plain_client = plain_client
+
+        try:
+            response = await client.open_preview_asset_stream(
+                "https://files.example.com/demo.pdf?X-Amz-Signature=demo",
+                headers={"Range": "bytes=0-3"},
+            )
+            body = await response.aread()
+            await response.aclose()
+            return response, body
+        finally:
+            await client.aclose()
+
+    response, body = asyncio.run(run_scenario())
+
+    assert response.status_code == 206
+    assert body == b"%PDF"
+    assert len(requests) == 1
+    assert requests[0].headers["range"] == "bytes=0-3"
+
+
 def test_get_json_reauthenticates_and_retries_once_after_http_401():
     refresh_calls: list[str] = []
 

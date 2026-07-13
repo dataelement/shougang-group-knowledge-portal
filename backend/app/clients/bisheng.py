@@ -94,6 +94,25 @@ class BishengClient:
         response.raise_for_status()
         return response
 
+    async def open_preview_asset_stream(
+        self,
+        path_or_url: str,
+        params: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> httpx.Response:
+        """Open a preview response without buffering its body in the BFF process."""
+        url = self.resolve_asset_url(path_or_url)
+        client = self._plain_client if self._should_bypass_auth(url) else self._client
+        request = client.build_request("GET", url, params=params, headers=headers)
+        response = await client.send(request, stream=True)
+        if client is self._client and self._is_auth_status(response.status_code):
+            await response.aclose()
+            if await self._refresh_auth_token():
+                request = client.build_request("GET", url, params=params, headers=headers)
+                response = await client.send(request, stream=True)
+        response.raise_for_status()
+        return response
+
     async def post(
         self,
         path: str,

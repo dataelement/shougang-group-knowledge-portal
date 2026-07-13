@@ -110,6 +110,8 @@ class FakeBishengClient:
             "file_encoding": "GF-ZD-SC-202604-01193",
             "source_path": "轧线技术案例库>热轧/热轧加热炉温度控制.docx",
         }
+    async def open_preview_asset_stream(self, path: str, params=None, headers=None):
+        return await self.get_preview_asset(path, params=params)
 
     async def get_json(self, path: str, params=None, headers=None):
         params = params or {}
@@ -1486,6 +1488,49 @@ def test_get_file_preview_content_proxies_selected_source(tmp_path: Path):
     assert fake_bisheng.preview_asset_requests == [
         {"path": "https://example.com/preview/1580.pdf", "params": None}
     ]
+
+
+def test_get_file_preview_content_streams_range_response(tmp_path: Path):
+    class RangePreviewBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.forwarded_headers = None
+
+        async def open_preview_asset_stream(self, path: str, params=None, headers=None):
+            self.forwarded_headers = headers
+            return httpx.Response(
+                206,
+                request=httpx.Request("GET", path, headers=headers),
+                headers={
+                    "accept-ranges": "bytes",
+                    "content-length": "4",
+                    "content-range": "bytes 0-3/18",
+                    "content-type": "application/pdf",
+                    "etag": '"preview-etag"',
+                },
+                content=b"%PDF",
+            )
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = RangePreviewBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get(
+            "/api/v1/knowledge/space/12/files/1580/preview/content?source_kind=preview_url",
+            headers={"Range": "bytes=0-3", "If-Range": '"preview-etag"'},
+        )
+
+    assert response.status_code == 206
+    assert response.content == b"%PDF"
+    assert response.headers["accept-ranges"] == "bytes"
+    assert response.headers["content-range"] == "bytes 0-3/18"
+    assert response.headers["etag"] == '"preview-etag"'
+    assert fake_bisheng.forwarded_headers == {
+        "range": "bytes=0-3",
+        "if-range": '"preview-etag"',
+    }
 
 
 def test_get_file_preview_content_returns_chinese_message_when_source_missing(tmp_path: Path):

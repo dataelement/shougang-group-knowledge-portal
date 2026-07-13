@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import * as mammoth from 'mammoth';
 import { marked } from 'marked';
-import { getDocument, PDFWorker } from 'pdfjs-dist';
-import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 import * as XLSX from 'xlsx';
 import type { FileChunkItem } from '../api/content';
 import type { ResolvedFilePreview } from '../utils/filePreview';
 import s from './DocumentPreview.module.css';
+import PdfPreview from './PdfPreview';
 
 interface Props {
   chunks: FileChunkItem[];
@@ -405,86 +404,6 @@ function SpreadsheetPreview({
   );
 }
 
-function PdfPreview({
-  sourceUrl,
-  onPreviewFailure,
-}: {
-  sourceUrl: string;
-  onPreviewFailure: () => void;
-}) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    const container = containerRef.current;
-    let loadingTask: ReturnType<typeof getDocument> | null = null;
-    let pdfWorker: PDFWorker | null = null;
-    const controller = new AbortController();
-    if (!container) return undefined;
-
-    container.innerHTML = '';
-    setLoading(true);
-
-    void (async () => {
-      try {
-        const { buffer } = await fetchPreviewAsset(sourceUrl, controller.signal);
-        if (!active) return;
-        pdfWorker = PDFWorker.create({ port: new PdfWorker() });
-        loadingTask = getDocument({ data: new Uint8Array(buffer), worker: pdfWorker });
-        const pdfDocument = await loadingTask.promise;
-        if (!active) return;
-        for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
-          const page = await pdfDocument.getPage(pageNumber);
-          const viewport = page.getViewport({ scale: 1.25 });
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          if (!context) throw new Error('Canvas 初始化失败');
-
-          canvas.width = Math.ceil(viewport.width * window.devicePixelRatio);
-          canvas.height = Math.ceil(viewport.height * window.devicePixelRatio);
-          canvas.style.width = `${viewport.width}px`;
-          canvas.style.height = `${viewport.height}px`;
-          context.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
-
-          const pageSection = document.createElement('section');
-          pageSection.className = s.pdfPage;
-
-          const pageLabel = document.createElement('div');
-          pageLabel.className = s.pageLabel;
-          pageLabel.textContent = `第 ${pageNumber} 页`;
-
-          pageSection.appendChild(pageLabel);
-          pageSection.appendChild(canvas);
-          container.appendChild(pageSection);
-
-          await page.render({ canvas, canvasContext: context, viewport }).promise;
-        }
-      } catch (error) {
-        if (!active || isAbortError(error)) return;
-        onPreviewFailure();
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-      controller.abort();
-      container.innerHTML = '';
-      if (loadingTask) void loadingTask.destroy();
-      if (pdfWorker) pdfWorker.destroy();
-    };
-  }, [onPreviewFailure, sourceUrl]);
-
-  return (
-    <div className={s.scrollSurface}>
-      {loading ? <LoadingState label="正在加载 PDF 预览..." /> : null}
-      <div ref={containerRef} className={s.pdfDocument} />
-    </div>
-  );
-}
-
 export default function DocumentPreview({ chunks, onPreviewFailure, preview, title }: Props) {
   if (preview.mode === 'chunks') {
     return <ChunkFallbackPreview chunks={chunks} reason={preview.reason} />;
@@ -500,7 +419,7 @@ export default function DocumentPreview({ chunks, onPreviewFailure, preview, tit
 
   switch (preview.mode) {
     case 'pdf':
-      return <PdfPreview sourceUrl={preview.viewerUrl} onPreviewFailure={onPreviewFailure} />;
+      return <PdfPreview key={preview.viewerUrl} sourceUrl={preview.viewerUrl} onPreviewFailure={onPreviewFailure} />;
     case 'docx':
       return <DocxPreview sourceUrl={preview.viewerUrl} onPreviewFailure={onPreviewFailure} />;
     case 'spreadsheet':
