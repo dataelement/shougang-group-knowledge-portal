@@ -122,6 +122,25 @@ def test_upsert_document_updates_remote_section():
     assert store.save_count == 1
 
 
+def test_upsert_document_preserves_home_cache_ttl():
+    existing = PortalAdminAggregateConfig(
+        portal=DEFAULT_PORTAL_CONFIG,
+        bisheng=PortalBishengPersistentConfig(base_url="http://existing.example.com"),
+    )
+    store = MemoryRemotePortalAdminConfigStore(remote=existing)
+    payload = {
+        **DEFAULT_PORTAL_CONFIG,
+        "site": {
+            **DEFAULT_PORTAL_CONFIG["site"],
+            "home_cache_ttl_seconds": 900,
+        },
+    }
+
+    store.upsert_document("portal_config", payload)
+
+    assert store.get_document("portal_config")["site"]["home_cache_ttl_seconds"] == 900
+
+
 def test_upsert_document_creates_remote_aggregate_from_defaults():
     store = MemoryRemotePortalAdminConfigStore()
     payload = {
