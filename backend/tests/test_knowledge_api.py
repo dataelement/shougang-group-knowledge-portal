@@ -2611,7 +2611,24 @@ def test_chat_proxy_loads_current_user_conversation_messages(tmp_path: Path):
                             "chat_id": "chat-001",
                             "is_bot": True,
                             "category": "agent_answer",
-                            "message": {"msg": "建议从工艺参数和设备状态开始排查。", "events": []},
+                            "message": {
+                                "msg": "建议从工艺参数和设备状态开始排查。\\ue200knowledgesearch_history:5\\ue202",
+                                "events": [],
+                            },
+                            "citations": [
+                                {
+                                    "key": "knowledgesearch_history:5",
+                                    "citationId": "knowledgesearch_history",
+                                    "itemId": "5",
+                                    "type": "rag",
+                                    "sourcePayload": {
+                                        "knowledgeId": 3313,
+                                        "knowledgeName": "首钢知识空间",
+                                        "documentId": 86146,
+                                        "documentName": "冷轧带钢边部折皱缺陷.pdf",
+                                    },
+                                }
+                            ],
                         },
                     ],
                 }
@@ -2632,7 +2649,9 @@ def test_chat_proxy_loads_current_user_conversation_messages(tmp_path: Path):
     assert response.status_code == 200
     body = response.json()["data"]
     assert body[0]["is_bot"] is False
-    assert body[1]["message"]["msg"] == "建议从工艺参数和设备状态开始排查。"
+    assert body[1]["message"]["msg"].startswith("建议从工艺参数和设备状态开始排查。")
+    assert body[1]["citations"][0]["key"] == "knowledgesearch_history:5"
+    assert body[1]["citations"][0]["sourcePayload"]["documentId"] == 86146
 
 
 def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path):

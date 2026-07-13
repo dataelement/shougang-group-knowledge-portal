@@ -43,6 +43,14 @@ test('qa workspace is backed by Bisheng daily chat conversations', () => {
   assert.doesNotMatch(qaPageSource, /const DEMO_SESSIONS/);
 });
 
+test('qa workspace renders citations returned with historical messages', () => {
+  assert.match(contentApiSource, /citations:\s*dto\.citations \?\? \[\]/);
+  assert.match(qaPageSource, /citations:\s*message\.citations/);
+  assert.match(qaPageSource, /renderChatMarkdown\(msg\.text, msg\.citations \?\? \[\]/);
+  assert.match(qaPageSource, /extractReferencedCitations\(msg\.text, msg\.citations\)/);
+  assert.match(qaPageSource, /<CitationList items=\{referenced\}/);
+});
+
 test('qa workspace keeps the conversation list independently scrollable', () => {
   const sidebar = cssBlock('.sidebar');
   const sessionList = cssBlock('.sessionList');
