@@ -357,5 +357,6 @@ DEFAULT_PORTAL_CONFIG = {
         "browser_title": "首钢股份知库",
         "favicon_url": "/site-favicon-horizontal-v2.png",
         "domain_count_cache_ttl_seconds": 43200,
+        "home_cache_ttl_seconds": 1800,
     },
 }

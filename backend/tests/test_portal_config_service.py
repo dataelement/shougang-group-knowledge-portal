@@ -159,6 +159,29 @@ def test_site_config_has_default_cache_ttl(tmp_path):
     assert service.get_config().site.home_cache_ttl_seconds == 1800
 
 
+def test_site_config_backfills_missing_home_cache_ttl(tmp_path):
+    store = InMemoryConfigStore()
+    payload = deepcopy(DEFAULT_PORTAL_CONFIG)
+    payload["site"] = {
+        "header_brand_name": "首钢股份知库",
+        "header_logo_url": "/site-logo-new.png",
+        "login_brand_name": "首钢股份知库",
+        "login_logo_url": "/shougang-stock-logo.png",
+        "browser_title": "首钢股份知库",
+        "favicon_url": "/site-favicon-horizontal-v2.png",
+        "domain_count_cache_ttl_seconds": 43200,
+    }
+    store.upsert_document("portal_config", payload)
+
+    service = PortalConfigService(config_path=tmp_path / "portal.json", store=store)
+    config = service.get_config()
+
+    assert config.site.home_cache_ttl_seconds == 1800
+    persisted = store.get_document("portal_config")
+    assert persisted is not None
+    assert persisted["site"]["home_cache_ttl_seconds"] == 1800
+
+
 def test_portal_config_migrates_legacy_agents_and_only_valid_url_apps():
     payload = deepcopy(DEFAULT_PORTAL_CONFIG)
     payload["agent_config"] = {
