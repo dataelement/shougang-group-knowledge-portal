@@ -36,6 +36,17 @@ test('list page adds business domain filter to global recommendation and section
   assert.ok(listPageSource.includes("setFilter('business_domain_code', e.target.value)"));
 });
 
+test('list page exposes updated time sorting without changing the recommendation default', () => {
+  assert.ok(listPageSource.includes("const timeSort = normalizeTimeSort(params.get('sort'))"));
+  assert.ok(
+    listPageSource.includes(
+      "sort: timeSort || (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc')",
+    ),
+  );
+  assert.ok(listPageSource.includes('<option value="">时间排序</option>'));
+  assert.ok(listPageSource.includes("setFilter('sort', e.target.value)"));
+});
+
 test('admin latest selected section does not expose editable tag binding', () => {
   assert.ok(adminPageSource.includes("section.builtin_key === LATEST_SELECTED_SECTION_KEY"));
   assert.ok(adminPageSource.includes("value={latestSelected ? '无' : draft.tag}"));
