@@ -1,7 +1,7 @@
-import type { ChangeEvent, Dispatch, SetStateAction } from 'react';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import type { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, Trash2, Link2,
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -2216,6 +2216,185 @@ function DeptBindingTable({
   );
 }
 
+interface SearchableBindingOption {
+  value: number;
+  label: string;
+}
+
+function SearchableBindingSelect({
+  id,
+  value,
+  options,
+  placeholder,
+  searchPlaceholder,
+  emptyText,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: number | null;
+  options: SearchableBindingOption[];
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyText: string;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const listboxId = `${id}-listbox`;
+  const selectedOption = options.find((option) => option.value === value);
+  const filteredOptions = useMemo(() => {
+    const keyword = query.trim().toLocaleLowerCase('zh-Hans-CN');
+    if (!keyword) return options;
+    return options.filter((option) => option.label.toLocaleLowerCase('zh-Hans-CN').includes(keyword));
+  }, [options, query]);
+  const activeIndex = Math.min(highlightedIndex, Math.max(filteredOptions.length - 1, 0));
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    setQuery('');
+    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  const openMenu = () => {
+    if (disabled) return;
+    setOpen(true);
+    setQuery('');
+    const selectedIndex = options.findIndex((option) => option.value === value);
+    setHighlightedIndex(selectedIndex >= 0 ? selectedIndex : 0);
+  };
+
+  const selectOption = (option: SearchableBindingOption) => {
+    onChange(option.value);
+    closeMenu(true);
+  };
+
+  const moveHighlight = (offset: number) => {
+    if (!filteredOptions.length) return;
+    setHighlightedIndex((current) => (current + offset + filteredOptions.length) % filteredOptions.length);
+  };
+
+  const handleMenuKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveHighlight(1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveHighlight(-1);
+    } else if (event.key === 'Enter' && filteredOptions[activeIndex]) {
+      event.preventDefault();
+      selectOption(filteredOptions[activeIndex]);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMenu(true);
+    } else if (event.key === 'Tab') {
+      closeMenu();
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    requestAnimationFrame(() => searchRef.current?.focus());
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-option-index="${activeIndex}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex, open]);
+
+  return (
+    <div className={s.searchableSelect} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        className={`${s.searchableSelectTrigger} ${open ? s.searchableSelectTriggerOpen : ''}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        disabled={disabled}
+        onClick={() => (open ? closeMenu() : openMenu())}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            openMenu();
+          }
+        }}
+      >
+        <span
+          className={selectedOption ? s.searchableSelectValue : s.searchableSelectPlaceholder}
+          title={selectedOption?.label}
+        >
+          {selectedOption?.label || placeholder}
+        </span>
+        <ChevronDown className={s.searchableSelectChevron} size={16} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className={s.searchableSelectMenu}>
+          <div className={s.searchableSelectSearchWrap}>
+            <SearchIcon size={15} aria-hidden="true" />
+            <input
+              ref={searchRef}
+              className={s.searchableSelectSearch}
+              type="search"
+              value={query}
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
+              aria-controls={listboxId}
+              aria-activedescendant={filteredOptions[activeIndex] ? `${id}-option-${filteredOptions[activeIndex].value}` : undefined}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setHighlightedIndex(0);
+              }}
+              onKeyDown={handleMenuKeyDown}
+            />
+          </div>
+          <div ref={listRef} id={listboxId} className={s.searchableSelectOptions} role="listbox">
+            {filteredOptions.map((option, index) => {
+              const selected = option.value === value;
+              const highlighted = index === activeIndex;
+              return (
+                <button
+                  key={option.value}
+                  id={`${id}-option-${option.value}`}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  data-option-index={index}
+                  className={`${s.searchableSelectOption} ${highlighted ? s.searchableSelectOptionHighlighted : ''} ${selected ? s.searchableSelectOptionSelected : ''}`}
+                  title={option.label}
+                  onPointerMove={() => setHighlightedIndex(index)}
+                  onClick={() => selectOption(option)}
+                >
+                  <span>{option.label}</span>
+                  {selected ? <Check size={16} aria-hidden="true" /> : null}
+                </button>
+              );
+            })}
+            {!filteredOptions.length ? <div className={s.searchableSelectEmpty}>{emptyText}</div> : null}
+          </div>
+          <div className={s.searchableSelectMeta} aria-live="polite">
+            {query ? `找到 ${filteredOptions.length} 项` : `共 ${options.length} 项可选`}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DeptBindingDialog({
   open,
   spaces,
@@ -2241,7 +2420,7 @@ function DeptBindingDialog({
 
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
-      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+      <div className={`${s.modalCard} ${s.bindingModal}`} onClick={(event) => event.stopPropagation()}>
         <div className={s.modalHeader}>
           <div>
             <h3 className={s.modalTitle}>新增科室知识库绑定</h3>
@@ -2250,37 +2429,41 @@ function DeptBindingDialog({
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
         {error ? <div className={s.errorBox}>{error}</div> : null}
-        <div className={s.formGrid}>
-          <label className={s.formField}>
-            <span className={s.fieldLabel}>团队知识库</span>
-            <select
-              className={s.formInput}
-              value={draft.spaceId ?? ''}
-              onChange={(event) => onChange({ spaceId: event.target.value ? Number(event.target.value) : null })}
-            >
-              <option value="">请选择知识库</option>
-              {spaces.map((space) => (
-                <option key={space.space_id} value={space.space_id}>{space.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className={s.formField}>
-            <span className={s.fieldLabel}>科室</span>
-            <select
-              className={s.formInput}
-              value={draft.departmentId ?? ''}
-              onChange={(event) => onChange({ departmentId: event.target.value ? Number(event.target.value) : null })}
-            >
-              <option value="">请选择科室</option>
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>{department.name}</option>
-              ))}
-            </select>
-          </label>
+        <div className={`${s.formGrid} ${s.bindingFormGrid}`}>
+          <div className={s.formField}>
+            <label className={s.fieldLabel} htmlFor="dept-binding-space">团队知识库</label>
+            <SearchableBindingSelect
+              id="dept-binding-space"
+              value={draft.spaceId}
+              options={spaces.map((space) => ({ value: space.space_id, label: space.name }))}
+              placeholder="请选择知识库"
+              searchPlaceholder="搜索知识库名称"
+              emptyText="暂无匹配的知识库"
+              disabled={saving}
+              onChange={(spaceId) => onChange({ spaceId })}
+            />
+            <span className={s.fieldHint}>仅显示尚未绑定的团队知识库</span>
+          </div>
+          <div className={s.formField}>
+            <label className={s.fieldLabel} htmlFor="dept-binding-department">科室</label>
+            <SearchableBindingSelect
+              id="dept-binding-department"
+              value={draft.departmentId}
+              options={departments.map((department) => ({ value: department.id, label: department.name }))}
+              placeholder="请选择科室"
+              searchPlaceholder="搜索科室名称"
+              emptyText="暂无匹配的科室"
+              disabled={saving}
+              onChange={(departmentId) => onChange({ departmentId })}
+            />
+            <span className={s.fieldHint}>绑定后，该知识库将归属所选科室</span>
+          </div>
         </div>
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>取消</button>
-          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving || draft.spaceId == null || draft.departmentId == null}>
+            {saving ? '保存中…' : '保存'}
+          </button>
         </div>
       </div>
     </div>
