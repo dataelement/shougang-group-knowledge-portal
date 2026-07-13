@@ -134,7 +134,7 @@ export function validateQaTemplateDraft(
   if (!bg) return { error: '请输入背景色' };
   const id = (draft.id.trim() || buildStableId(name, 'template')).trim();
   if (templates.some((template) => template.id === id && template.id !== currentId)) {
-    return { error: '模板 ID 已存在' };
+    return { error: '模板已存在' };
   }
   return {
     template: {
