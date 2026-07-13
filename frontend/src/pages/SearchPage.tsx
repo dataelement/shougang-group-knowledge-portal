@@ -118,6 +118,7 @@ function matchesLocalSearchFilters(
 async function fetchCompleteSearchResults(params: {
   q?: string;
   sort?: string;
+  limit: number;
 }): Promise<FileItem[]> {
   const allFiles: FileItem[] = [];
   let cursor: string | null = null;
@@ -126,7 +127,7 @@ async function fetchCompleteSearchResults(params: {
       q: params.q,
       sort: params.sort,
       cursor,
-      limit: SEARCH_FULL_RESULT_PAGE_SIZE,
+      limit: params.limit,
     });
     allFiles.push(...result.data);
     cursor = result.hasMore ? result.nextCursor : null;
@@ -151,6 +152,7 @@ export default function SearchPage() {
   const { config } = usePortalConfig();
   const { user } = useAuth();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
+  const pageLimit = displayConfig.search.pageSize > 0 ? displayConfig.search.pageSize : SEARCH_FULL_RESULT_PAGE_SIZE;
   // 登录用户个人可见空间（按个人权限），用于扩充二级「知识空间」筛选
   const [visibleSpaces, setVisibleSpaces] = useState<SpaceOption[]>([]);
   const [rawFiles, setRawFiles] = useState<FileItem[]>([]);
@@ -365,6 +367,7 @@ export default function SearchPage() {
         const data = await fetchCompleteSearchResults({
           q: q || undefined,
           sort,
+          limit: pageLimit,
         });
         if (!active) return;
         setRawFiles(data);
@@ -381,7 +384,7 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [hasSearch, q, sort]);
+  }, [hasSearch, q, sort, pageLimit]);
 
   useEffect(() => {
     if (!hasSearch || loading || !resultsReady) return;
