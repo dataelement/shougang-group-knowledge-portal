@@ -518,8 +518,9 @@ interface QaKnowledgeSpaceDto {
   file_count?: number | string;
 }
 
-interface QaKnowledgeGroupedSpacesDto {
-  public_spaces?: QaKnowledgeSpaceDto[];
+interface QaKnowledgeSpacesResponse {
+  data?: QaKnowledgeSpaceDto[];
+  total?: number;
 }
 
 interface QaKnowledgeFileDto {
@@ -1238,17 +1239,15 @@ function mapKnowledgeFileOption(
 }
 
 export async function fetchQaKnowledgePublicSpaces(): Promise<QaKnowledgeSpaceOption[]> {
-  const data = await req<QaKnowledgeGroupedSpacesDto>(
-    '/workspace/api/v1/knowledge/space/grouped?order_by=update_time',
-  );
+  const response = await req<QaKnowledgeSpacesResponse>('/api/v1/knowledge/qa/tree/spaces');
 
-  return (data.public_spaces ?? [])
-    .map((space) => ({
+  return (response.data ?? [])
+    .map((space: QaKnowledgeSpaceDto) => ({
       id: toFiniteNumber(space.id),
       name: (space.name ?? '').trim(),
-      fileNum: toFiniteNumber(space.file_num ?? space.file_count),
+      fileNum: toFiniteNumber(space.file_count ?? space.file_num),
     }))
-    .filter((space) => space.id > 0 && Boolean(space.name));
+    .filter((space: QaKnowledgeSpaceOption) => space.id > 0 && Boolean(space.name));
 }
 
 export async function fetchQaKnowledgeSpaceFiles(
