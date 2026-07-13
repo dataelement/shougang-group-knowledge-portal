@@ -233,7 +233,6 @@ export default function SearchPage() {
 
   const spaceById = useMemo(() => new Map(searchSpaces.map((sp) => [sp.id, sp])), [searchSpaces]);
   const selectedSpaceId = Number(spaceId);
-  const selectedSpace = Number.isFinite(selectedSpaceId) ? spaceById.get(selectedSpaceId) : undefined;
   const documentTypeGroups = useMemo(
     () => getRuntimeDocumentTypeGroups(config?.document_types),
     [config?.document_types],
@@ -330,12 +329,6 @@ export default function SearchPage() {
     addStringOption(tagSet, tag);
     return [...tagSet].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
   }, [rawFiles, tag]);
-
-  const resultHeading = q
-    ? `搜索 “${q}”`
-    : selectedSpace
-      ? `知识库 “${selectedSpace.name}”`
-      : `筛选 “${displayKeyword}”`;
 
   useEffect(() => {
     let active = true;
