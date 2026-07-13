@@ -1,5 +1,6 @@
 import type { AgentItemConfig, PortalConfig } from './adminConfig';
 import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../utils/userFacingErrors';
+import { formatFileSize } from '../utils/fileSize';
 
 export interface FileTag {
   tag_name: string;
@@ -526,7 +527,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     tags: normalizeFileTagNames(dto.tags, tagInfos),
     tag_infos: tagInfos,
     ext: dto.file_ext ?? '',
-    sizeLabel: dto.file_size ?? '',
+    sizeLabel: formatFileSize(dto.file_size),
     fileEncoding: dto.file_encoding ?? '',
     fileSubcategoryCode: dto.file_subcategory_code ?? '',
     folderPath: dto.folder_path ?? '',
