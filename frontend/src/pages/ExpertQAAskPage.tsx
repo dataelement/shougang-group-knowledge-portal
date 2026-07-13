@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import type { ClipboardEvent } from 'react';
+import type { ClipboardEvent, KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Bold,
@@ -512,6 +512,30 @@ export default function ExpertQAAskPage() {
     syncEditorContent();
   }
 
+  function handleEditorKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    const editor = richTextEditorRef.current;
+    if (!editor) return;
+
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+
+    const br = document.createElement('br');
+    range.insertNode(br);
+
+    range.setStartAfter(br);
+    range.setEndAfter(br);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    syncEditorContent();
+  }
+
   function handleToolbarClick(key: string) {
     if (key === 'image') {
       imageInputRef.current?.click();
@@ -746,6 +770,7 @@ export default function ExpertQAAskPage() {
                 onInput={syncEditorContent}
                 onBlur={syncEditorContent}
                 onPaste={handleEditorPaste}
+                onKeyDown={handleEditorKeyDown}
                 onKeyUp={saveEditorSelection}
                 onMouseUp={saveEditorSelection}
               />
