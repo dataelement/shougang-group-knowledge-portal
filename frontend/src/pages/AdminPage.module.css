@@ -232,6 +232,7 @@
 
 .childTypeTable {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   overflow: hidden;
   border: 1px solid var(--neutral-100);
@@ -245,6 +246,9 @@
   border-bottom: 1px solid var(--neutral-100);
   font-size: 0.82rem;
   text-align: left;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
 }
 
 .childTypeTable th {
