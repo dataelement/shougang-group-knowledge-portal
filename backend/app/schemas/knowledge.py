@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -106,6 +106,23 @@ class QaKnowledgeTreeNodeData(BaseModel):
     page_size: int = 10
     has_more: bool = False
     next_cursor: str | None = None
+
+
+class QaKnowledgeFolderStatsRequest(BaseModel):
+    folder_ids: list[Annotated[int, Field(gt=0)]] = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+    )
+
+
+class QaKnowledgeFolderStatsItem(BaseModel):
+    folder_id: int
+    resolved_file_count: int = 0
+
+
+class QaKnowledgeFolderStatsData(BaseModel):
+    stats: list[QaKnowledgeFolderStatsItem] = Field(default_factory=list)
 
 
 class PersonalKnowledgeSpaceItem(BaseModel):

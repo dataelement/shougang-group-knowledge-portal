@@ -27,6 +27,7 @@ import Header from '../components/Header';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
 import {
   ApiRequestError,
+  fetchQaKnowledgeFolderStats,
   fetchQaKnowledgeTreeChildren,
   fetchQaKnowledgeTreeSpaces,
   fetchWorkstationConversations,
@@ -1100,6 +1101,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                   loading={loadingKnowledgeSpaces}
                   onChange={setSelectedKnowledgeScope}
                   onLoadChildren={fetchQaKnowledgeTreeChildren}
+                  onLoadFolderStats={fetchQaKnowledgeFolderStats}
                   onSearchFiles={searchQaKnowledgeFiles}
                   onTip={setComposerTip}
                   onClose={() => setKnowledgePickerOpen(false)}
@@ -1201,6 +1203,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                     loading={loadingKnowledgeSpaces}
                     onChange={setSelectedKnowledgeScope}
                     onLoadChildren={fetchQaKnowledgeTreeChildren}
+                    onLoadFolderStats={fetchQaKnowledgeFolderStats}
                     onSearchFiles={searchQaKnowledgeFiles}
                     onTip={setComposerTip}
                     onClose={() => setKnowledgePickerOpen(false)}

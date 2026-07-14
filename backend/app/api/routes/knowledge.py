@@ -24,6 +24,7 @@ from app.schemas.knowledge import (
     FilePreviewSourceKind,
     HomeStatsData,
     PublishPrecheckRequest,
+    QaKnowledgeFolderStatsRequest,
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
@@ -686,6 +687,42 @@ async def list_qa_tree_children(
             )
         except BishengBusinessError as err:
             # _raise_qa_tree_children_error 必定抛 HTTPException(不会 fall through)
+            _raise_qa_tree_children_error(err)
+    finally:
+        await bisheng_client.aclose()
+
+
+@router.post("/qa/tree/spaces/{space_id}/folder-stats")
+async def get_qa_tree_folder_stats(
+    space_id: int,
+    body: QaKnowledgeFolderStatsRequest,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    session = await get_portal_session(auth_service, request)
+    if session is None:
+        service = KnowledgeService(
+            bisheng_client=await get_bisheng_client(request),
+            portal_config_service=portal_config_service,
+        )
+        public_space_ids = {space.id for space in (await service.list_public_spaces()).data}
+        if space_id not in public_space_ids:
+            raise HTTPException(status_code=403, detail="未登录仅可浏览公共知识库目录")
+        try:
+            return response_ok(await service.get_qa_tree_folder_stats(space_id, body.folder_ids))
+        except BishengBusinessError as err:
+            _raise_qa_tree_children_error(err)
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+        )
+        try:
+            return response_ok(await service.get_qa_tree_folder_stats(space_id, body.folder_ids))
+        except BishengBusinessError as err:
             _raise_qa_tree_children_error(err)
     finally:
         await bisheng_client.aclose()

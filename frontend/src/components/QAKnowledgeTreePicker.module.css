@@ -282,6 +282,30 @@
   font-weight: normal;
 }
 
+.folderNodeText {
+  flex-direction: row;
+  align-items: center;
+}
+
+.folderNodeText strong {
+  flex: 0 1 auto;
+}
+
+.nodeText .folderCount {
+  flex: 0 0 auto;
+  min-width: 72px;
+  min-height: 18px;
+  color: #313233;
+  display: inline-flex;
+  align-items: center;
+  font-size: 15px;
+}
+
+.nodeText .folderCountError {
+  color: #86909c;
+  font-size: 12px;
+}
+
 /* 知识库名称:加粗 */
 .spaceTitleButton strong {
   color: #313233;
@@ -453,6 +477,12 @@
 @keyframes qa-tree-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
 }
 
 @media (max-width: 560px) {

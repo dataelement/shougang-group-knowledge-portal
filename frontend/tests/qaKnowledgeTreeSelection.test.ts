@@ -11,6 +11,7 @@ test('qa knowledge picker exposes tree APIs and scope payload contract', () => {
   assert.match(contentApiSource, /export type QaKnowledgeScope/);
   assert.match(contentApiSource, /fetchQaKnowledgeTreeSpaces/);
   assert.match(contentApiSource, /fetchQaKnowledgeTreeChildren/);
+  assert.match(contentApiSource, /fetchQaKnowledgeFolderStats/);
   assert.match(contentApiSource, /searchQaKnowledgeFiles/);
   assert.match(contentApiSource, /knowledgeScope\?:\s*QaKnowledgeScope/);
   assert.match(contentApiSource, /knowledge_scope/);
@@ -39,6 +40,8 @@ test('qa knowledge tree picker renders lazy tree states and exact limit prompts'
   assert.match(pickerSource, /加载失败/);
   assert.match(pickerSource, /暂无可见内容/);
   assert.match(pickerSource, /onLoadChildren/);
+  assert.match(pickerSource, /onLoadFolderStats/);
+  assert.match(pickerSource, /文件数量加载中/);
   assert.match(pickerSource, /resolvedFileCount/);
   assert.doesNotMatch(pickerSource, />全选</);
 });
@@ -76,6 +79,21 @@ test('qa knowledge scope count dedupes known folder files and explicit file refs
 
   assert.equal(getResolvedFileCount(fileRefs, folderRefs), 3);
   assert.equal(buildFilesScope(fileRefs, folderRefs).resolvedFileCount, 3);
+});
+
+test('qa knowledge scope keeps the deep count when only part of a folder is loaded', () => {
+  const folderRefs = [{
+    knowledgeSpaceId: 7101,
+    folderId: 3001,
+    resolvedFileCount: 11,
+    fileRefs: [{ knowledgeSpaceId: 7101, fileId: 9001 }],
+  }];
+  const fileRefs = [
+    { knowledgeSpaceId: 7101, fileId: 9001 },
+    { knowledgeSpaceId: 7101, fileId: 9002 },
+  ];
+
+  assert.equal(getResolvedFileCount(fileRefs, folderRefs), 12);
 });
 
 test('content api supports cursor pagination for tree children', () => {

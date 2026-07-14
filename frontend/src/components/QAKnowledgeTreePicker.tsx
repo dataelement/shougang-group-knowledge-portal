@@ -14,6 +14,7 @@ import {
 import type {
   FileItem,
   KnowledgeSpace,
+  QaKnowledgeFolderStats,
   QaKnowledgeFileRef,
   QaKnowledgeFolderRef,
   QaKnowledgeScope,
@@ -45,6 +46,7 @@ export default function QAKnowledgeTreePicker({
   loading,
   onChange,
   onLoadChildren,
+  onLoadFolderStats,
   onSearchFiles,
   onTip,
   onClose
@@ -55,6 +57,7 @@ export default function QAKnowledgeTreePicker({
   onChange: (scope: QaKnowledgeScope) => void;
   onLoadChildren: (spaceId: number, parentId?: number, cursor?: string)
     => Promise<{ data: QaKnowledgeTreeNode[]; hasMore: boolean; nextCursor: string | null }>;
+  onLoadFolderStats: (spaceId: number, folderIds: number[]) => Promise<QaKnowledgeFolderStats[]>;
   onSearchFiles: (q: string, page?: number, pageSize?: number) => Promise<{ data: FileItem[]; total: number }>;
   onTip?: (message: string) => void;
   onClose?: () => void;
@@ -66,6 +69,9 @@ export default function QAKnowledgeTreePicker({
   const [nextCursorByKey, setNextCursorByKey] = useState<Record<string, string | null>>({});
   const [hasMoreByKey, setHasMoreByKey] = useState<Record<string, boolean>>({});
   const [loadingMoreKeys, setLoadingMoreKeys] = useState<Set<string>>(() => new Set());
+  const [folderStatsLoadingKeys, setFolderStatsLoadingKeys] = useState<Set<string>>(() => new Set());
+  const [folderStatsErrorKeys, setFolderStatsErrorKeys] = useState<Set<string>>(() => new Set());
+  const requestedFolderStatsKeys = useRef<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<FileItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -144,6 +150,57 @@ export default function QAKnowledgeTreePicker({
     window.setTimeout(() => setInlineTip(''), 2500);
   };
 
+  const loadFolderStats = (spaceId: number, nodes: QaKnowledgeTreeNode[]) => {
+    const folders = nodes.filter((node) => {
+      const key = folderRefKey(node.spaceId, node.id);
+      if (node.type !== 'folder' || requestedFolderStatsKeys.current.has(key)) return false;
+      requestedFolderStatsKeys.current.add(key);
+      return true;
+    });
+    if (folders.length === 0) return;
+
+    const keys = folders.map((folder) => folderRefKey(folder.spaceId, folder.id));
+    setFolderStatsLoadingKeys((prev) => new Set([...prev, ...keys]));
+    setFolderStatsErrorKeys((prev) => {
+      const next = new Set(prev);
+      keys.forEach((key) => next.delete(key));
+      return next;
+    });
+
+    void onLoadFolderStats(spaceId, folders.map((folder) => folder.id))
+      .then((stats) => {
+        const countByFolderId = new Map(stats.map((item) => [item.folderId, item.resolvedFileCount]));
+        setChildrenByKey((prev) => Object.fromEntries(
+          Object.entries(prev).map(([key, children]) => [
+            key,
+            children.map((child) => {
+              const count = child.spaceId === spaceId ? countByFolderId.get(child.id) : undefined;
+              return child.type === 'folder' && count !== undefined
+                ? { ...child, resolvedFileCount: count }
+                : child;
+            }),
+          ]),
+        ));
+        setFolderStatsErrorKeys((prev) => {
+          const next = new Set(prev);
+          folders.forEach((folder) => {
+            if (!countByFolderId.has(folder.id)) next.add(folderRefKey(folder.spaceId, folder.id));
+          });
+          return next;
+        });
+      })
+      .catch(() => {
+        setFolderStatsErrorKeys((prev) => new Set([...prev, ...keys]));
+      })
+      .finally(() => {
+        setFolderStatsLoadingKeys((prev) => {
+          const next = new Set(prev);
+          keys.forEach((key) => next.delete(key));
+          return next;
+        });
+      });
+  };
+
   const loadChildren = async (spaceId: number, parentId?: number | null) => {
     const key = nodeChildrenKey(spaceId, parentId);
     if (childrenByKey[key] || loadingKeys.has(key)) return;
@@ -158,6 +215,7 @@ export default function QAKnowledgeTreePicker({
       setChildrenByKey((prev) => ({ ...prev, [key]: result.data }));
       setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
       setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
+      loadFolderStats(spaceId, result.data);
     } catch {
       setErrorKeys((prev) => new Set(prev).add(key));
     } finally {
@@ -190,6 +248,7 @@ export default function QAKnowledgeTreePicker({
       });
       setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
       setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
+      loadFolderStats(spaceId, result.data);
     } catch {
       setErrorKeys((prev) => new Set(prev).add(key));
     } finally {
@@ -315,6 +374,9 @@ export default function QAKnowledgeTreePicker({
     const children = childrenByKey[key] ?? [];
     const spaceWhole = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === node.spaceId;
     const isFolderSelected = selectedFolderKeys.has(folderRefKey(node.spaceId, node.id));
+    const folderStatsKey = folderRefKey(node.spaceId, node.id);
+    const folderStatsLoading = node.type === 'folder' && folderStatsLoadingKeys.has(folderStatsKey);
+    const folderStatsError = node.type === 'folder' && folderStatsErrorKeys.has(folderStatsKey);
     const selected = spaceWhole || (node.type === 'file'
       ? isFileSelected(node.spaceId, node.id)
       : isFolderSelected);
@@ -337,15 +399,34 @@ export default function QAKnowledgeTreePicker({
           <button
             type="button"
             className={`${s.checkBox} ${selected ? s.checkBoxActive : ''}`}
-            disabled={!node.selectable || spaceWhole}
+            disabled={!node.selectable || spaceWhole || folderStatsLoading || folderStatsError}
             onClick={() => (node.type === 'file' ? toggleFileRef({ spaceId: node.spaceId, id: node.id }) : toggleFolderRef(node))}
-            title={spaceWhole ? '已按整库选择，取消整库后可单独选择' : (node.disabledReason || '')}
+            title={spaceWhole
+              ? '已按整库选择，取消整库后可单独选择'
+              : folderStatsLoading
+                ? '文件数量加载中'
+                : folderStatsError
+                  ? '文件数量加载失败，暂不可选择该文件夹'
+                  : (node.disabledReason || '')}
           >
             {selected ? <Check size={13} /> : null}
           </button>
           <span className={`${s.nodeIcon} ${node.type === 'folder' ? s.folderIcon : ''}`}>{node.type === 'folder' ? <Folder size={15} /> : <FileText size={15} />}</span>
-          <span className={`${s.nodeText} ${selected && node.type === 'file' ? s.nodeTextActive : ''}`}>
-            <strong>{node.type === 'folder' ? `${node.name}（${node.resolvedFileCount}个文件）` : node.name}</strong>
+          <span className={`${s.nodeText} ${node.type === 'folder' ? s.folderNodeText : ''} ${selected && node.type === 'file' ? s.nodeTextActive : ''}`}>
+            <strong>{node.name}</strong>
+            {node.type === 'folder' ? (
+              folderStatsLoading ? (
+                <span className={s.folderCount} role="status" aria-label={`${node.name} 文件数量加载中`}>
+                  <Loader2 size={14} className={s.spin} aria-hidden="true" />
+                </span>
+              ) : folderStatsError ? (
+                <span className={`${s.folderCount} ${s.folderCountError}`} role="alert" title="文件数量加载失败">
+                  （数量加载失败）
+                </span>
+              ) : (
+                <span className={s.folderCount}>（{node.resolvedFileCount}个文件）</span>
+              )
+            ) : null}
           </span>
         </div>
         {expanded ? (

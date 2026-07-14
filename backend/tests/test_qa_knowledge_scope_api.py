@@ -123,6 +123,22 @@ class QaScopeBishengClient(FakeBishengClient):
         return await super().get_json(path, params=params, headers=headers)
 
     async def post_json(self, path: str, json=None, headers=None):
+        if path == "/api/v1/knowledge/space/7101/folder-stats":
+            assert json == {"folder_ids": [3001], "file_status": [2]}
+            self.post_calls.append((path, json))
+            return {
+                "data": {
+                    "stats": [
+                        {
+                            "folder_id": 3001,
+                            "file_num": 12,
+                            "success_file_num": 11,
+                            "visible_success_file_num": 10,
+                            "processing_file_num": 1,
+                        }
+                    ]
+                }
+            }
         if path == "/api/v1/knowledge/shougang-portal/qa/files/search":
             assert json["q"] == "流程"
             assert set(json["space_ids"]) == {12, 18, 25, 7101, 7102, 7103}
@@ -400,3 +416,20 @@ def test_qa_tree_children_has_children_decoupled_from_count(tmp_path: Path):
     # 该文件夹 visible_success_file_num=1 且显式 has_children=True → 节点可展开
     assert folder["has_children"] is True
     assert folder["resolved_file_count"] == 1
+
+
+def test_qa_tree_folder_stats_returns_deep_visible_success_count(tmp_path: Path):
+    for client, _c, fake_bisheng in _make_auth_client(tmp_path):
+        response = client.post(
+            "/api/v1/knowledge/qa/tree/spaces/7101/folder-stats",
+            json={"folder_ids": [3001]},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["stats"] == [
+        {"folder_id": 3001, "resolved_file_count": 10}
+    ]
+    assert fake_bisheng.post_calls[-1] == (
+        "/api/v1/knowledge/space/7101/folder-stats",
+        {"folder_ids": [3001], "file_status": [2]},
+    )

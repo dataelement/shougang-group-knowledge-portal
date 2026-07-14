@@ -61,6 +61,11 @@ export interface QaKnowledgeTreeNode {
   resolvedFileCount: number;
 }
 
+export interface QaKnowledgeFolderStats {
+  folderId: number;
+  resolvedFileCount: number;
+}
+
 export interface QaKnowledgeFileRef {
   knowledgeSpaceId: number;
   fileId: number;
@@ -336,6 +341,13 @@ interface QaKnowledgeTreeNodeDataDto {
   page_size: number;
   has_more: boolean;
   next_cursor: string | null;
+}
+
+interface QaKnowledgeFolderStatsDataDto {
+  stats: Array<{
+    folder_id: number;
+    resolved_file_count: number;
+  }>;
 }
 
 interface PersonalKnowledgeSpaceDto {
@@ -850,6 +862,24 @@ export async function fetchQaKnowledgeTreeChildren(
     hasMore: Boolean(data.has_more),
     nextCursor: data.next_cursor ?? null,
   };
+}
+
+export async function fetchQaKnowledgeFolderStats(
+  spaceId: number,
+  folderIds: number[],
+): Promise<QaKnowledgeFolderStats[]> {
+  const data = await request<QaKnowledgeFolderStatsDataDto>(
+    `/api/v1/knowledge/qa/tree/spaces/${spaceId}/folder-stats`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_ids: [...new Set(folderIds)] }),
+    },
+  );
+  return data.stats.map((item) => ({
+    folderId: item.folder_id,
+    resolvedFileCount: item.resolved_file_count,
+  }));
 }
 
 export async function searchQaKnowledgeFiles(

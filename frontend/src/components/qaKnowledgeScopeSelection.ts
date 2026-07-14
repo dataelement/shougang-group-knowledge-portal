@@ -48,9 +48,13 @@ export function getResolvedFileCount(
 
   for (const folderRef of dedupeFolderRefs(folderRefs)) {
     if (folderRef.fileRefs?.length) {
+      const folderFileKeys = new Set<string>();
       for (const fileRef of folderRef.fileRefs) {
-        knownFolderFileKeys.add(fileRefKey(fileRef.knowledgeSpaceId, fileRef.fileId));
+        const key = fileRefKey(fileRef.knowledgeSpaceId, fileRef.fileId);
+        folderFileKeys.add(key);
+        knownFolderFileKeys.add(key);
       }
+      unknownFolderEstimate += Math.max((folderRef.resolvedFileCount ?? 0) - folderFileKeys.size, 0);
       continue;
     }
     unknownFolderEstimate += Math.max(folderRef.resolvedFileCount ?? 0, 0);

@@ -34,6 +34,8 @@ from app.schemas.knowledge import (
     KnowledgeFileSpace,
     PersonalKnowledgeSpaceItem,
     PersonalKnowledgeSpaceListData,
+    QaKnowledgeFolderStatsData,
+    QaKnowledgeFolderStatsItem,
     QaKnowledgeTreeNode,
     QaKnowledgeTreeNodeData,
     KnowledgeSpaceItem,
@@ -836,6 +838,40 @@ class KnowledgeService:
             page_size=int(data.get("page_size") or resolved_page_size) if isinstance(data, dict) else resolved_page_size,
             has_more=bool(data.get("has_more")) if isinstance(data, dict) else False,
             next_cursor=next_cursor if isinstance(next_cursor, str) else None,
+        )
+
+    async def get_qa_tree_folder_stats(
+        self,
+        space_id: int,
+        folder_ids: list[int],
+    ) -> QaKnowledgeFolderStatsData:
+        unique_folder_ids = list(dict.fromkeys(folder_ids))
+        response = await self._bisheng.post_json(
+            f"/api/v1/knowledge/space/{space_id}/folder-stats",
+            json={
+                "folder_ids": unique_folder_ids,
+                "file_status": [SUCCESS_STATUS],
+            },
+        )
+        data = self._extract_success_data(response)
+        raw_stats = data.get("stats") if isinstance(data, dict) else []
+        if not isinstance(raw_stats, list):
+            raw_stats = []
+        return QaKnowledgeFolderStatsData(
+            stats=[
+                QaKnowledgeFolderStatsItem(
+                    folder_id=self._int_value(item, "folder_id", "folderId"),
+                    resolved_file_count=self._int_value(
+                        item,
+                        "visible_success_file_num",
+                        "visibleSuccessFileNum",
+                        "success_file_num",
+                        "successFileNum",
+                    ),
+                )
+                for item in raw_stats
+                if isinstance(item, dict)
+            ]
         )
 
     async def search_qa_files_by_name(
