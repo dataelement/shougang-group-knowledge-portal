@@ -25,6 +25,8 @@ export interface FileItem {
   folderPath?: string;
   /** 可读文档来源路径 "<source space>><folder>/<file>"，根目录文件仅使用知识空间名称。 */
   sourcePath?: string;
+  /** 当前用户是否有该文件的下载权限，无权限时列表不展示下载按钮。 */
+  canDownload?: boolean;
 }
 
 export interface FileDetail extends FileItem {
@@ -246,6 +248,7 @@ interface KnowledgeFileItemDto {
   file_subcategory_code?: string;
   folder_path?: string;
   source_path?: string;
+  can_download?: boolean;
 }
 
 function normalizeFileTagInfos(tags: Array<string | FileTag> = [], tagInfos: FileTag[] = []): FileTag[] {
@@ -544,6 +547,7 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     fileSubcategoryCode: dto.file_subcategory_code ?? '',
     folderPath: dto.folder_path ?? '',
     sourcePath: dto.source_path ?? '',
+    canDownload: dto.can_download ?? false,
   };
 }
 

@@ -24,6 +24,10 @@ class KnowledgeFileItem(BaseModel):
     file_subcategory_code: str = ""
     folder_path: str = ""
     source_path: str = ""
+    # Whether the current user may download this file. Forwarded from bisheng's
+    # per-space effective download permission so the portal can hide the download
+    # entry for view-only users.
+    can_download: bool = False
 
 
 class KnowledgeFileSpace(BaseModel):

@@ -1219,6 +1219,7 @@ class KnowledgeService:
                 file_subcategory_code=KnowledgeService._extract_file_subcategory_code(item),
                 folder_path=str(item.get("folder_path") or ""),
                 source_path=str(item.get("source_path") or ""),
+                can_download=bool(item.get("can_download", False)),
             )
             for item in raw_items
             if isinstance(item, dict)

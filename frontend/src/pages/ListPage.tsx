@@ -428,7 +428,7 @@ export default function ListPage() {
             onFavorite={canFavorite ? handleToggleFavorite : undefined}
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
-            onDownload={canDownload ? handleDownload : undefined}
+            onDownload={canDownload && f.canDownload ? handleDownload : undefined}
             // onShare={openShare}
             onAsk={user ? openDocumentQa : () => navigate(buildGuestLoginPath(`${location.pathname}${location.search}`))}
             onOpen={user ? setPreviewFile : () => navigate(buildGuestLoginPath(`${location.pathname}${location.search}`))}
