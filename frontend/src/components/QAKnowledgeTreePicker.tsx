@@ -49,7 +49,8 @@ export default function QAKnowledgeTreePicker({
   onLoadFolderStats,
   onSearchFiles,
   onTip,
-  onClose
+  onClose,
+  maxHeight,
 }: {
   spaces: KnowledgeSpace[];
   scope: QaKnowledgeScope;
@@ -61,6 +62,8 @@ export default function QAKnowledgeTreePicker({
   onSearchFiles: (q: string, page?: number, pageSize?: number) => Promise<{ data: FileItem[]; total: number }>;
   onTip?: (message: string) => void;
   onClose?: () => void;
+  /** 覆盖面板最大高度(用于在受限容器内定位,如首页 banner)。 */
+  maxHeight?: number;
 }) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
   const [childrenByKey, setChildrenByKey] = useState<Record<string, QaKnowledgeTreeNode[]>>({});
@@ -446,7 +449,7 @@ export default function QAKnowledgeTreePicker({
   };
 
   return (
-    <div className={s.panel}>
+    <div className={s.panel} style={maxHeight ? { maxHeight } : undefined}>
       <div className={s.header}>
         <strong className={s.headerTitle}>知识库范围</strong>
         <button

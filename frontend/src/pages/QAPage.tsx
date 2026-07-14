@@ -47,6 +47,7 @@ import type { QAConfig, QAModelOption, QATemplateCategoryConfig, QATemplateConfi
 import { useAuth } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
+import { clearHomeQaDraft, readHomeQaDraft } from '../utils/homeQaDraft';
 import composerModelIcon from '../assets/composer-model.svg';
 import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
 import s from './QAPage.module.css';
@@ -429,39 +430,66 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     setPendingTemplateId((current) => (current === templateId ? current : templateId));
   }, [location.search]);
 
-  // 首页「智能问答」检索跳转过来:autosend=1 时选中全部有权限知识空间并自动发送;否则仅预填
+  // 首页「智能问答」检索跳转过来:读取草稿(模型档位/知识库范围/附件)并自动发送;
+  // 兼容旧链接(仅带 q 参数、无草稿)。autosend=1 时发起新会话,否则仅预填。
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const q = params.get('q')?.trim() || '';
-    if (!q) return;
+    const hasDraft = params.get('draft') === '1';
+    const draft = hasDraft ? readHomeQaDraft() : null;
+    const q = (draft?.keyword ?? params.get('q') ?? '').trim();
+    const draftAttachments = draft?.attachments ?? [];
+    if (!q && !draftAttachments.length) return;
     const autosend = params.get('autosend') === '1';
+
+    const draftAnswerMode: AnswerMode = draft?.answerMode ?? 'normal';
+    const draftScope: QaKnowledgeScope = draft?.scope ?? { mode: 'none' };
+    const scopeIsExplicit = draftScope.mode !== 'none';
+
+    const stripParams = () => {
+      params.delete('q');
+      params.delete('autosend');
+      params.delete('draft');
+      const query = params.toString();
+      navigate(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`, { replace: true });
+    };
 
     if (!autosend) {
       setInput(q);
-      params.delete('q');
-      const query = params.toString();
-      navigate(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`, { replace: true });
+      if (draft) {
+        setSessions((prev) => prev.map((ss) => (ss.id === activeId ? { ...ss, answerMode: draftAnswerMode } : ss)));
+        if (scopeIsExplicit) setSelectedKnowledgeScope(draftScope);
+        if (draftAttachments.length) setAttachedFiles(draftAttachments);
+        clearHomeQaDraft();
+      }
+      stripParams();
       return;
     }
 
-    // 自动发送:先确保知识库列表已加载,再带上全部有权限的空间发起新会话。
+    // 自动发送:先确保模型配置与知识库列表已加载,再按草稿的选择发起新会话。
     // 加载期间显示全屏遮罩,防止用户在等待时误操作。
     if (homeQaAutoSentRef.current) return;
     setHomeQaAutoSending(true);
-    if (!selectedModel) return;
+    const targetModelChoice = draftAnswerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
+    if (!targetModelChoice) return;
     if (!knowledgeSpacesLoaded) {
       void ensureKnowledgeSpacesLoaded();
       return;
     }
     homeQaAutoSentRef.current = true;
-    const allSpaceIds = availableSpaces.map((space) => space.id);
-    params.delete('q');
-    params.delete('autosend');
-    const query = params.toString();
-    navigate(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`, { replace: true });
-    sendMessage({ text: q, allSpaceIds });
+    // 让当前会话的模型档位与草稿一致(界面标签、后续消息都用它)
+    setSessions((prev) => prev.map((ss) => (ss.id === activeId ? { ...ss, answerMode: draftAnswerMode } : ss)));
+    if (scopeIsExplicit) setSelectedKnowledgeScope(draftScope);
+    clearHomeQaDraft();
+    stripParams();
+    if (scopeIsExplicit) {
+      sendMessage({ text: q, scope: draftScope, files: draftAttachments, answerMode: draftAnswerMode });
+    } else {
+      // 未指定知识库时回退到「全部有权限的知识空间」(沿用旧逻辑)。
+      const allSpaceIds = availableSpaces.map((space) => space.id);
+      sendMessage({ text: q, allSpaceIds, files: draftAttachments, answerMode: draftAnswerMode });
+    }
     setHomeQaAutoSending(false);
-  }, [location.search, location.pathname, location.hash, navigate, knowledgeSpacesLoaded, selectedModel, availableSpaces]);
+  }, [location.search, location.pathname, location.hash, navigate, knowledgeSpacesLoaded, generalModelChoice, reasoningModelChoice, availableSpaces]);
 
   // 安全兜底:遮罩最多显示 12 秒,避免模型/空间异常时永久卡住
   useEffect(() => {
@@ -675,16 +703,28 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     loadSessionMessages(session);
   };
 
-  const sendMessage = (opts?: { text?: string; allSpaceIds?: number[] }) => {
+  const sendMessage = (opts?: {
+    text?: string;
+    allSpaceIds?: number[];
+    scope?: QaKnowledgeScope;
+    files?: ChatAttachment[];
+    answerMode?: AnswerMode;
+  }) => {
+    // 程序化发送(首页问答草稿/自动发送)时,选择项从 opts 显式带入,避免依赖异步 state。
+    const programmatic = opts?.text !== undefined;
     const useAllSpaces = Boolean(opts?.allSpaceIds && opts.allSpaceIds.length);
     const text = (opts?.text ?? input).trim();
-    const messageFiles = opts?.text !== undefined ? [] : attachedFiles;
+    const messageFiles = programmatic ? (opts?.files ?? []) : attachedFiles;
+    const effAnswerMode = opts?.answerMode ?? answerMode;
+    const effModelChoice = effAnswerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
+    const effModel = effModelChoice?.id ?? '';
+    const effScope = opts?.scope ?? selectedKnowledgeScope;
     if ((!text && !messageFiles.length) || streaming || uploadingFiles.length) return;
-    if (answerMode === 'expert' && !reasoningModelChoice) {
+    if (effAnswerMode === 'expert' && !reasoningModelChoice) {
       setComposerTip('请先在后台配置推理模型。');
       return;
     }
-    if (!selectedModel) {
+    if (!effModel) {
       setComposerTip('请先在后台配置问答模型。');
       return;
     }
@@ -719,11 +759,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       signal: abortController.signal,
       text: finalText,
       knowledgeSpaceIds: useAllSpaces ? opts!.allSpaceIds! : [],
-      knowledgeScope: useAllSpaces ? undefined : selectedKnowledgeScope,
+      knowledgeScope: useAllSpaces ? undefined : effScope,
       files: messageFiles,
       conversationId: activeSession.conversationId,
-      model: selectedModel,
-      answerMode,
+      model: effModel,
+      answerMode: effAnswerMode,
       onConversationId(conversationId) {
         setSessions((prev) =>
           prev.map((ss) =>

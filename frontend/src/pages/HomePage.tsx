@@ -1,22 +1,42 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, type ChangeEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import {
-  Search,
-  BarChart3, Bot, ChevronLeft, ChevronRight, FileText,
+  Search, Send,
+  BarChart3, Bot, ChevronLeft, ChevronRight, ChevronDown, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, Leaf, Truck, Wrench, GraduationCap,
-  Flame, Briefcase, Users, ScrollText, Loader2,
+  Flame, Briefcase, Users, ScrollText, Loader2, Plus, X,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
+import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
   streamHomeContent,
   fetchDomainFileCounts,
   fetchHomeStats,
+  fetchQaKnowledgeTreeSpaces,
+  fetchQaKnowledgeTreeChildren,
+  fetchQaKnowledgeFolderStats,
+  searchQaKnowledgeFiles,
+  uploadChatAttachment,
+  type ChatAttachment,
   type FileItem,
   type HomeStats,
+  type KnowledgeSpace,
+  type QaKnowledgeScope,
 } from '../api/content';
+import {
+  QA_ATTACHMENT_ACCEPT,
+  getAttachmentKey,
+  getAttachmentName,
+  isSupportedAttachment,
+  type UploadingAttachment,
+} from '../utils/qaAttachment';
+import { saveHomeQaDraft, type HomeQaDraft } from '../utils/homeQaDraft';
+import composerModelIcon from '../assets/composer-model.svg';
+import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
@@ -296,6 +316,38 @@ export default function HomePage() {
     }
   });
 
+  // ── 首页「智能问答」复合输入框:模型档位 / 知识库范围 / 附件上传 ──
+  const [qaAnswerMode, setQaAnswerMode] = useState<'normal' | 'expert'>('normal');
+  const [qaModelMenuOpen, setQaModelMenuOpen] = useState(false);
+  const [qaAttachments, setQaAttachments] = useState<ChatAttachment[]>([]);
+  const [qaUploading, setQaUploading] = useState<UploadingAttachment[]>([]);
+  const [qaSpaces, setQaSpaces] = useState<KnowledgeSpace[]>([]);
+  const [qaSpacesLoaded, setQaSpacesLoaded] = useState(false);
+  const [qaSpacesLoading, setQaSpacesLoading] = useState(false);
+  const [qaScope, setQaScope] = useState<QaKnowledgeScope>({ mode: 'none' });
+  const [qaPickerOpen, setQaPickerOpen] = useState(false);
+  const [qaTip, setQaTip] = useState('');
+  const qaFileInputRef = useRef<HTMLInputElement>(null);
+  const qaModelWrapRef = useRef<HTMLDivElement>(null);
+  const qaPickerWrapRef = useRef<HTMLDivElement>(null);
+  const qaPickerBtnRef = useRef<HTMLButtonElement>(null);
+  const qaPickerPanelRef = useRef<HTMLDivElement>(null);
+  const [qaPickerPos, setQaPickerPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+
+  const qaGeneralLabel = config?.qa?.general_model_display_name?.trim() || '通用模型';
+  const qaReasoningLabel = config?.qa?.reasoning_model_display_name?.trim() || '推理模型';
+  const qaReasoningAvailable = Boolean(config?.qa?.reasoning_model);
+  const qaModelLabel = qaAnswerMode === 'expert' ? qaReasoningLabel : qaGeneralLabel;
+  const qaHasAttachments = qaAttachments.length > 0 || qaUploading.length > 0;
+  const qaKnowledgeLabel = (() => {
+    if (qaScope.mode === 'knowledge_space') {
+      const name = qaSpaces.find((sp) => sp.id === qaScope.knowledgeSpaceId)?.name;
+      return name || '已选知识库';
+    }
+    if (qaScope.mode === 'files') return `已选 ${qaScope.fileRefs.length} 个文件`;
+    return '选择知识库';
+  })();
+
   const navigateToTop = useCallback((path: string) => {
     const root = document.documentElement;
     const previousScrollBehavior = root.style.scrollBehavior;
@@ -410,15 +462,155 @@ export default function HomePage() {
   const handleSearch = useCallback(() => {
     const keyword = query.trim();
     if (searchTab === 'qa') {
-      // 智能问答:跳转到智能应用问答页;有关键词则带上并自动发送(选中全部有权限知识空间)
-      const path = keyword
-        ? `/apps?tab=qa&q=${encodeURIComponent(keyword)}&autosend=1`
-        : '/apps?tab=qa';
-      navigate(user ? path : buildGuestLoginPath(path));
+      // 未登录:先去登录(附件/问答均需登录)。
+      if (!user) {
+        navigate(buildGuestLoginPath('/apps?tab=qa'));
+        return;
+      }
+      // 无问题也无附件:仅打开问答页,不自动发送。
+      if (!keyword && !qaAttachments.length) {
+        navigate('/apps?tab=qa');
+        return;
+      }
+      // 附件仍在上传中:等待完成再发。
+      if (qaUploading.length) {
+        setQaTip('附件上传中，请稍候');
+        return;
+      }
+      // 把首页选好的模型档位 / 知识库范围 / 附件打包成草稿,跳转后自动发送、开启新会话。
+      const draft: HomeQaDraft = {
+        keyword,
+        answerMode: qaAnswerMode,
+        scope: qaScope,
+        attachments: qaAttachments,
+      };
+      saveHomeQaDraft(draft);
+      navigate('/apps?tab=qa&autosend=1&draft=1');
       return;
     }
     navigate(keyword ? `/search?q=${encodeURIComponent(keyword)}` : '/search');
-  }, [query, searchTab, navigate, user]);
+  }, [query, searchTab, navigate, user, qaAnswerMode, qaScope, qaAttachments, qaUploading.length]);
+
+  async function ensureQaSpaces() {
+    if (qaSpacesLoaded || qaSpacesLoading) return;
+    setQaSpacesLoading(true);
+    try {
+      const { data } = await fetchQaKnowledgeTreeSpaces();
+      setQaSpaces(data);
+      setQaSpacesLoaded(true);
+      if (!data.length) setQaTip(user ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
+    } catch {
+      setQaTip('知识库列表加载失败，请稍后重试。');
+    } finally {
+      setQaSpacesLoading(false);
+    }
+  }
+
+  const toggleQaPicker = () => {
+    setQaModelMenuOpen(false);
+    setQaPickerOpen((open) => !open);
+    if (!qaPickerOpen) void ensureQaSpaces();
+  };
+
+  const chooseQaModel = (mode: 'normal' | 'expert') => {
+    if (mode === 'expert' && !qaReasoningAvailable) {
+      setQaTip('请先在后台配置推理模型。');
+      return;
+    }
+    setQaAnswerMode(mode);
+    setQaModelMenuOpen(false);
+  };
+
+  const handleQaFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (!files.length) return;
+    if (!user) {
+      navigate(buildGuestLoginPath('/apps?tab=qa'));
+      return;
+    }
+    const supported = files.filter(isSupportedAttachment);
+    if (supported.length !== files.length) {
+      setQaTip('仅支持常见文档、表格、演示文稿、图片和文本附件。');
+    }
+    supported.forEach((file, index) => {
+      const uploadId = `${file.name}-${file.size}-${file.lastModified}-${Date.now()}-${index}`;
+      setQaUploading((prev) => [...prev, { id: uploadId, name: file.name }]);
+      void uploadChatAttachment(file)
+        .then((attachment) => {
+          setQaAttachments((prev) => [
+            ...prev,
+            { ...attachment, filename: attachment.filename || file.name, type: attachment.type || file.type },
+          ]);
+        })
+        .catch(() => {
+          setQaTip(`「${file.name}」上传失败，请重试。`);
+        })
+        .finally(() => {
+          setQaUploading((prev) => prev.filter((item) => item.id !== uploadId));
+        });
+    });
+  };
+
+  const removeQaAttachment = (targetKey: string) => {
+    setQaAttachments((prev) => prev.filter((file) => getAttachmentKey(file) !== targetKey));
+  };
+
+  useEffect(() => {
+    if (!qaTip) return undefined;
+    const timer = window.setTimeout(() => setQaTip(''), 2200);
+    return () => window.clearTimeout(timer);
+  }, [qaTip]);
+
+  useEffect(() => {
+    if (!qaModelMenuOpen && !qaPickerOpen) return undefined;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (qaModelMenuOpen && qaModelWrapRef.current && !qaModelWrapRef.current.contains(target)) {
+        setQaModelMenuOpen(false);
+      }
+      // 知识库面板通过 portal 挂到 body,判断点击是否在按钮或面板之外。
+      if (
+        qaPickerOpen
+        && qaPickerWrapRef.current
+        && !qaPickerWrapRef.current.contains(target)
+        && (!qaPickerPanelRef.current || !qaPickerPanelRef.current.contains(target))
+      ) {
+        setQaPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [qaModelMenuOpen, qaPickerOpen]);
+
+  // 知识库面板定位:锚定在知识库按钮下方,向下展开;宽度/高度按视口夹取,portal 到 body 避免被 banner 裁切。
+  useLayoutEffect(() => {
+    if (!qaPickerOpen) {
+      setQaPickerPos(null);
+      return undefined;
+    }
+    const compute = () => {
+      const btn = qaPickerBtnRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const margin = 16;
+      const cardPadX = 30; // portal 卡片的左右内边距+边框
+      const cardPadY = 30; // 卡片的上下内边距+边框
+      const width = Math.min(680, window.innerWidth - margin * 2 - cardPadX);
+      const cardWidth = width + cardPadX;
+      const left = Math.max(margin, Math.min(rect.left, window.innerWidth - cardWidth - margin));
+      const top = rect.bottom + 8;
+      const maxHeight = Math.max(200, window.innerHeight - top - margin - cardPadY);
+      setQaPickerPos({ left, top, width, maxHeight });
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    window.addEventListener('scroll', compute, true);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('scroll', compute, true);
+    };
+  }, [qaPickerOpen]);
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
@@ -580,6 +772,29 @@ export default function HomePage() {
                 onKeyDown={handleKey}
                 rows={2}
               />
+              {searchTab === 'qa' && qaHasAttachments ? (
+                <div className={s.qaAttachments}>
+                  {qaUploading.map((file) => (
+                    <span key={file.id} className={`${s.qaChip} ${s.qaChipUploading}`}>
+                      <Loader2 size={12} className={s.qaChipSpin} />
+                      <span className={s.qaChipName}>{file.name}</span>
+                    </span>
+                  ))}
+                  {qaAttachments.map((file) => (
+                    <span key={getAttachmentKey(file)} className={s.qaChip}>
+                      <span className={s.qaChipName}>{getAttachmentName(file)}</span>
+                      <button
+                        type="button"
+                        className={s.qaChipRemove}
+                        onClick={() => removeQaAttachment(getAttachmentKey(file))}
+                        aria-label="移除附件"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <div className={s.searchBoxBar}>
                 {searchTab === 'global' ? (
                   <button
@@ -594,7 +809,96 @@ export default function HomePage() {
                     <ChevronRight size={10} className={s.searchModeCaret} />
                   </button>
                 ) : (
-                  <span />
+                  <div className={s.qaToolbar}>
+                    <input
+                      ref={qaFileInputRef}
+                      type="file"
+                      multiple
+                      accept={QA_ATTACHMENT_ACCEPT}
+                      className={s.qaHiddenFile}
+                      onChange={handleQaFileSelect}
+                    />
+                    <button
+                      type="button"
+                      className={s.qaToolBtn}
+                      onClick={() => (user ? qaFileInputRef.current?.click() : navigate(buildGuestLoginPath('/apps?tab=qa')))}
+                      aria-label="上传附件"
+                    >
+                      <Plus size={16} />
+                    </button>
+                    <span className={s.qaToolDivider} />
+                    <div className={s.qaToolWrap} ref={qaModelWrapRef}>
+                      <button
+                        type="button"
+                        className={s.qaToolItem}
+                        onClick={() => {
+                          setQaPickerOpen(false);
+                          setQaModelMenuOpen((open) => !open);
+                        }}
+                      >
+                        <img src={composerModelIcon} alt="" className={s.qaToolIcon} aria-hidden="true" />
+                        <span>{qaModelLabel}</span>
+                        <ChevronDown size={12} className={s.qaToolCaret} />
+                      </button>
+                      {qaModelMenuOpen ? (
+                        <div className={s.qaMenu}>
+                          <button
+                            type="button"
+                            className={`${s.qaMenuItem} ${qaAnswerMode === 'normal' ? s.qaMenuItemActive : ''}`}
+                            onClick={() => chooseQaModel('normal')}
+                          >
+                            {qaGeneralLabel}
+                          </button>
+                          <button
+                            type="button"
+                            className={`${s.qaMenuItem} ${qaAnswerMode === 'expert' ? s.qaMenuItemActive : ''}`}
+                            onClick={() => chooseQaModel('expert')}
+                            disabled={!qaReasoningAvailable}
+                          >
+                            {qaReasoningLabel}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    <span className={s.qaToolDivider} />
+                    <div className={s.qaToolWrap} ref={qaPickerWrapRef}>
+                      <button
+                        ref={qaPickerBtnRef}
+                        type="button"
+                        className={s.qaToolItem}
+                        onClick={toggleQaPicker}
+                        disabled={qaSpacesLoading}
+                      >
+                        <img src={composerKnowledgeIcon} alt="" className={s.qaToolIcon} aria-hidden="true" />
+                        <span>{qaKnowledgeLabel}</span>
+                        <ChevronDown size={12} className={s.qaToolCaret} />
+                      </button>
+                      {qaPickerOpen && qaPickerPos
+                        ? createPortal(
+                            <div
+                              ref={qaPickerPanelRef}
+                              className={s.qaPickerPortal}
+                              style={{ position: 'fixed', left: qaPickerPos.left, top: qaPickerPos.top }}
+                            >
+                              <QAKnowledgeTreePicker
+                                spaces={qaSpaces}
+                                scope={qaScope}
+                                loading={qaSpacesLoading}
+                                onChange={setQaScope}
+                                onLoadChildren={fetchQaKnowledgeTreeChildren}
+                                onLoadFolderStats={fetchQaKnowledgeFolderStats}
+                                onSearchFiles={searchQaKnowledgeFiles}
+                                onTip={setQaTip}
+                                onClose={() => setQaPickerOpen(false)}
+                                maxHeight={qaPickerPos.maxHeight}
+                              />
+                            </div>,
+                            document.body,
+                          )
+                        : null}
+                    </div>
+                    {qaTip ? <span className={s.qaTip}>{qaTip}</span> : null}
+                  </div>
                 )}
                 <button
                   type="button"
@@ -603,8 +907,9 @@ export default function HomePage() {
                     event.stopPropagation();
                     handleSearch();
                   }}
+                  aria-label={searchTab === 'qa' ? '发送' : '搜索'}
                 >
-                  <Search size={18} />
+                  {searchTab === 'qa' ? <Send size={17} /> : <Search size={18} />}
                 </button>
               </div>
             </div>
