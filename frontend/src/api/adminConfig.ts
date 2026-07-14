@@ -67,6 +67,7 @@ export interface QAModelOption {
   visual: boolean;
   provider_name: string;
   status: number;
+  remark: string;
 }
 
 export interface QAModelOptionsResponse {
@@ -293,7 +294,11 @@ export interface DeptBinding {
   create_time?: string;
 }
 export interface BindableSpace { space_id: number; name: string; }
-export interface DepartmentOption { id: number; name: string; }
+export interface DepartmentOption {
+  id: number;
+  name: string;
+  children: DepartmentOption[];
+}
 
 interface ApiEnvelope<T> {
   status_code: number;

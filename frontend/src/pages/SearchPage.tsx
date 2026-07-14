@@ -7,9 +7,11 @@ import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
 import DocumentTypeFilterDropdown from '../components/DocumentTypeFilterDropdown';
 import {
+  browseSearchFiles,
+  fetchAggregatedTags,
   fetchKnowledgeSpaces,
   recordFileDownloadEvent,
-  searchFiles,
+  searchKeywordFiles,
   streamChatCompletion,
   type Citation,
   type FileItem,
@@ -28,8 +30,10 @@ import {
   getRuntimeDocumentTypeGroups,
   normalizeDocumentTypeCode,
   normalizeSearchSort,
+  normalizeTimeSort,
   type RuntimeDocumentTypeGroupOption,
   SEARCH_SORT_OPTIONS,
+  TIME_SORT_OPTIONS,
 } from '../utils/documentTypes';
 import {
   getBusinessDomainCodeFromFileEncoding,
@@ -45,7 +49,6 @@ import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import {
   createSubmittedSearchParams,
   getSearchDisplayKeyword,
-  hasSearchContext,
 } from '../utils/searchParams';
 import searchHeroBg from '../assets/search-hero-bg@2x.png';
 import s from './SearchPage.module.css';
@@ -63,7 +66,7 @@ const SPACE_LEVEL_OPTIONS = [
   { value: 'personal', label: '个人知识库' },
 ];
 
-const SEARCH_FULL_RESULT_PAGE_SIZE = 100;
+const DEFAULT_SEARCH_PAGE_SIZE = 10;
 
 function normalizeFileExt(value: string): string {
   return value.trim().toLowerCase().replace(/^\./, '');
@@ -115,26 +118,6 @@ function matchesLocalSearchFilters(
   return true;
 }
 
-async function fetchCompleteSearchResults(params: {
-  q?: string;
-  sort?: string;
-  limit: number;
-}): Promise<FileItem[]> {
-  const allFiles: FileItem[] = [];
-  let cursor: string | null = null;
-  do {
-    const result = await searchFiles({
-      q: params.q,
-      sort: params.sort,
-      cursor,
-      limit: params.limit,
-    });
-    allFiles.push(...result.data);
-    cursor = result.hasMore ? result.nextCursor : null;
-  } while (cursor);
-  return allFiles;
-}
-
 export default function SearchPage() {
   const { params, resultsTopRef, setFilter, setFilters, setParams } = useListControls();
   const q = params.get('q') || '';
@@ -147,18 +130,28 @@ export default function SearchPage() {
   const fileSubcategoryCode = normalizeDocumentTypeCode(params.get('file_subcategory_code'));
   const businessDomainCode = normalizeBusinessDomainCode(params.get('business_domain_code'));
   const tag = params.get('tag') || '';
-  const sort = normalizeSearchSort(params.get('sort'));
-  const hasSearch = hasSearchContext(params);
+  const keywordMode = Boolean(q.trim());
+  const keywordSort = normalizeSearchSort(params.get('sort'));
+  const browseSort = normalizeTimeSort(params.get('sort')) || 'updated_at_desc';
+  const sort = keywordMode ? keywordSort : browseSort;
   const { config } = usePortalConfig();
   const { user } = useAuth();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
-  const pageLimit = displayConfig.search.pageSize > 0 ? displayConfig.search.pageSize : SEARCH_FULL_RESULT_PAGE_SIZE;
-  // 登录用户个人可见空间（按个人权限），用于扩充二级「知识空间」筛选
+  const configuredPageSize = Number(displayConfig.search.pageSize);
+  const pageLimit = configuredPageSize >= 1 && configuredPageSize <= 100
+    ? configuredPageSize
+    : DEFAULT_SEARCH_PAGE_SIZE;
   const [visibleSpaces, setVisibleSpaces] = useState<SpaceOption[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [rawFiles, setRawFiles] = useState<FileItem[]>([]);
   const [rawTotal, setRawTotal] = useState(0);
   const [resultsReady, setResultsReady] = useState(false);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [visibleLimit, setVisibleLimit] = useState(pageLimit);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState('');
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [total, setTotal] = useState(0);
   const [aiText, setAiText] = useState('');
@@ -168,6 +161,7 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const requestSeq = useRef(0);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
   // const { openShare, shareModalProps } = useShareDocument();
   const { documentQaModalProps } = useDocumentQa();
@@ -202,12 +196,8 @@ export default function SearchPage() {
     setDraft(displayKeyword);
   }, [displayKeyword]);
 
-  // 登录后拉取个人可见空间；未登录由后端按公共空间限制范围。
+  // 后端会按当前身份返回登录用户可见空间或访客公共空间。
   useEffect(() => {
-    if (!user) {
-      setVisibleSpaces([]);
-      return;
-    }
     let active = true;
     void fetchKnowledgeSpaces()
       .then((res) => {
@@ -222,7 +212,7 @@ export default function SearchPage() {
     };
   }, [user]);
 
-  // 搜索页空间元数据来自登录用户可见空间；未登录时从结果里补充来源名称。
+  // 搜索页空间元数据由后端按当前身份裁剪，关键词模式仍可从结果补充来源名称。
   const searchSpaces = useMemo<SpaceOption[]>(() => {
     const byId = new Map<number, SpaceOption>();
     for (const sp of visibleSpaces) {
@@ -237,10 +227,76 @@ export default function SearchPage() {
     () => getRuntimeDocumentTypeGroups(config?.document_types),
     [config?.document_types],
   );
-  const businessDomainOptions = useMemo(
+  const configuredBusinessDomainOptions = useMemo(
     () => getBusinessDomainFilterOptions(config?.domains),
     [config?.domains],
   );
+
+  const resultDocumentTypeGroups = useMemo(() => {
+    if (!keywordMode) return documentTypeGroups;
+    const parentCodes = new Set<string>();
+    const childCodesByParent = new Map<string, Set<string>>();
+    for (const file of rawFiles) {
+      const parentCode = getFileDocumentTypeCode(file, documentTypeGroups);
+      const childCode = normalizeDocumentTypeCode(file.fileSubcategoryCode);
+      if (parentCode) parentCodes.add(parentCode);
+      if (parentCode && childCode) {
+        const childCodes = childCodesByParent.get(parentCode) ?? new Set<string>();
+        childCodes.add(childCode);
+        childCodesByParent.set(parentCode, childCodes);
+      }
+    }
+    if (documentType) parentCodes.add(documentType);
+    if (fileSubcategoryCode) {
+      const selectedChild = findRuntimeDocumentTypeChild(documentTypeGroups, fileSubcategoryCode);
+      const parentCode = selectedChild?.parentCode || documentType;
+      if (parentCode) {
+        parentCodes.add(parentCode);
+        const childCodes = childCodesByParent.get(parentCode) ?? new Set<string>();
+        childCodes.add(fileSubcategoryCode);
+        childCodesByParent.set(parentCode, childCodes);
+      }
+    }
+
+    const configuredGroups = documentTypeGroups.flatMap((group) => {
+      const children = group.children.filter((child) => childCodesByParent.get(group.code)?.has(child.code));
+      if (!parentCodes.has(group.code) && children.length === 0) return [];
+      return [{ ...group, children }];
+    });
+    const configuredCodes = new Set(documentTypeGroups.map((group) => group.code));
+    const unconfiguredGroups = [...parentCodes]
+      .filter((code) => !configuredCodes.has(code))
+      .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+      .map((code) => ({
+        code,
+        label: code,
+        children: [...(childCodesByParent.get(code) ?? new Set<string>())]
+          .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+          .map((childCode) => ({
+            code: childCode,
+            label: childCode,
+            parentCode: code,
+            parentLabel: code,
+          })),
+      }));
+    return [...configuredGroups, ...unconfiguredGroups];
+  }, [documentType, documentTypeGroups, fileSubcategoryCode, keywordMode, rawFiles]);
+
+  const resultBusinessDomainOptions = useMemo(() => {
+    if (!keywordMode) return configuredBusinessDomainOptions;
+    const domainCodes = new Set<string>();
+    for (const file of rawFiles) {
+      const code = getBusinessDomainCodeFromFileEncoding(file.fileEncoding);
+      if (code) domainCodes.add(code);
+    }
+    if (businessDomainCode) domainCodes.add(businessDomainCode);
+
+    const configuredOptions = configuredBusinessDomainOptions.filter((item) => domainCodes.delete(item.code));
+    const unconfiguredOptions = [...domainCodes]
+      .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+      .map((code) => ({ code, label: code }));
+    return [...configuredOptions, ...unconfiguredOptions];
+  }, [businessDomainCode, configuredBusinessDomainOptions, keywordMode, rawFiles]);
 
   const filteredFiles = useMemo(() => {
     if (!resultsReady) return [];
@@ -275,15 +331,23 @@ export default function SearchPage() {
   ]);
 
   const resultSpaceLevelOptions = useMemo(() => {
+    if (!keywordMode) {
+      const visibleLevels = new Set(visibleSpaces.map((space) => space.spaceLevel).filter(Boolean));
+      addStringOption(visibleLevels, spaceLevel);
+      return SPACE_LEVEL_OPTIONS.filter((item) => visibleLevels.has(item.value));
+    }
     const levelSet = new Set<string>();
     for (const file of rawFiles) {
       addStringOption(levelSet, getFileSpaceLevel(file, spaceById));
     }
     addStringOption(levelSet, spaceLevel);
     return SPACE_LEVEL_OPTIONS.filter((item) => levelSet.has(item.value));
-  }, [rawFiles, spaceById, spaceLevel]);
+  }, [keywordMode, rawFiles, spaceById, spaceLevel, visibleSpaces]);
 
   const resultSpaceOptions = useMemo<SpaceOption[]>(() => {
+    if (!keywordMode) {
+      return visibleSpaces.filter((space) => !spaceLevel || !space.spaceLevel || space.spaceLevel === spaceLevel);
+    }
     const optionIds: number[] = [];
     const seen = new Set<number>();
     const resultSpaceNames = new Map<number, string>();
@@ -306,9 +370,14 @@ export default function SearchPage() {
         spaceLevel: resultSpaceLevels.get(id) ?? '',
       }
     ));
-  }, [rawFiles, selectedSpaceId, spaceById]);
+  }, [keywordMode, rawFiles, selectedSpaceId, spaceById, spaceLevel, visibleSpaces]);
 
   const resultFileExtOptions = useMemo(() => {
+    if (!keywordMode) {
+      const options = new Set<string>(FILE_EXT_OPTIONS);
+      addStringOption(options, normalizeFileExt(fileExt));
+      return [...options];
+    }
     const extSet = new Set<string>();
     for (const file of rawFiles) {
       addStringOption(extSet, normalizeFileExt(file.ext));
@@ -319,74 +388,141 @@ export default function SearchPage() {
       .filter((item) => !FILE_EXT_OPTIONS.includes(item as (typeof FILE_EXT_OPTIONS)[number]))
       .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
     return [...knownOptions, ...customOptions];
-  }, [fileExt, rawFiles]);
+  }, [fileExt, keywordMode, rawFiles]);
 
   const resultTagOptions = useMemo(() => {
+    if (!keywordMode) {
+      const options = new Set(availableTags);
+      addStringOption(options, tag);
+      return [...options].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+    }
     const tagSet = new Set<string>();
     for (const file of rawFiles) {
       for (const item of file.tags) addStringOption(tagSet, item);
     }
     addStringOption(tagSet, tag);
     return [...tagSet].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
-  }, [rawFiles, tag]);
+  }, [availableTags, keywordMode, rawFiles, tag]);
 
   useEffect(() => {
+    if (keywordMode || params.get('sort') === browseSort) return;
+    setFilter('sort', browseSort, false);
+  }, [browseSort, keywordMode, params, setFilter]);
+
+  useEffect(() => {
+    if (keywordMode) return;
     let active = true;
-    if (!hasSearch) {
-      setResultsReady(false);
-      setRawFiles([]);
-      setRawTotal(0);
-      setFiles([]);
-      setTotal(0);
-      setAiText('');
-      setAiCitations([]);
-      setAiThinking(false);
-      requestSeq.current += 1;
-      return;
-    }
+    const selectedId = Number(spaceId);
+    void fetchAggregatedTags(
+      Number.isFinite(selectedId) && selectedId > 0 ? [selectedId] : undefined,
+      spaceLevel || undefined,
+      businessDomainCode || undefined,
+    ).then((tags) => {
+      if (active) setAvailableTags(tags);
+    }).catch(() => {
+      if (active) setAvailableTags([]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [businessDomainCode, keywordMode, spaceId, spaceLevel]);
+
+  const fetchBrowsePage = useCallback((cursor?: string | null) => {
+    const selectedId = Number(spaceId);
+    return browseSearchFiles({
+      tag: tag || undefined,
+      spaceIds: Number.isFinite(selectedId) && selectedId > 0 ? [selectedId] : undefined,
+      spaceLevel: spaceLevel || undefined,
+      fileExt: fileExt || undefined,
+      documentType: documentType || undefined,
+      fileSubcategoryCode: fileSubcategoryCode || undefined,
+      businessDomainCode: businessDomainCode || undefined,
+      sort: browseSort,
+      cursor,
+    });
+  }, [browseSort, businessDomainCode, documentType, fileExt, fileSubcategoryCode, spaceId, spaceLevel, tag]);
+
+  useEffect(() => {
+    if (!keywordMode) return;
+    const currentRequest = ++requestSeq.current;
     setLoading(true);
     setResultsReady(false);
     setError('');
+    setLoadMoreError('');
+    setRawFiles([]);
+    setFiles([]);
+    setVisibleLimit(pageLimit);
+    setHasMore(false);
+    setNextCursor(null);
+    setAiText('');
+    setAiCitations([]);
+    void searchKeywordFiles({ q: q.trim(), sort: keywordSort })
+      .then((result) => {
+        if (requestSeq.current !== currentRequest) return;
+        setRawFiles(result.data);
+        setRawTotal(result.data.length);
+        setResultsReady(true);
+      })
+      .catch((err) => {
+        if (requestSeq.current !== currentRequest) return;
+        setError(err instanceof Error ? err.message : '搜索失败');
+        setAiThinking(false);
+      })
+      .finally(() => {
+        if (requestSeq.current === currentRequest) setLoading(false);
+      });
+  }, [keywordMode, keywordSort, pageLimit, q]);
+
+  useEffect(() => {
+    if (keywordMode) return;
+    const currentRequest = ++requestSeq.current;
+    setLoading(true);
+    setLoadingMore(false);
+    setResultsReady(false);
+    setError('');
+    setLoadMoreError('');
     setRawFiles([]);
     setRawTotal(0);
     setFiles([]);
     setTotal(0);
+    setHasMore(false);
+    setNextCursor(null);
     setAiText('');
     setAiCitations([]);
-    setAiThinking(true);
-    requestSeq.current += 1;
-    void (async () => {
-      try {
-        const data = await fetchCompleteSearchResults({
-          q: q || undefined,
-          sort,
-          limit: pageLimit,
+    setAiThinking(false);
+    void fetchBrowsePage(null)
+      .then((result) => {
+        if (requestSeq.current !== currentRequest) return;
+        const seen = new Set<string>();
+        const data = result.data.filter((file) => {
+          const key = `${file.spaceId}:${file.id}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
         });
-        if (!active) return;
-        setRawFiles(data);
-        setRawTotal(data.length);
+        setFiles(data);
+        setTotal(data.length);
+        setHasMore(result.hasMore);
+        setNextCursor(result.nextCursor);
         setResultsReady(true);
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : '搜索失败');
-        setAiThinking(false);
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [hasSearch, q, sort, pageLimit]);
+      })
+      .catch((err) => {
+        if (requestSeq.current !== currentRequest) return;
+        setError(err instanceof Error ? err.message : '文档加载失败');
+      })
+      .finally(() => {
+        if (requestSeq.current === currentRequest) setLoading(false);
+      });
+  }, [fetchBrowsePage, keywordMode]);
 
   useEffect(() => {
-    if (!hasSearch || loading || !resultsReady) return;
-    setFiles(filteredFiles);
+    if (!keywordMode || loading || !resultsReady) return;
     setTotal(filteredFiles.length);
-  }, [filteredFiles, hasSearch, loading, resultsReady]);
+    setVisibleLimit(pageLimit);
+  }, [filteredFiles, keywordMode, loading, pageLimit, resultsReady]);
 
   useEffect(() => {
-    if (!hasSearch || loading || !resultsReady) return;
+    if (!keywordMode || loading || !resultsReady) return;
     let active = true;
     setAiText('');
     setAiCitations([]);
@@ -414,11 +550,62 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [hasSearch, loading, q, rawFiles, rawTotal, resultsReady]);
+  }, [keywordMode, loading, q, rawFiles, rawTotal, resultsReady]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (keywordMode) {
+      setVisibleLimit((current) => Math.min(current + pageLimit, filteredFiles.length));
+      return;
+    }
+    if (!hasMore || !nextCursor || loading || loadingMore) return;
+    const currentRequest = requestSeq.current;
+    setLoadingMore(true);
+    setLoadMoreError('');
+    try {
+      const result = await fetchBrowsePage(nextCursor);
+      if (requestSeq.current !== currentRequest) return;
+      setFiles((current) => {
+        const seen = new Set(current.map((file) => `${file.spaceId}:${file.id}`));
+        const appended = result.data.filter((file) => {
+          const key = `${file.spaceId}:${file.id}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const next = [...current, ...appended];
+        setTotal(next.length);
+        return next;
+      });
+      setHasMore(result.hasMore);
+      setNextCursor(result.nextCursor);
+    } catch (err) {
+      if (requestSeq.current === currentRequest) {
+        setLoadMoreError(err instanceof Error ? err.message : '加载更多失败');
+      }
+    } finally {
+      if (requestSeq.current === currentRequest) setLoadingMore(false);
+    }
+  }, [fetchBrowsePage, filteredFiles.length, hasMore, keywordMode, loading, loadingMore, nextCursor, pageLimit]);
+
+  const displayedFiles = useMemo(
+    () => (keywordMode ? filteredFiles.slice(0, visibleLimit) : files),
+    [files, filteredFiles, keywordMode, visibleLimit],
+  );
+  const canLoadMore = keywordMode ? visibleLimit < filteredFiles.length : hasMore && Boolean(nextCursor);
 
   useEffect(() => {
-    if (canFavorite && files.length) void loadStatuses(files);
-  }, [files, canFavorite, loadStatuses]);
+    const node = loadMoreRef.current;
+    if (!node || !canLoadMore || loading || loadingMore || loadMoreError) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void handleLoadMore();
+    }, { rootMargin: '240px 0px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [canLoadMore, handleLoadMore, loadMoreError, loading, loadingMore]);
+
+  useEffect(() => {
+    if (canFavorite && displayedFiles.length) void loadStatuses(displayedFiles);
+  }, [displayedFiles, canFavorite, loadStatuses]);
 
   const submitSearch = () => {
     setParams(createSubmittedSearchParams(params, draft));
@@ -447,28 +634,22 @@ export default function SearchPage() {
             />
             <button className={s.searchHeroBtn} onClick={submitSearch}>搜索</button>
           </div>
-          {!hasSearch ? (
-            <div className={s.emptyState}>
-              <div className={s.emptyTitle}>输入关键词开始搜索</div>
-              <div className={s.emptyDesc}>
-                支持按设备、工艺、质量、安全等主题检索知识文档。
-              </div>
-            </div>
-          ) : null}
         </div>
 
-        {hasSearch && !user && (
+        {!user && (
           <div className={s.guestNotice} role="note">
             您当前为访客身份，仅可查阅公共库内容，内部资料无访问权限
           </div>
         )}
 
-        {hasSearch && (
-          <div className={s.resultBar}>
+        <div className={s.resultBar}>
             <div className={s.resultCount}>
               <span className={s.resultMark} />
-              {/* {resultHeading}  */}
-              共找到 <strong className={s.resultTotal}>{total}</strong> 个相关文件
+              {keywordMode ? (
+                <>共找到 <strong className={s.resultTotal}>{total}</strong> 个相关文件</>
+              ) : (
+                <>已加载 <strong className={s.resultTotal}>{files.length}</strong> 篇文档</>
+              )}
             </div>
             <div className={s.filters}>
               <select
@@ -495,7 +676,7 @@ export default function SearchPage() {
                 {resultFileExtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
               <DocumentTypeFilterDropdown
-                groups={documentTypeGroups}
+                groups={resultDocumentTypeGroups}
                 documentType={documentType}
                 fileSubcategoryCode={fileSubcategoryCode}
                 compact
@@ -508,22 +689,21 @@ export default function SearchPage() {
               />
               <select className={s.filterSelect} value={businessDomainCode} onChange={(e) => setFilter('business_domain_code', e.target.value, false)}>
                 <option value="">业务域</option>
-                {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+                {resultBusinessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
               </select>
               <select className={s.filterSelect} value={tag} onChange={(e) => setFilter('tag', e.target.value, false)}>
                 <option value="">标签</option>
                 {resultTagOptions.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
               <select className={s.filterSelect} value={sort} onChange={(e) => setFilter('sort', e.target.value, false)}>
-                {SEARCH_SORT_OPTIONS.map((item) => (
+                {(keywordMode ? SEARCH_SORT_OPTIONS : TIME_SORT_OPTIONS).map((item) => (
                   <option key={item.value} value={item.value}>{item.label}</option>
                 ))}
               </select>
             </div>
           </div>
-        )}
 
-        {hasSearch && (() => {
+        {keywordMode && (() => {
           // 临时隐藏 AI 总结下方的溯源文件列表，保留数据接收与正文引用渲染，便于后续恢复。
           // const referenced = aiCitations;
           return (
@@ -595,15 +775,15 @@ export default function SearchPage() {
           </div>
         ) : null}
 
-        {hasSearch && loading ? (
+        {loading ? (
           <div className={s.emptyState}>
             <div className={s.emptyTitle}>正在加载搜索结果</div>
           </div>
         ) : null}
 
-        {hasSearch && !loading && files.map((f) => (
+        {!loading && displayedFiles.map((f) => (
           <FileListItem
-            key={f.id}
+            key={`${f.spaceId}:${f.id}`}
             file={f}
             highlightQuery={q}
             visibleTagCount={displayConfig.search.visibleTagCount}
@@ -615,6 +795,17 @@ export default function SearchPage() {
             onOpen={setPreviewFile}
           />
         ))}
+        {!loading && canLoadMore ? (
+          <div ref={loadMoreRef} className={s.loadMoreState}>
+            {loadingMore ? <><Loader2 size={16} className={s.spinner} /> 正在加载更多</> : '继续下滑加载更多'}
+          </div>
+        ) : null}
+        {loadMoreError ? (
+          <div className={s.loadMoreState}>
+            <span>{loadMoreError}</span>
+            <button type="button" className={s.retryButton} onClick={() => void handleLoadMore()}>重试</button>
+          </div>
+        ) : null}
         {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
         <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />

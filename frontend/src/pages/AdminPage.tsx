@@ -64,6 +64,7 @@ import {
   DOMAIN_ICON_OPTIONS,
   isSelectedDomainColor,
   validateDomainDraft,
+  getDomainBoundSpaceIds,
   getDomainBindableSpaceGroups,
   type DomainCodeOption,
   type DomainDraft,
@@ -109,6 +110,8 @@ import {
 } from '../utils/adminAgentConfig';
 import {
   createBindingDraft,
+  filterDepartmentOptions,
+  findDepartmentOption,
   groupBindingsByDepartment,
   validateBindingDraft,
   type BindingDraft,
@@ -756,7 +759,7 @@ export default function AdminPage() {
   }
 
   const displayItems = config ? getDisplayItems(config.display) : [];
-  const domainCodeOptions = config ? buildDomainCodeOptions(config.domains) : [];
+  const domainCodeOptions = buildDomainCodeOptions();
   const deletingBanner = config && bannerDeleteIndex !== null ? config.banners[bannerDeleteIndex] : null;
 
   return (
@@ -800,6 +803,8 @@ export default function AdminPage() {
             <DomainsTable
               domains={config.domains}
               spaces={spaceOptions}
+              spaceOptionsLoaded={spaceOptionsLoaded}
+              spaceOptionsError={spaceOptionsError}
               saving={saving}
               onAdd={openCreateDomainDialog}
               onEdit={(index) => openEditDomainDialog(config.domains[index], index)}
@@ -1284,11 +1289,19 @@ export default function AdminPage() {
           loading={qaModelLoading}
           saving={saving}
           error={qaModelError}
+          managementUrl={config.integrations?.bisheng_admin_entry_url || ''}
           onClose={() => setQaModelDialogOpen(false)}
           onSelect={(field, modelId) => setQaModelDraft((current) => ({ ...current, [field]: modelId }))}
           onSubmit={() => {
-            if (!qaModelDraft.general_model) {
-              setQaModelError('请选择通用模型');
+            const generalModelAvailable = qaModelOptions.some((model) => model.id === qaModelDraft.general_model);
+            const reasoningModelAvailable = !qaModelDraft.reasoning_model
+              || qaModelOptions.some((model) => model.id === qaModelDraft.reasoning_model);
+            if (!qaModelDraft.general_model || !generalModelAvailable) {
+              setQaModelError('当前通用模型已停用或不可用，请重新选择');
+              return;
+            }
+            if (!reasoningModelAvailable) {
+              setQaModelError('当前推理模型已停用或不可用，请重新选择或设为不配置');
               return;
             }
             void runSave(async () => {
@@ -1770,6 +1783,8 @@ export default function AdminPage() {
 function DomainsTable({
   domains,
   spaces,
+  spaceOptionsLoaded,
+  spaceOptionsError,
   saving,
   onAdd,
   onEdit,
@@ -1779,6 +1794,8 @@ function DomainsTable({
 }: {
   domains: DomainConfig[];
   spaces: SpaceOption[];
+  spaceOptionsLoaded: boolean;
+  spaceOptionsError: string;
   saving: boolean;
   onAdd: () => void;
   onEdit: (index: number) => void;
@@ -1809,6 +1826,18 @@ function DomainsTable({
         <tbody>
           {domains.map((d, index) => {
             const boundSpaceText = formatDomainBoundSpaceText(d, spaces);
+            const boundSpaceIds = getDomainBoundSpaceIds(d, spaces);
+            const boundSpaceNames = new Map(spaces.map((space) => [space.id, space.name]));
+            const boundSpaceNameText = boundSpaceIds
+              .map((spaceId) => boundSpaceNames.get(spaceId) || String(spaceId))
+              .join('、');
+            const deleteBlockReason = !spaceOptionsLoaded
+              ? '正在加载有效知识空间，暂不能确认绑定关系'
+              : spaceOptionsError
+                ? '候选空间加载失败，暂不能确认绑定关系'
+                : boundSpaceIds.length > 0
+                  ? `已绑定知识空间：${boundSpaceNameText}，请先解除绑定后再删除`
+                  : '';
             const visualPreset = getDomainVisualPreset(d);
             const backgroundImage = visualPreset.backgroundImage;
             return (
@@ -1832,7 +1861,15 @@ function DomainsTable({
                 <td>
                   <div className={s.actionGroup}>
                     <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
-                    <button className={s.inlineDangerBtn} onClick={() => onDelete(index)} disabled={saving}>删除</button>
+                    <span title={deleteBlockReason || '删除'}>
+                      <button
+                        className={deleteBlockReason ? s.inlineMutedBtn : s.inlineDangerBtn}
+                        onClick={() => onDelete(index)}
+                        disabled={saving || Boolean(deleteBlockReason)}
+                      >
+                        删除
+                      </button>
+                    </span>
                     <button
                       className={s.iconActionBtn}
                       onClick={() => onMoveUp(index)}
@@ -2395,6 +2432,171 @@ function SearchableBindingSelect({
   );
 }
 
+function TreeBindingDepartmentSelect({
+  id,
+  value,
+  departments,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: number | null;
+  departments: DepartmentOption[];
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const treeId = `${id}-tree`;
+  const selectedDepartment = findDepartmentOption(departments, value);
+  const visibleDepartments = useMemo(
+    () => filterDepartmentOptions(departments, query),
+    [departments, query],
+  );
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    setQuery('');
+    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  const openMenu = () => {
+    if (disabled) return;
+    setOpen(true);
+    setQuery('');
+    setExpandedIds(new Set());
+  };
+
+  const selectDepartment = (departmentId: number) => {
+    onChange(departmentId);
+    closeMenu(true);
+  };
+
+  const toggleDepartment = (departmentId: number) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(departmentId)) next.delete(departmentId);
+      else next.add(departmentId);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    requestAnimationFrame(() => searchRef.current?.focus());
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  const renderDepartment = (department: DepartmentOption, depth: number) => {
+    const hasChildren = department.children.length > 0;
+    const expanded = Boolean(query.trim()) || expandedIds.has(department.id);
+    const selected = department.id === value;
+    return (
+      <div
+        key={department.id}
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-selected={selected}
+      >
+        <div className={s.departmentTreeRow} style={{ paddingLeft: `${10 + depth * 18}px` }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              className={`${s.departmentTreeToggle} ${expanded ? s.departmentTreeToggleExpanded : ''}`}
+              aria-label={`${expanded ? '收起' : '展开'}${department.name}`}
+              onClick={() => toggleDepartment(department.id)}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          ) : <span className={s.departmentTreeTogglePlaceholder} aria-hidden="true" />}
+          <button
+            type="button"
+            className={`${s.departmentTreeOption} ${selected ? s.departmentTreeOptionSelected : ''}`}
+            title={department.name}
+            onClick={() => selectDepartment(department.id)}
+          >
+            <span>{department.name}</span>
+            {selected ? <Check size={16} aria-hidden="true" /> : null}
+          </button>
+        </div>
+        {hasChildren && expanded ? (
+          <div role="group">
+            {department.children.map((child) => renderDepartment(child, depth + 1))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <div className={s.searchableSelect} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        className={`${s.searchableSelectTrigger} ${open ? s.searchableSelectTriggerOpen : ''}`}
+        aria-haspopup="tree"
+        aria-expanded={open}
+        aria-controls={treeId}
+        disabled={disabled}
+        onClick={() => (open ? closeMenu() : openMenu())}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            openMenu();
+          }
+        }}
+      >
+        <span
+          className={selectedDepartment ? s.searchableSelectValue : s.searchableSelectPlaceholder}
+          title={selectedDepartment?.name}
+        >
+          {selectedDepartment?.name || '请选择科室'}
+        </span>
+        <ChevronDown className={s.searchableSelectChevron} size={16} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className={s.searchableSelectMenu}>
+          <div className={s.searchableSelectSearchWrap}>
+            <SearchIcon size={15} aria-hidden="true" />
+            <input
+              ref={searchRef}
+              className={s.searchableSelectSearch}
+              type="search"
+              value={query}
+              placeholder="搜索科室名称"
+              aria-label="搜索科室名称"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  closeMenu(true);
+                }
+              }}
+            />
+          </div>
+          <div id={treeId} className={s.departmentTreeOptions} role="tree" aria-label="科室树">
+            {visibleDepartments.map((department) => renderDepartment(department, 0))}
+            {!visibleDepartments.length ? <div className={s.searchableSelectEmpty}>暂无匹配的科室</div> : null}
+          </div>
+          <div className={s.searchableSelectMeta} aria-live="polite">
+            {query ? '展示匹配科室及其所属层级' : `共 ${departments.length} 个顶级部门`}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DeptBindingDialog({
   open,
   spaces,
@@ -2446,13 +2648,10 @@ function DeptBindingDialog({
           </div>
           <div className={s.formField}>
             <label className={s.fieldLabel} htmlFor="dept-binding-department">科室</label>
-            <SearchableBindingSelect
+            <TreeBindingDepartmentSelect
               id="dept-binding-department"
               value={draft.departmentId}
-              options={departments.map((department) => ({ value: department.id, label: department.name }))}
-              placeholder="请选择科室"
-              searchPlaceholder="搜索科室名称"
-              emptyText="暂无匹配的科室"
+              departments={departments}
               disabled={saving}
               onChange={(departmentId) => onChange({ departmentId })}
             />
@@ -4684,6 +4883,7 @@ function QaModelDialog({
   loading,
   saving,
   error,
+  managementUrl,
   onClose,
   onSelect,
   onSubmit,
@@ -4694,11 +4894,14 @@ function QaModelDialog({
   loading: boolean;
   saving: boolean;
   error?: string;
+  managementUrl: string;
   onClose: () => void;
   onSelect: (field: keyof QaModelDraft, modelId: string) => void;
   onSubmit: () => void;
 }) {
   if (!open) return null;
+  const generalModelInvalid = Boolean(selectedModels.general_model) && !models.some((model) => model.id === selectedModels.general_model);
+  const reasoningModelInvalid = Boolean(selectedModels.reasoning_model) && !models.some((model) => model.id === selectedModels.reasoning_model);
 
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
@@ -4722,6 +4925,7 @@ function QaModelDialog({
                 required
                 models={models}
                 selectedModel={selectedModels.general_model}
+                invalid={generalModelInvalid}
                 onSelect={(modelId) => onSelect('general_model', modelId)}
               />
               <QaModelCascaderSelect
@@ -4729,12 +4933,16 @@ function QaModelDialog({
                 allowEmpty
                 models={models}
                 selectedModel={selectedModels.reasoning_model}
+                invalid={reasoningModelInvalid}
                 onSelect={(modelId) => onSelect('reasoning_model', modelId)}
               />
             </>
           ) : null}
         </div>
         <div className={s.confirmActions}>
+          {managementUrl ? (
+            <span className={s.modelManagementNotice}>模型的新增、启停与异常处理请前往毕昇模型管理完成。</span>
+          ) : null}
           <button className={s.subtleBtn} onClick={onClose}>取消</button>
           <button className={s.addBtn} onClick={onSubmit} disabled={saving || loading}>保存</button>
         </div>
@@ -4863,6 +5071,7 @@ function QaModelCascaderSelect({
   allowEmpty = false,
   models,
   selectedModel,
+  invalid = false,
   onSelect,
 }: {
   title: string;
@@ -4870,6 +5079,7 @@ function QaModelCascaderSelect({
   allowEmpty?: boolean;
   models: QAModelOption[];
   selectedModel: string;
+  invalid?: boolean;
   onSelect: (modelId: string) => void;
 }) {
   const groups = buildQaModelProviderGroups(models);
@@ -4877,89 +5087,98 @@ function QaModelCascaderSelect({
   const selectedProvider = selected ? getQaModelProviderName(selected) : '';
   const fallbackProvider = selectedProvider || groups[0]?.provider_name || '';
   const [activeProvider, setActiveProvider] = useState(fallbackProvider);
-  const providerKey = groups.map((group) => group.provider_name).join('|');
-
-  useEffect(() => {
-    if (selectedProvider && selectedProvider !== activeProvider) {
-      setActiveProvider(selectedProvider);
-      return;
-    }
-    if (!activeProvider || !groups.some((group) => group.provider_name === activeProvider)) {
-      setActiveProvider(fallbackProvider);
-    }
-  }, [activeProvider, fallbackProvider, providerKey, selectedProvider]);
-
-  const activeGroup = groups.find((group) => group.provider_name === activeProvider) || groups[0];
+  const [open, setOpen] = useState(false);
+  const resolvedActiveProvider = groups.some((group) => group.provider_name === activeProvider)
+    ? activeProvider
+    : fallbackProvider;
+  const activeGroup = groups.find((group) => group.provider_name === resolvedActiveProvider) || groups[0];
   const activeModels = activeGroup?.models ?? [];
-  const selectedInActiveGroup = activeModels.some((model) => model.id === selectedModel) ? selectedModel : '';
+  const selectedLabel = selected
+    ? `${getQaModelProviderName(selected)} / ${getQaModelDisplayName(selected)}`
+    : invalid
+      ? '当前配置模型已停用或不可用'
+      : allowEmpty && !selectedModel
+        ? '不配置推理模型'
+        : '请选择服务商和模型';
+
+  function handleModelSelect(modelId: string) {
+    onSelect(modelId);
+    setOpen(false);
+  }
 
   return (
-    <div className={s.qaModelSelectorCard}>
+    <div className={`${s.qaModelSelectorCard} ${invalid ? s.qaModelSelectorCardInvalid : ''}`}>
       <div className={s.qaModelSelectorHeader}>
         <div className={s.valueStack}>
           <span className={s.valueTitle}>{title}{required ? ' *' : ''}</span>
-          <span className={s.valueMeta}>
-            {selected
-              ? `${getQaModelProviderName(selected)} / ${getQaModelOptionLabel(selected)}`
-              : allowEmpty
-                ? '可不配置，问答页只展示通用模型'
-                : '请选择服务商和模型'}
-          </span>
+          <span className={`${s.valueMeta} ${invalid ? s.modelInvalidText : ''}`}>{selectedLabel}</span>
         </div>
         <span className={`${s.checkboxMark} ${selected ? s.checkboxMarkActive : ''}`}>
           {selected ? '已选' : required ? '必选' : '可选'}
         </span>
       </div>
 
-      {allowEmpty ? (
+      {invalid ? <div className={s.modelInvalidNotice}>原配置已保留，但保存前需要重新选择启用模型。</div> : null}
+
+      <div className={s.qaModelCascader}>
         <button
           type="button"
-          className={`${s.optionRow} ${!selectedModel ? s.optionRowActive : ''}`}
-          onClick={() => onSelect('')}
+          className={`${s.qaModelCascaderTrigger} ${open ? s.qaModelCascaderTriggerOpen : ''}`}
+          aria-expanded={open}
+          disabled={!groups.length}
+          onClick={() => setOpen((current) => !current)}
         >
-          <span className={s.optionMain}>
-            <span className={s.optionName}>不配置推理模型</span>
-            <span className={s.optionMeta}>问答页只展示通用模型</span>
-          </span>
-          <span className={s.optionSide}>
-            <span className={`${s.checkboxMark} ${!selectedModel ? s.checkboxMarkActive : ''}`}>{!selectedModel ? '已选' : '选择'}</span>
-          </span>
+          <span>{selectedLabel}</span>
+          <ChevronDown size={16} aria-hidden="true" />
         </button>
-      ) : null}
-
-      <div className={s.qaModelSelectGrid}>
-        <label className={s.formField}>
-          <span className={s.fieldLabel}>服务商</span>
-          <select
-            className={s.formInput}
-            value={activeGroup?.provider_name || ''}
-            disabled={!groups.length}
-            onChange={(event) => setActiveProvider(event.target.value)}
-          >
-            {!groups.length ? <option value="">暂无服务商</option> : null}
-            {groups.map((group) => (
-              <option key={group.provider_name} value={group.provider_name}>
-                {group.provider_name}（{group.models.length}）
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={s.formField}>
-          <span className={s.fieldLabel}>模型</span>
-          <select
-            className={s.formInput}
-            value={selectedInActiveGroup}
-            disabled={!activeModels.length}
-            onChange={(event) => onSelect(event.target.value)}
-          >
-            <option value="">请选择模型</option>
-            {activeModels.map((model) => (
-              <option key={`${title}-${model.id}`} value={model.id}>
-                {getQaModelOptionLabel(model)}
-              </option>
-            ))}
-          </select>
-        </label>
+        {open ? (
+          <div className={s.qaModelCascaderMenu}>
+            <div className={s.qaModelCascaderColumn}>
+              <span className={s.qaModelCascaderColumnTitle}>服务商</span>
+              {groups.map((group) => (
+                <button
+                  key={group.provider_name}
+                  type="button"
+                  className={`${s.qaModelCascaderOption} ${group.provider_name === activeGroup?.provider_name ? s.qaModelCascaderOptionActive : ''}`}
+                  onMouseEnter={() => setActiveProvider(group.provider_name)}
+                  onClick={() => setActiveProvider(group.provider_name)}
+                >
+                  <span>{group.provider_name}</span>
+                  <span className={s.qaModelCascaderCount}>{group.models.length}</span>
+                  <ChevronRight size={15} aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+            <div className={s.qaModelCascaderColumn}>
+              <span className={s.qaModelCascaderColumnTitle}>模型</span>
+              {allowEmpty ? (
+                <button
+                  type="button"
+                  className={`${s.qaModelCascaderOption} ${!selectedModel ? s.qaModelCascaderOptionActive : ''}`}
+                  onClick={() => handleModelSelect('')}
+                >
+                  <span>不配置推理模型</span>
+                </button>
+              ) : null}
+              {activeModels.map((model) => (
+                <button
+                  key={`${title}-${model.id}`}
+                  type="button"
+                  className={`${s.qaModelCascaderModelOption} ${model.id === selectedModel ? s.qaModelCascaderOptionActive : ''}`}
+                  aria-label={getQaModelOptionLabel(model)}
+                  onClick={() => handleModelSelect(model.id)}
+                >
+                  <span className={s.qaModelCascaderModelMain}>
+                    <span className={s.qaModelCascaderModelName}>{getQaModelDisplayName(model)}</span>
+                    <span className={s.qaModelCascaderModelMeta}>ID {model.id}{model.visual ? ' · 支持视觉' : ' · 文本模型'}</span>
+                    {model.remark ? <span className={s.qaModelCascaderRemark}>{model.remark}</span> : null}
+                  </span>
+                  <span className={`${s.qaModelStatus} ${getQaModelStatusClassName(model.status)}`}>{getQaModelStatusLabel(model.status)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {selected ? (
@@ -4967,10 +5186,23 @@ function QaModelCascaderSelect({
           <span>ID {selected.id}</span>
           {selected.key ? <span>Key {selected.key}</span> : null}
           <span>{selected.visual ? '支持视觉' : '文本模型'}</span>
+          <span className={`${s.qaModelStatus} ${getQaModelStatusClassName(selected.status)}`}>{getQaModelStatusLabel(selected.status)}</span>
         </div>
       ) : null}
     </div>
   );
+}
+
+function getQaModelStatusLabel(status: number): string {
+  if (status === 1) return '异常';
+  if (status === 2) return '未知';
+  return '可用';
+}
+
+function getQaModelStatusClassName(status: number): string {
+  if (status === 1) return s.qaModelStatusAbnormal;
+  if (status === 2) return s.qaModelStatusUnknown;
+  return s.qaModelStatusAvailable;
 }
 
 function getQaDialogTitle(mode: Exclude<QaDialogMode, null>) {

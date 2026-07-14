@@ -45,6 +45,8 @@ class PortalConfigService:
     _TABLE_NAME = "portal_config"
     _DOMAIN_COUNT_CACHE_TABLE = "domain_count_cache"
     _LEGACY_CONFIG_KEY = "portal_config"
+    QA_MODEL_DISABLED_MESSAGE = "当前问答模型已停用，请联系管理员"
+    QA_MODEL_UNAVAILABLE_MESSAGE = "当前问答模型不可用，请联系管理员"
 
     def __init__(self, config_path: Path, store: Any | None = None):
         self._config_path = config_path
@@ -213,7 +215,7 @@ class PortalConfigService:
                     continue
                 if str(item.get("model_type") or "").lower() != "llm":
                     continue
-                if item.get("online") is False:
+                if not self._is_model_online(item):
                     continue
                 model_id = str(item["id"])
                 if model_id in seen_ids:
@@ -235,6 +237,7 @@ class PortalConfigService:
                         visual=bool(item.get("visual") or False),
                         provider_name=provider_name,
                         status=int(item.get("status") or 0),
+                        remark=str(item.get("remark") or ""),
                     )
                 )
         qa_config = self._refresh_qa_model_display_names(qa_config, models)
@@ -246,6 +249,40 @@ class PortalConfigService:
             reasoning_model_display_name=qa_config.reasoning_model_display_name,
             models=models,
         )
+
+    def ensure_qa_models_enabled(self, payload: QAConfig, raw_models: list[dict[str, Any]]) -> None:
+        model_ids = {
+            (payload.general_model or payload.selected_model).strip(),
+            payload.reasoning_model.strip(),
+        }
+        for model_id in model_ids:
+            if model_id:
+                self.ensure_qa_model_enabled(model_id, raw_models)
+
+    def ensure_qa_model_enabled(self, model_id: str, raw_models: list[dict[str, Any]]) -> None:
+        normalized_model_id = str(model_id or "").strip()
+        for server in raw_models:
+            if not isinstance(server, dict):
+                continue
+            server_models = server.get("models")
+            if not isinstance(server_models, list):
+                continue
+            for item in server_models:
+                if not isinstance(item, dict) or str(item.get("id") or "").strip() != normalized_model_id:
+                    continue
+                if str(item.get("model_type") or "").lower() != "llm":
+                    raise ValueError(self.QA_MODEL_UNAVAILABLE_MESSAGE)
+                if not self._is_model_online(item):
+                    raise ValueError(self.QA_MODEL_DISABLED_MESSAGE)
+                return
+        raise ValueError(self.QA_MODEL_UNAVAILABLE_MESSAGE)
+
+    @staticmethod
+    def _is_model_online(item: dict[str, Any]) -> bool:
+        online = item.get("online", True)
+        if isinstance(online, str):
+            return online.strip().lower() not in {"0", "false", "offline", "disabled", "no"}
+        return bool(online)
 
     def _refresh_qa_model_display_names(self, qa_config: QAConfig, models: list[QAModelOption]) -> QAConfig:
         if not models:
@@ -311,6 +348,7 @@ class PortalConfigService:
                         visual=bool(item.get("visual") or False),
                         provider_name=provider_name,
                         status=int(item.get("status") or 0),
+                        remark=str(item.get("remark") or ""),
                     )
                 )
         return SearchRerankModelOptionsResponse(

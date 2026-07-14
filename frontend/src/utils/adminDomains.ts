@@ -57,14 +57,25 @@ export function createDomainDraft(current?: DomainConfig): DomainDraft {
   };
 }
 
-export function buildDomainCodeOptions(domains: DomainConfig[]): DomainCodeOption[] {
-  const options: DomainCodeOption[] = [];
-  domains.forEach((domain) => {
-    const code = domain.code.trim().toUpperCase();
-    if (!code) return;
-    options.push({ code, label: domain.name });
-  });
-  return options;
+const DEFAULT_DOMAIN_CODE_OPTIONS: DomainCodeOption[] = [
+  { code: 'PP', label: '生产' },
+  { code: 'SD', label: '营销' },
+  { code: 'FI', label: '财务' },
+  { code: 'PM', label: '设备' },
+  { code: 'SA', label: '安全' },
+  { code: 'EN', label: '环保' },
+  { code: 'HR', label: '人力' },
+  { code: 'IT', label: '信息' },
+  { code: 'EM', label: '能源' },
+  { code: 'QM', label: '质量' },
+  { code: 'AD', label: '管理' },
+  { code: 'IM', label: '投资' },
+  { code: 'MM', label: '采购' },
+  { code: 'RD', label: '研发' },
+];
+
+export function buildDomainCodeOptions(): DomainCodeOption[] {
+  return DEFAULT_DOMAIN_CODE_OPTIONS.map((option) => ({ ...option }));
 }
 
 export function validateDomainDraft(draft: DomainDraft, spaces: SpaceOption[]): { domain?: DomainConfig; error?: string } {
@@ -121,6 +132,18 @@ export function getDomainBindableSpaceGroups(spaces: SpaceOption[]) {
     ...group,
     options: spaces.filter((space) => normalizeSpaceLevel(space) === group.level),
   }));
+}
+
+export function getDomainBoundSpaceIds(
+  domain: Pick<DomainConfig, 'space_ids'>,
+  spaces: SpaceOption[],
+): number[] {
+  const bindableSpaceIds = new Set(
+    spaces
+      .filter(isDomainBindableSpace)
+      .map((space) => space.id),
+  );
+  return domain.space_ids.filter((spaceId) => bindableSpaceIds.has(spaceId));
 }
 
 function isDomainBindableSpace(space: SpaceOption): boolean {

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createBindingDraft, validateBindingDraft, groupBindingsByDepartment,
+  createBindingDraft, filterDepartmentOptions, findDepartmentOption, groupBindingsByDepartment, validateBindingDraft,
 } from '../src/utils/deptKnowledgeBinding';
 
 test('createBindingDraft is empty', () => {
@@ -21,4 +21,19 @@ test('groupBindingsByDepartment sorts by department name', () => {
   ];
   const sorted = groupBindingsByDepartment(rows as any);
   assert.equal(sorted[0].department_name, '甲部');
+});
+
+test('department tree search keeps the matched node and its ancestor', () => {
+  const departments = [{
+    id: 1,
+    name: '首钢股份',
+    children: [{ id: 2, name: '研发中心', children: [] }],
+  }];
+
+  assert.equal(findDepartmentOption(departments, 2)?.name, '研发中心');
+  assert.deepEqual(filterDepartmentOptions(departments, '研发'), [{
+    id: 1,
+    name: '首钢股份',
+    children: [{ id: 2, name: '研发中心', children: [] }],
+  }]);
 });

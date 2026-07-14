@@ -23,7 +23,7 @@ class FakeBishengClient:
         self.bind_status: dict = {"status_code": 200, "data": {}}
         self.bindable_params: object = "UNSET"
         self.bindable_spaces: list[dict] = [{"id": 30, "name": "可绑定知识库示例"}]
-        self.departments: list[dict] = [{"id": 3, "name": "研发部"}]
+        self.departments: list[dict] = [{"id": 3, "name": "研发部", "children": []}]
 
     async def get_json(self, path: str, params=None):
         if path == "/api/v1/workstation/config":
@@ -63,11 +63,28 @@ class FakeBishengClient:
                                 "status": 0,
                             },
                             {
+                                "id": 8,
+                                "name": "状态异常模型",
+                                "model_name": "unhealthy-chat",
+                                "model_type": "llm",
+                                "online": True,
+                                "status": 1,
+                                "remark": "模型服务连接超时",
+                            },
+                            {
                                 "id": 3,
                                 "name": "离线模型",
                                 "model_name": "offline-chat",
                                 "model_type": "llm",
                                 "online": False,
+                                "status": 1,
+                            },
+                            {
+                                "id": 7,
+                                "name": "字符串停用模型",
+                                "model_name": "string-offline-chat",
+                                "model_type": "llm",
+                                "online": "false",
                                 "status": 1,
                             },
                             {
@@ -754,6 +771,128 @@ def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
     ]
 
 
+def test_post_admin_domains_rejects_deleting_domain_with_valid_bound_space(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
+    service.update_domains(
+        DomainsConfigUpdate.model_validate(
+            {
+                "domains": [
+                    {
+                        "name": "安全",
+                        "space_ids": [19],
+                        "color": "#f97316",
+                        "bg": "#fff7ed",
+                        "icon": "Shield",
+                        "background_image": "",
+                        "enabled": True,
+                        "code": "SA",
+                    }
+                ]
+            }
+        )
+    )
+    before = service.get_config().domains
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
+        response = client.post("/api/v1/admin/config/domains", json={"domains": []})
+
+    assert response.status_code == 409
+    assert response.json()["status_message"] == "业务域已绑定有效知识空间，请先解除绑定后再删除或修改名称：安全"
+    assert service.get_config().domains == before
+    assert bisheng_client.put_calls == []
+
+
+def test_post_admin_domains_rejects_renaming_domain_with_valid_bound_space(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
+    service.update_domains(
+        DomainsConfigUpdate.model_validate(
+            {
+                "domains": [
+                    {
+                        "name": "安全",
+                        "space_ids": [19],
+                        "color": "#f97316",
+                        "bg": "#fff7ed",
+                        "icon": "Shield",
+                        "background_image": "",
+                        "enabled": True,
+                        "code": "SA",
+                    }
+                ]
+            }
+        )
+    )
+    before = service.get_config().domains
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
+        response = client.post(
+            "/api/v1/admin/config/domains",
+            json={
+                "domains": [
+                    {
+                        "name": "安全生产",
+                        "space_ids": [19],
+                        "color": "#f97316",
+                        "bg": "#fff7ed",
+                        "icon": "Shield",
+                        "background_image": "",
+                        "enabled": True,
+                        "code": "SA",
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json()["status_message"] == "业务域已绑定有效知识空间，请先解除绑定后再删除或修改名称：安全"
+    assert service.get_config().domains == before
+    assert bisheng_client.put_calls == []
+
+
+def test_post_admin_domains_allows_deleting_domain_with_only_invalid_space_references(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    bisheng_client = FakeBishengClient()
+    service.update_domains(
+        DomainsConfigUpdate.model_validate(
+            {
+                "domains": [
+                    {
+                        "name": "历史业务域",
+                        "space_ids": [21, 22, 999],
+                        "color": "#111111",
+                        "bg": "#eeeeee",
+                        "icon": "Factory",
+                        "background_image": "",
+                        "enabled": True,
+                        "code": "OLD",
+                    }
+                ]
+            }
+        )
+    )
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = bisheng_client
+        response = client.post("/api/v1/admin/config/domains", json={"domains": []})
+
+    assert response.status_code == 200
+    assert service.get_config().domains == []
+    assert bisheng_client.put_calls == []
+
+
 def test_post_admin_domains_cleans_invalid_spaces_before_sync_and_persist(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
@@ -786,7 +925,7 @@ def test_post_admin_domains_cleans_invalid_spaces_before_sync_and_persist(tmp_pa
             json={
                 "domains": [
                     {
-                        "name": "炼钢",
+                        "name": "旧业务域",
                         "space_ids": [19, 20, 21, 22, 999],
                         "color": "#111111",
                         "bg": "#eeeeee",
@@ -850,7 +989,7 @@ def test_post_admin_domains_invalid_history_does_not_block_valid_save(tmp_path: 
             json={
                 "domains": [
                     {
-                        "name": "炼钢",
+                        "name": "历史业务域",
                         "space_ids": [20],
                         "color": "#111111",
                         "bg": "#eeeeee",
@@ -952,7 +1091,7 @@ def test_post_admin_domains_does_not_persist_when_bisheng_sync_fails(tmp_path: P
             json={
                 "domains": [
                     {
-                        "name": "炼钢",
+                        "name": "历史业务域",
                         "space_ids": [19, 999],
                         "color": "#111111",
                         "bg": "#eeeeee",
@@ -1014,7 +1153,7 @@ def test_post_admin_domains_restores_only_valid_bindings_when_portal_save_fails(
             json={
                 "domains": [
                     {
-                        "name": "炼钢",
+                        "name": "历史业务域",
                         "space_ids": [20, 999],
                         "color": "#111111",
                         "bg": "#eeeeee",
@@ -1059,6 +1198,7 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = FakeBishengClient()
         response = client.post(
             "/api/v1/admin/config/qa",
             json={
@@ -1124,6 +1264,24 @@ def test_post_admin_qa_updates_prompt_fields(tmp_path: Path):
     assert service.get_config().qa.templates[0].id == "work-plan"
 
 
+def test_post_admin_qa_rejects_disabled_model_without_overwriting_saved_config(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+    payload = service.get_config().qa.model_dump()
+    payload.update({"selected_model": "3", "general_model": "3"})
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = FakeBishengClient()
+        response = client.post("/api/v1/admin/config/qa", json=payload)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "当前问答模型已停用，请联系管理员"
+    assert service.get_config().qa.general_model == ""
+    assert service.get_config().qa.selected_model == ""
+
+
 def test_post_admin_search_updates_rerank_model(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
@@ -1165,6 +1323,7 @@ def test_get_admin_search_rerank_model_options_filters_rerank_models(tmp_path: P
             "visual": False,
             "provider_name": "DeepSeek 服务商",
             "status": 0,
+            "remark": "",
         },
     ]
 
@@ -1195,6 +1354,7 @@ def test_post_admin_qa_rejects_invalid_template_config(tmp_path: Path):
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
+        client.app.state.bisheng_client = FakeBishengClient()
         response = client.post("/api/v1/admin/config/qa", json=payload)
 
     assert response.status_code == 422
@@ -1293,6 +1453,7 @@ def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path:
             "visual": False,
             "provider_name": "DeepSeek 服务商",
             "status": 0,
+            "remark": "",
         },
         {
             "key": "2",
@@ -1302,6 +1463,17 @@ def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path:
             "visual": False,
             "provider_name": "DeepSeek 服务商",
             "status": 0,
+            "remark": "",
+        },
+        {
+            "key": "8",
+            "id": "8",
+            "name": "unhealthy-chat",
+            "display_name": "状态异常模型",
+            "visual": False,
+            "provider_name": "DeepSeek 服务商",
+            "status": 1,
+            "remark": "模型服务连接超时",
         },
     ]
 
@@ -1826,14 +1998,18 @@ def test_get_bindable_spaces_proxies_bisheng():
 
 def test_get_dept_departments_proxies_bisheng():
     fake = FakeBishengClient()
-    fake.departments = [{"id": 3, "name": "研发部"}]
+    fake.departments = [{
+        "id": 1,
+        "name": "集团",
+        "children": [{"id": 3, "name": "研发部", "children": []}],
+    }]
 
     with TestClient(app) as client:
         client.app.state.bisheng_client = fake
         response = client.get("/api/v1/admin/config/dept-knowledge-binding/departments")
 
     assert response.status_code == 200
-    assert response.json()["data"][0]["id"] == 3
+    assert response.json()["data"][0]["children"][0]["id"] == 3
 
 
 def test_get_dept_bindings_returns_502_when_bisheng_transport_fails():

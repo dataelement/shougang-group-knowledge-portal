@@ -185,6 +185,7 @@ class QAModelOption(BaseModel):
     visual: bool = False
     provider_name: str = ""
     status: int = 0
+    remark: str = ""
 
 
 class QAModelOptionsResponse(BaseModel):

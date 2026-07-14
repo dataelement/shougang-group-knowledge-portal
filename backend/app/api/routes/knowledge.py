@@ -54,6 +54,8 @@ logger = logging.getLogger(__name__)
 
 _BISHENG_DUPLICATE_FAVORITE_CODE = 18021
 _BISHENG_PERMISSION_DENIED_CODE = 18040
+_DEFAULT_SEARCH_PAGE_SIZE = 10
+_MAX_SEARCH_PAGE_SIZE = 100
 _QA_MODEL_OPTIONS_CACHE_TTL_SECONDS = 300.0
 _qa_model_raw_servers_cache: dict[str, Any] = {
     "expires_at": 0.0,
@@ -98,6 +100,16 @@ def get_domain_file_count_service(
 def _raise_bisheng_business_error(err: BishengBusinessError) -> NoReturn:
     status_code = 403 if err.status_code in {_BISHENG_PERMISSION_DENIED_CODE, 404} else 502
     raise HTTPException(status_code=status_code, detail=err.status_message)
+
+
+def _configured_search_page_size(config: PortalConfig) -> int:
+    try:
+        page_size = int(config.display.search.page_size)
+    except (TypeError, ValueError, AttributeError):
+        return _DEFAULT_SEARCH_PAGE_SIZE
+    if 1 <= page_size <= _MAX_SEARCH_PAGE_SIZE:
+        return page_size
+    return _DEFAULT_SEARCH_PAGE_SIZE
 
 
 _QA_TREE_FORBIDDEN_CODES = {_BISHENG_PERMISSION_DENIED_CODE, 18000}  # SpacePermissionDenied / SpaceNotFound
@@ -263,6 +275,104 @@ def _require_share_access(
     if session is None:
         raise HTTPException(status_code=403, detail="分享访问未验证或已过期")
     return session
+
+
+@router.get("/files/search")
+async def search_keyword_files(
+    request: Request,
+    q: str,
+    tag: Optional[str] = None,
+    base_tag: Optional[str] = None,
+    space_ids: Annotated[Optional[list[int]], Query()] = None,
+    space_level: Optional[str] = None,
+    file_ext: Optional[str] = None,
+    document_type: Optional[str] = None,
+    file_subcategory_code: Optional[str] = None,
+    business_domain_code: Optional[str] = None,
+    sort: str = "relevance",
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    if not q.strip():
+        raise HTTPException(status_code=422, detail="q 不能为空")
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request=request,
+        auth_service=auth_service,
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+    )
+    try:
+        return response_ok(
+            await service.search_keyword_files(
+                q=q,
+                tag=tag,
+                base_tag=base_tag,
+                requested_space_ids=space_ids,
+                space_level=space_level,
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=business_domain_code,
+                sort=sort,
+                extra_space_ids=extra_space_ids,
+            )
+        )
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
+
+
+@router.get("/files/browse")
+async def browse_files(
+    request: Request,
+    tag: Optional[str] = None,
+    base_tag: Optional[str] = None,
+    space_ids: Annotated[Optional[list[int]], Query()] = None,
+    space_level: Optional[str] = None,
+    file_ext: Optional[str] = None,
+    document_type: Optional[str] = None,
+    file_subcategory_code: Optional[str] = None,
+    business_domain_code: Optional[str] = None,
+    recommendation: Optional[str] = None,
+    sort: str = "updated_at_desc",
+    cursor: Optional[str] = None,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    page_size = _configured_search_page_size(portal_config_service.get_config())
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request=request,
+        auth_service=auth_service,
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+    )
+    try:
+        return response_ok(
+            await service.browse_files(
+                tag=tag,
+                base_tag=base_tag,
+                requested_space_ids=space_ids,
+                space_level=space_level,
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=business_domain_code,
+                recommendation=recommendation,
+                sort=sort,
+                cursor=cursor,
+                limit=page_size,
+                extra_space_ids=extra_space_ids,
+            )
+        )
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/files")
@@ -562,54 +672,82 @@ async def get_public_qa_model_options(
 
 @router.get("/domain-file-counts")
 async def get_domain_file_counts(
-    background_tasks: BackgroundTasks,
-    service: DomainFileCountService = Depends(get_domain_file_count_service),
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
     cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
 ):
-    domains = portal_config_service.get_config().domains
-    codes = sorted({d.code.strip().upper() for d in domains if d.code and d.code.strip()})
-    cache_key = cache_service.domain_file_counts_key(codes)
-    cached = await cache_service.get_json(cache_key)
-    if isinstance(cached, dict):
-        cached_counts = cached.get("counts")
-        if isinstance(cached_counts, dict) and set(cached_counts) == set(codes):
-            try:
-                return response_ok({"counts": {code: int(cached_counts[code]) for code in codes}})
-            except (TypeError, ValueError):
-                logger.warning("domain file counts cache payload is invalid key=%s", cache_key, exc_info=True)
-    counts, stale = service.read_cached(codes)
-    if stale and codes:
-        background_tasks.add_task(service.refresh_in_background, codes)
-    if not stale:
+    config = portal_config_service.get_config()
+    domains = [domain.model_dump() for domain in config.domains if domain.enabled]
+    session = await get_portal_session(auth_service, request)
+    client_to_close: BishengClient | None = None
+    try:
+        if session is None:
+            service = KnowledgeService(
+                bisheng_client=await get_bisheng_client(request),
+                portal_config_service=portal_config_service,
+                default_model=get_settings().bisheng_default_model,
+            )
+            extra_space_ids = None
+            account = None
+        else:
+            client_to_close = auth_service.create_bisheng_client(session)
+            service = KnowledgeService(
+                bisheng_client=client_to_close,
+                portal_config_service=portal_config_service,
+                default_model=get_settings().bisheng_default_model,
+            )
+            visible_spaces = await service.list_visible_spaces()
+            extra_space_ids = [space.id for space in visible_spaces.data]
+            account = getattr(getattr(session, "user", None), "account", "")
+        scopes = await service.resolve_domain_count_scopes(domains, extra_space_ids=extra_space_ids)
+        cache_key = cache_service.visible_domain_file_counts_key(scopes, account=account)
+        expected_codes = {scope["code"] for scope in scopes}
+        cached = await cache_service.get_json(cache_key)
+        if isinstance(cached, dict):
+            cached_counts = cached.get("counts")
+            if isinstance(cached_counts, dict) and set(cached_counts) == expected_codes:
+                try:
+                    return response_ok({"counts": {code: int(cached_counts[code]) for code in expected_codes}})
+                except (TypeError, ValueError):
+                    logger.warning("门户业务域知识数量缓存格式异常，已回源获取")
+        counts = await service.count_visible_domain_files(scopes)
+        normalized_counts = {scope["code"]: int(counts.get(scope["code"], 0)) for scope in scopes}
         await cache_service.set_json(
             cache_key,
-            {"counts": counts},
-            _home_cache_ttl_seconds(portal_config_service.get_config()),
+            {"counts": normalized_counts},
+            _home_cache_ttl_seconds(config),
         )
-    return response_ok({"counts": counts})
+        return response_ok({"counts": normalized_counts})
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
 
 
 @router.get("/spaces")
 async def list_visible_spaces(
     request: Request,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    try:
-        session = await require_portal_session(auth_service, request)
-    except PortalAuthError as err:
-        raise HTTPException(status_code=err.status_code, detail=err.message) from err
-
-    bisheng_client = auth_service.create_bisheng_client(session)
-    try:
+    session = await get_portal_session(auth_service, request)
+    if session is None:
         service = KnowledgeService(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
+        return response_ok(await service.list_public_spaces())
+
+    scoped_client = auth_service.create_bisheng_client(session)
+    try:
+        service = KnowledgeService(
+            bisheng_client=scoped_client,
+            portal_config_service=portal_config_service,
+        )
         return response_ok(await service.list_visible_spaces())
     finally:
-        await bisheng_client.aclose()
+        await scoped_client.aclose()
 
 
 @router.get("/qa/tree/spaces")
@@ -1230,7 +1368,7 @@ async def chat_document_file(
     service: KnowledgeService = Depends(get_knowledge_service),
 ):
     try:
-        upstream = service.stream_document_file_chat(space_id=space_id, file_id=file_id, req=req)
+        upstream = await service.prepare_document_file_chat(space_id=space_id, file_id=file_id, req=req)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
 

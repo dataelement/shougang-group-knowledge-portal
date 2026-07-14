@@ -169,11 +169,18 @@ class KnowledgeService:
 
     @staticmethod
     def _is_public_space(space: KnowledgeSpaceItem) -> bool:
-        return (
-            (space.space_level or "").strip().lower() == "public"
-            or (space.auth_type or "").strip().lower() == "public"
-            or "public" in space.sources
-        )
+        space_level = (space.space_level or "").strip().lower()
+        if space_level:
+            return space_level == "public"
+        return "public" in space.sources
+
+    @staticmethod
+    def _effective_upstream_space_level(
+        space_level: Optional[str],
+        extra_space_ids: Optional[list[int]],
+    ) -> Optional[str]:
+        # 匿名请求使用后台服务账号访问上游，必须重新收窄到公共层级。
+        return "public" if extra_space_ids is None else space_level
 
     async def list_public_spaces(self) -> KnowledgeSpaceListData:
         visible_spaces = await self.list_visible_spaces()
@@ -395,13 +402,14 @@ class KnowledgeService:
         data = self._extract_success_data(response)
         return ShareDocumentAccessData.model_validate(data)
 
-    def stream_document_file_chat(
+    async def prepare_document_file_chat(
         self,
         space_id: int,
         file_id: int,
         req: DocumentFileChatRequest,
     ) -> AsyncIterator[bytes]:
         model_id = self._resolve_document_chat_model_id(req.model)
+        await self._ensure_document_chat_model_enabled(str(model_id))
         return self._bisheng.stream_post(
             f"/api/v1/knowledge/space/{space_id}/chat/file/{file_id}",
             json={
@@ -410,6 +418,17 @@ class KnowledgeService:
             },
             headers=PORTAL_BFF_TELEMETRY_HEADERS,
         )
+
+    async def _ensure_document_chat_model_enabled(self, model_id: str) -> None:
+        try:
+            response = await self._bisheng.get_json("/api/v1/llm")
+        except Exception as err:
+            logger.exception("failed to fetch qa model status before document qa request")
+            raise ValueError("问答模型状态暂不可确认，请稍后重试") from err
+        raw_models = response.get("data") if isinstance(response, dict) else []
+        if not isinstance(raw_models, list):
+            raw_models = []
+        self._config_service.ensure_qa_model_enabled(model_id, raw_models)
 
     @staticmethod
     def create_share_access_session(access: ShareDocumentAccessData) -> ShareAccessSession:
@@ -514,6 +533,44 @@ class KnowledgeService:
             return sorted(base_space_ids)
         return sorted(base_space_ids)
 
+    async def resolve_domain_count_scopes(
+        self,
+        domains: list[dict[str, Any]],
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[dict[str, Any]]:
+        allowed_space_ids = {
+            space.id for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)
+        }
+        scopes: list[dict[str, Any]] = []
+        seen_codes: set[str] = set()
+        for domain in domains:
+            code = self._normalize_business_domain_code(domain.get("code"))
+            if not code or code in seen_codes:
+                continue
+            seen_codes.add(code)
+            requested_space_ids = {
+                int(space_id)
+                for space_id in (domain.get("space_ids") or [])
+                if isinstance(space_id, int) or (isinstance(space_id, str) and space_id.isdigit())
+            }
+            scopes.append({"code": code, "space_ids": sorted(allowed_space_ids.intersection(requested_space_ids))})
+        return scopes
+
+    async def count_visible_domain_files(self, domains: list[dict[str, Any]]) -> dict[str, int]:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/domain-file-counts",
+            json={"domains": domains},
+        )
+        data = self._extract_success_data(response)
+        raw_counts = data.get("counts") if isinstance(data, dict) else {}
+        if not isinstance(raw_counts, dict):
+            return {}
+        return {
+            self._normalize_business_domain_code(code): int(count or 0)
+            for code, count in raw_counts.items()
+            if self._normalize_business_domain_code(code)
+        }
+
     def _resolve_document_chat_model_id(self, requested_model: str = "") -> int:
         config = self._config_service.get_config()
         raw_model = (requested_model or config.qa.selected_model or self._default_model).strip()
@@ -583,7 +640,8 @@ class KnowledgeService:
             or normalized_business_domain_code
             or recommendation
         )
-        if not q and not has_filter:
+        keyword = (q or "").strip()
+        if not keyword and not has_filter:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
 
         space_ids = await self.resolve_requested_space_ids(
@@ -594,12 +652,19 @@ class KnowledgeService:
         )
         if not space_ids:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
 
-        if normalized_base_tag and normalized_tag and normalized_base_tag != normalized_tag and not q and not recommendation:
+        if (
+            normalized_base_tag
+            and normalized_tag
+            and normalized_base_tag != normalized_tag
+            and not keyword
+            and not recommendation
+        ):
             return await self._search_shougang_portal_files_with_filter_tag(
                 tag=normalized_base_tag,
                 space_ids=space_ids,
-                space_level=space_level,
+                space_level=upstream_space_level,
                 sort=sort,
                 cursor=cursor,
                 limit=limit,
@@ -610,14 +675,126 @@ class KnowledgeService:
                 business_domain_code=normalized_business_domain_code,
             )
 
-        # Plain single-tag queries go to the upstream aggregate endpoint, which resolves
-        # the tag and paginates server-side with a real cursor instead of pulling every
-        # tagged file per space and sorting in memory.
-        return await self._search_shougang_portal_files(
-            q=q,
+        if keyword:
+            return await self._search_shougang_portal_files(
+                q=keyword,
+                tag=effective_tag,
+                space_ids=space_ids,
+                space_level=upstream_space_level,
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=normalized_business_domain_code,
+                recommendation=recommendation,
+                sort=sort,
+            )
+
+        return await self._browse_shougang_portal_files(
             tag=effective_tag,
             space_ids=space_ids,
-            space_level=space_level,
+            space_level=upstream_space_level,
+            file_ext=file_ext,
+            document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
+            business_domain_code=normalized_business_domain_code,
+            recommendation=recommendation,
+            sort=sort,
+            cursor=cursor,
+            limit=limit,
+        )
+
+    async def search_keyword_files(
+        self,
+        *,
+        q: str,
+        tag: Optional[str],
+        base_tag: Optional[str],
+        requested_space_ids: Optional[list[int]],
+        space_level: Optional[str],
+        file_ext: Optional[str],
+        document_type: Optional[str],
+        file_subcategory_code: Optional[str],
+        business_domain_code: Optional[str],
+        sort: str,
+        extra_space_ids: Optional[list[int]],
+    ) -> CursorKnowledgeFileData:
+        keyword = q.strip()
+        if not keyword:
+            return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+        space_ids = await self.resolve_requested_space_ids(
+            requested_space_ids,
+            space_level,
+            extra_space_ids,
+            fallback_to_public_spaces=False,
+        )
+        if not space_ids:
+            return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
+        return await self._search_shougang_portal_files(
+            q=keyword,
+            tag=(base_tag or tag or "").strip() or None,
+            space_ids=space_ids,
+            space_level=upstream_space_level,
+            file_ext=file_ext,
+            document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
+            business_domain_code=self._normalize_business_domain_code(business_domain_code),
+            recommendation=None,
+            sort=sort,
+        )
+
+    async def browse_files(
+        self,
+        *,
+        tag: Optional[str],
+        base_tag: Optional[str],
+        requested_space_ids: Optional[list[int]],
+        space_level: Optional[str],
+        file_ext: Optional[str],
+        document_type: Optional[str],
+        file_subcategory_code: Optional[str],
+        business_domain_code: Optional[str],
+        recommendation: Optional[str],
+        sort: str,
+        cursor: Optional[str],
+        limit: int,
+        extra_space_ids: Optional[list[int]],
+    ) -> CursorKnowledgeFileData:
+        normalized_tag = (tag or "").strip()
+        normalized_base_tag = (base_tag or "").strip()
+        normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
+        space_ids = await self.resolve_requested_space_ids(
+            requested_space_ids,
+            space_level,
+            extra_space_ids,
+            fallback_to_public_spaces=False,
+        )
+        if not space_ids:
+            return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
+        if (
+            normalized_base_tag
+            and normalized_tag
+            and normalized_base_tag != normalized_tag
+            and not recommendation
+        ):
+            return await self._search_shougang_portal_files_with_filter_tag(
+                tag=normalized_base_tag,
+                space_ids=space_ids,
+                space_level=upstream_space_level,
+                sort=sort,
+                cursor=cursor,
+                limit=limit,
+                filter_tag=normalized_tag,
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=normalized_business_domain_code,
+            )
+        return await self._browse_shougang_portal_files(
+            tag=normalized_base_tag or normalized_tag or None,
+            space_ids=space_ids,
+            space_level=upstream_space_level,
             file_ext=file_ext,
             document_type=document_type,
             file_subcategory_code=file_subcategory_code,
@@ -649,8 +826,7 @@ class KnowledgeService:
         fetch_limit = self._page_size_limit
 
         while True:
-            result = await self._search_shougang_portal_files(
-                q=None,
+            result = await self._browse_shougang_portal_files(
                 tag=tag,
                 space_ids=space_ids,
                 space_level=space_level,
@@ -938,11 +1114,58 @@ class KnowledgeService:
         business_domain_code: Optional[str],
         recommendation: Optional[str],
         sort: str,
+    ) -> CursorKnowledgeFileData:
+        request_body = {
+            "q": q,
+            "tag": tag,
+            "space_ids": space_ids,
+            "space_level": space_level,
+            "file_ext": file_ext,
+            "sort": sort,
+        }
+        if recommendation:
+            request_body["recommendation"] = recommendation
+        normalized_document_type = self._normalize_document_type_code(document_type)
+        if normalized_document_type:
+            request_body["document_type"] = normalized_document_type
+        normalized_file_subcategory_code = self._normalize_document_type_code(file_subcategory_code)
+        if normalized_file_subcategory_code:
+            request_body["file_subcategory_code"] = normalized_file_subcategory_code
+        normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
+        if normalized_business_domain_code:
+            request_body["business_domain_code"] = normalized_business_domain_code
+        rerank_model_id = str(self._config_service.get_config().search.rerank_model_id or "").strip()
+        request_body["rerank_model_id"] = rerank_model_id
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/files/search",
+            json=request_body,
+        )
+        data = self._extract_success_data(response)
+        raw_items = data.get("data") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
+        return CursorKnowledgeFileData(
+            data=self._map_shougang_portal_response_items(raw_items),
+            has_more=bool(data.get("has_more")) if isinstance(data, dict) else False,
+            next_cursor=str(next_cursor) if next_cursor else None,
+        )
+
+    async def _browse_shougang_portal_files(
+        self,
+        tag: Optional[str],
+        space_ids: list[int],
+        space_level: Optional[str],
+        file_ext: Optional[str],
+        document_type: Optional[str],
+        file_subcategory_code: Optional[str],
+        business_domain_code: Optional[str],
+        recommendation: Optional[str],
+        sort: str,
         cursor: Optional[str],
         limit: int,
     ) -> CursorKnowledgeFileData:
         request_body = {
-            "q": q,
             "tag": tag,
             "space_ids": space_ids,
             "space_level": space_level,
@@ -962,10 +1185,8 @@ class KnowledgeService:
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         if normalized_business_domain_code:
             request_body["business_domain_code"] = normalized_business_domain_code
-        rerank_model_id = str(self._config_service.get_config().search.rerank_model_id or "").strip()
-        request_body["rerank_model_id"] = rerank_model_id
         response = await self._bisheng.post_json(
-            "/api/v1/knowledge/shougang-portal/files/search",
+            "/api/v1/knowledge/shougang-portal/files/browse",
             json=request_body,
         )
         data = self._extract_success_data(response)
