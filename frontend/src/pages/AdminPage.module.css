@@ -1212,6 +1212,91 @@
   font-size: 0.74rem;
 }
 
+.departmentTreeOptions {
+  max-height: 280px;
+  margin-top: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.departmentTreeRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 40px;
+  padding-right: 4px;
+}
+
+.departmentTreeToggle,
+.departmentTreeTogglePlaceholder {
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  color: var(--neutral-500);
+}
+
+.departmentTreeToggle {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.departmentTreeToggle:hover {
+  background: var(--neutral-100);
+}
+
+.departmentTreeToggle svg {
+  transition: transform 0.15s ease;
+}
+
+.departmentTreeToggleExpanded svg {
+  transform: rotate(90deg);
+}
+
+.departmentTreeOption {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--neutral-700);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.departmentTreeOption:hover,
+.departmentTreeOptionSelected {
+  background: var(--neutral-100);
+}
+
+.departmentTreeOptionSelected {
+  color: var(--primary-700);
+  background: var(--primary-50);
+  font-weight: 600;
+}
+
+.departmentTreeOption span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.departmentTreeOption svg {
+  flex: 0 0 auto;
+}
+
 .documentTypeEditorGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

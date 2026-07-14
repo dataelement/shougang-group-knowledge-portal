@@ -110,6 +110,8 @@ import {
 } from '../utils/adminAgentConfig';
 import {
   createBindingDraft,
+  filterDepartmentOptions,
+  findDepartmentOption,
   groupBindingsByDepartment,
   validateBindingDraft,
   type BindingDraft,
@@ -2430,6 +2432,171 @@ function SearchableBindingSelect({
   );
 }
 
+function TreeBindingDepartmentSelect({
+  id,
+  value,
+  departments,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: number | null;
+  departments: DepartmentOption[];
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const treeId = `${id}-tree`;
+  const selectedDepartment = findDepartmentOption(departments, value);
+  const visibleDepartments = useMemo(
+    () => filterDepartmentOptions(departments, query),
+    [departments, query],
+  );
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    setQuery('');
+    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  const openMenu = () => {
+    if (disabled) return;
+    setOpen(true);
+    setQuery('');
+    setExpandedIds(new Set());
+  };
+
+  const selectDepartment = (departmentId: number) => {
+    onChange(departmentId);
+    closeMenu(true);
+  };
+
+  const toggleDepartment = (departmentId: number) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(departmentId)) next.delete(departmentId);
+      else next.add(departmentId);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    requestAnimationFrame(() => searchRef.current?.focus());
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  const renderDepartment = (department: DepartmentOption, depth: number) => {
+    const hasChildren = department.children.length > 0;
+    const expanded = Boolean(query.trim()) || expandedIds.has(department.id);
+    const selected = department.id === value;
+    return (
+      <div
+        key={department.id}
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-selected={selected}
+      >
+        <div className={s.departmentTreeRow} style={{ paddingLeft: `${10 + depth * 18}px` }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              className={`${s.departmentTreeToggle} ${expanded ? s.departmentTreeToggleExpanded : ''}`}
+              aria-label={`${expanded ? '收起' : '展开'}${department.name}`}
+              onClick={() => toggleDepartment(department.id)}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          ) : <span className={s.departmentTreeTogglePlaceholder} aria-hidden="true" />}
+          <button
+            type="button"
+            className={`${s.departmentTreeOption} ${selected ? s.departmentTreeOptionSelected : ''}`}
+            title={department.name}
+            onClick={() => selectDepartment(department.id)}
+          >
+            <span>{department.name}</span>
+            {selected ? <Check size={16} aria-hidden="true" /> : null}
+          </button>
+        </div>
+        {hasChildren && expanded ? (
+          <div role="group">
+            {department.children.map((child) => renderDepartment(child, depth + 1))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <div className={s.searchableSelect} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        className={`${s.searchableSelectTrigger} ${open ? s.searchableSelectTriggerOpen : ''}`}
+        aria-haspopup="tree"
+        aria-expanded={open}
+        aria-controls={treeId}
+        disabled={disabled}
+        onClick={() => (open ? closeMenu() : openMenu())}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            openMenu();
+          }
+        }}
+      >
+        <span
+          className={selectedDepartment ? s.searchableSelectValue : s.searchableSelectPlaceholder}
+          title={selectedDepartment?.name}
+        >
+          {selectedDepartment?.name || '请选择科室'}
+        </span>
+        <ChevronDown className={s.searchableSelectChevron} size={16} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className={s.searchableSelectMenu}>
+          <div className={s.searchableSelectSearchWrap}>
+            <SearchIcon size={15} aria-hidden="true" />
+            <input
+              ref={searchRef}
+              className={s.searchableSelectSearch}
+              type="search"
+              value={query}
+              placeholder="搜索科室名称"
+              aria-label="搜索科室名称"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  closeMenu(true);
+                }
+              }}
+            />
+          </div>
+          <div id={treeId} className={s.departmentTreeOptions} role="tree" aria-label="科室树">
+            {visibleDepartments.map((department) => renderDepartment(department, 0))}
+            {!visibleDepartments.length ? <div className={s.searchableSelectEmpty}>暂无匹配的科室</div> : null}
+          </div>
+          <div className={s.searchableSelectMeta} aria-live="polite">
+            {query ? '展示匹配科室及其所属层级' : `共 ${departments.length} 个顶级部门`}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DeptBindingDialog({
   open,
   spaces,
@@ -2481,13 +2648,10 @@ function DeptBindingDialog({
           </div>
           <div className={s.formField}>
             <label className={s.fieldLabel} htmlFor="dept-binding-department">科室</label>
-            <SearchableBindingSelect
+            <TreeBindingDepartmentSelect
               id="dept-binding-department"
               value={draft.departmentId}
-              options={departments.map((department) => ({ value: department.id, label: department.name }))}
-              placeholder="请选择科室"
-              searchPlaceholder="搜索科室名称"
-              emptyText="暂无匹配的科室"
+              departments={departments}
               disabled={saving}
               onChange={(departmentId) => onChange({ departmentId })}
             />
