@@ -574,7 +574,10 @@ export default function ExpertQAPage() {
                   key={f.key}
                   type="button"
                   className={`${s.filterItem} ${activeStatus === f.key ? s.filterActive : ''}`}
-                  onClick={() => setActiveStatus((prev) => (prev === f.key ? null : f.key))}
+                  onClick={() => {
+                    setActiveStatus((prev) => (prev === f.key ? null : f.key));
+                    setPage(1);
+                  }}
                 >
                   <span className={s.filterLabel}>{f.label}</span>
                 </button>
@@ -591,7 +594,10 @@ export default function ExpertQAPage() {
                       key={tab.key}
                       type="button"
                       className={`${s.sortTab} ${sort === tab.key ? s.sortTabActive : ''}`}
-                      onClick={() => setSort(tab.key as SortKey)}
+                      onClick={() => {
+                        setSort(tab.key as SortKey);
+                        setPage(1);
+                      }}
                     >
                       {tab.label}
                     </button>
