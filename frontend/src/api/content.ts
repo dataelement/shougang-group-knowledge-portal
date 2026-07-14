@@ -790,6 +790,54 @@ export async function searchFiles(params: {
   };
 }
 
+export async function searchKeywordFiles(params: {
+  q: string;
+  sort?: string;
+}): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
+  const query = new URLSearchParams({ q: params.q });
+  if (params.sort) query.set('sort', params.sort);
+  const data = await request<CursorKnowledgeFileDataDto>(
+    `/api/v1/knowledge/files/search?${query.toString()}`,
+  );
+  return {
+    data: data.data.map(mapKnowledgeFileItem),
+    hasMore: Boolean(data.has_more),
+    nextCursor: data.next_cursor || null,
+  };
+}
+
+export async function browseSearchFiles(params: {
+  tag?: string;
+  spaceIds?: number[];
+  spaceLevel?: string;
+  fileExt?: string;
+  documentType?: string;
+  fileSubcategoryCode?: string;
+  businessDomainCode?: string;
+  sort?: string;
+  cursor?: string | null;
+}): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
+  const query = new URLSearchParams();
+  if (params.tag) query.set('tag', params.tag);
+  if (params.spaceLevel) query.set('space_level', params.spaceLevel);
+  if (params.fileExt) query.set('file_ext', params.fileExt);
+  if (params.documentType) query.set('document_type', params.documentType);
+  if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
+  if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
+  if (params.sort) query.set('sort', params.sort);
+  if (params.cursor) query.set('cursor', params.cursor);
+  params.spaceIds?.forEach((id) => query.append('space_ids', String(id)));
+  const suffix = query.toString();
+  const data = await request<CursorKnowledgeFileDataDto>(
+    `/api/v1/knowledge/files/browse${suffix ? `?${suffix}` : ''}`,
+  );
+  return {
+    data: data.data.map(mapKnowledgeFileItem),
+    hasMore: Boolean(data.has_more),
+    nextCursor: data.next_cursor || null,
+  };
+}
+
 export async function fetchSpaceFiles(params: {
   spaceId: number;
   tag?: string;

@@ -9,106 +9,62 @@ function stripComments(source: string): string {
     .replace(/^\s*\/\/.*$/gm, '');
 }
 
-test('search page does not render pagination or request paged search results', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
-  const activeSource = stripComments(source);
-  const callStart = activeSource.indexOf('searchFiles({');
-  const callEnd = activeSource.indexOf('});', callStart);
-  const searchFilesCall = activeSource.slice(callStart, callEnd);
+const source = stripComments(readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8'));
 
-  assert.equal(activeSource.includes("import Pagination from '../components/Pagination'"), false);
-  assert.equal(activeSource.includes('<Pagination'), false);
-  assert.equal(searchFilesCall.includes('page,'), false);
-  assert.equal(searchFilesCall.includes('pageSize:'), false);
-  assert.equal(activeSource.includes('当前显示'), false);
+test('keyword mode requests one fixed result set and renders it in configured batches', () => {
+  assert.match(source, /searchKeywordFiles\(\{ q: q\.trim\(\), sort: keywordSort \}\)/);
+  assert.doesNotMatch(source, /fetchCompleteSearchResults/);
+  assert.match(source, /filteredFiles\.slice\(0, visibleLimit\)/);
+  assert.match(source, /current \+ pageLimit/);
+  assert.match(source, /function matchesLocalSearchFilters/);
+  assert.match(source, /searchResults:\s*rawFiles\.slice\(0,\s*10\)/);
 });
 
-test('search page loads complete initial search results through cursor aggregation', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
-  const activeSource = stripComments(source);
+test('browse mode sends all filters to the dedicated cursor endpoint', () => {
+  const callStart = source.indexOf('return browseSearchFiles({');
+  const callEnd = source.indexOf('});', callStart);
+  const call = source.slice(callStart, callEnd);
 
-  assert.match(activeSource, /const SEARCH_FULL_RESULT_PAGE_SIZE = 100/);
-  assert.match(activeSource, /async function fetchCompleteSearchResults/);
-  assert.match(activeSource, /cursor,\s*limit:\s*SEARCH_FULL_RESULT_PAGE_SIZE/);
-  assert.match(activeSource, /allFiles\.push\(\.\.\.result\.data\)/);
-  assert.match(activeSource, /cursor = result\.hasMore \? result\.nextCursor : null/);
-  assert.match(activeSource, /while \(cursor\)/);
+  assert.notEqual(callStart, -1);
+  assert.match(call, /tag:/);
+  assert.match(call, /spaceIds:/);
+  assert.match(call, /spaceLevel:/);
+  assert.match(call, /fileExt:/);
+  assert.match(call, /documentType:/);
+  assert.match(call, /fileSubcategoryCode:/);
+  assert.match(call, /businessDomainCode:/);
+  assert.match(call, /sort:\s*browseSort/);
+  assert.match(call, /cursor/);
+  assert.doesNotMatch(call, /limit:/);
 });
 
-test('search page keeps result filters local instead of passing them to search API', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
-  const activeSource = stripComments(source);
-  const fetchCallStart = activeSource.indexOf('const data = await fetchCompleteSearchResults({');
-  const fetchCallEnd = activeSource.indexOf('});', fetchCallStart);
-  const fetchCall = activeSource.slice(fetchCallStart, fetchCallEnd);
-
-  assert.notEqual(fetchCallStart, -1);
-  assert.match(fetchCall, /q:\s*q \|\| undefined/);
-  assert.match(fetchCall, /sort,/);
-  assert.doesNotMatch(fetchCall, /tag:/);
-  assert.doesNotMatch(fetchCall, /spaceIds:/);
-  assert.doesNotMatch(fetchCall, /spaceLevel:/);
-  assert.doesNotMatch(fetchCall, /fileExt:/);
-  assert.doesNotMatch(fetchCall, /documentType:/);
-  assert.doesNotMatch(fetchCall, /fileSubcategoryCode:/);
-  assert.doesNotMatch(fetchCall, /businessDomainCode:/);
-  assert.match(activeSource, /function matchesLocalSearchFilters/);
-  assert.match(activeSource, /setFiles\(filteredFiles\)/);
-  assert.match(activeSource, /setTotal\(filteredFiles\.length\)/);
+test('browse mode uses cursor lazy loading, stable deduplication, stale request guards and retry', () => {
+  assert.match(source, /new IntersectionObserver/);
+  assert.match(source, /`\$\{file\.spaceId\}:\$\{file\.id\}`/);
+  assert.match(source, /requestSeq\.current !== currentRequest/);
+  assert.match(source, /setLoadMoreError/);
+  assert.match(source, />重试<\/button>/);
+  assert.match(source, /已加载/);
 });
 
-test('search page uses relevance as the default sort option', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
-  const activeSource = stripComments(source);
-
-  assert.match(activeSource, /const sort = normalizeSearchSort\(params\.get\('sort'\)\)/);
-  assert.equal(activeSource.includes('normalizeUpdatedAtSort'), false);
-  assert.equal(activeSource.includes('SEARCH_SORT_OPTIONS.map'), true);
+test('the two modes expose different summary, sort and filter option semantics', () => {
+  assert.match(source, /keywordMode && \(\(\) =>/);
+  assert.match(source, /keywordMode \? SEARCH_SORT_OPTIONS : TIME_SORT_OPTIONS/);
+  assert.match(source, /if \(!keywordMode\) return documentTypeGroups/);
+  assert.match(source, /if \(!keywordMode\) return configuredBusinessDomainOptions/);
+  assert.match(source, /fetchAggregatedTags/);
+  assert.match(source, /setAvailableTags/);
+  assert.match(source, /fetchKnowledgeSpaces/);
 });
 
-test('search page passes original search results into AI summary instead of filtered results', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
-  const activeSource = stripComments(source);
-  const streamCallStart = activeSource.indexOf('streamChatCompletion({');
-  const streamCallEnd = activeSource.indexOf('}).finally', streamCallStart);
-  const streamCall = activeSource.slice(streamCallStart, streamCallEnd);
-
-  assert.notEqual(streamCallStart, -1);
-  assert.match(streamCall, /searchResults:\s*rawFiles\.slice\(0,\s*10\)/);
-  assert.doesNotMatch(streamCall, /filteredFiles/);
+test('search page normalizes invalid empty-mode sort and page size', () => {
+  assert.match(source, /normalizeTimeSort\(params\.get\('sort'\)\) \|\| 'updated_at_desc'/);
+  assert.match(source, /configuredPageSize >= 1 && configuredPageSize <= 100/);
+  assert.match(source, /DEFAULT_SEARCH_PAGE_SIZE = 10/);
+  assert.match(source, /setFilter\('sort', browseSort, false\)/);
 });
 
-test('search page does not render AI summary source file list', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
-  const activeSource = stripComments(source);
-
-  assert.equal(activeSource.includes('<ol className={s.citations}>'), false);
-  assert.equal(activeSource.includes('referenced.map'), false);
-});
-
-test('search page derives filter options from complete search results', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
-  const activeSource = stripComments(source);
-
-  assert.equal(activeSource.includes('fetchAggregatedTags'), false);
-  assert.match(activeSource, /const resultSpaceLevelOptions = useMemo/);
-  assert.match(activeSource, /const resultSpaceOptions = useMemo/);
-  assert.match(activeSource, /const resultFileExtOptions = useMemo/);
-  assert.match(activeSource, /const resultTagOptions = useMemo/);
-  assert.match(activeSource, /const businessDomainOptions = useMemo/);
-  assert.match(activeSource, /getFileSpaceLevel\(file, spaceById\)/);
-  assert.match(activeSource, /getBusinessDomainCodeFromFileEncoding\(file\.fileEncoding\)/);
-  assert.match(activeSource, /addSpaceId\(file\.spaceId\)/);
-  assert.match(activeSource, /normalizeFileExt\(file\.ext\)/);
-  assert.match(activeSource, /for \(const item of file\.tags\)/);
-  assert.match(activeSource, /for \(const file of rawFiles\)/);
-  assert.match(activeSource, /addStringOption\(levelSet, spaceLevel\)/);
-  assert.match(activeSource, /addSpaceId\(selectedSpaceId\)/);
-  assert.match(activeSource, /addStringOption\(extSet, normalizeFileExt\(fileExt\)\)/);
-  assert.match(activeSource, /addStringOption\(tagSet, tag\)/);
-  assert.match(activeSource, /resultSpaceLevelOptions\.map/);
-  assert.match(activeSource, /resultSpaceOptions\.map/);
-  assert.match(activeSource, /resultFileExtOptions\.map/);
-  assert.match(activeSource, /businessDomainOptions\.map/);
-  assert.match(activeSource, /resultTagOptions\.map/);
+test('home search submits both empty and keyword input', () => {
+  const homeSource = stripComments(readFileSync(resolve(process.cwd(), 'src/pages/HomePage.tsx'), 'utf8'));
+  assert.match(homeSource, /navigate\(keyword \? `\/search\?q=\$\{encodeURIComponent\(keyword\)\}` : '\/search'\)/);
 });

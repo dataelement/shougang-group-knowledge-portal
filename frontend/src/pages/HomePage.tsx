@@ -420,7 +420,8 @@ export default function HomePage() {
   }, []);
 
   const handleSearch = useCallback(() => {
-    if (query.trim()) navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+    const keyword = query.trim();
+    navigate(keyword ? `/search?q=${encodeURIComponent(keyword)}` : '/search');
   }, [query, navigate]);
 
   const startQaConversation = useCallback((question?: string) => {

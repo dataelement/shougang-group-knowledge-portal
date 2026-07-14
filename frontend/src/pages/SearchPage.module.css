@@ -233,6 +233,25 @@
   animation: search-spin 0.9s linear infinite;
 }
 
+.loadMoreState {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--neutral-600);
+  font-size: 13px;
+}
+
+.retryButton {
+  padding: 5px 12px;
+  border: 1px solid #3662E3;
+  border-radius: 4px;
+  background: #fff;
+  color: #3662E3;
+  cursor: pointer;
+}
+
 @keyframes search-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -415,4 +434,3 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-
