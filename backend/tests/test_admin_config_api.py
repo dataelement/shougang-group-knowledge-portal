@@ -23,7 +23,7 @@ class FakeBishengClient:
         self.bind_status: dict = {"status_code": 200, "data": {}}
         self.bindable_params: object = "UNSET"
         self.bindable_spaces: list[dict] = [{"id": 30, "name": "可绑定知识库示例"}]
-        self.departments: list[dict] = [{"id": 3, "name": "研发部"}]
+        self.departments: list[dict] = [{"id": 3, "name": "研发部", "children": []}]
 
     async def get_json(self, path: str, params=None):
         if path == "/api/v1/workstation/config":
@@ -1998,14 +1998,18 @@ def test_get_bindable_spaces_proxies_bisheng():
 
 def test_get_dept_departments_proxies_bisheng():
     fake = FakeBishengClient()
-    fake.departments = [{"id": 3, "name": "研发部"}]
+    fake.departments = [{
+        "id": 1,
+        "name": "集团",
+        "children": [{"id": 3, "name": "研发部", "children": []}],
+    }]
 
     with TestClient(app) as client:
         client.app.state.bisheng_client = fake
         response = client.get("/api/v1/admin/config/dept-knowledge-binding/departments")
 
     assert response.status_code == 200
-    assert response.json()["data"][0]["id"] == 3
+    assert response.json()["data"][0]["children"][0]["id"] == 3
 
 
 def test_get_dept_bindings_returns_502_when_bisheng_transport_fails():
