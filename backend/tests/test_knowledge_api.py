@@ -42,6 +42,21 @@ def _seed_anonymous_qa_spaces(service: PortalConfigService) -> None:
     service.get_config()
 
 
+def test_extract_file_tag_infos_deduplicates_names_and_preserves_typed_info():
+    from app.services.knowledge_service import KnowledgeService
+
+    tags = KnowledgeService._extract_file_tag_infos(
+        {
+            "tags": ["ocr测试"],
+            "tag_infos": [{"tag_name": "ocr测试", "resource_type": "manual_tag"}],
+        }
+    )
+
+    assert [tag.model_dump() for tag in tags] == [
+        {"tag_name": "ocr测试", "resource_type": "manual_tag"},
+    ]
+
+
 class FakeBishengClient:
     def __init__(self):
         self.chat_payload = None

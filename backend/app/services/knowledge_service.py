@@ -1897,18 +1897,20 @@ class KnowledgeService:
     @staticmethod
     def _extract_file_tag_infos(item: dict[str, Any]) -> list[FileTag]:
         result: list[FileTag] = []
-        seen: set[tuple[str, str]] = set()
+        indexes_by_name: dict[str, int] = {}
 
         def append_tag(name: Any, resource_type: Any = "") -> None:
             tag_name = str(name or "").strip()
             if not tag_name:
                 return
             tag_resource_type = str(resource_type or "")
-            key = (tag_name, tag_resource_type)
-            if key in seen:
+            existing_index = indexes_by_name.get(tag_name)
+            if existing_index is None:
+                indexes_by_name[tag_name] = len(result)
+                result.append(FileTag(tag_name=tag_name, resource_type=tag_resource_type))
                 return
-            seen.add(key)
-            result.append(FileTag(tag_name=tag_name, resource_type=tag_resource_type))
+            if not result[existing_index].resource_type and tag_resource_type:
+                result[existing_index] = FileTag(tag_name=tag_name, resource_type=tag_resource_type)
 
         for tag in item.get("tag_infos") or []:
             if isinstance(tag, dict):

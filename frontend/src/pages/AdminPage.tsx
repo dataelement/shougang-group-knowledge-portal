@@ -4976,7 +4976,7 @@ function SearchRerankModelDialog({
 
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
-      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+      <div className={`${s.modalCard} ${s.searchRerankModelModal}`} onClick={(event) => event.stopPropagation()}>
         <div className={s.modalHeader}>
           <div>
             <h3 className={s.modalTitle}>编辑搜索重排模型</h3>
