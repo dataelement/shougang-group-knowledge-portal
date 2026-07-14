@@ -384,6 +384,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const homeQaAutoSentRef = useRef(false);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
   const knowledgePanelRef = useRef<HTMLDivElement>(null);
@@ -425,6 +426,37 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const templateId = new URLSearchParams(location.search).get('templateId')?.trim() || '';
     setPendingTemplateId((current) => (current === templateId ? current : templateId));
   }, [location.search]);
+
+  // 首页「智能问答」检索跳转过来:autosend=1 时选中全部有权限知识空间并自动发送;否则仅预填
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const q = params.get('q')?.trim() || '';
+    if (!q) return;
+    const autosend = params.get('autosend') === '1';
+
+    if (!autosend) {
+      setInput(q);
+      params.delete('q');
+      const query = params.toString();
+      navigate(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`, { replace: true });
+      return;
+    }
+
+    // 自动发送:先确保知识库列表已加载,再带上全部有权限的空间发起新会话
+    if (homeQaAutoSentRef.current) return;
+    if (!selectedModel) return;
+    if (!knowledgeSpacesLoaded) {
+      void ensureKnowledgeSpacesLoaded();
+      return;
+    }
+    homeQaAutoSentRef.current = true;
+    const allSpaceIds = availableSpaces.map((space) => space.id);
+    params.delete('q');
+    params.delete('autosend');
+    const query = params.toString();
+    navigate(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`, { replace: true });
+    sendMessage({ text: q, allSpaceIds });
+  }, [location.search, location.pathname, location.hash, navigate, knowledgeSpacesLoaded, selectedModel, availableSpaces]);
 
   useEffect(() => {
     if (!pendingTemplateId || !templatesLoaded) return;
@@ -631,9 +663,10 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     loadSessionMessages(session);
   };
 
-  const sendMessage = () => {
-    const text = input.trim();
-    const messageFiles = attachedFiles;
+  const sendMessage = (opts?: { text?: string; allSpaceIds?: number[] }) => {
+    const useAllSpaces = Boolean(opts?.allSpaceIds && opts.allSpaceIds.length);
+    const text = (opts?.text ?? input).trim();
+    const messageFiles = opts?.text !== undefined ? [] : attachedFiles;
     if ((!text && !messageFiles.length) || streaming || uploadingFiles.length) return;
     if (answerMode === 'expert' && !reasoningModelChoice) {
       setComposerTip('请先在后台配置推理模型。');
@@ -673,9 +706,9 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       entryPoint: 'qa_page',
       signal: abortController.signal,
       text: finalText,
-      knowledgeSpaceIds: [],
-      knowledgeScope: selectedKnowledgeScope,
-      files: attachedFiles,
+      knowledgeSpaceIds: useAllSpaces ? opts!.allSpaceIds! : [],
+      knowledgeScope: useAllSpaces ? undefined : selectedKnowledgeScope,
+      files: messageFiles,
       conversationId: activeSession.conversationId,
       model: selectedModel,
       answerMode,
@@ -1121,7 +1154,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
             <button
               type="button"
               className={s.smartAppSendButton}
-              onClick={sendMessage}
+              onClick={() => sendMessage()}
               disabled={uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
               aria-label="发送智能问答"
             >
@@ -1243,7 +1276,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
             <button
               type="button"
               className={s.sendBtn}
-              onClick={sendMessage}
+              onClick={() => sendMessage()}
               disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
             >
               {streaming ? <Loader2 size={18} className={s.spinner} /> : <Send size={18} />}

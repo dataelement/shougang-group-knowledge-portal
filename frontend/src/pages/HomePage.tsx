@@ -2,10 +2,9 @@ import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent, 
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search,
-  Send, BarChart3, Bot, ChevronLeft, ChevronRight, FileText,
+  BarChart3, Bot, ChevronLeft, ChevronRight, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
-  BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, User, Leaf, Truck, Wrench, GraduationCap,
-  Sparkles,
+  BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, Leaf, Truck, Wrench, GraduationCap,
   Flame, Briefcase, Users, ScrollText, Loader2,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
@@ -15,7 +14,6 @@ import {
   streamHomeContent,
   fetchDomainFileCounts,
   fetchHomeStats,
-  streamChatCompletion,
   type FileItem,
   type HomeStats,
 } from '../api/content';
@@ -132,10 +130,6 @@ const APP_ICON_IMAGES: Record<string, string> = {
   Bot: '/app-shortcuts/hero-open-qa.png',
 };
 
-type HomeQaMessage = {
-  role: 'bot' | 'user';
-  text: string;
-};
 
 const MOCK_DOMAIN_NAV_ITEMS: DomainConfig[] = [
   {
@@ -260,10 +254,6 @@ function buildBannerBackground(imageUrl: string): string {
   return `${BANNER_OVERLAY_GRADIENT}, url("${imageUrl}")`;
 }
 
-function getWelcomeMessage(welcomeMessage?: string) {
-  return welcomeMessage?.trim() || '你好，我是首钢股份知库智能助手，请问有什么可以帮您？';
-}
-
 function formatCount(value: number): string {
   if (value >= 10000) {
     const wan = value / 10000;
@@ -278,9 +268,7 @@ export default function HomePage() {
   const { config, loading: configLoading, error } = usePortalConfig();
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [query, setQuery] = useState('');
-  const [qaDraft, setQaDraft] = useState('');
-  const [qaMessages, setQaMessages] = useState<HomeQaMessage[]>([]);
-  const [qaStreaming, setQaStreaming] = useState(false);
+  const [searchTab, setSearchTab] = useState<'global' | 'qa'>('global');
   const [bannerIdx, setBannerIdx] = useState(0);
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
@@ -421,50 +409,27 @@ export default function HomePage() {
 
   const handleSearch = useCallback(() => {
     const keyword = query.trim();
+    if (searchTab === 'qa') {
+      // 智能问答:跳转到智能应用问答页;有关键词则带上并自动发送(选中全部有权限知识空间)
+      const path = keyword
+        ? `/apps?tab=qa&q=${encodeURIComponent(keyword)}&autosend=1`
+        : '/apps?tab=qa';
+      navigate(user ? path : buildGuestLoginPath(path));
+      return;
+    }
     navigate(keyword ? `/search?q=${encodeURIComponent(keyword)}` : '/search');
-  }, [query, navigate]);
+  }, [query, searchTab, navigate, user]);
 
-  const startQaConversation = useCallback((question?: string) => {
-    const text = (question ?? qaDraft).trim();
-    if (!text || qaStreaming) return;
-
-    setQaDraft('');
-    setQaStreaming(true);
-    setQaMessages((prev) => [...prev, { role: 'user', text }, { role: 'bot', text: '' }]);
-
-    void streamChatCompletion({
-      scene: 'qa',
-      entryPoint: 'home_qa',
-      text,
-      knowledgeSpaceIds: [],
-      onUpdate(currentText) {
-        setQaMessages((prev) => {
-          const next = [...prev];
-          const lastIdx = next.length - 1;
-          if (lastIdx < 0 || next[lastIdx].role !== 'bot') return prev;
-          next[lastIdx] = { ...next[lastIdx], text: currentText };
-          return next;
-        });
-      },
-    }).catch(() => {
-      setQaMessages((prev) => {
-        const next = [...prev];
-        const lastIdx = next.length - 1;
-        if (lastIdx < 0 || next[lastIdx].role !== 'bot') return prev;
-        next[lastIdx] = { ...next[lastIdx], text: '问答请求失败，请稍后重试。' };
-        return next;
-      });
-    }).finally(() => {
-      setQaStreaming(false);
-    });
-  }, [qaDraft, qaStreaming]);
-
-  const handleKey = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
       setShowHotTagMenu(false);
       return;
     }
-    if (e.key === 'Enter') handleSearch();
+    // Enter 检索,Shift+Enter 换行(多行输入)
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSearch();
+    }
   };
 
   const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains) : []), [config]);
@@ -522,17 +487,8 @@ export default function HomePage() {
   }));
   const homeSections = enabledSections.slice(0, 3);
   const contentSections = homeSections;
-  const assistantGreeting = getWelcomeMessage(config?.qa.welcome_message);
   const qaHotQuestionsTemp = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
   const qaHotQuestions = qaHotQuestionsTemp?.slice(0, displayConfig.home.hotTagsCount) || [];
-  const primaryQaQuestion = qaHotQuestions[0] || '振动纹通常如何排查？';
-  const qaPreviewMessages = qaMessages.length > 0
-    ? qaMessages
-    : [
-      { role: 'bot' as const, text: assistantGreeting },
-      { role: 'user' as const, text: primaryQaQuestion },
-      { role: 'bot' as const, text: '建议先核对轧机、卷取机和传动系统的振动趋势，再结合钢卷位置、速度段和设备点检记录定位异常来源。' },
-    ];
 
   const appEntryItems = (config?.qa.templates || []).filter((template) => template.enabled && template.show_on_home);
   const formatHomeStat = (value: number | undefined): string => {
@@ -592,35 +548,65 @@ export default function HomePage() {
             className={`${s.heroSearchPanel} ${showHotTagMenu ? s.heroSearchPanelOpen : ''}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={s.searchBox}>
+            <div className={s.searchTabs} role="tablist" aria-label="搜索方式">
               <button
                 type="button"
-                className={`${s.searchModeBtn} ${showHotTagMenu ? s.searchModeBtnActive : ''}`}
-                aria-expanded={showHotTagMenu}
-                aria-controls="home-hot-tag-menu"
-                onClick={() => setShowHotTagMenu((open) => !open)}
+                role="tab"
+                aria-selected={searchTab === 'global'}
+                className={`${s.searchTab} ${searchTab === 'global' ? s.searchTabActive : ''}`}
+                onClick={() => setSearchTab('global')}
               >
-                <img src={iconHot} alt="" className={s.searchModeIcon} />
-                <span>热门搜索</span>
-                <ChevronRight size={10} className={s.searchModeCaret} />
+                全局检索
               </button>
-              <input
+              <button
+                type="button"
+                role="tab"
+                aria-selected={searchTab === 'qa'}
+                className={`${s.searchTab} ${searchTab === 'qa' ? s.searchTabActive : ''}`}
+                onClick={() => {
+                  setSearchTab('qa');
+                  setShowHotTagMenu(false);
+                }}
+              >
+                智能问答
+              </button>
+            </div>
+            <div className={s.searchBox}>
+              <textarea
                 className={s.searchInput}
-                placeholder="输入关键词搜索知识文档"
+                placeholder={searchTab === 'qa' ? '输入问题,智能问答为你解答' : '输入关键词搜索知识文档'}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKey}
+                rows={2}
               />
-              <button
-                type="button"
-                className={s.searchBtn}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleSearch();
-                }}
-              >
-                <Search size={18} />
-              </button>
+              <div className={s.searchBoxBar}>
+                {searchTab === 'global' ? (
+                  <button
+                    type="button"
+                    className={`${s.searchModeBtn} ${showHotTagMenu ? s.searchModeBtnActive : ''}`}
+                    aria-expanded={showHotTagMenu}
+                    aria-controls="home-hot-tag-menu"
+                    onClick={() => setShowHotTagMenu((open) => !open)}
+                  >
+                    <img src={iconHot} alt="" className={s.searchModeIcon} />
+                    <span>热门搜索</span>
+                    <ChevronRight size={10} className={s.searchModeCaret} />
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <button
+                  type="button"
+                  className={s.searchBtn}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleSearch();
+                  }}
+                >
+                  <Search size={18} />
+                </button>
+              </div>
             </div>
             {showHotTagMenu ? (
               <div id="home-hot-tag-menu" className={s.hotSearchMenu}>
@@ -636,7 +622,7 @@ export default function HomePage() {
                           navigate(`/search?q=${encodeURIComponent(question)}`);
                         }}
                       >
-                        {question}
+                        <span className={s.hotSearchTagText}>{question}</span>
                       </button>
                     ))}
                   </div>
@@ -848,6 +834,13 @@ export default function HomePage() {
               );
             })}
 
+          </div>
+
+          {/* Right column */}
+          <div className={s.sideColumn}>
+            {/* 专家问答 */}
+            <ExpertQuestions className={s.qaPanel} />
+
             {/* 专业课程 · 岗位赋能 */}
             <div className={s.panel}>
               <div className={`${s.panelHeader} ${s.headerCourse}`}>
@@ -892,90 +885,6 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-          </div>
-
-          {/* Right column */}
-          <div className={s.sideColumn}>
-            {/* 智能问答 */}
-            <div className={`${s.qaPanel} ${s.aiQaPanel}`}>
-              <div className={s.qaHeader}>
-                <div className={s.qaHeaderLeft}>
-                  <img src={iconAiqa} alt="" className={s.panelIconImg} />
-                  <span className={s.panelTitle}>智能问答</span>
-                </div>
-                <Link
-                  to="/apps?tab=qa"
-                  className={s.panelMore}
-                  onClick={(event) => {
-                    if (user) return;
-                    event.preventDefault();
-                    navigate(buildGuestLoginPath('/apps?tab=qa'));
-                  }}
-                >
-                  进入 <ChevronRight size={14} />
-                </Link>
-              </div>
-              <div className={s.qaComposerWrap}>
-                <div className={s.qaPreview}>
-                  {qaPreviewMessages.map((message, index) => {
-                    const isUser = message.role === 'user';
-                    const isSuggestion = qaMessages.length === 0 && isUser;
-                    const isThinking = qaStreaming && !isUser && index === qaPreviewMessages.length - 1 && !message.text.trim();
-                    return (
-                      <div
-                        key={`${message.role}-${index}`}
-                        className={`${s.qaPreviewRow} ${isUser ? s.qaPreviewRowUser : ''}`}
-                      >
-                        {!isUser ? (
-                          <div className={s.qaComposerAvatar}>
-                            <Bot size={16} />
-                          </div>
-                        ) : null}
-                        <button
-                          type="button"
-                          className={isUser ? s.qaUserBubble : s.qaComposerBubble}
-                          onClick={isSuggestion ? () => startQaConversation(message.text) : undefined}
-                          disabled={!isSuggestion}
-                        >
-                          {isThinking ? '思考中...' : message.text}
-                        </button>
-                        {isUser ? (
-                          <div className={`${s.qaComposerAvatar} ${s.qaComposerAvatarUser}`}>
-                            <User size={16} />
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-                <form
-                  className={s.qaPromptBox}
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    startQaConversation();
-                  }}
-                >
-                  <input
-                    className={s.qaPromptInput}
-                    value={qaDraft}
-                    onChange={(event) => setQaDraft(event.target.value)}
-                    placeholder="请输入您的问题"
-                    aria-label="请输入您的问题"
-                    disabled={qaStreaming}
-                  />
-                  <button type="submit" className={s.qaPromptSend} aria-label="发送问题" disabled={qaStreaming}>
-                    <Send size={17} />
-                  </button>
-                </form>
-              </div>
-              <div className={s.qaCallout}>
-                <Sparkles size={13} />
-                <span>支持流式回复 · 不引用知识库的日常问答</span>
-              </div>
-            </div>
-
-            {/* 专家问答 */}
-            <ExpertQuestions className={s.qaPanel} />
 
             <div className={s.panel}>
               <div className={`${s.panelHeader} ${s.headerRank}`}>

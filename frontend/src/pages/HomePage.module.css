@@ -29,8 +29,8 @@
 .heroBanner {
   position: relative;
   width: 100%;
-  height: 370px;
-  min-height: 370px;
+  height: 440px;
+  min-height: 440px;
   overflow: hidden;
   cursor: pointer;
   background-color: var(--primary-900);
@@ -108,6 +108,8 @@
 .bannerLabel {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  white-space: nowrap;
   padding: 6px 13px;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.22);
@@ -149,40 +151,103 @@
   z-index: 4;
 }
 
+/* 搜索方式切换 tab:全局检索 / 智能问答。clip-path 裁成两侧 S 弧的文件夹标签形,
+   背景无关(不会出现暗色缺口),相邻 tab 交叠形成 S 谷,紧贴输入框上沿 */
+.searchTabs {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0;
+  margin-bottom: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.searchTab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 122px;
+  height: 40px;
+  padding: 6px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: #545a60;
+  background: rgba(255, 255, 255, 0.6);
+  clip-path: path('M0,40 C13,40 15,6 28,6 L94,6 C107,6 109,40 122,40 Z');
+  transition: color 0.15s ease;
+}
+
+/* 最左侧 tab:左边竖直 + 圆角顶(不外扩);右边 = 凸圆角→垂直→反向凹圆角 的 S。
+   右侧被 S/叠压,文字往左偏移一点才在可见本体居中 */
+.searchTab:first-child {
+  padding: 6px 16px 0 0;
+  clip-path: path('M0,40 L0,18 Q0,6 12,6 L94,6 C100,6 103,10 103,15 L103,31 C103,36 106,40 112,40 Z');
+}
+
+/* 最右侧 tab:右边竖直 + 圆角顶(不外扩);左边 = 反向凹圆角→垂直→凸圆角 的 S */
+.searchTab:last-child {
+  padding: 6px 0 0 16px;
+  clip-path: path('M10,40 C16,40 19,36 19,31 L19,15 C19,10 22,6 28,6 L110,6 Q122,6 122,18 L122,40 Z');
+}
+
+/* 未选中的 tab 内侧改为“反向凹圆角→垂直→正凸圆角”,与选中 tab 的内侧互补,交接处成一条 S */
+.searchTab:first-child:not(.searchTabActive) {
+  clip-path: path('M0,40 L0,18 Q0,6 12,6 L112,6 C106,6 103,10 103,15 L103,31 C103,36 100,40 94,40 Z');
+}
+
+.searchTab:last-child:not(.searchTabActive) {
+  clip-path: path('M28,40 C22,40 19,36 19,31 L19,15 C19,10 16,6 10,6 L110,6 Q122,6 122,18 L122,40 Z');
+}
+
+/* 两 tab 交叠,收窄中间的 S 谷 */
+.searchTab + .searchTab {
+  margin-left: -40px;
+}
+
+.searchTab:hover:not(.searchTabActive) {
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.searchTabActive {
+  z-index: 2;
+  background: #3662e3;
+  color: #fff;
+}
+
 .searchBox {
   position: relative;
   display: flex;
-  align-items: center;
-  height: 54px;
-  border-radius: 12px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 8px;
+  border-radius: 0 12px 12px 12px;
   background: #fff;
   box-shadow: 0 8px 20px rgba(32, 88, 174, 0.18);
-  overflow: hidden;
+}
+
+.searchBoxBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .searchModeBtn {
   position: relative;
-  height: 100%;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
-  padding: 0 14px;
+  padding: 0 10px;
+  border-radius: 8px;
   color: #f26a2e;
   font-size: 14px;
   font-weight: 600;
 }
 
-.searchModeBtn::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1px;
-  height: 26px;
-  background: #eef2f7;
-}
 
 .searchModeIcon {
   width: 14px;
@@ -209,16 +274,19 @@
 }
 
 .searchInput {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
+  width: 100%;
+  min-height: 46px;
+  max-height: 120px;
+  resize: none;
   border: none;
   border-radius: 0;
   background: transparent;
-  padding: 0 66px 0 14px;
-  font-size: 18px;
+  padding: 4px 6px;
+  font-size: 16px;
+  line-height: 22px;
   color: var(--neutral-800);
   font-family: var(--font-sans);
+  outline: none;
 }
 
 .searchInput::placeholder {
@@ -253,34 +321,44 @@
 }
 
 .hotSearchTags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  max-height: 64px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 18px;
+  max-height: 96px;
   overflow: hidden;
 }
 
 .hotSearchTag {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
-  max-width: 100%;
-  height: 26px;
-  padding: 0 9px;
-  border: 1px solid #e5eaf2;
-  border-radius: 9999px;
-  background: #f8fafc;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  transition: color 0.15s ease;
+}
+.hotSearchTag::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f97316;
+}
+.hotSearchTagText {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .hotSearchTag:hover {
-  border-color: #f97316;
-  background: #fff7ed;
   color: #c2410c;
 }
 
@@ -291,13 +369,10 @@
 }
 
 .searchBtn {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 42px;
-  height: 42px;
-  border-radius: 11px;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
   background: #336df0;
   color: #fff;
   display: flex;
