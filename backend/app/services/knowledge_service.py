@@ -167,11 +167,18 @@ class KnowledgeService:
 
     @staticmethod
     def _is_public_space(space: KnowledgeSpaceItem) -> bool:
-        return (
-            (space.space_level or "").strip().lower() == "public"
-            or (space.auth_type or "").strip().lower() == "public"
-            or "public" in space.sources
-        )
+        space_level = (space.space_level or "").strip().lower()
+        if space_level:
+            return space_level == "public"
+        return "public" in space.sources
+
+    @staticmethod
+    def _effective_upstream_space_level(
+        space_level: Optional[str],
+        extra_space_ids: Optional[list[int]],
+    ) -> Optional[str]:
+        # 匿名请求使用后台服务账号访问上游，必须重新收窄到公共层级。
+        return "public" if extra_space_ids is None else space_level
 
     async def list_public_spaces(self) -> KnowledgeSpaceListData:
         visible_spaces = await self.list_visible_spaces()
@@ -643,6 +650,7 @@ class KnowledgeService:
         )
         if not space_ids:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
 
         if (
             normalized_base_tag
@@ -654,7 +662,7 @@ class KnowledgeService:
             return await self._search_shougang_portal_files_with_filter_tag(
                 tag=normalized_base_tag,
                 space_ids=space_ids,
-                space_level=space_level,
+                space_level=upstream_space_level,
                 sort=sort,
                 cursor=cursor,
                 limit=limit,
@@ -670,7 +678,7 @@ class KnowledgeService:
                 q=keyword,
                 tag=effective_tag,
                 space_ids=space_ids,
-                space_level=space_level,
+                space_level=upstream_space_level,
                 file_ext=file_ext,
                 document_type=document_type,
                 file_subcategory_code=file_subcategory_code,
@@ -682,7 +690,7 @@ class KnowledgeService:
         return await self._browse_shougang_portal_files(
             tag=effective_tag,
             space_ids=space_ids,
-            space_level=space_level,
+            space_level=upstream_space_level,
             file_ext=file_ext,
             document_type=document_type,
             file_subcategory_code=file_subcategory_code,
@@ -719,11 +727,12 @@ class KnowledgeService:
         )
         if not space_ids:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
         return await self._search_shougang_portal_files(
             q=keyword,
             tag=(base_tag or tag or "").strip() or None,
             space_ids=space_ids,
-            space_level=space_level,
+            space_level=upstream_space_level,
             file_ext=file_ext,
             document_type=document_type,
             file_subcategory_code=file_subcategory_code,
@@ -760,6 +769,7 @@ class KnowledgeService:
         )
         if not space_ids:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
         if (
             normalized_base_tag
             and normalized_tag
@@ -769,7 +779,7 @@ class KnowledgeService:
             return await self._search_shougang_portal_files_with_filter_tag(
                 tag=normalized_base_tag,
                 space_ids=space_ids,
-                space_level=space_level,
+                space_level=upstream_space_level,
                 sort=sort,
                 cursor=cursor,
                 limit=limit,
@@ -782,7 +792,7 @@ class KnowledgeService:
         return await self._browse_shougang_portal_files(
             tag=normalized_base_tag or normalized_tag or None,
             space_ids=space_ids,
-            space_level=space_level,
+            space_level=upstream_space_level,
             file_ext=file_ext,
             document_type=document_type,
             file_subcategory_code=file_subcategory_code,

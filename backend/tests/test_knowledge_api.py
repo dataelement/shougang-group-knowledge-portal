@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -473,7 +474,7 @@ class FakeBishengClient:
             if json == {
                 "tag": None,
                 "space_ids": [12],
-                "space_level": None,
+                "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
                 "cursor": None,
@@ -2831,7 +2832,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_keyword_search(tmp
                     "q": "振动纹",
                     "tag": "热轧",
                     "space_ids": [12, 18],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
                     "rerank_model_id": "",
@@ -2883,7 +2884,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_keyword_search(tmp
                 "q": "振动纹",
                 "tag": "热轧",
                 "space_ids": [12, 18],
-                "space_level": None,
+                "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
                 "rerank_model_id": "",
@@ -2905,7 +2906,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tm
                 base_request = {
                     "tag": "行业情报",
                     "space_ids": [12, 18],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "updated_at_desc",
                     "limit": 2,
@@ -2996,7 +2997,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tm
             {
                 "tag": "行业情报",
                 "space_ids": [12, 18],
-                "space_level": None,
+                "space_level": "public",
                 "file_ext": None,
                 "sort": "updated_at_desc",
                 "cursor": None,
@@ -3008,7 +3009,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tm
             {
                 "tag": "行业情报",
                 "space_ids": [12, 18],
-                "space_level": None,
+                "space_level": "public",
                 "file_ext": None,
                 "sort": "updated_at_desc",
                 "cursor": "cursor:next",
@@ -3031,7 +3032,7 @@ def test_search_files_applies_base_tag_and_filter_tag_via_shougang_portal_search
                 assert json == {
                     "tag": "热轧",
                     "space_ids": [12, 18],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "updated_at_desc",
                     "cursor": None,
@@ -3127,7 +3128,7 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
                 assert json == {
                     "tag": None,
                     "space_ids": [12, 18, 25],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "portal_read_count_desc",
                     "cursor": None,
@@ -3218,7 +3219,7 @@ def test_search_files_passes_document_type_subcategory_and_business_domain_code_
                 assert json == {
                     "tag": None,
                     "space_ids": [12],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "updated_at_desc",
                     "cursor": None,
@@ -3280,7 +3281,7 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                     "q": "振动纹",
                     "tag": None,
                     "space_ids": [12],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
                     "rerank_model_id": "",
@@ -3327,7 +3328,7 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                 "q": "振动纹",
                 "tag": None,
                 "space_ids": [12],
-                "space_level": None,
+                "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
                 "rerank_model_id": "",
@@ -3350,7 +3351,7 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
                     "q": "振动纹",
                     "tag": None,
                     "space_ids": [12],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
                     "rerank_model_id": "5",
@@ -3383,7 +3384,7 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
                 "q": "振动纹",
                 "tag": None,
                 "space_ids": [12],
-                "space_level": None,
+                "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
                 "rerank_model_id": "5",
@@ -3534,7 +3535,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
                 if json == {
                     "tag": None,
                     "space_ids": [12, 18, 25],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "portal_read_count_desc",
                     "cursor": None,
@@ -3564,7 +3565,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
                 if json == {
                     "tag": "典型案例",
                     "space_ids": [12, 18, 25],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "updated_at_desc",
                     "cursor": None,
@@ -3625,7 +3626,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
         {
             "tag": None,
             "space_ids": [12, 18, 25],
-            "space_level": None,
+            "space_level": "public",
             "file_ext": None,
             "sort": "portal_read_count_desc",
             "cursor": None,
@@ -3638,7 +3639,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
         {
             "tag": "典型案例",
             "space_ids": [12, 18, 25],
-            "space_level": None,
+            "space_level": "public",
             "file_ext": None,
             "sort": "updated_at_desc",
             "cursor": None,
@@ -3751,7 +3752,7 @@ def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path)
             {
                 "tag": None,
                 "space_ids": [12],
-                "space_level": None,
+                "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
                 "cursor": None,
@@ -3799,7 +3800,7 @@ def test_search_and_tags_skip_unauthorized_spaces_instead_of_500(tmp_path: Path)
             if path == "/api/v1/knowledge/shougang-portal/files/browse" and json == {
                 "tag": "热轧",
                 "space_ids": [12, 18],
-                "space_level": None,
+                "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
                 "cursor": None,
@@ -4070,7 +4071,7 @@ def test_keyword_search_route_uses_dedicated_top_50_contract(tmp_path: Path):
                     "q": "振动纹",
                     "tag": None,
                     "space_ids": [12, 18, 25],
-                    "space_level": None,
+                    "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
                     "rerank_model_id": "",
@@ -4166,6 +4167,80 @@ def test_guest_spaces_route_returns_only_public_spaces(tmp_path: Path):
     spaces = response.json()["data"]["data"]
     assert {space["id"] for space in spaces} == {12, 18, 25}
     assert all(space["space_level"] == "public" for space in spaces)
+
+
+class ConflictingPublicPersonalClient(FakeBishengClient):
+    """模拟真实遗留数据：个人空间的旧 auth_type 错误保留为 public。"""
+
+    async def get_json(self, path: str, params=None, headers=None):
+        response = await super().get_json(path, params=params, headers=headers)
+        if path == "/api/v1/knowledge/space/grouped":
+            response["data"]["personal_spaces"][0]["auth_type"] = "public"
+        return response
+
+    async def post_json(self, path: str, json=None, headers=None):
+        if path in {
+            "/api/v1/knowledge/shougang-portal/files/search",
+            "/api/v1/knowledge/shougang-portal/files/browse",
+        }:
+            self.post_calls.append((path, json))
+            return {
+                "status_code": 200,
+                "data": {"data": [], "has_more": False, "next_cursor": None},
+            }
+        return await super().post_json(path, json=json, headers=headers)
+
+
+def test_guest_spaces_exclude_personal_space_with_legacy_public_auth_type(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = ConflictingPublicPersonalClient()
+    with TestClient(app) as client:
+        previous_auth = client.app.state.portal_auth_service
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        try:
+            response = client.get("/api/v1/knowledge/spaces")
+        finally:
+            client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    spaces = response.json()["data"]["data"]
+    assert {space["id"] for space in spaces} == {12, 18, 25}
+    assert all(space["space_level"] == "public" for space in spaces)
+
+
+@pytest.mark.parametrize(
+    ("request_path", "upstream_path"),
+    [
+        ("/api/v1/knowledge/files/search?q=scope-leak", "/api/v1/knowledge/shougang-portal/files/search"),
+        ("/api/v1/knowledge/files/browse", "/api/v1/knowledge/shougang-portal/files/browse"),
+        ("/api/v1/knowledge/files?q=scope-leak", "/api/v1/knowledge/shougang-portal/files/search"),
+    ],
+)
+def test_guest_file_routes_force_public_space_scope(
+    tmp_path: Path,
+    request_path: str,
+    upstream_path: str,
+):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = ConflictingPublicPersonalClient()
+    with TestClient(app) as client:
+        previous_auth = client.app.state.portal_auth_service
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        try:
+            response = client.get(request_path)
+        finally:
+            client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert len(fake_bisheng.post_calls) == 1
+    path, payload = fake_bisheng.post_calls[0]
+    assert path == upstream_path
+    assert payload["space_ids"] == [12, 18, 25]
+    assert payload["space_level"] == "public"
 
 
 def test_browse_route_falls_back_to_ten_for_invalid_configured_page_size(tmp_path: Path):
