@@ -548,7 +548,7 @@ export default function ExpertQAPage() {
                 domains.map((d) => {
                   const Icon = iconMap[d.icon] || Tag;
                   const active = d.name === activeDomain;
-                  const answerCount = domainAnswerCountMap.get(d.name);
+                  const answerCount = domainAnswerCountMap.get(d.name) || 0;
                   return (
                     <button
                       key={d.name}
