@@ -6,6 +6,7 @@ test('createDomainDraft maps existing domain values incl. code', () => {
   const draft = createDomainDraft({
     name: '轧线',
     space_ids: [12],
+    department_ids: [3, 8],
     color: '#059669',
     bg: '#d1fae5',
     icon: 'Factory',
@@ -17,6 +18,7 @@ test('createDomainDraft maps existing domain values incl. code', () => {
   assert.deepEqual(draft, {
     name: '轧线',
     spaceIds: ['12'],
+    departmentIds: ['3', '8'],
     icon: 'Factory',
     backgroundImage: '/rolling-domain-bg.jpg',
     color: '#059669',
@@ -30,6 +32,7 @@ test('validateDomainDraft returns a domain config incl. uppercased code', () => 
   const result = validateDomainDraft({
     name: '冷轧',
     spaceIds: ['18'],
+    departmentIds: ['3', '8', '3'],
     icon: 'Snowflake',
     backgroundImage: '/cold-domain-bg.jpg',
     color: '#6366f1',
@@ -44,6 +47,7 @@ test('validateDomainDraft returns a domain config incl. uppercased code', () => 
     domain: {
       name: '冷轧',
       space_ids: [18],
+      department_ids: [3, 8],
       icon: 'Snowflake',
       background_image: '/cold-domain-bg.jpg',
       color: '#6366f1',
@@ -54,10 +58,27 @@ test('validateDomainDraft returns a domain config incl. uppercased code', () => 
   });
 });
 
+test('validateDomainDraft preserves independently selected parent and child departments', () => {
+  const result = validateDomainDraft({
+    name: '研发',
+    spaceIds: [],
+    departmentIds: ['1', '2', '1'],
+    icon: 'Factory',
+    backgroundImage: '',
+    color: '#2563eb',
+    bg: '#eff6ff',
+    enabled: true,
+    code: 'RD',
+  }, []);
+
+  assert.deepEqual(result.domain?.department_ids, [1, 2]);
+});
+
 test('validateDomainDraft allows binding to a department space', () => {
   const result = validateDomainDraft({
     name: '能源',
     spaceIds: ['20'],
+    departmentIds: [],
     icon: 'Zap',
     backgroundImage: '',
     color: '#d97706',
@@ -74,6 +95,7 @@ test('validateDomainDraft rejects binding to personal or team spaces', () => {
   const createDraft = (spaceId: string) => ({
     name: '能源',
     spaceIds: [spaceId],
+    departmentIds: [],
     icon: 'Zap',
     backgroundImage: '',
     color: '#d97706',
@@ -94,6 +116,7 @@ test('validateDomainDraft allows empty code', () => {
   const result = validateDomainDraft({
     name: '能源',
     spaceIds: [],
+    departmentIds: [],
     icon: 'Zap',
     backgroundImage: '/energy-domain-bg.jpg',
     color: '#d97706',
@@ -110,6 +133,7 @@ test('validateDomainDraft still rejects unknown spaces', () => {
   const unknown = validateDomainDraft({
     name: '能源',
     spaceIds: ['30'],
+    departmentIds: [],
     icon: 'Zap',
     backgroundImage: '',
     color: '#d97706',
@@ -127,6 +151,7 @@ test('validateDomainDraft supports multiple bindable spaces and deduplicates ids
   const result = validateDomainDraft({
     name: '能源',
     spaceIds: ['20', '21', '20'],
+    departmentIds: [],
     icon: 'Zap',
     backgroundImage: '',
     color: '#d97706',

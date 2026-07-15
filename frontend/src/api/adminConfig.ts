@@ -3,6 +3,7 @@ import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../
 export interface DomainConfig {
   name: string;
   space_ids: number[];
+  department_ids?: number[];
   color: string;
   bg: string;
   icon: string;
