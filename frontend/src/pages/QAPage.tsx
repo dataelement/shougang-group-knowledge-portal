@@ -48,6 +48,7 @@ import { useAuth } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
 import { clearHomeQaDraft, readHomeQaDraft } from '../utils/homeQaDraft';
+import { QA_KB_HINT_TEXT, dismissQaKbHint, shouldShowQaKbHint } from '../utils/qaKbHint';
 import composerModelIcon from '../assets/composer-model.svg';
 import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
 import s from './QAPage.module.css';
@@ -274,7 +275,11 @@ function getKnowledgePickerLabel(
 ): string {
   if (loading) return '知识库加载中';
   if (scope.mode === 'knowledge_space') {
-    return spaces.find((space) => space.id === scope.knowledgeSpaceId)?.name || '已选 1 个知识库';
+    const ids = scope.knowledgeSpaceIds;
+    if (ids.length === 1) {
+      return spaces.find((space) => space.id === ids[0])?.name || '已选 1 个知识库';
+    }
+    return `已选 ${ids.length} 个知识库`;
   }
   if (scope.mode === 'files' && (scope.fileRefs.length || scope.folderRefs.length)) {
     return `已选 ${scope.resolvedFileCount || scope.fileRefs.length} 个文件`;
@@ -388,6 +393,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const abortControllerRef = useRef<AbortController | null>(null);
   const homeQaAutoSentRef = useRef(false);
   const [homeQaAutoSending, setHomeQaAutoSending] = useState(false);
+  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint());
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
   const knowledgePanelRef = useRef<HTMLDivElement>(null);
@@ -631,6 +637,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const timer = window.setTimeout(() => setComposerTip(''), 2200);
     return () => window.clearTimeout(timer);
   }, [composerTip]);
+
 
   async function ensureKnowledgeSpacesLoaded() {
     if (knowledgeSpacesLoaded || loadingKnowledgeSpaces) return;
@@ -1177,6 +1184,19 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               <span>{knowledgePickerLabel}</span>
               <ChevronDown size={12} className={s.smartAppToolCaret} />
             </button>
+            {qaKbHintOpen && !knowledgePickerOpen ? (
+              <div className={s.kbHintBubble} role="note">
+                <span className={s.kbHintText}>{QA_KB_HINT_TEXT}</span>
+                <button
+                  type="button"
+                  className={s.kbHintClose}
+                  onClick={() => { dismissQaKbHint(); setQaKbHintOpen(false); }}
+                  aria-label="关闭提示"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : null}
             {knowledgePickerOpen ? (
               <div className={s.knowledgePanel} ref={knowledgePanelRef}>
                 <QAKnowledgeTreePicker

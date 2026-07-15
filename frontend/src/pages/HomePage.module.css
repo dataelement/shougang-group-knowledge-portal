@@ -561,6 +561,51 @@
   font-weight: 600;
 }
 
+/* 「选择知识库」右侧的气泡提示:portal 到 body,箭头朝左指向按钮 */
+.qaKbHintBubble {
+  transform: translateY(-50%);
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #336df0;
+  color: #fff;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(51, 109, 240, 0.3);
+}
+
+.qaKbHintBubble::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: #336df0;
+}
+
+.qaKbHintText {
+  min-width: 0;
+}
+
+.qaKbHintClose {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+
+.qaKbHintClose:hover {
+  color: #fff;
+}
+
 /* 知识库面板:portal 到 body,fixed 定位(left/top 由内联样式给出) */
 .qaPickerPortal {
   padding: 14px;
