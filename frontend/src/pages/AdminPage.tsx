@@ -4099,7 +4099,7 @@ function QATemplatesTable({
             const deletable = canDeleteQaTemplateCategory(category.id, qa.templates);
             return (
               <tr key={category.id}>
-                <td><div className={s.valueStack}><span className={s.valueTitle}>{category.name}</span><span className={s.valueMeta}>{category.description || category.id}</span></div></td>
+                <td><div className={s.valueStack}><span className={s.valueTitle}>{category.name}</span><span className={s.valueMeta}>{category.description}</span></div></td>
                 <td><span className={category.enabled ? s.stateEnabled : s.stateDisabled}>{category.enabled ? '已启用' : '已停用'}</span></td>
                 <td>{templateCount}</td>
                 <td>
