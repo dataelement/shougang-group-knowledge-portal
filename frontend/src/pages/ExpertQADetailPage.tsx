@@ -26,7 +26,6 @@ import {
   MessageCircle,
   Plus,
   ThumbsUp,
-  User,
   UserCheck,
   X,
 } from 'lucide-react';
@@ -67,6 +66,7 @@ import {
   type QuestionStatus,
 } from '../types/expertQa';
 import askBadge from '../assets/ask-badge.png';
+import iconInviteGroup from '../assets/icon-invite-group.svg';
 import { resolveQaImageUrl } from '../utils/qaImageUrl';
 import { isPortalAdmin } from '../utils/adminAccess';
 import {
@@ -1851,7 +1851,7 @@ export default function ExpertQADetailPage() {
                   <StatusPill status={question.status} />
                   {question.invitedSummary ? (
                     <span className={s.targetExpert}>
-                      <User size={11} />
+                      <img src={iconInviteGroup} alt="" className={s.targetExpertIcon} />
                       {question.invitedSummary}
                     </span>
                   ) : null}

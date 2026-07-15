@@ -11,7 +11,6 @@ import {
   Edit3,
   Tag,
   Trash2,
-  User,
   Settings, Shield, Leaf, GraduationCap, Network, Zap, Factory,
   type LucideIcon,
 } from 'lucide-react';
@@ -38,6 +37,7 @@ import expertsErrorImg from '../assets/experts-error.png';
 import iconVote from '../assets/icon-vote.png';
 import iconAnswer from '../assets/icon-answer.png';
 import iconViews from '../assets/icon-views.png';
+import iconInviteGroup from '../assets/icon-invite-group.svg';
 import type { DomainConfig } from '../api/adminConfig';
 import { useAuth } from '../hooks/useAuth';
 import { toQuestionDescriptionPlainText } from '../utils/questionRichText';
@@ -196,7 +196,7 @@ function QuestionCard({
             <StatusPill status={q.statusMeta.text} />
             {q.invitedSummary ? (
               <span className={s.targetExpert}>
-                <User size={11} />
+                <img src={iconInviteGroup} alt="" className={s.targetExpertIcon} />
                 {q.invitedSummary}
               </span>
             ) : null}
