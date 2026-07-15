@@ -160,8 +160,118 @@
   background: var(--primary-50);
 }
 
+.categoryGroup {
+  margin-bottom: 10px;
+}
+
+.categoryHeader {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 18px 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px;
+  color: var(--neutral-700);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: all 0.15s ease;
+}
+
+.categoryHeader:hover {
+  color: var(--primary-700);
+  border-color: var(--primary-200);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+}
+
+.categoryHeaderExpanded {
+  color: var(--primary-700);
+  border-color: var(--primary-200);
+  background: var(--primary-50);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+}
+
+.categoryIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--neutral-500);
+}
+
+.categoryFolderIcon {
+  color: var(--primary-500);
+}
+
+.categoryHeaderExpanded .categoryFolderIcon {
+  color: var(--primary-600);
+}
+
+.categoryName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.categoryCount {
+  min-width: 28px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  color: var(--neutral-600);
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--neutral-100);
+  border-radius: 999px;
+}
+
+.categoryHeaderExpanded .categoryCount {
+  color: var(--primary-700);
+  background: #fff;
+}
+
+.categoryChildren {
+  padding-left: 18px;
+  padding-top: 10px;
+}
+
+.spaceItemChild {
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+}
+
+.spaceItemChild:last-child {
+  margin-bottom: 0;
+}
+
+.spaceItemIndent {
+  width: 14px;
+}
+
 .fileList {
   padding: 10px 12px;
+}
+
+.loadingMore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 0;
+  color: var(--neutral-500);
+  font-size: 0.8rem;
+}
+
+.fileListSentinel {
+  height: 1px;
+  margin-top: 4px;
 }
 
 .fileItem {

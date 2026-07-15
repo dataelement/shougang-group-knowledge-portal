@@ -484,6 +484,7 @@ export interface QaKnowledgeSpaceOption {
   id: number;
   name: string;
   fileNum: number;
+  spaceLevel?: string;
 }
 
 /** 后端上传接口原始响应（字段可能不统一） */
@@ -516,6 +517,7 @@ interface QaKnowledgeSpaceDto {
   name?: string;
   file_num?: number | string;
   file_count?: number | string;
+  space_level?: string;
 }
 
 interface QaKnowledgeSpacesResponse {
@@ -563,10 +565,14 @@ interface QaKnowledgeFilesDto {
         data?: QaKnowledgeFileDto[];
         list?: QaKnowledgeFileDto[];
         items?: QaKnowledgeFileDto[];
+        has_more?: boolean;
+        next_cursor?: string | null;
       };
   list?: QaKnowledgeFileDto[];
   items?: QaKnowledgeFileDto[];
   total?: number;
+  has_more?: boolean;
+  next_cursor?: string | null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1246,27 +1252,44 @@ export async function fetchQaKnowledgePublicSpaces(): Promise<QaKnowledgeSpaceOp
       id: toFiniteNumber(space.id),
       name: (space.name ?? '').trim(),
       fileNum: toFiniteNumber(space.file_count ?? space.file_num),
+      spaceLevel: (space.space_level ?? '').trim() || undefined,
     }))
     .filter((space: QaKnowledgeSpaceOption) => space.id > 0 && Boolean(space.name));
+}
+
+export interface QaKnowledgeSpaceChildrenResult {
+  files: QaKnowledgeFileOption[];
+  hasMore: boolean;
+  nextCursor: string | null;
 }
 
 export async function fetchQaKnowledgeSpaceFiles(
   spaceId: number,
   parentId?: number | null,
-): Promise<QaKnowledgeFileOption[]> {
+  cursor?: string | null,
+): Promise<QaKnowledgeSpaceChildrenResult> {
   const query = qs({
     parent_id: parentId,
-    page_size: 20,
+    cursor: cursor,
   });
-  const raw = await req<QaKnowledgeFilesDto | QaKnowledgeFileDto[]>(
-    `/workspace/api/v1/knowledge/space/${spaceId}/children${query}`,
+  const raw = await req<QaKnowledgeFilesDto>(
+    `/api/v1/knowledge/qa/tree/spaces/${spaceId}/children${query}`,
     undefined,
     KNOWLEDGE_TREE_TIMEOUT,
   );
 
-  return readKnowledgeFilesPayload(raw)
-    .map((file) => mapKnowledgeFileOption(file, spaceId))
-    .filter((file): file is QaKnowledgeFileOption => Boolean(file));
+  const items = readKnowledgeFilesPayload(raw);
+  const meta = !Array.isArray(raw) ? raw : {};
+  const hasMore = Boolean(meta.has_more);
+  const nextCursor = typeof meta.next_cursor === 'string' ? meta.next_cursor : null;
+
+  return {
+    files: items
+      .map((file) => mapKnowledgeFileOption(file, spaceId))
+      .filter((file): file is QaKnowledgeFileOption => Boolean(file)),
+    hasMore,
+    nextCursor,
+  };
 }
 
 /** 统计 */
