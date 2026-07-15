@@ -4099,7 +4099,7 @@ function QATemplatesTable({
             const deletable = canDeleteQaTemplateCategory(category.id, qa.templates);
             return (
               <tr key={category.id}>
-                <td><div className={s.valueStack}><span className={s.valueTitle}>{category.name}</span><span className={s.valueMeta}>{category.id}</span></div></td>
+                <td><div className={s.valueStack}><span className={s.valueTitle}>{category.name}</span><span className={s.valueMeta}>{category.description || category.id}</span></div></td>
                 <td><span className={category.enabled ? s.stateEnabled : s.stateDisabled}>{category.enabled ? '已启用' : '已停用'}</span></td>
                 <td>{templateCount}</td>
                 <td>
@@ -4380,9 +4380,15 @@ function QaTemplateCategoryDeleteDialog({
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
       <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
-        <h3 className={s.modalTitle}>删除模板分类</h3>
-        <p className={s.modalNote}>删除后该分类不再出现在知识问答页筛选中。</p>
-        <div className={s.confirmLine}><strong>分类名称：</strong>{category.name}</div>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>删除模板分类</h3>
+            <p className={s.modalNote}>删除后该分类不再出现在知识问答页筛选中。</p>
+          </div>
+        </div>
+        <div className={s.confirmBody}>
+          <div className={s.confirmLine}><strong>分类名称：</strong>{category.name}</div>
+        </div>
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>取消</button>
           <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
@@ -4409,9 +4415,15 @@ function QaTemplateDeleteDialog({
   return (
     <div className={s.modalBackdrop} onClick={onClose}>
       <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
-        <h3 className={s.modalTitle}>删除问答模板</h3>
-        <p className={s.modalNote}>删除后知识问答页和首页快捷入口都会同步下线。</p>
-        <div className={s.confirmLine}><strong>模板名称：</strong>{template.name}</div>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>删除问答模板</h3>
+            <p className={s.modalNote}>删除后知识问答页和首页快捷入口都会同步下线。</p>
+          </div>
+        </div>
+        <div className={s.confirmBody}>
+          <div className={s.confirmLine}><strong>模板名称：</strong>{template.name}</div>
+        </div>
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>取消</button>
           <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
