@@ -43,7 +43,9 @@ export function resolveHomeBanners(banners?: BannerSlide[]): RuntimeBanner[] {
       imageUrl: banner.image_url,
       linkUrl: banner.link_url ?? '',
     }));
-  return portalBanners.length ? portalBanners : FALLBACK_HOME_BANNERS;
+  // 正常情况下后端已保证「无生效 banner 时返回第一张默认图」;此处仅在配置加载失败等
+  // 兜底路径生效,同样只展示第一张,避免出现多张默认图。
+  return portalBanners.length ? portalBanners : FALLBACK_HOME_BANNERS.slice(0, 1);
 }
 
 export interface RuntimeDisplayConfig {

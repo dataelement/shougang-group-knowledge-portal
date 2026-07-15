@@ -28,6 +28,7 @@ from app.schemas.knowledge import (
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
+from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.portal_config import DEFAULT_DOCUMENT_TYPES, DocumentTypeConfig, PortalConfig
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
@@ -642,6 +643,13 @@ async def get_portal_config(
     business_domain_options = _build_business_domain_options(config)
 
     config_dict = config.model_dump(mode="json")
+
+    # 首页兜底:当没有生效的轮播图(全部删除或全部停用)时,返回第一张默认 banner，
+    # 保证首页不空。后台管理接口不做兜底,如实反映为空。
+    banners = config_dict.get("banners") or []
+    if not any(b.get("enabled") and b.get("image_url") for b in banners):
+        default_banners = DEFAULT_PORTAL_CONFIG.get("banners") or []
+        config_dict["banners"] = [dict(default_banners[0])] if default_banners else []
 
     # 回填 QA 模型展示名（bisheng 侧 schema 丢弃了 display_name 字段，按实时列表补齐）
     qa = config_dict.get("qa")
