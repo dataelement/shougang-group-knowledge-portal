@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2,
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -269,6 +269,24 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const flag = window.sessionStorage.getItem('sg_just_logged_in');
+      if (!flag) return null;
+      window.sessionStorage.removeItem('sg_just_logged_in');
+      const raw = window.localStorage.getItem('sg_portal_user');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { name?: string };
+      return parsed.name ? { message: `欢迎回来，${parsed.name}`, type: 'success' as const } : null;
+    } catch {
+      return null;
+    }
+  });
+
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    setToast({ message, type });
+  }
   const [spaceOptions, setSpaceOptions] = useState<SpaceOption[]>([]);
   const [spaceOptionsLoaded, setSpaceOptionsLoaded] = useState(false);
   const [spaceOptionsLoading, setSpaceOptionsLoading] = useState(false);
@@ -411,7 +429,7 @@ export default function AdminPage() {
     try {
       await task();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败');
+      showToast(err instanceof Error ? err.message : '保存失败', 'error');
     } finally {
       setSaving(false);
     }
@@ -632,6 +650,12 @@ export default function AdminPage() {
     });
   }, [active, refetchBindings]);
 
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(null), 2200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   function openQaTextDialog(mode: Exclude<QaDialogMode, null>, value: string) {
     setQaDialogMode(mode);
     setQaTextDraft(value);
@@ -796,6 +820,15 @@ export default function AdminPage() {
             </div>
           </div>
           {error ? <div className={s.errorBox}>{error}</div> : null}
+          {toast ? (
+            <div
+              className={`${s.toast} ${toast.type === 'success' ? s.toastSuccess : s.toastError}`}
+              role="status"
+            >
+              {toast.type === 'success' ? <CheckCircle size={14} /> : <XCircle size={14} />}
+              <span>{toast.message}</span>
+            </div>
+          ) : null}
           {!config && !loading ? (
             <div className={s.emptyState}>配置暂时不可用</div>
           ) : null}
@@ -1060,12 +1093,18 @@ export default function AdminPage() {
             }
             if (domainEditorIndex === null) {
               void handleAddDomain(config.domains, result.domain, runSave, setConfig, {
-                onSuccess: () => setDomainEditorOpen(false),
+                onSuccess: () => {
+                  setDomainEditorOpen(false);
+                  showToast('业务域添加成功');
+                }
               });
               return;
             }
             void handleEditDomain(config.domains, domainEditorIndex, result.domain, runSave, setConfig, {
-              onSuccess: () => setDomainEditorOpen(false),
+              onSuccess: () => {
+                setDomainEditorOpen(false);
+                showToast('业务域编辑成功');
+              }
             });
           }}
         />
@@ -1080,7 +1119,10 @@ export default function AdminPage() {
           onConfirm={() => {
             void handleDeleteDomain(config.domains, domainDeleteIndex, runSave, setConfig, {
               confirm: false,
-              onSuccess: () => setDomainDeleteIndex(null),
+              onSuccess: () => {
+                setDomainDeleteIndex(null);
+                showToast('业务域删除成功');
+              }
             });
           }}
         />

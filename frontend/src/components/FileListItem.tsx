@@ -17,7 +17,7 @@ import { buildFileListItemView } from '../utils/fileListItemView';
 import { highlightMatches } from '../utils/highlightText';
 import iconFavorite from '../assets/icon-favorite.svg';
 import iconDownload from '../assets/icon-download.svg';
-import iconAi from '../assets/icon-ai.svg';
+//import iconAi from '../assets/icon-ai.svg';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './ui/Tooltip';
 import s from './FileListItem.module.css';
 import tooltipS from './ui/Tooltip.module.css';
@@ -163,7 +163,7 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
                   分享
                 </button>
               ) : null}
-              {view.actions.includes('qa') ? (
+              {/*view.actions.includes('qa') ? (
                 <button
                   type="button"
                   className={s.actionButton}
@@ -176,7 +176,7 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
                   <img className={s.actionIcon} src={iconAi} alt="" aria-hidden="true" />
                   辅助阅读
                 </button>
-              ) : null}
+              ) : null*/}
             </div>
           ) : null}
         </div>
