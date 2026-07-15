@@ -25,6 +25,16 @@ import s from './QAKnowledgeTreePicker.module.css';
 
 const FILE_LIMIT_TIP = '一次最多可选择20个文件进行问答。';
 
+const SPACE_LEVEL_ORDER = ['public', 'department', 'team', 'personal'];
+
+const SPACE_LEVEL_LABELS: Record<string, string> = {
+  public: '公共知识库',
+  department: '部门知识库',
+  team: '团队知识库',
+  personal: '个人知识库',
+  other: '其他知识库',
+};
+
 function nodeChildrenKey(spaceId: number, parentId?: number | null) {
   return `${spaceId}:${parentId ?? 'root'}`;
 }
@@ -90,8 +100,34 @@ export default function QAKnowledgeTreePicker({
     return new Set(scope.folderRefs.map((ref) => folderRefKey(ref.knowledgeSpaceId, ref.folderId)));
   }, [scope]);
 
-  const spaceNameById = useMemo(() => new Map(spaces.map((space) => [space.id, space.name])), [spaces]);
-  const spaceOrderById = useMemo(() => new Map(spaces.map((space, index) => [space.id, index])), [spaces]);
+  const levelOrderIndex = useMemo(() => new Map(SPACE_LEVEL_ORDER.map((level, index) => [level, index])), []);
+
+  const sortedSpaces = useMemo(() => {
+    return [...spaces].sort((a, b) => {
+      const aIndex = levelOrderIndex.get(a.spaceLevel) ?? Number.MAX_SAFE_INTEGER;
+      const bIndex = levelOrderIndex.get(b.spaceLevel) ?? Number.MAX_SAFE_INTEGER;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      return a.name.localeCompare(b.name, 'zh-CN');
+    });
+  }, [spaces, levelOrderIndex]);
+
+  const spaceNameById = useMemo(() => new Map(sortedSpaces.map((space) => [space.id, space.name])), [sortedSpaces]);
+  const spaceOrderById = useMemo(() => new Map(sortedSpaces.map((space, index) => [space.id, index])), [sortedSpaces]);
+
+  const spaceGroups = useMemo(() => {
+    const groups: { level: string; label: string; spaces: KnowledgeSpace[] }[] = [];
+    for (const space of sortedSpaces) {
+      const level = space.spaceLevel || 'other';
+      const last = groups[groups.length - 1];
+      if (last && last.level === level) {
+        last.spaces.push(space);
+      } else {
+        groups.push({ level, label: SPACE_LEVEL_LABELS[level] || level, spaces: [space] });
+      }
+    }
+    return groups;
+  }, [sortedSpaces]);
+
   const searchMode = Boolean(searchQuery.trim());
   const searchGroups = useMemo(() => {
     const groups = new Map<number, { spaceId: number; spaceName: string; files: FileItem[] }>();
@@ -443,8 +479,8 @@ export default function QAKnowledgeTreePicker({
         </div>
         {expanded ? (
           <div className={s.nodeChildren}>
-            {errored ? <div className={s.stateLine}>加载失败</div> : null}
-            {!errored && !loadingNode && children.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
+            {errored ? <div className={s.stateLine} style={{ paddingLeft: 14 + depth * 24 + 79 }}>加载失败</div> : null}
+            {!errored && !loadingNode && children.length === 0 ? <div className={s.stateLine} style={{ paddingLeft: 14 + depth * 24 + 79 }}>暂无可见内容</div> : null}
             {children.map((child) => renderNode(child, depth + 1))}
             {hasMoreByKey[key] ? (
               <div ref={(el) => sentinelCbRef.current?.(el, node.spaceId, node.id)} className={s.loadMoreSentinel}>
@@ -557,66 +593,77 @@ export default function QAKnowledgeTreePicker({
             )) : null}
           </>
         ) : (
-          <>
+          <div className={s.spaceTreeWrapper}>
             {loading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 知识库加载中</div> : null}
             {!loading && spaces.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
-            {spaces.map((space) => {
-              const rootKey = nodeChildrenKey(space.id);
-              const expanded = expandedKeys.has(rootKey);
-              const wholeSelected = scope.mode === 'knowledge_space' && scope.knowledgeSpaceIds.includes(space.id);
-              const spaceSelectedCount = scope.mode === 'files'
-                ? scope.fileRefs.filter((ref) => ref.knowledgeSpaceId === space.id).length
-                + scope.folderRefs
-                  .filter((ref) => ref.knowledgeSpaceId === space.id)
-                  .reduce((sum, ref) => sum + (ref.resolvedFileCount || 0), 0)
-                : 0;
-              const full = wholeSelected || (space.fileCount > 0 && spaceSelectedCount >= space.fileCount);
-              const indeterminate = !full && spaceSelectedCount > 0;
-              const children = childrenByKey[rootKey] ?? [];
-              const loadingRoot = loadingKeys.has(rootKey);
-              const erroredRoot = errorKeys.has(rootKey);
-              return (
-                <section key={space.id} className={`${s.spaceBlock} ${expanded ? s.spaceBlockExpanded : ''}`}>
-                  <div className={`${s.spaceRow} ${full ? s.spaceRowActive : ''}`}>
-                    <button
-                      type="button"
-                      className={s.expandButton}
-                      onClick={() => toggleExpand(space.id)}
-                      aria-label={expanded ? '收起目录' : '展开目录'}
-                      title={expanded ? '收起目录' : '展开目录'}
-                    >
-                      {loadingRoot ? <Loader2 size={14} className={s.spin} /> : expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </button>
-                    <button
-                      type="button"
-                      className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
-                      onClick={() => toggleWholeSpace(space)}
-                      aria-label={`选择知识库 ${space.name}`}
-                    >
-                      {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
-                    </button>
-                    <div className={s.spaceContent}>
-                      <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
-                        <strong>{space.name}</strong>
-                      </button>
-                    </div>
-                  </div>
-                  {expanded ? (
-                    <div className={s.rootChildren}>
-                      {erroredRoot ? <div className={s.stateLine}>加载失败</div> : null}
-                      {!erroredRoot && !loadingRoot && children.length === 0 ? <div className={s.stateLine}>暂无可见内容</div> : null}
-                      {children.map((node) => renderNode(node, 1))}
-                      {hasMoreByKey[rootKey] ? (
-                        <div ref={(el) => sentinelCbRef.current?.(el, space.id, undefined)} className={s.loadMoreSentinel}>
-                          {loadingMoreKeys.has(rootKey) ? <Loader2 size={14} className={s.spin} /> : null}
+            {!loading && spaceGroups.map((group) => (
+              <div key={group.level} className={s.spaceGroup}>
+                <div className={s.spaceGroupHeader} data-level={group.level}>
+                  {group.label}
+                </div>
+                {group.spaces.map((space) => {
+                  const rootKey = nodeChildrenKey(space.id);
+                  const expanded = expandedKeys.has(rootKey);
+                  const wholeSelected = scope.mode === 'knowledge_space' && scope.knowledgeSpaceIds.includes(space.id);
+                  const spaceSelectedCount = scope.mode === 'files'
+                    ? scope.fileRefs.filter((ref) => ref.knowledgeSpaceId === space.id).length
+                    + scope.folderRefs
+                      .filter((ref) => ref.knowledgeSpaceId === space.id)
+                      .reduce((sum, ref) => sum + (ref.resolvedFileCount || 0), 0)
+                    : 0;
+                  const full = wholeSelected || (space.fileCount > 0 && spaceSelectedCount >= space.fileCount);
+                  const indeterminate = !full && spaceSelectedCount > 0;
+                  const children = childrenByKey[rootKey] ?? [];
+                  const loadingRoot = loadingKeys.has(rootKey);
+                  const erroredRoot = errorKeys.has(rootKey);
+                  return (
+                    <section key={space.id} className={`${s.spaceBlock} ${expanded ? s.spaceBlockExpanded : ''}`}>
+                      <div className={`${s.spaceRow} ${full ? s.spaceRowActive : ''}`}>
+                        <button
+                          type="button"
+                          className={`${s.checkBox} ${full || indeterminate ? s.checkBoxActive : ''}`}
+                          onClick={() => toggleWholeSpace(space)}
+                          aria-label={`选择知识库 ${space.name}`}
+                        >
+                          {full ? <Check size={13} /> : indeterminate ? <Minus size={13} /> : null}
+                        </button>
+                        <Database size={18} className={s.spaceHeaderIcon} />
+                        <div className={s.spaceContent}>
+                          <button type="button" className={s.spaceTitleButton} onClick={() => toggleExpand(space.id)}>
+                            <strong>{space.name}</strong>
+                          </button>
+                          {!expanded && !loadingRoot ? (
+                            <span className={s.spaceSubtitle}>展开目录（可多选子项）</span>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          className={s.expandButton}
+                          onClick={() => toggleExpand(space.id)}
+                          aria-label={expanded ? '收起目录' : '展开目录'}
+                          title={expanded ? '收起目录' : '展开目录'}
+                        >
+                          {loadingRoot ? <Loader2 size={14} className={s.spin} /> : expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                      </div>
+                      {expanded ? (
+                        <div className={s.rootChildren}>
+                          {erroredRoot ? <div className={s.stateLine} style={{ paddingLeft: 16 + 50 }}>加载失败</div> : null}
+                          {!erroredRoot && !loadingRoot && children.length === 0 ? <div className={s.stateLine} style={{ paddingLeft: 16 + 50 }}>暂无可见内容</div> : null}
+                          {children.map((node) => renderNode(node, 1))}
+                          {hasMoreByKey[rootKey] ? (
+                            <div ref={(el) => sentinelCbRef.current?.(el, space.id, undefined)} className={s.loadMoreSentinel}>
+                              {loadingMoreKeys.has(rootKey) ? <Loader2 size={14} className={s.spin} /> : null}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
-                    </div>
-                  ) : null}
-                </section>
-              );
-            })}
-          </>
+                    </section>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

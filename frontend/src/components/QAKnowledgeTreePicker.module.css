@@ -156,6 +156,23 @@
 .spaceList {
   min-height: 0;
   overflow-y: auto;
+  padding: 12px;
+  border: 2px solid #e4e7ed;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.spaceList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.spaceList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.spaceList::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 3px;
 }
 
 .sectionTitle {
@@ -220,18 +237,73 @@
   white-space: nowrap;
 }
 
-.spaceList {
-  padding-right: 4px;
+.spaceTreeWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spaceGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spaceGroup + .spaceGroup {
+  margin-top: 12px;
+}
+
+.spaceGroupHeader {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: #f0f4fe;
+  color: #3662e3;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.spaceGroupHeader[data-level='public'] {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.spaceGroupHeader[data-level='department'] {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.spaceGroupHeader[data-level='team'] {
+  background: #fffbe6;
+  color: #fa8c16;
+}
+
+.spaceGroupHeader[data-level='personal'] {
+  background: #f9f0ff;
+  color: #722ed1;
+}
+
+.spaceGroupHeader[data-level='other'] {
+  background: #f5f5f5;
+  color: #8c8c8c;
 }
 
 .spaceBlock {
-  border: 1px solid #d9d9da;
-  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+  border-radius: 12px;
   background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.spaceBlock:hover {
+  border-color: #a9bdf4;
+  box-shadow: 0 4px 12px rgba(54, 98, 227, 0.08);
 }
 
 .spaceBlock + .spaceBlock {
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 /* 展开时:浅蓝底 + 蓝色描边容器 */
@@ -268,6 +340,17 @@
 .nodeIcon {
   color: #3662e3;
   flex: 0 0 auto;
+}
+
+.spaceHeaderIcon {
+  color: #3662e3;
+  flex: 0 0 auto;
+}
+
+.spaceSubtitle {
+  color: #86909c;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 /* 子文件夹:黄色图标 */
