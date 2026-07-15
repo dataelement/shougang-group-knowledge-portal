@@ -1296,11 +1296,13 @@
 
 .smartAppInputRow textarea {
   width: 100%;
-  height: 48px;
+  min-height: 48px;
+  max-height: 160px;
   min-width: 0;
   border: none;
   outline: none;
   resize: none;
+  overflow-y: auto;
   background: transparent;
   color: #273142;
   font-size: 15px;

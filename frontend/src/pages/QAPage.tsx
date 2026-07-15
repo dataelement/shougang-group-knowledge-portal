@@ -111,6 +111,14 @@ const TEMPLATE_ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> 
 };
 
 const QA_ATTACHMENT_ACCEPT = '.pdf,.txt,.doc,.docx,.ppt,.pptx,.md,.html,.xls,.xlsx,.wps,.dps,.et,.png,.jpg,.jpeg,.bmp';
+// 智能问答输入框自增高的最大高度(超过后内部滚动)
+const QA_INPUT_MAX_HEIGHT = 160;
+
+function autoGrowTextarea(el: HTMLTextAreaElement | null): void {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${Math.min(el.scrollHeight, QA_INPUT_MAX_HEIGHT)}px`;
+}
 const QA_ATTACHMENT_EXTENSIONS = new Set(
   QA_ATTACHMENT_ACCEPT.split(',').map((item) => item.replace('.', '')),
 );
@@ -638,6 +646,13 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     return () => window.clearTimeout(timer);
   }, [composerTip]);
 
+  // 智能应用问答输入框:随内容自增高,到上限后内部滚动(仅作用于带 data-autogrow 的智能问答输入框)。
+  // 覆盖程序化改动(如清空、草稿回填);用户输入时另由 onChange 直接对当前元素调整。
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el || el.dataset.autogrow !== 'smart') return;
+    autoGrowTextarea(el);
+  }, [input]);
 
   async function ensureKnowledgeSpacesLoaded() {
     if (knowledgeSpacesLoaded || loadingKnowledgeSpaces) return;
@@ -1118,11 +1133,15 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
         <div className={s.smartAppInputRow}>
           <textarea
             ref={inputRef}
+            data-autogrow="smart"
             aria-label="输入智能问答问题，Enter 发送，Shift+Enter 换行"
             placeholder="开始提问..."
             value={input}
-            rows={2}
-            onChange={(e) => setInput(e.target.value)}
+            rows={1}
+            onChange={(e) => {
+              setInput(e.target.value);
+              autoGrowTextarea(e.currentTarget);
+            }}
             onKeyDown={handleKeyDown}
           />
         </div>
