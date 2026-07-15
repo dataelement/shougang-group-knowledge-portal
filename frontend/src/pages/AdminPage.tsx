@@ -269,20 +269,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const flag = window.sessionStorage.getItem('sg_just_logged_in');
-      if (!flag) return null;
-      window.sessionStorage.removeItem('sg_just_logged_in');
-      const raw = window.localStorage.getItem('sg_portal_user');
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as { name?: string };
-      return parsed.name ? { message: `欢迎回来，${parsed.name}`, type: 'success' as const } : null;
-    } catch {
-      return null;
-    }
-  });
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>();
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     setToast({ message, type });
