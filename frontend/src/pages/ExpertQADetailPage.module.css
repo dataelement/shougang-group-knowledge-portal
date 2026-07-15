@@ -372,13 +372,21 @@
 .targetExpert {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 8px;
-  border-radius: 9999px;
-  background: #fff7ed;
-  color: #c2410c;
-  border: 1px solid #fed7aa;
-  font-size: 0.72rem;
+  gap: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #fff7e8;
+  color: #ff7d00;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.targetExpertIcon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 
 .tagPill {

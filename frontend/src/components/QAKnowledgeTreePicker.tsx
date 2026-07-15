@@ -23,7 +23,6 @@ import type {
 import { buildFilesScope, fileRefKey, folderRefKey } from './qaKnowledgeScopeSelection';
 import s from './QAKnowledgeTreePicker.module.css';
 
-const WHOLE_SPACE_LIMIT_TIP = '一次最多可选择1个库进行问答。';
 const FILE_LIMIT_TIP = '一次最多可选择20个文件进行问答。';
 
 function nodeChildrenKey(spaceId: number, parentId?: number | null) {
@@ -277,16 +276,26 @@ export default function QAKnowledgeTreePicker({
     });
   };
 
+  const wholeSelectedSpaceIds = scope.mode === 'knowledge_space' ? scope.knowledgeSpaceIds : [];
+
   const toggleWholeSpace = (space: KnowledgeSpace) => {
-    if (scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === space.id) {
+    // 整库改为多选;与「按文件选择」互斥,勾选整库会切换到整库模式。
+    const current = wholeSelectedSpaceIds;
+    const exists = current.includes(space.id);
+    const next = exists ? current.filter((id) => id !== space.id) : [...current, space.id];
+    onChange(next.length ? { mode: 'knowledge_space', knowledgeSpaceIds: next } : { mode: 'none' });
+  };
+
+  const allSpacesSelected = spaces.length > 0
+    && scope.mode === 'knowledge_space'
+    && spaces.every((space) => wholeSelectedSpaceIds.includes(space.id));
+
+  const toggleSelectAllSpaces = () => {
+    if (allSpacesSelected) {
       onChange({ mode: 'none' });
       return;
     }
-    if (scope.mode === 'knowledge_space' && scope.knowledgeSpaceId !== space.id) {
-      notify(WHOLE_SPACE_LIMIT_TIP);
-      return;
-    }
-    onChange({ mode: 'knowledge_space', knowledgeSpaceId: space.id });
+    onChange({ mode: 'knowledge_space', knowledgeSpaceIds: spaces.map((space) => space.id) });
   };
 
   const isFileSelected = (spaceId: number, fileId: number) => selectedFileKeys.has(fileRefKey(spaceId, fileId));
@@ -375,7 +384,7 @@ export default function QAKnowledgeTreePicker({
     const loadingNode = loadingKeys.has(key);
     const errored = errorKeys.has(key);
     const children = childrenByKey[key] ?? [];
-    const spaceWhole = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === node.spaceId;
+    const spaceWhole = scope.mode === 'knowledge_space' && scope.knowledgeSpaceIds.includes(node.spaceId);
     const isFolderSelected = selectedFolderKeys.has(folderRefKey(node.spaceId, node.id));
     const folderStatsKey = folderRefKey(node.spaceId, node.id);
     const folderStatsLoading = node.type === 'folder' && folderStatsLoadingKeys.has(folderStatsKey);
@@ -479,9 +488,19 @@ export default function QAKnowledgeTreePicker({
         <span className={s.selectedBarLeft}>
           <i className={s.selectedBarMark} />
           <span className={s.selectedText}>
-            已选择 <b>{scope.mode === 'knowledge_space' ? 1 : getScopeFileCount(scope)}</b>
+            已选择 <b>{scope.mode === 'knowledge_space' ? scope.knowledgeSpaceIds.length : getScopeFileCount(scope)}</b>
             {scope.mode === 'knowledge_space' ? ' 个整库' : ' 个文件'}
           </span>
+          {spaces.length > 0 ? (
+            <button
+              type="button"
+              className={s.clearButton}
+              onClick={toggleSelectAllSpaces}
+              title="全选所有知识库"
+            >
+              {allSpacesSelected ? '取消全选' : '全选'}
+            </button>
+          ) : null}
           {scope.mode !== 'none' ? (
             <button
               type="button"
@@ -493,7 +512,7 @@ export default function QAKnowledgeTreePicker({
             </button>
           ) : null}
         </span>
-        <span className={s.selectedHint}>整库限选1个，文件最多20个</span>
+        <span className={s.selectedHint}>整库可多选，文件最多20个</span>
       </div>
 
       <div className={s.spaceList} ref={scrollRootRef}>
@@ -544,7 +563,7 @@ export default function QAKnowledgeTreePicker({
             {spaces.map((space) => {
               const rootKey = nodeChildrenKey(space.id);
               const expanded = expandedKeys.has(rootKey);
-              const wholeSelected = scope.mode === 'knowledge_space' && scope.knowledgeSpaceId === space.id;
+              const wholeSelected = scope.mode === 'knowledge_space' && scope.knowledgeSpaceIds.includes(space.id);
               const spaceSelectedCount = scope.mode === 'files'
                 ? scope.fileRefs.filter((ref) => ref.knowledgeSpaceId === space.id).length
                 + scope.folderRefs

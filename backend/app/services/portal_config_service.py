@@ -77,10 +77,8 @@ class PortalConfigService:
                     **data["search"],
                 }
                 self._write_data(data)
-        if not data.get("banners"):
-            data["banners"] = list(DEFAULT_PORTAL_CONFIG.get("banners") or [])
-            if data["banners"]:
-                self._write_data(data)
+        # 注意:banners 为空时不再自动补回默认。管理员全删/全停用后,后台如实显示为空;
+        # 首页的兜底(空时展示第一张默认图)在公开配置接口 /knowledge/config 里做。
         if "integrations" not in data:
             data["integrations"] = dict(
                 DEFAULT_PORTAL_CONFIG.get("integrations") or {

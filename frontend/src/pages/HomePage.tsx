@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, type ChangeEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, type ChangeEvent, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import {
@@ -35,6 +35,7 @@ import {
   type UploadingAttachment,
 } from '../utils/qaAttachment';
 import { saveHomeQaDraft, type HomeQaDraft } from '../utils/homeQaDraft';
+import { QA_KB_HINT_TEXT, dismissQaKbHint, shouldShowQaKbHint } from '../utils/qaKbHint';
 import composerModelIcon from '../assets/composer-model.svg';
 import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
 import { usePortalConfig } from '../hooks/usePortalConfig';
@@ -333,6 +334,8 @@ export default function HomePage() {
   const qaPickerBtnRef = useRef<HTMLButtonElement>(null);
   const qaPickerPanelRef = useRef<HTMLDivElement>(null);
   const [qaPickerPos, setQaPickerPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint());
+  const [qaKbHintPos, setQaKbHintPos] = useState<{ left: number; top: number } | null>(null);
 
   const qaGeneralLabel = config?.qa?.general_model_display_name?.trim() || '通用模型';
   const qaReasoningLabel = config?.qa?.reasoning_model_display_name?.trim() || '推理模型';
@@ -341,8 +344,9 @@ export default function HomePage() {
   const qaHasAttachments = qaAttachments.length > 0 || qaUploading.length > 0;
   const qaKnowledgeLabel = (() => {
     if (qaScope.mode === 'knowledge_space') {
-      const name = qaSpaces.find((sp) => sp.id === qaScope.knowledgeSpaceId)?.name;
-      return name || '已选知识库';
+      const ids = qaScope.knowledgeSpaceIds;
+      if (ids.length === 1) return qaSpaces.find((sp) => sp.id === ids[0])?.name || '已选 1 个知识库';
+      return `已选 ${ids.length} 个知识库`;
     }
     if (qaScope.mode === 'files') return `已选 ${qaScope.fileRefs.length} 个文件`;
     return '选择知识库';
@@ -611,6 +615,31 @@ export default function HomePage() {
       window.removeEventListener('scroll', compute, true);
     };
   }, [qaPickerOpen]);
+
+  // 气泡定位:锚在知识库按钮右侧、箭头朝左;portal 到 body 避免被 banner 裁切。
+  useLayoutEffect(() => {
+    if (searchTab !== 'qa' || !qaKbHintOpen || qaPickerOpen) {
+      setQaKbHintPos(null);
+      return undefined;
+    }
+    const compute = () => {
+      const btn = qaPickerBtnRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const margin = 12;
+      const width = 260;
+      const left = Math.max(margin, Math.min(rect.right + 12, window.innerWidth - width - margin));
+      const top = rect.top + rect.height / 2;
+      setQaKbHintPos({ left, top });
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    window.addEventListener('scroll', compute, true);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('scroll', compute, true);
+    };
+  }, [searchTab, qaKbHintOpen, qaPickerOpen]);
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
@@ -892,6 +921,26 @@ export default function HomePage() {
                                 onClose={() => setQaPickerOpen(false)}
                                 maxHeight={qaPickerPos.maxHeight}
                               />
+                            </div>,
+                            document.body,
+                          )
+                        : null}
+                      {qaKbHintOpen && qaKbHintPos && !qaPickerOpen
+                        ? createPortal(
+                            <div
+                              className={s.qaKbHintBubble}
+                              style={{ position: 'fixed', left: qaKbHintPos.left, top: qaKbHintPos.top } as CSSProperties}
+                              role="note"
+                            >
+                              <span className={s.qaKbHintText}>{QA_KB_HINT_TEXT}</span>
+                              <button
+                                type="button"
+                                className={s.qaKbHintClose}
+                                onClick={() => { dismissQaKbHint(); setQaKbHintOpen(false); }}
+                                aria-label="关闭提示"
+                              >
+                                <X size={12} />
+                              </button>
                             </div>,
                             document.body,
                           )

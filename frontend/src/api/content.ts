@@ -82,7 +82,7 @@ export interface QaKnowledgeFolderRef {
 
 export type QaKnowledgeScope =
   | { mode: 'none' }
-  | { mode: 'knowledge_space'; knowledgeSpaceId: number }
+  | { mode: 'knowledge_space'; knowledgeSpaceIds: number[] }
   | {
       mode: 'files';
       fileRefs: QaKnowledgeFileRef[];
@@ -1408,14 +1408,10 @@ function buildQaKnowledgeScopePayload(scope?: QaKnowledgeScope, fallbackSpaceIds
     };
   }
   if (scope.mode === 'knowledge_space') {
+    // 整库(可多选):仅带 knowledge_space_ids,后端按「无 scope 即对这些库做 RAG」处理,
+    // 无需 knowledge_scope,也就不受单库限制。
     return {
-      knowledge_space_ids: [scope.knowledgeSpaceId],
-      knowledge_scope: {
-        mode: 'knowledge_space',
-        knowledge_space_id: scope.knowledgeSpaceId,
-        folder_refs: [],
-        file_refs: [],
-      },
+      knowledge_space_ids: scope.knowledgeSpaceIds,
     };
   }
   if (scope.mode === 'files') {

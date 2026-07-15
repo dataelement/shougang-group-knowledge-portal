@@ -1296,11 +1296,13 @@
 
 .smartAppInputRow textarea {
   width: 100%;
-  height: 48px;
+  min-height: 48px;
+  max-height: 160px;
   min-width: 0;
   border: none;
   outline: none;
   resize: none;
+  overflow-y: auto;
   background: transparent;
   color: #273142;
   font-size: 15px;
@@ -1496,6 +1498,54 @@
 
 .smartAppKnowledgePicker {
   flex-shrink: 0;
+}
+
+/* 「选择知识库」右侧的气泡提示 */
+.kbHintBubble {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #336df0;
+  color: #fff;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(51, 109, 240, 0.28);
+}
+
+.kbHintBubble::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: #336df0;
+}
+
+.kbHintText {
+  min-width: 0;
+}
+
+.kbHintClose {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+
+.kbHintClose:hover {
+  color: #fff;
 }
 
 .smartAppFooterLink {
