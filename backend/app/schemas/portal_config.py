@@ -82,12 +82,14 @@ class SectionConfig(BaseModel):
 class QATemplateCategoryConfig(BaseModel):
     id: str
     name: str
+    description: str = ""
     enabled: bool = True
 
     @model_validator(mode="after")
     def normalize_and_validate(self):
         self.id = self.id.strip()
         self.name = self.name.strip()
+        self.description = self.description.strip()
         if not self.id:
             raise ValueError("Template category id is required")
         if not self.name:

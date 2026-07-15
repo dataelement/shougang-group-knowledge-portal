@@ -4215,6 +4215,10 @@ function QaTemplateCategoryDialog({
             <span className={s.fieldLabel}>分类名称</span>
             <input className={s.formInput} value={draft.name} onChange={(event) => onChange({ name: event.target.value })} placeholder="例如：工作汇报" maxLength={10} />
           </label>
+          <label className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>分类描述</span>
+            <input className={s.formInput} value={draft.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="选填，简要说明该分类" maxLength={50} />
+          </label>
         </div>
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>取消</button>

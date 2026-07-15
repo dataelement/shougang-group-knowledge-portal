@@ -42,6 +42,7 @@ export interface QAConfig {
 export interface QATemplateCategoryConfig {
   id: string;
   name: string;
+  description: string;
   enabled: boolean;
 }
 

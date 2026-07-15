@@ -3,6 +3,7 @@ import type { QATemplateCategoryConfig, QATemplateConfig } from '../api/adminCon
 export interface QaTemplateCategoryDraft {
   id: string;
   name: string;
+  description: string;
   enabled: boolean;
 }
 
@@ -71,6 +72,7 @@ export function createQaTemplateCategoryDraft(current?: QATemplateCategoryConfig
   return {
     id: current?.id ?? '',
     name: current?.name ?? '',
+    description: current?.description ?? '',
     enabled: current?.enabled ?? true,
   };
 }
@@ -93,6 +95,7 @@ export function validateQaTemplateCategoryDraft(
     category: {
       id,
       name,
+      description: draft.description.trim(),
       enabled: draft.enabled,
     },
   };
