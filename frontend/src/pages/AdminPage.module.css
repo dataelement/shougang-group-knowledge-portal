@@ -1335,11 +1335,13 @@
 }
 
 .departmentTreeOption:hover,
-.departmentTreeOptionSelected {
+.departmentTreeOptionSelected,
+.departmentTreeOptionIndeterminate {
   background: var(--neutral-100);
 }
 
-.departmentTreeOptionSelected {
+.departmentTreeOptionSelected,
+.departmentTreeOptionIndeterminate {
   color: var(--primary-700);
   background: var(--primary-50);
   font-weight: 600;

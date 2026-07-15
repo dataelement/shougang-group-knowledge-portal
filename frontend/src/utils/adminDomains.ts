@@ -36,6 +36,7 @@ export interface DomainCodeOption {
 export interface DomainDraft {
   name: string;
   spaceIds: string[];
+  departmentIds: string[];
   icon: string;
   backgroundImage: string;
   color: string;
@@ -48,6 +49,7 @@ export function createDomainDraft(current?: DomainConfig): DomainDraft {
   return {
     name: current?.name ?? '',
     spaceIds: (current?.space_ids ?? []).map((spaceId) => String(spaceId)),
+    departmentIds: (current?.department_ids ?? []).map((departmentId) => String(departmentId)),
     icon: current?.icon ?? 'Factory',
     backgroundImage: current?.background_image ?? '',
     color: current?.color ?? '#2563eb',
@@ -95,6 +97,14 @@ export function validateDomainDraft(draft: DomainDraft, spaces: SpaceOption[]): 
     if (!spaceIds.includes(spaceId)) spaceIds.push(spaceId);
   }
 
+  const departmentIds: number[] = [];
+  for (const departmentIdRaw of draft.departmentIds) {
+    if (!departmentIdRaw.trim()) continue;
+    const departmentId = Number(departmentIdRaw);
+    if (!Number.isInteger(departmentId) || departmentId <= 0) return { error: '绑定部门格式有误' };
+    if (!departmentIds.includes(departmentId)) departmentIds.push(departmentId);
+  }
+
   const icon = draft.icon.trim();
   if (!icon) return { error: '请输入图标名' };
 
@@ -110,6 +120,7 @@ export function validateDomainDraft(draft: DomainDraft, spaces: SpaceOption[]): 
     domain: {
       name,
       space_ids: spaceIds,
+      department_ids: departmentIds,
       icon,
       background_image: draft.backgroundImage.trim(),
       color,

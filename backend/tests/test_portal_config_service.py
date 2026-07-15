@@ -130,7 +130,30 @@ def test_portal_config_service_persists_domain_updates(tmp_path: Path):
 
     assert updated.domains[0].name == "新业务域"
     assert reloaded.domains[0].space_ids == [12, 18]
+    assert reloaded.domains[0].department_ids == []
     assert reloaded.domains[0].background_image == "/demo.png"
+
+
+def test_domain_config_persists_multiple_department_ids(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+
+    updated = service.update_domains(
+        DomainsConfigUpdate(
+            domains=[
+                {
+                    "name": "研发",
+                    "space_ids": [],
+                    "department_ids": [1, 2, 1],
+                    "color": "#2563eb",
+                    "bg": "#eff6ff",
+                    "icon": "Factory",
+                }
+            ]
+        )
+    )
+
+    assert updated.domains[0].department_ids == [1, 2]
+    assert service.get_config().domains[0].department_ids == [1, 2]
 
 
 def test_domain_config_round_trips_code(tmp_path):

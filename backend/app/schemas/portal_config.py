@@ -60,12 +60,24 @@ DEFAULT_EXPERT_MODE_SYSTEM_PROMPT = (
 class DomainConfig(BaseModel):
     name: str
     space_ids: list[int] = Field(default_factory=list)
+    department_ids: list[int] = Field(default_factory=list)
     color: str
     bg: str
     icon: str
     background_image: str = ""
     enabled: bool = True
     code: str = ""
+
+    @field_validator("department_ids")
+    @classmethod
+    def normalize_department_ids(cls, department_ids: list[int]) -> list[int]:
+        normalized: list[int] = []
+        for department_id in department_ids:
+            if department_id <= 0:
+                raise ValueError("Department id must be positive")
+            if department_id not in normalized:
+                normalized.append(department_id)
+        return normalized
 
 
 class SectionConfig(BaseModel):

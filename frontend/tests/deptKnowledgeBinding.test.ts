@@ -1,11 +1,53 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
-  createBindingDraft, filterDepartmentOptions, findDepartmentOption, groupBindingsByDepartment, validateBindingDraft,
+  createBindingDraft, filterDepartmentOptions, findDepartmentOption, getIndeterminateDepartmentIds, groupBindingsByDepartment, toggleSelectedDepartmentId, validateBindingDraft,
 } from '../src/utils/deptKnowledgeBinding';
+
+const adminPageSource = readFileSync('src/pages/AdminPage.tsx', 'utf8');
 
 test('createBindingDraft is empty', () => {
   assert.deepEqual(createBindingDraft(), { spaceId: null, departmentId: null });
+});
+
+test('business domain department selection treats parent and child as independent choices', () => {
+  assert.deepEqual(toggleSelectedDepartmentId(['1'], 2), ['1', '2']);
+  assert.deepEqual(toggleSelectedDepartmentId(['1', '2'], 1), ['2']);
+});
+
+test('selected descendant makes every unselected ancestor indeterminate', () => {
+  const departments = [{
+    id: 1,
+    name: '首钢股份',
+    children: [{
+      id: 2,
+      name: '研发中心',
+      children: [{ id: 3, name: '研发一部', children: [] }],
+    }],
+  }];
+
+  assert.deepEqual([...getIndeterminateDepartmentIds(departments, ['3'])].sort(), [1, 2]);
+});
+
+test('unselected parent stays indeterminate when all descendants are selected', () => {
+  const departments = [{
+    id: 1,
+    name: '研发中心',
+    children: [
+      { id: 2, name: '研发一部', children: [] },
+      { id: 3, name: '研发二部', children: [] },
+    ],
+  }];
+
+  assert.deepEqual([...getIndeterminateDepartmentIds(departments, ['2', '3'])], [1]);
+  assert.deepEqual([...getIndeterminateDepartmentIds(departments, ['1', '2', '3'])], []);
+  assert.deepEqual([...getIndeterminateDepartmentIds(departments, [])], []);
+});
+
+test('business domain tree wires indeterminate state to checkbox and accessibility state', () => {
+  assert.match(adminPageSource, /input\.indeterminate = indeterminate/);
+  assert.match(adminPageSource, /aria-checked=\{indeterminate \? 'mixed' : selected\}/);
 });
 
 test('validate requires both', () => {

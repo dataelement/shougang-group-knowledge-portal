@@ -741,6 +741,7 @@ def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
                     {
                         "name": "炼钢",
                         "space_ids": [19, 20],
+                        "department_ids": [3, 8, 3],
                         "color": "#111111",
                         "bg": "#eeeeee",
                         "icon": "Factory",
@@ -757,7 +758,9 @@ def test_post_admin_domains_updates_persisted_config(tmp_path: Path):
     assert body["data"]["domains"][0]["name"] == "炼钢"
     assert body["data"]["domains"][0]["background_image"] == "/steel.png"
     assert body["data"]["domains"][0]["space_ids"] == [19, 20]
+    assert body["data"]["domains"][0]["department_ids"] == [3, 8]
     assert service.get_config().domains[0].name == "炼钢"
+    assert service.get_config().domains[0].department_ids == [3, 8]
     assert bisheng_client.put_calls == [
         (
             "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes",

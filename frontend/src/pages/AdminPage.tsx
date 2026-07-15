@@ -112,7 +112,9 @@ import {
   createBindingDraft,
   filterDepartmentOptions,
   findDepartmentOption,
+  getIndeterminateDepartmentIds,
   groupBindingsByDepartment,
+  toggleSelectedDepartmentId,
   validateBindingDraft,
   type BindingDraft,
 } from '../utils/deptKnowledgeBinding';
@@ -278,6 +280,9 @@ export default function AdminPage() {
   const [spaceOptionsLoaded, setSpaceOptionsLoaded] = useState(false);
   const [spaceOptionsLoading, setSpaceOptionsLoading] = useState(false);
   const [spaceOptionsError, setSpaceOptionsError] = useState('');
+  const [domainDepartments, setDomainDepartments] = useState<DepartmentOption[]>([]);
+  const [domainDepartmentsLoading, setDomainDepartmentsLoading] = useState(false);
+  const [domainDepartmentsError, setDomainDepartmentsError] = useState('');
   const [domainEditorOpen, setDomainEditorOpen] = useState(false);
   const [domainEditorIndex, setDomainEditorIndex] = useState<number | null>(null);
   const [domainDraft, setDomainDraft] = useState<DomainDraft>(createDomainDraft());
@@ -436,6 +441,18 @@ export default function AdminPage() {
     }
   }
 
+  async function loadDomainDepartments() {
+    setDomainDepartmentsLoading(true);
+    setDomainDepartmentsError('');
+    try {
+      setDomainDepartments(await fetchBindingDepartments());
+    } catch (err) {
+      setDomainDepartmentsError(err instanceof Error ? err.message : '部门列表加载失败');
+    } finally {
+      setDomainDepartmentsLoading(false);
+    }
+  }
+
   const refetchBindings = useCallback(async () => {
     const [bindings, spaces, departments] = await Promise.all([
       fetchDeptBindings(), fetchBindableSpaces(), fetchBindingDepartments(),
@@ -474,6 +491,7 @@ export default function AdminPage() {
     setDomainDraft(createDomainDraft());
     setDomainFormError('');
     void loadSpaceOptions();
+    void loadDomainDepartments();
   }
 
   function openEditDomainDialog(domain: DomainConfig, index: number) {
@@ -482,6 +500,7 @@ export default function AdminPage() {
     setDomainDraft(createDomainDraft(domain));
     setDomainFormError('');
     void loadSpaceOptions();
+    void loadDomainDepartments();
   }
 
   function openCreateSectionDialog() {
@@ -1062,12 +1081,16 @@ export default function AdminPage() {
           spaces={spaceOptions}
           spacesLoading={spaceOptionsLoading}
           spacesError={spaceOptionsError}
+          departments={domainDepartments}
+          departmentsLoading={domainDepartmentsLoading}
+          departmentsError={domainDepartmentsError}
           domainCodeOptions={domainCodeOptions}
           draft={domainDraft}
           saving={saving}
           error={domainFormError}
           onClose={() => setDomainEditorOpen(false)}
           onRefreshSpaces={() => void loadSpaceOptions()}
+          onRefreshDepartments={() => void loadDomainDepartments()}
           onChange={(patch) => {
             setDomainDraft((current) => ({ ...current, ...patch }));
             setDomainFormError('');
@@ -1950,12 +1973,16 @@ function DomainEditorDialog({
   spaces,
   spacesLoading,
   spacesError,
+  departments,
+  departmentsLoading,
+  departmentsError,
   domainCodeOptions,
   draft,
   saving,
   error,
   onClose,
   onRefreshSpaces,
+  onRefreshDepartments,
   onChange,
   onSubmit,
 }: {
@@ -1963,12 +1990,16 @@ function DomainEditorDialog({
   spaces: SpaceOption[];
   spacesLoading: boolean;
   spacesError: string;
+  departments: DepartmentOption[];
+  departmentsLoading: boolean;
+  departmentsError: string;
   domainCodeOptions: DomainCodeOption[];
   draft: DomainDraft;
   saving: boolean;
   error: string;
   onClose: () => void;
   onRefreshSpaces: () => void;
+  onRefreshDepartments: () => void;
   onChange: (patch: Partial<DomainDraft>) => void;
   onSubmit: () => void;
 }) {
@@ -2034,6 +2065,26 @@ function DomainEditorDialog({
             </datalist>
             <span className={s.fieldHint}>对应文件编码第 3 段（如 SGGF-STD-PP-… 中的 PP）。可从候选快速选择，也可手动填写；留空则该业务域知识数量按 0 计。保存时统一转大写。</span>
           </label>
+          <div className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>绑定部门</span>
+            <DomainDepartmentMultiSelect
+              id="domain-departments"
+              value={draft.departmentIds}
+              departments={departments}
+              disabled={departmentsLoading}
+              onChange={(departmentIds) => onChange({ departmentIds })}
+            />
+            {departmentsLoading ? <span className={s.fieldHint}>正在加载部门树...</span> : null}
+            {departmentsError ? (
+              <span className={s.fieldHint}>
+                {departmentsError}
+                <button type="button" className={s.inlineBtn} onClick={onRefreshDepartments} disabled={departmentsLoading}>
+                  重新加载
+                </button>
+              </span>
+            ) : null}
+            <span className={s.fieldHint}>可选择多个部门；父部门和子部门独立勾选，不会级联选择。本配置仅供后台管理使用，不改变门户展示或权限。</span>
+          </div>
           <div className={`${s.formField} ${s.formFieldWide}`}>
             <span className={s.fieldLabel}>绑定空间</span>
             <div className={s.spaceMultiPicker}>
@@ -2619,6 +2670,172 @@ function TreeBindingDepartmentSelect({
           </div>
           <div className={s.searchableSelectMeta} aria-live="polite">
             {query ? '展示匹配科室及其所属层级' : `共 ${departments.length} 个顶级部门`}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DomainDepartmentMultiSelect({
+  id,
+  value,
+  departments,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: string[];
+  departments: DepartmentOption[];
+  disabled?: boolean;
+  onChange: (value: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const treeId = `${id}-tree`;
+  const selectedIds = new Set(value);
+  const indeterminateIds = useMemo(
+    () => getIndeterminateDepartmentIds(departments, value),
+    [departments, value],
+  );
+  const visibleDepartments = useMemo(
+    () => filterDepartmentOptions(departments, query),
+    [departments, query],
+  );
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    setQuery('');
+    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  const openMenu = () => {
+    if (disabled) return;
+    setOpen(true);
+    setQuery('');
+    setExpandedIds(new Set());
+  };
+
+  const toggleDepartment = (departmentId: number) => {
+    onChange(toggleSelectedDepartmentId(value, departmentId));
+  };
+
+  const toggleExpanded = (departmentId: number) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(departmentId)) next.delete(departmentId);
+      else next.add(departmentId);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    requestAnimationFrame(() => searchRef.current?.focus());
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  const renderDepartment = (department: DepartmentOption, depth: number) => {
+    const hasChildren = department.children.length > 0;
+    const expanded = Boolean(query.trim()) || expandedIds.has(department.id);
+    const selected = selectedIds.has(String(department.id));
+    const indeterminate = indeterminateIds.has(department.id);
+    return (
+      <div
+        key={department.id}
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-checked={indeterminate ? 'mixed' : selected}
+      >
+        <div className={s.departmentTreeRow} style={{ paddingLeft: `${10 + depth * 18}px` }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              className={`${s.departmentTreeToggle} ${expanded ? s.departmentTreeToggleExpanded : ''}`}
+              aria-label={`${expanded ? '收起' : '展开'}${department.name}`}
+              onClick={() => toggleExpanded(department.id)}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          ) : <span className={s.departmentTreeTogglePlaceholder} aria-hidden="true" />}
+          <label
+            className={`${s.departmentTreeOption} ${selected ? s.departmentTreeOptionSelected : ''} ${indeterminate ? s.departmentTreeOptionIndeterminate : ''}`}
+            title={department.name}
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              aria-checked={indeterminate ? 'mixed' : selected}
+              ref={(input) => {
+                if (input) input.indeterminate = indeterminate;
+              }}
+              onChange={() => toggleDepartment(department.id)}
+            />
+            <span>{department.name}</span>
+          </label>
+        </div>
+        {hasChildren && expanded ? (
+          <div role="group">
+            {department.children.map((child) => renderDepartment(child, depth + 1))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <div className={s.searchableSelect} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        className={`${s.searchableSelectTrigger} ${open ? s.searchableSelectTriggerOpen : ''}`}
+        aria-haspopup="tree"
+        aria-expanded={open}
+        aria-controls={treeId}
+        disabled={disabled}
+        onClick={() => (open ? closeMenu() : openMenu())}
+      >
+        <span className={value.length ? s.searchableSelectValue : s.searchableSelectPlaceholder}>
+          {value.length ? `已选择 ${value.length} 个部门` : '请选择部门'}
+        </span>
+        <ChevronDown className={s.searchableSelectChevron} size={16} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className={s.searchableSelectMenu}>
+          <div className={s.searchableSelectSearchWrap}>
+            <SearchIcon size={15} aria-hidden="true" />
+            <input
+              ref={searchRef}
+              className={s.searchableSelectSearch}
+              type="search"
+              value={query}
+              placeholder="搜索部门名称"
+              aria-label="搜索部门名称"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  closeMenu(true);
+                }
+              }}
+            />
+          </div>
+          <div id={treeId} className={s.departmentTreeOptions} role="tree" aria-label="部门树（多选）">
+            {visibleDepartments.map((department) => renderDepartment(department, 0))}
+            {!visibleDepartments.length ? <div className={s.searchableSelectEmpty}>暂无匹配的部门</div> : null}
+          </div>
+          <div className={s.searchableSelectMeta} aria-live="polite">
+            {query ? '展示匹配部门及其所属层级' : `已选择 ${value.length} 个部门`}
           </div>
         </div>
       ) : null}
@@ -4099,7 +4316,7 @@ function QATemplatesTable({
             const deletable = canDeleteQaTemplateCategory(category.id, qa.templates);
             return (
               <tr key={category.id}>
-                <td><div className={s.valueStack}><span className={s.valueTitle}>{category.name}</span><span className={s.valueMeta}>{category.description || category.id}</span></div></td>
+                <td><div className={s.valueStack}><span className={s.valueTitle}>{category.name}</span><span className={s.valueMeta}>{category.description}</span></div></td>
                 <td><span className={category.enabled ? s.stateEnabled : s.stateDisabled}>{category.enabled ? '已启用' : '已停用'}</span></td>
                 <td>{templateCount}</td>
                 <td>
