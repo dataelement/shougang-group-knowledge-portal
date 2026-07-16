@@ -240,7 +240,7 @@ interface KnowledgeFileItemDto {
   summary: string;
   source: string;
   updated_at: string;
-  tags: Array<string | FileTag>;
+  tags?: Array<string | FileTag>;
   tag_infos?: FileTag[];
   file_ext?: string;
   file_size?: string;
@@ -251,7 +251,10 @@ interface KnowledgeFileItemDto {
   can_download?: boolean;
 }
 
-function normalizeFileTagInfos(tags: Array<string | FileTag> = [], tagInfos: FileTag[] = []): FileTag[] {
+function normalizeFileTagInfos(
+  tags: Array<string | FileTag> | undefined = [],
+  tagInfos: FileTag[] = [],
+): FileTag[] {
   const normalized: FileTag[] = [];
   const seen = new Set<string>();
 
@@ -265,7 +268,7 @@ function normalizeFileTagInfos(tags: Array<string | FileTag> = [], tagInfos: Fil
   };
 
   for (const tag of tagInfos) append(tag.tag_name, tag.resource_type);
-  for (const tag of tags) {
+  for (const tag of tags ?? []) {
     if (typeof tag === 'string') {
       append(tag);
     } else {
@@ -276,7 +279,10 @@ function normalizeFileTagInfos(tags: Array<string | FileTag> = [], tagInfos: Fil
   return normalized;
 }
 
-function normalizeFileTagNames(tags: Array<string | FileTag> = [], tagInfos: FileTag[] = []): string[] {
+function normalizeFileTagNames(
+  tags: Array<string | FileTag> | undefined = [],
+  tagInfos: FileTag[] = [],
+): string[] {
   const names: string[] = [];
   for (const tag of normalizeFileTagInfos(tags, tagInfos)) {
     if (!names.includes(tag.tag_name)) names.push(tag.tag_name);

@@ -16,7 +16,6 @@ class KnowledgeFileItem(BaseModel):
     summary: str
     source: str
     updated_at: str
-    tags: list[Any] = Field(default_factory=list)
     tag_infos: list[Any] = Field(default_factory=list)
     file_ext: str = ""
     file_size: str = ""

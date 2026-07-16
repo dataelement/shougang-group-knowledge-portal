@@ -1274,7 +1274,6 @@ class KnowledgeService:
                 summary=str(item.get("summary") or item.get("abstract") or ""),
                 source=str(item.get("source") or ""),
                 updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
-                tags=KnowledgeService._extract_file_tag_infos(item),
                 tag_infos=KnowledgeService._extract_file_tag_infos(item),
                 file_ext=str(item.get("file_ext") or ""),
                 file_size=str(item.get("file_size") or ""),
@@ -1320,7 +1319,6 @@ class KnowledgeService:
             summary=item.summary,
             source=source,
             updated_at=item.updated_at,
-            tags=item.tags,
             tag_infos=item.tag_infos,
             file_ext=item.file_ext,
             file_size=item.file_size,
@@ -1844,7 +1842,7 @@ class KnowledgeService:
         if not normalized:
             return True
         names: list[str] = []
-        for tag in [*(item.tag_infos or []), *(item.tags or [])]:
+        for tag in item.tag_infos or []:
             if isinstance(tag, FileTag):
                 names.append(tag.tag_name)
             elif isinstance(tag, dict):
@@ -1878,7 +1876,6 @@ class KnowledgeService:
                     summary=item.get("abstract") or "",
                     source=space_name_map.get(space_id, str(space_id)),
                     updated_at=self._serialize_datetime(item.get("update_time")),
-                    tags=self._extract_file_tag_infos(item),
                     tag_infos=self._extract_file_tag_infos(item),
                     file_ext=self._get_file_ext(file_name),
                     file_size=self._extract_file_size_label(item),

@@ -1144,7 +1144,7 @@ def test_get_file_detail_and_preview(tmp_path: Path):
     assert detail_response.status_code == 200
     detail = detail_response.json()["data"]
     assert detail["space"]["id"] == 12
-    assert detail["tags"] == [
+    assert detail["tag_infos"] == [
         {"tag_name": "热轧", "resource_type": ""},
         {"tag_name": "振动纹", "resource_type": ""},
     ]
