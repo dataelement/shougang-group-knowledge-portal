@@ -648,11 +648,17 @@ export default function HomePage() {
     compute();
     window.addEventListener('resize', compute);
     window.addEventListener('scroll', compute, true);
+    // banner 轮播换到长标题会让标题换行、把按钮挤动;按钮文案变化(已选 N 个知识库)也会改变宽度。
+    // 这里用 ResizeObserver 兜住尺寸变化,轮播则由依赖里的 bannerIdx 触发重算。
+    const btn = qaPickerBtnRef.current;
+    const observer = btn && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => compute()) : null;
+    if (btn && observer) observer.observe(btn);
     return () => {
       window.removeEventListener('resize', compute);
       window.removeEventListener('scroll', compute, true);
+      observer?.disconnect();
     };
-  }, [searchTab, qaKbHintOpen, qaPickerOpen]);
+  }, [searchTab, qaKbHintOpen, qaPickerOpen, bannerIdx, qaKnowledgeLabel]);
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
