@@ -9,18 +9,20 @@ const adminPageSource = readFileSync('src/pages/AdminPage.tsx', 'utf8');
 test('home latest selected more link uses recommendation mode instead of tag query', () => {
   assert.ok(homePageSource.includes("const LATEST_SELECTED_RECOMMENDATION = 'latest_selected'"));
   assert.ok(homePageSource.includes('section.builtin_key === LATEST_SELECTED_RECOMMENDATION'));
-  assert.ok(homePageSource.includes('/list?recommendation=${LATEST_SELECTED_RECOMMENDATION}&${titleParam}'));
+  assert.ok(homePageSource.includes('const mode = recommendationMode ?? LATEST_SELECTED_RECOMMENDATION'));
+  assert.ok(homePageSource.includes('/list?recommendation=${mode}&${titleParam}'));
   assert.equal(homePageSource.includes('LATEST_SELECTED_SECTION_TAG'), false);
   assert.equal(homePageSource.includes('to={`${sec.link}${sec.link.includes'), false);
 });
 
 test('list page recommendation mode does not send tag filter', () => {
   assert.ok(listPageSource.includes("const LATEST_SELECTED_RECOMMENDATION = 'latest_selected'"));
-  assert.ok(listPageSource.includes('baseTag: !isLatestSelectedRecommendation && hasUserFilterTag ? tagParam || undefined : undefined'));
-  assert.ok(listPageSource.includes('tag: isLatestSelectedRecommendation ? undefined : filterTag || tagParam || undefined'));
+  assert.ok(listPageSource.includes("const PERSONALIZED_RECOMMENDATION = 'personalized_v1'"));
+  assert.ok(listPageSource.includes('baseTag: !isRecommendationList && hasUserFilterTag ? tagParam || undefined : undefined'));
+  assert.ok(listPageSource.includes('tag: isRecommendationList ? undefined : filterTag || tagParam || undefined'));
   assert.ok(
     listPageSource.includes(
-      'recommendation: isLatestSelectedRecommendation ? LATEST_SELECTED_RECOMMENDATION : undefined',
+      'recommendation: isRecommendationList ? recommendationParam : undefined',
     ),
   );
 });
@@ -40,7 +42,7 @@ test('list page exposes updated time sorting without changing the recommendation
   assert.ok(listPageSource.includes("const timeSort = normalizeTimeSort(params.get('sort'))"));
   assert.ok(
     listPageSource.includes(
-      "sort: timeSort || (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc')",
+      "timeSort || (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc')",
     ),
   );
   assert.ok(listPageSource.includes('<option value="">时间排序</option>'));

@@ -2,6 +2,7 @@ import logging
 from typing import Any, Final
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import ValidationError
 
 from app.api.dependencies import (
     get_bisheng_client,
@@ -30,6 +31,7 @@ from app.schemas.portal_config import (
     SectionsConfigUpdate,
     SiteConfig,
 )
+from app.services.portal_admin_config_store import PortalAdminConfigValidationError
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.error_messages import normalize_user_facing_message
 from app.services.knowledge_service import KnowledgeService
@@ -471,7 +473,17 @@ async def update_recommendation_config(
     payload: RecommendationConfig,
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok(service.update_recommendation(payload).recommendation)
+    try:
+        config = service.update_recommendation(payload)
+    except (ValidationError, PortalAdminConfigValidationError):
+        return response_error(
+            "推荐配置校验失败，请检查推荐总数与首页展示数量范围",
+            status_code=422,
+        )
+    return response_ok({
+        "recommendation": config.recommendation,
+        "version": service.get_config_version(),
+    })
 
 
 @router.get("/display")
@@ -486,7 +498,13 @@ async def update_display_config(
     payload: DisplayConfig,
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    return response_ok(service.update_display(payload).display)
+    try:
+        return response_ok(service.update_display(payload).display)
+    except (ValidationError, PortalAdminConfigValidationError):
+        return response_error(
+            "展示配置校验失败，首页展示数量不能大于推荐总数",
+            status_code=422,
+        )
 
 
 @router.get("/apps")

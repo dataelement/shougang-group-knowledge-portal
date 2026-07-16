@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FileTag(BaseModel):
@@ -259,6 +259,29 @@ class DocumentFileChatRequest(BaseModel):
 class FilePreviewData(BaseModel):
     original_url: str
     preview_url: str
+
+
+PortalSearchEntryPoint = Literal["search_page", "home_hot_keyword"]
+PortalPreviewEntryPoint = Literal[
+    "home_recommendation",
+    "recommendation_list",
+    "search",
+    "knowledge_space",
+    "direct",
+    "favorite",
+    "other",
+]
+PortalRecommendationScene = Literal["personalized_v1", "latest_selected"]
+
+
+class PortalSearchTelemetryRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    entry_point: PortalSearchEntryPoint
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def normalize_query_whitespace(cls, value: Any) -> str:
+        return " ".join(str(value or "").split())
 
 
 FilePreviewMode = Literal["pdf", "docx", "spreadsheet", "markdown", "html", "text", "image", "unsupported", "chunks"]

@@ -362,6 +362,130 @@
   border-radius: var(--radius-md);
 }
 
+/* Personalized recommendation configuration */
+.panelDescription {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: var(--neutral-500);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.configField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fieldLabel {
+  color: var(--neutral-800);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.fieldHint {
+  color: var(--neutral-500);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.formInput,
+.formSelect {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--neutral-900);
+  font: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.formInput:focus,
+.formSelect:focus {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-50);
+}
+
+.formInput:disabled,
+.formSelect:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.configSection {
+  margin-bottom: 18px;
+  padding: 20px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.configSectionTitle {
+  margin: 0 0 16px;
+  color: var(--neutral-900);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.configGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 24px;
+}
+
+.rolloutRow {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(240px, 0.7fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.switchField {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: var(--neutral-50);
+  cursor: pointer;
+}
+
+.switchField input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.switchField span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.switchField strong {
+  color: var(--neutral-900);
+  font-size: 0.86rem;
+}
+
+.switchField small {
+  color: var(--neutral-500);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 960px) {
+  .configGrid,
+  .rolloutRow {
+    grid-template-columns: 1fr;
+  }
+}
+
 .modalBackdrop {
   position: fixed;
   inset: 0;

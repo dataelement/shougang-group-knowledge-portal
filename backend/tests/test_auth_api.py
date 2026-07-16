@@ -1,8 +1,11 @@
 import asyncio
+import json
+import time
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.auth import PortalUserView
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService, RedisPortalSessionStore
 
 
@@ -307,3 +310,85 @@ def test_login_fails_closed_when_redis_session_store_is_unavailable():
             raise AssertionError("Redis 不可用时不应创建门户会话")
 
     asyncio.run(run())
+
+
+def test_portal_user_view_keeps_legacy_sessions_compatible_without_numeric_identity():
+    user = PortalUserView.model_validate(
+        {
+            "account": "legacy-user",
+            "name": "旧会话用户",
+            "initial": "旧",
+            "role": "内部员工",
+            "external_id": "EMP-1",
+            "login_at": 1,
+        }
+    )
+
+    assert user.user_id is None
+    assert user.tenant_id is None
+
+
+def test_redis_session_store_deserializes_legacy_user_without_user_and_tenant_ids():
+    async def run():
+        redis = FakeRedis()
+        store = RedisPortalSessionStore(redis)
+        session_id = "legacy-session"
+        redis.values[store._session_key(session_id)] = json.dumps(
+            {
+                "session_id": session_id,
+                "access_token": "legacy-token",
+                "user": {
+                    "account": "legacy-user",
+                    "name": "旧会话用户",
+                    "initial": "旧",
+                    "role": "内部员工",
+                    "external_id": "EMP-1",
+                    "login_at": 1,
+                },
+                "base_url": "http://bisheng.example.com",
+                "timeout_seconds": 30,
+                "expires_at": time.time() + 300,
+            },
+            ensure_ascii=False,
+        )
+
+        session = await store.get(session_id)
+
+        assert session is not None
+        assert session.user.user_id is None
+        assert session.user.tenant_id is None
+
+    asyncio.run(run())
+
+
+def test_user_info_extracts_numeric_user_id_and_leaf_tenant_id():
+    class IdentityAuthBishengClient(FakeAuthBishengClient):
+        async def get_json(self, path: str, params=None):
+            if path == "/api/v1/user/info":
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "id": "10086",
+                        "leaf_tenant_id": 9,
+                        "user_name": "bisheng-user",
+                        "name": "王工",
+                        "department_name": "设备管理部",
+                    },
+                }
+            return await super().get_json(path, params=params)
+
+    service = PortalAuthService(
+        runtime_service=FakeRuntimeService(),
+        cookie_name="test_portal_session",
+        ttl_seconds=7 * 24 * 60 * 60,
+        cookie_secure=False,
+        client_factory=IdentityAuthBishengClient,
+        password_encryptor=lambda _public_key, password: f"encrypted-{password}",
+    )
+
+    session = asyncio.run(
+        service.login(account="bisheng-user", password="secret", remember=True)
+    )
+
+    assert session.user.user_id == 10086
+    assert session.user.tenant_id == 9

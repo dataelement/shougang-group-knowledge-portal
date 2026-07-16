@@ -8,10 +8,15 @@ from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.portal_admin_config import PortalAdminAggregateConfig
 from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
+from app.services.config_store import ConfigStoreWriteResult
 
 
 REMOTE_CONFIG_PATH = "/api/v1/shougang-portal/config"
 REMOTE_CONFIG_INTERNAL_PATH = "/api/v1/shougang-portal/config/internal"
+
+
+class PortalAdminConfigValidationError(ValueError):
+    """The remote aggregate rejected a semantically invalid admin config."""
 
 
 class RemotePortalAdminConfigStore:
@@ -31,10 +36,15 @@ class RemotePortalAdminConfigStore:
         self._runtime_service = runtime_service
         self._memory_documents: dict[str, dict[str, Any]] = {}
         self._memory_lock = Lock()
+        self._last_version: int | None = None
 
     @property
     def runtime_service(self) -> BishengRuntimeService:
         return self._runtime_service
+
+    @property
+    def version(self) -> int | None:
+        return self._last_version
 
     def get_document(self, table_name: str, legacy_key: str | None = None) -> dict[str, Any] | None:
         if table_name not in self._REMOTE_TABLES:
@@ -45,17 +55,27 @@ class RemotePortalAdminConfigStore:
             return self._section_from_aggregate(aggregate, table_name)
         return None
 
-    def upsert_document(self, table_name: str, payload: dict[str, Any]) -> None:
+    def upsert_document(
+        self,
+        table_name: str,
+        payload: dict[str, Any],
+    ) -> ConfigStoreWriteResult:
         if table_name not in self._REMOTE_TABLES:
             self._set_memory_document(table_name, payload)
-            return
+            return ConfigStoreWriteResult(document=deepcopy(payload))
 
         aggregate = self._load_remote_aggregate() or self._build_default_aggregate()
         section = self._REMOTE_TABLES[table_name]
         next_data = aggregate.model_dump(mode="json")
         next_data[section] = payload
         next_aggregate = PortalAdminAggregateConfig.model_validate(next_data)
-        self._save_remote_aggregate(next_aggregate)
+        # Keep compatibility with lightweight test/local subclasses that only
+        # persist in ``_save_remote_aggregate`` and historically returned None.
+        saved_aggregate = self._save_remote_aggregate(next_aggregate) or next_aggregate
+        return ConfigStoreWriteResult(
+            document=self._section_from_aggregate(saved_aggregate, table_name),
+            version=saved_aggregate.version,
+        )
 
     def _section_from_aggregate(
         self,
@@ -86,9 +106,11 @@ class RemotePortalAdminConfigStore:
         data = payload.get("data") if isinstance(payload, dict) else None
         if not data:
             return None
-        return PortalAdminAggregateConfig.model_validate(
+        aggregate = PortalAdminAggregateConfig.model_validate(
             self._normalize_remote_aggregate_data(data)
         )
+        self._last_version = aggregate.version
+        return aggregate
 
     def _normalize_remote_aggregate_data(self, data: Any) -> Any:
         if not isinstance(data, dict):
@@ -122,7 +144,10 @@ class RemotePortalAdminConfigStore:
             normalized.append(next_item)
         return normalized
 
-    def _save_remote_aggregate(self, aggregate: PortalAdminAggregateConfig) -> None:
+    def _save_remote_aggregate(
+        self,
+        aggregate: PortalAdminAggregateConfig,
+    ) -> PortalAdminAggregateConfig:
         payload = self._request(
             "PUT",
             REMOTE_CONFIG_PATH,
@@ -130,7 +155,18 @@ class RemotePortalAdminConfigStore:
         )
         status_code = payload.get("status_code") if isinstance(payload, dict) else None
         if status_code not in (None, 200):
-            raise RuntimeError(str(payload.get("status_message") or "Bisheng config save failed"))
+            message = str(payload.get("status_message") or "Bisheng config save failed")
+            if status_code == 422:
+                raise PortalAdminConfigValidationError(message)
+            raise RuntimeError(message)
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            raise RuntimeError("Bisheng config save response is missing normalized data")
+        saved = PortalAdminAggregateConfig.model_validate(
+            self._normalize_remote_aggregate_data(data)
+        )
+        self._last_version = saved.version
+        return saved
 
     def _request(self, method: str, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
         runtime = self._runtime_service.get_runtime_config_snapshot()
@@ -148,5 +184,19 @@ class RemotePortalAdminConfigStore:
             follow_redirects=True,
         ) as client:
             response = client.request(method, path, json=json)
+            if response.status_code == 422:
+                try:
+                    payload = response.json()
+                except (TypeError, ValueError):
+                    payload = None
+                message = "BiSheng 配置校验失败"
+                if isinstance(payload, dict):
+                    status_message = payload.get("status_message")
+                    detail = payload.get("detail")
+                    if status_message:
+                        message = str(status_message)
+                    elif isinstance(detail, str) and detail.strip():
+                        message = detail.strip()
+                raise PortalAdminConfigValidationError(message)
             response.raise_for_status()
             return response.json()

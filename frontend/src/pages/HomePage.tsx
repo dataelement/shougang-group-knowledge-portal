@@ -21,11 +21,13 @@ import {
   fetchQaKnowledgeFolderStats,
   searchQaKnowledgeFiles,
   uploadChatAttachment,
+  recordPortalSearchEvent,
   type ChatAttachment,
   type FileItem,
   type HomeStats,
   type KnowledgeSpace,
   type QaKnowledgeScope,
+  type RecommendationMode,
 } from '../api/content';
 import {
   QA_ATTACHMENT_ACCEPT,
@@ -110,12 +112,19 @@ function isLatestSelectedSection(section: SectionConfig): boolean {
   return section.builtin_key === LATEST_SELECTED_RECOMMENDATION;
 }
 
-function buildSectionMoreLink(section: SectionConfig): string {
+function buildSectionMoreLink(section: SectionConfig, recommendationMode?: RecommendationMode): string {
   const titleParam = `title=${encodeURIComponent(section.title)}`;
   if (isLatestSelectedSection(section)) {
-    return `/list?recommendation=${LATEST_SELECTED_RECOMMENDATION}&${titleParam}`;
+    const mode = recommendationMode ?? LATEST_SELECTED_RECOMMENDATION;
+    return `/list?recommendation=${mode}&${titleParam}`;
   }
   return `${section.link}${section.link.includes('?') ? '&' : '?'}${titleParam}`;
+}
+
+function buildHomeFilePath(file: FileItem, recommendationMode?: RecommendationMode): string {
+  const query = new URLSearchParams({ entry_point: 'home_recommendation' });
+  if (recommendationMode) query.set('recommendation_scene', recommendationMode);
+  return '/space/' + file.spaceId + '/file/' + file.id + '?' + query.toString();
 }
 
 const DOMAIN_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
@@ -294,6 +303,7 @@ export default function HomePage() {
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
+  const [sectionRecommendationModes, setSectionRecommendationModes] = useState<Record<string, RecommendationMode>>({});
   const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
   const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
@@ -492,6 +502,9 @@ export default function HomePage() {
       navigate('/apps?tab=qa&autosend=1&draft=1');
       return;
     }
+    if (keyword && user) {
+      void recordPortalSearchEvent(keyword, 'search_page').catch(() => undefined);
+    }
     navigate(keyword ? `/search?q=${encodeURIComponent(keyword)}` : '/search');
   }, [query, searchTab, navigate, user, qaAnswerMode, qaScope, qaAttachments, qaUploading.length]);
 
@@ -665,14 +678,18 @@ export default function HomePage() {
     const controller = new AbortController();
     setSectionDataLoading(true);
     setSectionData({});
+    setSectionRecommendationModes({});
     setLoadedSectionTags(new Set());
     void (async () => {
       try {
         await streamHomeContent({
           signal: controller.signal,
-          onSection: (tag, items) => {
+          onSection: (tag, items, recommendationMode) => {
             if (!active) return;
             setSectionData((prev) => ({ ...prev, [tag]: items }));
+            if (recommendationMode) {
+              setSectionRecommendationModes((prev) => ({ ...prev, [tag]: recommendationMode }));
+            }
             setLoadedSectionTags((prev) => {
               const next = new Set(prev);
               next.add(tag);
@@ -973,6 +990,9 @@ export default function HomePage() {
                         className={s.hotSearchTag}
                         onClick={() => {
                           setShowHotTagMenu(false);
+                          if (user) {
+                            void recordPortalSearchEvent(question, 'home_hot_keyword').catch(() => undefined);
+                          }
                           navigate(`/search?q=${encodeURIComponent(question)}`);
                         }}
                       >
@@ -1122,7 +1142,9 @@ export default function HomePage() {
               const fetchedItems = sectionData[sec.tag] || [];
               const items = fetchedItems;
               const showLoading = sectionDataLoading && !loadedSectionTags.has(sec.tag);
-              const moreLink = buildSectionMoreLink(sec);
+              const recommendationMode = sectionRecommendationModes[sec.tag];
+              const recommendationModePending = isLatestSelectedSection(sec) && !recommendationMode;
+              const moreLink = buildSectionMoreLink(sec, recommendationMode);
               return (
                 <div
                   key={sec.tag}
@@ -1133,17 +1155,23 @@ export default function HomePage() {
                       <img src={resolveSectionIcon(sec.title)} alt="" className={s.panelIconImg} />
                       <span className={s.panelTitle}>{sec.title}</span>
                     </div>
-                    <Link
-                      to={moreLink}
-                      className={s.panelMore}
-                      onClick={(event) => {
-                        if (user) return;
-                        event.preventDefault();
-                        navigate(buildGuestLoginPath(moreLink));
-                      }}
-                    >
-                      更多 <ChevronRight size={14} />
-                    </Link>
+                    {recommendationModePending ? (
+                      <span className={`${s.panelMore} ${s.panelMoreDisabled}`} aria-disabled="true">
+                        更多 <ChevronRight size={14} />
+                      </span>
+                    ) : (
+                      <Link
+                        to={moreLink}
+                        className={s.panelMore}
+                        onClick={(event) => {
+                          if (user) return;
+                          event.preventDefault();
+                          navigate(buildGuestLoginPath(moreLink));
+                        }}
+                      >
+                        更多 <ChevronRight size={14} />
+                      </Link>
+                    )}
                   </div>
                   <div className={s.sectionList}>
                     {showLoading ? (
@@ -1158,7 +1186,7 @@ export default function HomePage() {
                             key={f.id}
                             className={s.listItem}
                             onClick={() => {
-                              const target = `/space/${f.spaceId}/file/${f.id}`;
+                              const target = buildHomeFilePath(f, recommendationMode);
                               if (!user) {
                                 navigate(buildGuestLoginPath(target));
                                 return;

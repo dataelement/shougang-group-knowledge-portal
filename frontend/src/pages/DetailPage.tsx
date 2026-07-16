@@ -4,7 +4,7 @@ import { ArrowLeft, Download, Sparkles, Star } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
-import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, recordFileDownloadEvent, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewManifest } from '../api/content';
+import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, recordFileDownloadEvent, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewContext, type FilePreviewManifest } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { resolveDetailBackTarget } from '../utils/detailPage';
@@ -37,6 +37,21 @@ export default function DetailPage() {
   // When embedded inside an iframe (e.g. the search/list preview modal) we render
   // only the document card without the portal chrome or related recommendations.
   const embed = searchParams.get('embed') === '1';
+  const requestedEntryPoint = searchParams.get('entry_point') || '';
+  const previewEntryPoint: FilePreviewContext['entryPoint'] = (
+    requestedEntryPoint === 'home_recommendation'
+    || requestedEntryPoint === 'recommendation_list'
+    || requestedEntryPoint === 'search'
+    || requestedEntryPoint === 'knowledge_space'
+    || requestedEntryPoint === 'direct'
+    || requestedEntryPoint === 'favorite'
+    || requestedEntryPoint === 'other'
+  ) ? requestedEntryPoint : (embed ? 'other' : 'direct');
+  const requestedRecommendationScene = searchParams.get('recommendation_scene');
+  const recommendationScene = requestedRecommendationScene === 'personalized_v1'
+    || requestedRecommendationScene === 'latest_selected'
+    ? requestedRecommendationScene
+    : null;
   // Documents opened from a chat citation link carry ?hideBack=1 — there is no
   // list context to return to, so the "返回列表" bar is omitted.
   const hideBack = searchParams.get('hideBack') === '1';
@@ -52,7 +67,10 @@ export default function DetailPage() {
       try {
         const [detailResult, previewResult, relatedResult] = await Promise.all([
           fetchFileDetail(spaceId, fileId, shareToken || undefined),
-          fetchFilePreview(spaceId, fileId, shareToken || undefined, embed ? 'search_result_preview' : 'home_result_preview'),
+          fetchFilePreview(spaceId, fileId, shareToken || undefined, {
+            entryPoint: previewEntryPoint,
+            recommendationScene,
+          }),
           relatedFilesCount === 0
             ? Promise.resolve([])
             : fetchRelatedFiles(spaceId, fileId, relatedFilesCount),
@@ -76,7 +94,7 @@ export default function DetailPage() {
     return () => {
       active = false;
     };
-  }, [embed, fileId, relatedFilesCount, shareToken, spaceId]);
+  }, [fileId, previewEntryPoint, recommendationScene, relatedFilesCount, shareToken, spaceId]);
 
   const wrap = (children: ReactNode) =>
     embed ? <div className={s.embedRoot}>{children}</div> : <PageShell>{children}</PageShell>;

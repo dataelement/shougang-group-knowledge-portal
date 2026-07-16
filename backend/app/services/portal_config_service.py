@@ -56,6 +56,9 @@ class PortalConfigService:
 
     def get_config(self) -> PortalConfig:
         data = self._read_data()
+        legacy_missing_home_total = not isinstance(data.get("recommendation"), dict) or (
+            "home_total_count" not in data["recommendation"]
+        )
         qa_model_changed = self._ensure_qa_model_compat(data)
         qa_templates_changed = self._ensure_qa_templates_compat(data)
         agent_config_changed = self._ensure_agent_config_compat(data)
@@ -143,6 +146,18 @@ class PortalConfigService:
                     **default_display,
                     **data["display"],
                 }
+                self._write_data(data)
+        if legacy_missing_home_total:
+            raw_home = data.get("display", {}).get("home", {})
+            try:
+                legacy_section_page_size = int(raw_home.get("section_page_size") or 0)
+            except (TypeError, ValueError):
+                legacy_section_page_size = 0
+            if 1 <= legacy_section_page_size <= 50:
+                data["recommendation"]["home_total_count"] = max(
+                    int(data["recommendation"].get("home_total_count") or 20),
+                    legacy_section_page_size,
+                )
                 self._write_data(data)
         config = PortalConfig.model_validate(data)
         normalized_data = config.model_dump(mode="json")
@@ -606,6 +621,10 @@ class PortalConfigService:
         data["recommendation"] = payload.model_dump()
         return self._write_config(PortalConfig.model_validate(data))
 
+    def get_config_version(self) -> int:
+        raw_version = getattr(self._store, "version", None)
+        return raw_version if isinstance(raw_version, int) and raw_version > 0 else 1
+
     def update_display(self, payload: DisplayConfig) -> PortalConfig:
         data = self.get_config().model_dump()
         data["display"] = payload.model_dump()
@@ -684,8 +703,9 @@ class PortalConfigService:
 
     def _write_config(self, payload: PortalConfig) -> PortalConfig:
         data = payload.model_dump(mode="json")
-        self._write_data(data)
-        return PortalConfig.model_validate(data)
+        result = self._write_data(data)
+        normalized = getattr(result, "document", data)
+        return PortalConfig.model_validate(normalized)
 
-    def _write_data(self, data: dict[str, Any]) -> None:
-        self._store.upsert_document(self._TABLE_NAME, data)
+    def _write_data(self, data: dict[str, Any]) -> Any:
+        return self._store.upsert_document(self._TABLE_NAME, data)

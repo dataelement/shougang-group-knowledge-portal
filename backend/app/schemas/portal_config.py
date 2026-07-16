@@ -4,7 +4,7 @@ from copy import deepcopy
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 
 
 _HIDDEN_TEXT_CHARS = "\u200b\u200c\u200d\ufeff"
@@ -489,10 +489,17 @@ class RecommendationConfig(BaseModel):
     provider: str
     home_strategy: str
     detail_strategy: str
+    home_total_count: int = Field(default=20, ge=1, le=50, strict=True)
+    hot_half_life_days: int = Field(default=7, ge=1, le=90, strict=True)
+    home_entry_source_weight: float = Field(default=0.3, ge=0, le=1, allow_inf_nan=False)
+    stable_shuffle_score_gap: float = Field(default=5, ge=0, le=100, allow_inf_nan=False)
+    stable_shuffle_cycle_days: int = Field(default=7, ge=1, le=30, strict=True)
+    personalized_shadow_enabled: StrictBool = False
+    personalized_rollout_percent: int = Field(default=0, ge=0, le=100, strict=True)
 
 
 class DisplayHomeConfig(BaseModel):
-    section_page_size: int = 6
+    section_page_size: int = Field(default=6, ge=1, le=50, strict=True)
     hot_tags_count: int = 8
     qa_hot_count: int = 4
     domain_count: int = 6
@@ -655,6 +662,13 @@ class PortalConfig(BaseModel):
         data["agent_config"] = agent_config
         data.pop("apps", None)
         return data
+
+    @model_validator(mode="after")
+    def validate_personalized_recommendation_config(self):
+        if self.recommendation.home_total_count < self.display.home.section_page_size:
+            raise ValueError("recommendation.home_total_count must be >= display.home.section_page_size")
+
+        return self
 
 
 class DomainsConfigUpdate(BaseModel):

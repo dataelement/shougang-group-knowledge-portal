@@ -1,4 +1,10 @@
-import type { FileItem, FilePreviewManifest, FilePreviewMode, FilePreviewSourceKind } from '../api/content';
+import type {
+  FileItem,
+  FilePreviewContext,
+  FilePreviewManifest,
+  FilePreviewMode,
+  FilePreviewSourceKind,
+} from '../api/content';
 
 export interface ResolvedFilePreview {
   downloadUrl: string;
@@ -34,7 +40,14 @@ export function resolveFilePreview(preview: FilePreviewManifest | null): Resolve
   };
 }
 
-export function resolvePreviewModalFrameUrl(file: FileItem, _preview?: FilePreviewManifest | null): string {
+export function resolvePreviewModalFrameUrl(
+  file: FileItem,
+  _preview?: FilePreviewManifest | null,
+  context?: FilePreviewContext,
+): string {
   void _preview;
-  return `/space/${file.spaceId}/file/${file.id}?embed=1`;
+  const query = new URLSearchParams({ embed: '1' });
+  if (context?.entryPoint) query.set('entry_point', context.entryPoint);
+  if (context?.recommendationScene) query.set('recommendation_scene', context.recommendationScene);
+  return '/space/' + file.spaceId + '/file/' + file.id + '?' + query.toString();
 }

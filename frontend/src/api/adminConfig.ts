@@ -203,6 +203,13 @@ export interface RecommendationConfig {
   provider: string;
   home_strategy: string;
   detail_strategy: string;
+  home_total_count: number;
+  hot_half_life_days: number;
+  home_entry_source_weight: number;
+  stable_shuffle_score_gap: number;
+  stable_shuffle_cycle_days: number;
+  personalized_shadow_enabled: boolean;
+  personalized_rollout_percent: number;
 }
 
 export interface DisplayHomeConfig {
@@ -459,11 +466,15 @@ export function updateUnifiedAuthRuntimeConfig(payload: {
   });
 }
 
-export function updateRecommendationConfig(recommendation: RecommendationConfig) {
-  return request<RecommendationConfig>('/api/v1/admin/config/recommendation', {
+export async function updateRecommendationConfig(recommendation: RecommendationConfig) {
+  const data = await request<RecommendationConfig | { recommendation: RecommendationConfig; version?: number }>(
+    '/api/v1/admin/config/recommendation',
+    {
     method: 'POST',
     body: JSON.stringify(recommendation),
-  });
+    },
+  );
+  return 'recommendation' in data ? data.recommendation : data;
 }
 
 export function updateDisplayConfig(display: DisplayConfig) {

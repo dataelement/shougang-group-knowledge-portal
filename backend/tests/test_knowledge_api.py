@@ -1161,7 +1161,7 @@ def test_get_file_detail_and_preview(tmp_path: Path):
         "event_type": "portal_document_read",
         "source_app": "shougang_portal",
         "scene": "document_preview",
-        "entry_point": "search_result_preview",
+        "entry_point": "other",
         "resource_type": "document",
         "status": "success",
         "space_id": 12,
