@@ -323,8 +323,10 @@ async def search_files(
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
-        visible_spaces = await service.list_visible_spaces()
-        extra_space_ids = [space.id for space in visible_spaces.data]
+        extra_space_ids = None
+        if not service.is_public_latest_selected_request(q, recommendation):
+            visible_spaces = await service.list_visible_spaces()
+            extra_space_ids = [space.id for space in visible_spaces.data]
         return response_ok(
             await service.search_files(
                 q=q,
@@ -449,40 +451,52 @@ async def get_home_content(
         return StreamingResponse(anonymous_stream(), media_type="text/event-stream")
 
     bisheng_client = auth_service.create_bisheng_client(session)
-    # Resolve visible spaces before streaming starts so an auth/upstream failure here
-    # surfaces as a clean HTTP error instead of aborting an already-open SSE stream.
-    try:
-        service = KnowledgeService(
-            bisheng_client=bisheng_client,
-            portal_config_service=portal_config_service,
-            default_model=get_settings().bisheng_default_model,
-        )
-        visible_spaces = await service.list_visible_spaces()
-        extra_space_ids = [space.id for space in visible_spaces.data]
-    except BaseException:
-        await bisheng_client.aclose()
-        raise
-
-    cache_key = cache_service.home_content_key(
-        config=config,
-        account=getattr(getattr(session, "user", None), "account", ""),
-        visible_space_ids=extra_space_ids,
+    service = KnowledgeService(
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+        default_model=get_settings().bisheng_default_model,
     )
-    cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
-    if cached_sections is not None:
-        await bisheng_client.aclose()
-        return StreamingResponse(_cached_home_stream(cached_sections), media_type="text/event-stream")
 
     async def authenticated_stream():
+        visible_spaces_task = asyncio.ensure_future(service.list_visible_spaces())
         try:
             sections: list[dict[str, Any]] = []
-            async for tag, items in service.iter_home_content(extra_space_ids=extra_space_ids):
+            emitted_tags: set[str] = set()
+            async for tag, items in service.iter_home_content(include_other=False):
+                section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
+                sections.append(section)
+                emitted_tags.add(tag)
+                yield _home_sse_event({"type": "section", **section})
+
+            visible_spaces = await visible_spaces_task
+            extra_space_ids = [space.id for space in visible_spaces.data]
+            cache_key = cache_service.home_content_key(
+                config=config,
+                account=getattr(getattr(session, "user", None), "account", ""),
+                visible_space_ids=extra_space_ids,
+            )
+            cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
+            if cached_sections is not None:
+                for section in cached_sections:
+                    if section["tag"] in emitted_tags:
+                        continue
+                    sections.append(section)
+                    yield _home_sse_event({"type": "section", **section})
+                yield _home_sse_event({"type": "done"})
+                return
+
+            async for tag, items in service.iter_home_content(
+                extra_space_ids=extra_space_ids,
+                include_latest=False,
+            ):
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
                 sections.append(section)
                 yield _home_sse_event({"type": "section", **section})
             yield _home_sse_event({"type": "done"})
             await cache_service.set_json(cache_key, {"sections": sections}, ttl_seconds)
         finally:
+            if not visible_spaces_task.done():
+                visible_spaces_task.cancel()
             await bisheng_client.aclose()
 
     return StreamingResponse(authenticated_stream(), media_type="text/event-stream")

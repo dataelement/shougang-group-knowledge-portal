@@ -213,6 +213,10 @@ class KnowledgeService:
         return builtin_key == LATEST_SELECTED_RECOMMENDATION or (not builtin_key and index == 0)
 
     @staticmethod
+    def is_public_latest_selected_request(q: Optional[str], recommendation: Optional[str]) -> bool:
+        return not (q or "").strip() and (recommendation or "").strip() == LATEST_SELECTED_RECOMMENDATION
+
+    @staticmethod
     def _is_typical_case_section(section: Any) -> bool:
         if isinstance(section, dict):
             builtin_key = str(section.get("builtin_key") or "")
@@ -221,7 +225,11 @@ class KnowledgeService:
         return builtin_key == TYPICAL_CASE_SECTION_KEY
 
     async def iter_home_content(
-        self, extra_space_ids: Optional[list[int]] = None
+        self,
+        extra_space_ids: Optional[list[int]] = None,
+        *,
+        include_latest: bool = True,
+        include_other: bool = True,
     ) -> AsyncIterator[tuple[str, list[KnowledgeFileItem]]]:
         """Yield ``(tag, items)`` for each enabled home section as soon as it is ready.
 
@@ -231,21 +239,45 @@ class KnowledgeService:
         yields an empty list instead of aborting the whole stream.
         """
         config = self._config_service.get_config()
-        space_ids = await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
-        sections = [section for section in config.sections if section.enabled and section.tag]
-        if not space_ids or not sections:
-            for section in sections:
-                yield section.tag, []
+        indexed_sections = [
+            (section, index)
+            for index, section in enumerate(config.sections)
+            if section.enabled and section.tag
+        ]
+        sections = [
+            (section, index)
+            for section, index in indexed_sections
+            if (include_latest and self._is_latest_selected_section(section, index))
+            or (include_other and not self._is_latest_selected_section(section, index))
+        ]
+        if not sections:
             return
+
+        needs_scoped_spaces = any(
+            not self._is_latest_selected_section(section, index) for section, index in sections
+        )
+        space_ids_task = (
+            asyncio.ensure_future(self.resolve_requested_space_ids(extra_space_ids=extra_space_ids))
+            if needs_scoped_spaces
+            else None
+        )
 
         async def fetch_section(section: Any, index: int) -> tuple[str, list[KnowledgeFileItem]]:
             is_latest = self._is_latest_selected_section(section, index)
             try:
+                if is_latest:
+                    space_ids = None
+                elif space_ids_task is None:
+                    return section.tag, []
+                else:
+                    space_ids = await space_ids_task
+                if not is_latest and not space_ids:
+                    return section.tag, []
                 result = await self.search_files(
                     q=None,
                     tag=None if is_latest else section.tag,
                     base_tag=None,
-                    requested_space_ids=space_ids,
+                    requested_space_ids=None if is_latest else space_ids,
                     space_level=None,
                     file_ext=None,
                     document_type=None,
@@ -254,7 +286,7 @@ class KnowledgeService:
                     sort="portal_read_count_desc" if is_latest else "updated_at_desc",
                     cursor=None,
                     limit=config.display.home.section_page_size,
-                    extra_space_ids=extra_space_ids,
+                    extra_space_ids=None if is_latest else extra_space_ids,
                 )
                 return section.tag, result.data
             except Exception:
@@ -262,7 +294,7 @@ class KnowledgeService:
 
         tasks = [
             asyncio.ensure_future(fetch_section(section, index))
-            for index, section in enumerate(sections)
+            for section, index in sections
         ]
         try:
             for completed in asyncio.as_completed(tasks):
@@ -272,6 +304,8 @@ class KnowledgeService:
             for task in tasks:
                 if not task.done():
                     task.cancel()
+            if space_ids_task is not None and not space_ids_task.done():
+                space_ids_task.cancel()
 
     async def list_visible_spaces(self) -> KnowledgeSpaceListData:
         grouped_spaces = await self._fetch_grouped_spaces()
@@ -631,8 +665,26 @@ class KnowledgeService:
             or normalized_business_domain_code
             or recommendation
         )
-        if not q and not has_filter:
+        keyword = (q or "").strip()
+        if not keyword and not has_filter:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+
+        if self.is_public_latest_selected_request(keyword, recommendation):
+            return await self._search_shougang_portal_files(
+                q=None,
+                tag=effective_tag,
+                space_ids=[],
+                space_level="public",
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=normalized_business_domain_code,
+                recommendation=recommendation,
+                sort=sort,
+                cursor=cursor,
+                limit=limit,
+                public_only=True,
+            )
 
         space_ids = await self.resolve_requested_space_ids(
             requested_space_ids,
@@ -662,7 +714,7 @@ class KnowledgeService:
         # the tag and paginates server-side with a real cursor instead of pulling every
         # tagged file per space and sorting in memory.
         return await self._search_shougang_portal_files(
-            q=q,
+            q=keyword or None,
             tag=effective_tag,
             space_ids=space_ids,
             space_level=space_level,
@@ -954,6 +1006,7 @@ class KnowledgeService:
         sort: str,
         cursor: Optional[str],
         limit: int,
+        public_only: bool = False,
     ) -> CursorKnowledgeFileData:
         request_body = {
             "q": q,
@@ -967,6 +1020,8 @@ class KnowledgeService:
         }
         if recommendation:
             request_body["recommendation"] = recommendation
+        if public_only:
+            request_body["public_only"] = True
         normalized_document_type = self._normalize_document_type_code(document_type)
         if normalized_document_type:
             request_body["document_type"] = normalized_document_type
