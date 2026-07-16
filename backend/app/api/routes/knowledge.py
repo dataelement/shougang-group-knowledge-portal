@@ -458,8 +458,10 @@ async def search_files(
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
-        visible_spaces = await service.list_visible_spaces()
-        extra_space_ids = [space.id for space in visible_spaces.data]
+        extra_space_ids = None
+        if not service.is_public_latest_selected_request(q, recommendation):
+            visible_spaces = await service.list_visible_spaces()
+            extra_space_ids = [space.id for space in visible_spaces.data]
         return response_ok(
             await service.search_files(
                 q=effective_q,

@@ -10,7 +10,7 @@ export function createBindingDraft(): BindingDraft {
 }
 
 export function validateBindingDraft(draft: BindingDraft): string | null {
-  if (draft.spaceId == null) return '请选择要绑定的团队知识库';
+  if (draft.spaceId == null) return '请选择要绑定的团队/科室知识库';
   if (draft.departmentId == null) return '请选择部门';
   return null;
 }
