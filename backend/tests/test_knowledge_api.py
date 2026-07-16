@@ -3636,7 +3636,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
                 raise AssertionError(f"Unexpected portal file search request: {json}")
             if path == "/api/v1/knowledge/shougang-portal/files/browse":
                 if json == {
-                    "tag": "典型案例",
+                    "tag": "行业情报",
                     "space_ids": [12, 18, 25],
                     "space_level": "public",
                     "file_ext": None,
@@ -3692,8 +3692,8 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
     sections, done = _parse_home_sse(response)
     assert done is True
     assert sections["知识推荐"][0]["space_id"] == 12
-    assert sections["典型案例"][0]["id"] == 1590
-    assert sections["典型案例"][0]["space_id"] == 18
+    assert sections["行业情报"][0]["id"] == 1590
+    assert sections["行业情报"][0]["space_id"] == 18
     # latest_selected section is fetched via the portal file-search endpoint with the recommendation flag
     assert (
         "/api/v1/knowledge/shougang-portal/files/search",
@@ -3714,7 +3714,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
     assert (
         "/api/v1/knowledge/shougang-portal/files/browse",
         {
-            "tag": "典型案例",
+            "tag": "行业情报",
             "space_ids": [12, 18, 25],
             "space_level": "public",
             "file_ext": None,
@@ -3760,7 +3760,7 @@ def test_get_home_content_uses_public_latest_and_visible_spaces_for_other_sectio
                     }
                 raise AssertionError(f"Unexpected portal file search request: {json}")
             if path == "/api/v1/knowledge/shougang-portal/files/browse":
-                if json.get("tag") == "典型案例":
+                if json.get("tag") == "行业情报":
                     assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
                     assert json.get("recommendation") is None
                     assert json["sort"] == "updated_at_desc"
@@ -3811,7 +3811,7 @@ def test_get_home_content_uses_public_latest_and_visible_spaces_for_other_sectio
     sections, done = _parse_home_sse(response)
     assert done is True
     assert sections["最新精选"][0]["space_id"] == 12
-    assert sections["典型案例"][0]["space_id"] == 7102
+    assert sections["行业情报"][0]["space_id"] == 7102
 
 
 def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path):
@@ -4140,9 +4140,9 @@ def test_iter_home_content_streams_sections_in_completion_order(tmp_path: Path):
         return emitted
 
     tags_in_order = asyncio.run(collect())
-    assert set(tags_in_order) == {"最新精选", "典型案例"}
+    assert set(tags_in_order) == {"最新精选", "行业情报"}
     # The fast typical_case section is emitted before the slow latest_selected one.
-    assert tags_in_order.index("典型案例") < tags_in_order.index("最新精选")
+    assert tags_in_order.index("行业情报") < tags_in_order.index("最新精选")
 
 
 def test_keyword_search_route_uses_dedicated_top_50_contract(tmp_path: Path):

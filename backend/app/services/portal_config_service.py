@@ -37,7 +37,10 @@ from app.schemas.portal_config import (
 from app.services.config_store import InMemoryConfigStore
 
 
-BUILTIN_SECTION_KEYS = ("latest_selected", "typical_case")
+TYPICAL_CASE_SECTION_KEY = "typical_case"
+TYPICAL_CASE_SECTION_TAG = "行业情报"
+TYPICAL_CASE_SECTION_LINK = "/list?tag=行业情报"
+BUILTIN_SECTION_KEYS = ("latest_selected", TYPICAL_CASE_SECTION_KEY)
 LATEST_SELECTED_SECTION_LINK = "/list?recommendation=latest_selected"
 
 
@@ -512,7 +515,7 @@ class PortalConfigService:
             for section in result
         )
 
-        # 旧配置没有内置标识时，按现有前两个分区绑定系统身份，保留用户已改名的标题和标签。
+        # 旧配置没有内置标识时，按现有前两个分区绑定系统身份；标题保留，内置查询语义在下方统一。
         for index, builtin_key in enumerate(BUILTIN_SECTION_KEYS):
             if any(str(section.get("builtin_key") or "") == builtin_key for section in result):
                 continue
@@ -536,6 +539,9 @@ class PortalConfigService:
                 seen_builtin_keys.add(builtin_key)
                 if builtin_key == "latest_selected":
                     section["link"] = LATEST_SELECTED_SECTION_LINK
+                elif builtin_key == TYPICAL_CASE_SECTION_KEY:
+                    section["tag"] = TYPICAL_CASE_SECTION_TAG
+                    section["link"] = TYPICAL_CASE_SECTION_LINK
             normalized.append(section)
         return normalized
 

@@ -10,6 +10,7 @@ from app.main import app
 from app.schemas.auth import PortalUserView
 from app.schemas.portal_config import DomainsConfigUpdate, PortalConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
+from app.services.config_store import InMemoryConfigStore
 from app.services.portal_auth_service import PortalAuthError
 from app.services.portal_config_service import PortalConfigService
 
@@ -1420,6 +1421,8 @@ def test_post_admin_sections_persists_icon_and_color_fields(tmp_path: Path):
     assert body["data"]["sections"][0]["color"] == "#2563eb"
     assert body["data"]["sections"][0]["bg"] == "#eff6ff"
     assert body["data"]["sections"][1]["builtin_key"] == "typical_case"
+    assert body["data"]["sections"][1]["tag"] == "行业情报"
+    assert body["data"]["sections"][1]["link"] == "/list?tag=行业情报"
     assert service.get_config().sections[0].color == "#2563eb"
     assert service.get_config().sections[0].bg == "#eff6ff"
 
@@ -1442,6 +1445,28 @@ def test_post_admin_sections_keeps_builtin_sections_when_payload_deletes_them(tm
     assert [section["builtin_key"] for section in sections[:2]] == ["latest_selected", "typical_case"]
     assert sections[0]["title"] == "知识推荐 · 最新精选"
     assert sections[1]["title"] == "典型案例 · 事故分析"
+    assert sections[1]["tag"] == "行业情报"
+    assert sections[1]["link"] == "/list?tag=行业情报"
+
+
+def test_get_admin_config_normalizes_typical_case_tag_and_link(tmp_path: Path):
+    store = InMemoryConfigStore()
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json", store=store)
+    stored_config = service.get_config().model_dump(mode="json")
+    typical_case = next(
+        section for section in stored_config["sections"] if section["builtin_key"] == "typical_case"
+    )
+    typical_case["tag"] = "知识推荐"
+    typical_case["link"] = "/list?tag=知识推荐"
+    store.upsert_document("portal_config", stored_config)
+
+    normalized = service.get_config()
+    normalized_typical_case = next(
+        section for section in normalized.sections if section.builtin_key == "typical_case"
+    )
+
+    assert normalized_typical_case.tag == "行业情报"
+    assert normalized_typical_case.link == "/list?tag=行业情报"
 
 
 def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path: Path):
