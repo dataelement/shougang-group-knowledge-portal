@@ -37,10 +37,12 @@ from app.schemas.portal_config import (
 from app.services.config_store import InMemoryConfigStore
 
 
+LATEST_SELECTED_SECTION_KEY = "latest_selected"
+LATEST_SELECTED_SECTION_TAG = "最新精选"
 TYPICAL_CASE_SECTION_KEY = "typical_case"
 TYPICAL_CASE_SECTION_TAG = "行业情报"
 TYPICAL_CASE_SECTION_LINK = "/list?tag=行业情报"
-BUILTIN_SECTION_KEYS = ("latest_selected", TYPICAL_CASE_SECTION_KEY)
+BUILTIN_SECTION_KEYS = (LATEST_SELECTED_SECTION_KEY, TYPICAL_CASE_SECTION_KEY)
 LATEST_SELECTED_SECTION_LINK = "/list?recommendation=latest_selected"
 
 
@@ -537,7 +539,8 @@ class PortalConfigService:
                 if builtin_key in seen_builtin_keys:
                     continue
                 seen_builtin_keys.add(builtin_key)
-                if builtin_key == "latest_selected":
+                if builtin_key == LATEST_SELECTED_SECTION_KEY:
+                    section["tag"] = LATEST_SELECTED_SECTION_TAG
                     section["link"] = LATEST_SELECTED_SECTION_LINK
                 elif builtin_key == TYPICAL_CASE_SECTION_KEY:
                     section["tag"] = TYPICAL_CASE_SECTION_TAG

@@ -112,6 +112,14 @@ function isLatestSelectedSection(section: SectionConfig): boolean {
   return section.builtin_key === LATEST_SELECTED_RECOMMENDATION;
 }
 
+function getHomeSectionKey(section: SectionConfig): string {
+  return isLatestSelectedSection(section) ? LATEST_SELECTED_RECOMMENDATION : section.tag;
+}
+
+function getHomeStreamSectionKey(tag: string, recommendationMode?: RecommendationMode): string {
+  return recommendationMode ? LATEST_SELECTED_RECOMMENDATION : tag;
+}
+
 function buildSectionMoreLink(section: SectionConfig, recommendationMode?: RecommendationMode): string {
   const titleParam = `title=${encodeURIComponent(section.title)}`;
   if (isLatestSelectedSection(section)) {
@@ -692,13 +700,14 @@ export default function HomePage() {
           signal: controller.signal,
           onSection: (tag, items, recommendationMode) => {
             if (!active) return;
-            setSectionData((prev) => ({ ...prev, [tag]: items }));
+            const sectionKey = getHomeStreamSectionKey(tag, recommendationMode);
+            setSectionData((prev) => ({ ...prev, [sectionKey]: items }));
             if (recommendationMode) {
-              setSectionRecommendationModes((prev) => ({ ...prev, [tag]: recommendationMode }));
+              setSectionRecommendationModes((prev) => ({ ...prev, [sectionKey]: recommendationMode }));
             }
             setLoadedSectionTags((prev) => {
               const next = new Set(prev);
-              next.add(tag);
+              next.add(sectionKey);
               return next;
             });
             setLoadError('');
@@ -1145,15 +1154,16 @@ export default function HomePage() {
           {/* Left: knowledge list panels */}
           <div className={s.leftColumn}>
             {contentSections.map((sec, index) => {
-              const fetchedItems = sectionData[sec.tag] || [];
+              const sectionKey = getHomeSectionKey(sec);
+              const fetchedItems = sectionData[sectionKey] || [];
               const items = fetchedItems;
-              const showLoading = sectionDataLoading && !loadedSectionTags.has(sec.tag);
-              const recommendationMode = sectionRecommendationModes[sec.tag];
+              const showLoading = sectionDataLoading && !loadedSectionTags.has(sectionKey);
+              const recommendationMode = sectionRecommendationModes[sectionKey];
               const recommendationModePending = isLatestSelectedSection(sec) && !recommendationMode;
               const moreLink = buildSectionMoreLink(sec, recommendationMode);
               return (
                 <div
-                  key={sec.tag}
+                  key={sectionKey}
                   className={`${s.panel} ${index === 0 ? s.primarySectionPanel : s.tallSectionPanel}`}
                 >
                   <div className={`${s.panelHeader} ${resolveSectionHeaderClass(sec.title)}`}>

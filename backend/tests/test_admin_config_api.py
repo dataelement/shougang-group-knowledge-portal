@@ -1417,6 +1417,7 @@ def test_post_admin_sections_persists_icon_and_color_fields(tmp_path: Path):
     body = response.json()
     assert body["data"]["sections"][0]["icon"] == "Star"
     assert body["data"]["sections"][0]["builtin_key"] == "latest_selected"
+    assert body["data"]["sections"][0]["tag"] == "最新精选"
     assert body["data"]["sections"][0]["link"] == "/list?recommendation=latest_selected"
     assert body["data"]["sections"][0]["color"] == "#2563eb"
     assert body["data"]["sections"][0]["bg"] == "#eff6ff"
@@ -1444,27 +1445,39 @@ def test_post_admin_sections_keeps_builtin_sections_when_payload_deletes_them(tm
     sections = response.json()["data"]["sections"]
     assert [section["builtin_key"] for section in sections[:2]] == ["latest_selected", "typical_case"]
     assert sections[0]["title"] == "知识推荐 · 最新精选"
+    assert sections[0]["tag"] == "最新精选"
+    assert sections[0]["link"] == "/list?recommendation=latest_selected"
     assert sections[1]["title"] == "典型案例 · 事故分析"
     assert sections[1]["tag"] == "行业情报"
     assert sections[1]["link"] == "/list?tag=行业情报"
 
 
-def test_get_admin_config_normalizes_typical_case_tag_and_link(tmp_path: Path):
+def test_get_admin_config_normalizes_builtin_section_tags_and_links(tmp_path: Path):
     store = InMemoryConfigStore()
     service = PortalConfigService(config_path=tmp_path / "portal_config.json", store=store)
     stored_config = service.get_config().model_dump(mode="json")
+    latest_selected = next(
+        section for section in stored_config["sections"] if section["builtin_key"] == "latest_selected"
+    )
     typical_case = next(
         section for section in stored_config["sections"] if section["builtin_key"] == "typical_case"
     )
+    latest_selected["tag"] = "行业情报"
+    latest_selected["link"] = "/list?tag=行业情报"
     typical_case["tag"] = "知识推荐"
     typical_case["link"] = "/list?tag=知识推荐"
     store.upsert_document("portal_config", stored_config)
 
     normalized = service.get_config()
+    normalized_latest_selected = next(
+        section for section in normalized.sections if section.builtin_key == "latest_selected"
+    )
     normalized_typical_case = next(
         section for section in normalized.sections if section.builtin_key == "typical_case"
     )
 
+    assert normalized_latest_selected.tag == "最新精选"
+    assert normalized_latest_selected.link == "/list?recommendation=latest_selected"
     assert normalized_typical_case.tag == "行业情报"
     assert normalized_typical_case.link == "/list?tag=行业情报"
 

@@ -9,6 +9,12 @@ const adminPageSource = readFileSync('src/pages/AdminPage.tsx', 'utf8');
 test('home latest selected more link uses recommendation mode instead of tag query', () => {
   assert.ok(homePageSource.includes("const LATEST_SELECTED_RECOMMENDATION = 'latest_selected'"));
   assert.ok(homePageSource.includes('section.builtin_key === LATEST_SELECTED_RECOMMENDATION'));
+  assert.ok(homePageSource.includes('function getHomeSectionKey(section: SectionConfig): string'));
+  assert.ok(homePageSource.includes('function getHomeStreamSectionKey(tag: string, recommendationMode?: RecommendationMode): string'));
+  assert.ok(homePageSource.includes('const sectionKey = getHomeStreamSectionKey(tag, recommendationMode)'));
+  assert.ok(homePageSource.includes('const sectionKey = getHomeSectionKey(sec)'));
+  assert.ok(homePageSource.includes('sectionData[sectionKey]'));
+  assert.equal(homePageSource.includes('sectionData[sec.tag]'), false);
   assert.ok(homePageSource.includes('const mode = recommendationMode ?? LATEST_SELECTED_RECOMMENDATION'));
   assert.ok(homePageSource.includes('/list?recommendation=${mode}&${titleParam}'));
   assert.equal(homePageSource.includes('LATEST_SELECTED_SECTION_TAG'), false);
