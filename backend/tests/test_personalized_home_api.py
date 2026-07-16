@@ -464,6 +464,71 @@ def test_personalized_more_list_uses_configured_top_n_and_ignores_query_cursor(
     assert search_calls[0]["limit"] == 23
 
 
+def test_personalized_more_list_downgrades_when_rollout_is_disabled(
+    tmp_path: Path,
+    monkeypatch,
+):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _configure_recommendation(config_service, rollout_percent=0, top_n=23)
+    search_calls: list[dict] = []
+
+    async def search_files(self, **kwargs):
+        search_calls.append(kwargs)
+        return CursorKnowledgeFileData(data=[_file()], has_more=False, next_cursor=None)
+
+    monkeypatch.setattr(KnowledgeService, "search_files", search_files)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = SessionAuthService()
+        response = client.get(
+            "/api/v1/knowledge/files",
+            params={
+                "recommendation": PERSONALIZED_RECOMMENDATION,
+                "cursor": "legacy-cursor",
+                "limit": 7,
+            },
+        )
+
+    assert response.status_code == 200
+    assert search_calls[0]["recommendation"] == LATEST_SELECTED_RECOMMENDATION
+    assert search_calls[0]["cursor"] == "legacy-cursor"
+    assert search_calls[0]["limit"] == 7
+
+
+def test_personalized_browse_downgrades_when_rollout_is_disabled(
+    tmp_path: Path,
+    monkeypatch,
+):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _configure_recommendation(config_service, rollout_percent=0, top_n=23)
+    browse_calls: list[dict] = []
+
+    async def browse_files(self, **kwargs):
+        browse_calls.append(kwargs)
+        return CursorKnowledgeFileData(data=[_file()], has_more=False, next_cursor=None)
+
+    monkeypatch.setattr(KnowledgeService, "list_visible_spaces", _visible_spaces)
+    monkeypatch.setattr(KnowledgeService, "browse_files", browse_files)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = SessionAuthService()
+        response = client.get(
+            "/api/v1/knowledge/files/browse",
+            params={
+                "recommendation": PERSONALIZED_RECOMMENDATION,
+                "cursor": "legacy-cursor",
+                "limit": 7,
+            },
+        )
+
+    assert response.status_code == 200
+    assert browse_calls[0]["recommendation"] == LATEST_SELECTED_RECOMMENDATION
+    assert browse_calls[0]["cursor"] == "legacy-cursor"
+    assert browse_calls[0]["limit"] == 10
+
+
 def test_personalized_more_list_rejects_anonymous_users(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
 

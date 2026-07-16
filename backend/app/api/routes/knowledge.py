@@ -353,9 +353,15 @@ async def browse_files(
 ):
     config = portal_config_service.get_config()
     session = await get_portal_session(auth_service, request)
-    is_personalized = recommendation == PERSONALIZED_RECOMMENDATION
-    if is_personalized and session is None:
+    requested_personalized = recommendation == PERSONALIZED_RECOMMENDATION
+    if requested_personalized and session is None:
         raise HTTPException(status_code=401, detail="个性化推荐仅对登录用户开放")
+    recommendation = _apply_personalized_rollout_guard(
+        recommendation=recommendation,
+        session=session,
+        config=config,
+    )
+    is_personalized = recommendation == PERSONALIZED_RECOMMENDATION
     page_size = (
         config.recommendation.home_total_count
         if is_personalized
@@ -413,9 +419,15 @@ async def search_files(
 ):
     session = await get_portal_session(auth_service, request)
     config = portal_config_service.get_config()
-    is_personalized = recommendation == PERSONALIZED_RECOMMENDATION
-    if is_personalized and session is None:
+    requested_personalized = recommendation == PERSONALIZED_RECOMMENDATION
+    if requested_personalized and session is None:
         raise HTTPException(status_code=401, detail="个性化推荐仅对登录用户开放")
+    recommendation = _apply_personalized_rollout_guard(
+        recommendation=recommendation,
+        session=session,
+        config=config,
+    )
+    is_personalized = recommendation == PERSONALIZED_RECOMMENDATION
     effective_limit = config.recommendation.home_total_count if is_personalized else limit
     effective_cursor = None if is_personalized else cursor
     effective_q = None if is_personalized else q
@@ -576,6 +588,20 @@ def _select_home_recommendation_mode(session: Any, config: PortalConfig) -> str:
     bucket = _personalized_rollout_bucket(tenant_id=tenant_id, user_id=user_id)
     if bucket < config.recommendation.personalized_rollout_percent:
         return PERSONALIZED_RECOMMENDATION
+    return LATEST_SELECTED_RECOMMENDATION
+
+
+def _apply_personalized_rollout_guard(
+    *,
+    recommendation: Optional[str],
+    session: Any,
+    config: PortalConfig,
+) -> Optional[str]:
+    """Keep direct list requests inside the same rollout boundary as the homepage."""
+    if recommendation != PERSONALIZED_RECOMMENDATION:
+        return recommendation
+    if _select_home_recommendation_mode(session, config) == PERSONALIZED_RECOMMENDATION:
+        return recommendation
     return LATEST_SELECTED_RECOMMENDATION
 
 
