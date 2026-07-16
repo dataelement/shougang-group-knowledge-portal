@@ -32,7 +32,6 @@ from app.schemas.portal_config import (
 )
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.error_messages import normalize_user_facing_message
-from app.services.knowledge_service import KnowledgeService
 from app.services.portal_config_service import PortalConfigService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
@@ -48,6 +47,9 @@ DOMAIN_BINDABLE_SPACE_LEVELS: Final[set[str]] = {"public", "department"}
 SYNC_SPACE_BUSINESS_DOMAIN_CODES_PATH: Final[str] = (
     "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes"
 )
+DOMAIN_BINDABLE_SPACES_PATH: Final[str] = (
+    "/api/v1/knowledge/shougang-portal/spaces/domain-bindable"
+)
 
 
 def _runtime_config_store(request: Request, runtime_service: BishengRuntimeService):
@@ -58,18 +60,21 @@ def _runtime_config_store(request: Request, runtime_service: BishengRuntimeServi
 
 
 async def _load_domain_bindable_space_rows(
-    service: PortalConfigService,
     bisheng_client: BishengClient,
 ) -> list[dict[str, Any]]:
-    knowledge_service = KnowledgeService(
-        bisheng_client=bisheng_client,
-        portal_config_service=service,
-    )
-    spaces = await knowledge_service.list_visible_spaces()
+    response = await bisheng_client.get_json(DOMAIN_BINDABLE_SPACES_PATH)
+    status_code = response.get("status_code")
+    if status_code not in (None, 200):
+        raise RuntimeError(str(response.get("status_message") or "业务域候选空间查询失败"))
+    data = response.get("data") or {}
+    raw_spaces = data.get("spaces") if isinstance(data, dict) else []
+    if not isinstance(raw_spaces, list):
+        return []
     return [
-        space.model_dump()
-        for space in spaces.data
-        if (space.space_level or "").strip().lower() in DOMAIN_BINDABLE_SPACE_LEVELS
+        space
+        for space in raw_spaces
+        if isinstance(space, dict)
+        and (str(space.get("space_level") or "").strip().lower() in DOMAIN_BINDABLE_SPACE_LEVELS)
     ]
 
 
@@ -168,7 +173,7 @@ async def get_space_options(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
     try:
-        bindable_spaces = await _load_domain_bindable_space_rows(service, bisheng_client)
+        bindable_spaces = await _load_domain_bindable_space_rows(bisheng_client)
     except Exception:
         return response_ok(service.build_space_options([]))
     return response_ok(service.build_space_options(bindable_spaces))
@@ -242,7 +247,7 @@ async def update_domains_config(
 ):
     current_config = service.get_config()
     try:
-        bindable_spaces = await _load_domain_bindable_space_rows(service, bisheng_client)
+        bindable_spaces = await _load_domain_bindable_space_rows(bisheng_client)
     except Exception as err:
         return response_error(
             normalize_user_facing_message(

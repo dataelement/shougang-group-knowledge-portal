@@ -2218,7 +2218,7 @@ function DeptBindingTable({
         <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 新增绑定</button>
       </div>
       <p className={s.pageNote}>
-        将团队知识库绑定给科室后，该库归属对应科室：删除时需先在此解绑，解绑后方可正常删除。未绑定的自由团队库删除时，若创建者主部门已有绑定库，会自动将文件迁移过去后再清空自身。
+        将团队/科室知识库绑定给科室后，该库归属对应科室：删除时需先在此解绑，解绑后方可正常删除。未绑定的自由团队库删除时，若创建者主部门已有绑定库，会自动将文件迁移过去后再清空自身。
       </p>
       <table className={s.table}>
         <thead>
@@ -2459,14 +2459,14 @@ function DeptBindingDialog({
         <div className={s.modalHeader}>
           <div>
             <h3 className={s.modalTitle}>新增科室知识库绑定</h3>
-            <p className={s.modalNote}>选择一个尚未绑定的团队知识库，绑定给指定科室。</p>
+            <p className={s.modalNote}>选择一个尚未绑定的团队/科室知识库，绑定给指定科室。</p>
           </div>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
         {error ? <div className={s.errorBox}>{error}</div> : null}
         <div className={`${s.formGrid} ${s.bindingFormGrid}`}>
           <div className={s.formField}>
-            <label className={s.fieldLabel} htmlFor="dept-binding-space">团队知识库</label>
+            <label className={s.fieldLabel} htmlFor="dept-binding-space">团队/科室知识库</label>
             <SearchableBindingSelect
               id="dept-binding-space"
               value={draft.spaceId}
@@ -2477,7 +2477,7 @@ function DeptBindingDialog({
               disabled={saving}
               onChange={(spaceId) => onChange({ spaceId })}
             />
-            <span className={s.fieldHint}>仅显示尚未绑定的团队知识库</span>
+            <span className={s.fieldHint}>仅显示尚未绑定的团队/科室知识库</span>
           </div>
           <div className={s.formField}>
             <label className={s.fieldLabel} htmlFor="dept-binding-department">科室</label>

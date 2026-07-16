@@ -16,6 +16,7 @@ from app.services.portal_config_service import PortalConfigService
 
 class FakeBishengClient:
     def __init__(self):
+        self.get_calls: list[str] = []
         self.post_calls: list[tuple[str, dict | None]] = []
         self.put_calls: list[tuple[str, dict | None]] = []
         self.delete_calls: list[int] = []
@@ -26,6 +27,7 @@ class FakeBishengClient:
         self.departments: list[dict] = [{"id": 3, "name": "研发部"}]
 
     async def get_json(self, path: str, params=None):
+        self.get_calls.append(path)
         if path == "/api/v1/workstation/config":
             return {
                 "data": {
@@ -136,6 +138,29 @@ class FakeBishengClient:
                     "id": space_id,
                     "name": f"空间{space_id}",
                     "file_num": space_id + 1,
+                }
+            }
+        if path == "/api/v1/knowledge/shougang-portal/spaces/domain-bindable":
+            return {
+                "data": {
+                    "spaces": [
+                        {
+                            "id": 19,
+                            "name": "公共知识空间",
+                            "description": "测试空间",
+                            "file_num": 0,
+                            "space_level": "public",
+                            "business_domain_codes": [],
+                        },
+                        {
+                            "id": 20,
+                            "name": "部门知识空间",
+                            "description": "部门空间",
+                            "file_num": 0,
+                            "space_level": "department",
+                            "business_domain_codes": ["QM"],
+                        },
+                    ]
                 }
             }
         if path == "/api/v1/knowledge/space/grouped":
@@ -1514,7 +1539,7 @@ def test_get_admin_qa_model_options_keeps_saved_display_names_when_model_list_fa
     assert body["models"] == []
 
 
-def test_get_admin_space_options_uses_bisheng_visible_space_list(tmp_path: Path):
+def test_get_admin_space_options_uses_domain_bindable_space_list(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
     bisheng_client = FakeBishengClient()
@@ -1532,7 +1557,7 @@ def test_get_admin_space_options_uses_bisheng_visible_space_list(tmp_path: Path)
                 "id": 19,
                 "name": "公共知识空间",
                 "description": "测试空间",
-                "file_count": 20,
+                "file_count": 0,
                 "space_level": "public",
                 "business_domain_codes": [],
             },
@@ -1540,13 +1565,16 @@ def test_get_admin_space_options_uses_bisheng_visible_space_list(tmp_path: Path)
                 "id": 20,
                 "name": "部门知识空间",
                 "description": "部门空间",
-                "file_count": 30,
+                "file_count": 0,
                 "space_level": "department",
                 "business_domain_codes": ["QM"],
             }
         ]
     }
     assert bisheng_client.post_calls == []
+    assert bisheng_client.get_calls == [
+        "/api/v1/knowledge/shougang-portal/spaces/domain-bindable"
+    ]
 
 
 def test_get_admin_space_files_uses_bisheng_file_list(tmp_path: Path):
@@ -1572,7 +1600,9 @@ def test_get_admin_space_files_uses_bisheng_file_list(tmp_path: Path):
 def test_admin_config_endpoints_fail_soft_when_bisheng_is_unauthorized(tmp_path: Path):
     class UnauthorizedBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None):
+            self.get_calls.append(path)
             if path in {
+                "/api/v1/knowledge/shougang-portal/spaces/domain-bindable",
                 "/api/v1/knowledge/space/grouped",
                 "/api/v1/knowledge",
                 "/api/v1/llm",
@@ -1594,6 +1624,10 @@ def test_admin_config_endpoints_fail_soft_when_bisheng_is_unauthorized(tmp_path:
 
     assert space_options_response.status_code == 200
     assert space_options_response.json()["data"]["options"] == []
+    assert "/api/v1/knowledge/shougang-portal/spaces/domain-bindable" in (
+        client.app.state.bisheng_client.get_calls
+    )
+    assert "/api/v1/knowledge/space/grouped" not in client.app.state.bisheng_client.get_calls
 
     assert model_options_response.status_code == 200
     model_options = model_options_response.json()["data"]

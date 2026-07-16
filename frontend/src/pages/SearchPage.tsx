@@ -59,7 +59,7 @@ type SpaceOption = {
 const SPACE_LEVEL_OPTIONS = [
   { value: 'public', label: '公共知识库' },
   { value: 'department', label: '部门知识库' },
-  { value: 'team', label: '团队知识库' },
+  { value: 'team', label: '团队/科室知识库' },
   { value: 'personal', label: '个人知识库' },
 ];
 
