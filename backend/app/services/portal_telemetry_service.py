@@ -14,7 +14,13 @@ PORTAL_BFF_TELEMETRY_HEADERS = {
     PORTAL_BFF_TELEMETRY_SOURCE_HEADER: PORTAL_BFF_TELEMETRY_SOURCE,
 }
 
-PortalEventType = Literal["portal_favorite", "portal_qa", "portal_document_read", "portal_document_download"]
+PortalEventType = Literal[
+    "portal_favorite",
+    "portal_qa",
+    "portal_document_read",
+    "portal_document_download",
+    "portal_search",
+]
 
 
 class PortalTelemetryStatsError(RuntimeError):
@@ -41,6 +47,8 @@ class PortalTelemetryService:
         source_space_id: int | str | None = None,
         source_file_id: int | str | None = None,
         conversation_id: str | None = None,
+        query: str | None = None,
+        recommendation_scene: str | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "event_type": event_type,
@@ -57,6 +65,8 @@ class PortalTelemetryService:
             "source_space_id": source_space_id,
             "source_file_id": source_file_id,
             "conversation_id": conversation_id,
+            "query": query,
+            "recommendation_scene": recommendation_scene,
         }
         payload.update({key: value for key, value in optional_fields.items() if value not in (None, "")})
         try:

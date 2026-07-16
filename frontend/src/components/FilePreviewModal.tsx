@@ -1,27 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { FileItem } from '../api/content';
+import type { FileItem, FilePreviewContext } from '../api/content';
 import { resolvePreviewModalFrameUrl } from '../utils/filePreview';
 import s from './FilePreviewModal.module.css';
 
 interface Props {
   file: FileItem | null;
+  context?: FilePreviewContext;
   onClose: () => void;
 }
 
-export default function FilePreviewModal({ file, onClose }: Props) {
+export default function FilePreviewModal({ file, context, onClose }: Props) {
   const navigate = useNavigate();
   const frameRef = useRef<HTMLIFrameElement | null>(null);
-  const [src, setSrc] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!file) return;
-    setLoading(true);
-    setSrc(resolvePreviewModalFrameUrl(file));
-    setLoading(false);
-  }, [file]);
+  const entryPoint = context?.entryPoint;
+  const recommendationScene = context?.recommendationScene;
+  const src = file
+    ? resolvePreviewModalFrameUrl(file, null, entryPoint ? {
+      entryPoint,
+      recommendationScene,
+    } : undefined)
+    : '';
 
   useEffect(() => {
     if (!file) return;
@@ -58,7 +58,7 @@ export default function FilePreviewModal({ file, onClose }: Props) {
           </button>
         </div>
         <div className={s.body}>
-          {loading || !src ? (
+          {!src ? (
             <div className={s.state}>正在加载预览...</div>
           ) : (
             <iframe

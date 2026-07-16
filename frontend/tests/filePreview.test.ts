@@ -101,9 +101,16 @@ test('resolvePreviewModalFrameUrl uses embedded detail page instead of direct as
       supportsChunksFallback: true,
       viewerUrl: '/bisheng/original/1580.pdf?X-Amz-Signature=abc',
     },
+    {
+      entryPoint: 'recommendation_list',
+      recommendationScene: 'personalized_v1',
+    },
   );
 
-  assert.equal(url, '/space/12/file/1580?embed=1');
+  assert.equal(
+    url,
+    '/space/12/file/1580?embed=1&entry_point=recommendation_list&recommendation_scene=personalized_v1',
+  );
 });
 
 test('embedded preview detail page does not refetch preview when display config changes', () => {
@@ -111,7 +118,10 @@ test('embedded preview detail page does not refetch preview when display config 
 
   assert.match(source, /const relatedFilesCount = embed \|\| shareToken \? 0 : displayConfig\.detail\.relatedFilesCount;/);
   assert.match(source, /relatedFilesCount === 0\s*\?\s*Promise\.resolve\(\[\]\)/);
-  assert.match(source, /\}, \[embed, fileId, relatedFilesCount, shareToken, spaceId\]\);/);
+  assert.match(
+    source,
+    /\}, \[fileId, previewEntryPoint, recommendationScene, relatedFilesCount, shareToken, spaceId\]\);/,
+  );
   assert.doesNotMatch(source, /\}, \[displayConfig\.detail\.relatedFilesCount, embed, fileId, shareToken, spaceId\]\);/);
 });
 

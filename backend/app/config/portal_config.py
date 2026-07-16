@@ -293,7 +293,15 @@ DEFAULT_PORTAL_CONFIG = {
         "provider": "tag_feed",
         "home_strategy": "tag+updated_at",
         "detail_strategy": "shared_tags+updated_at",
+        "home_total_count": 20,
+        "hot_half_life_days": 7,
+        "home_entry_source_weight": 0.3,
+        "stable_shuffle_score_gap": 5,
+        "stable_shuffle_cycle_days": 7,
+        "personalized_shadow_enabled": False,
+        "personalized_rollout_percent": 0,
     },
+    "department_business_domain_bindings": [],
     "display": {
         "home": {
             "section_page_size": 6,

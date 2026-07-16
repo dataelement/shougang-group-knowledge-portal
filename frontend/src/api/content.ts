@@ -431,8 +431,29 @@ interface RelatedKnowledgeFileDataDto {
   total: number;
 }
 
+export type RecommendationMode = 'latest_selected' | 'personalized_v1';
+
+export type FilePreviewEntryPoint =
+  | 'home_recommendation'
+  | 'recommendation_list'
+  | 'search'
+  | 'knowledge_space'
+  | 'direct'
+  | 'favorite'
+  | 'other';
+
+export interface FilePreviewContext {
+  entryPoint: FilePreviewEntryPoint;
+  recommendationScene?: RecommendationMode | null;
+}
+
 type HomeStreamEvent =
-  | { type: 'section'; tag: string; items: KnowledgeFileItemDto[] }
+  | {
+    type: 'section';
+    tag: string;
+    items: KnowledgeFileItemDto[];
+    recommendation_mode?: RecommendationMode;
+  }
   | { type: 'done' };
 
 interface HomeStatsDataDto {
@@ -695,7 +716,7 @@ export async function fetchAggregatedTags(
 }
 
 export async function streamHomeContent(params: {
-  onSection: (tag: string, items: FileItem[]) => void;
+  onSection: (tag: string, items: FileItem[], recommendationMode?: RecommendationMode) => void;
   onDone?: () => void;
   signal?: AbortSignal;
 }): Promise<void> {
@@ -737,7 +758,11 @@ export async function streamHomeContent(params: {
         continue;
       }
       if (payload.type === 'section') {
-        params.onSection(payload.tag, (payload.items ?? []).map(mapKnowledgeFileItem));
+        params.onSection(
+          payload.tag,
+          (payload.items ?? []).map(mapKnowledgeFileItem),
+          payload.recommendation_mode,
+        );
       } else if (payload.type === 'done') {
         params.onDone?.();
       }
@@ -1126,11 +1151,25 @@ export async function fetchFilePreview(
   spaceId: number,
   fileId: number,
   shareToken?: string,
-  entryPoint?: 'home_result_preview' | 'search_result_preview',
+  context?: FilePreviewContext | 'home_result_preview' | 'search_result_preview',
 ): Promise<FilePreviewManifest | null> {
-  const path = appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/preview`, shareToken);
-  const previewPath = entryPoint
-    ? `${path}${path.includes('?') ? '&' : '?'}entry_point=${encodeURIComponent(entryPoint)}`
+  const path = appendShareToken(
+    '/api/v1/knowledge/space/' + spaceId + '/files/' + fileId + '/preview',
+    shareToken,
+  );
+  const normalizedContext: FilePreviewContext | undefined = typeof context === 'string'
+    ? {
+      entryPoint: context === 'search_result_preview' ? 'search' : 'home_recommendation',
+      recommendationScene: context === 'home_result_preview' ? 'latest_selected' : null,
+    }
+    : context;
+  const query = new URLSearchParams();
+  if (normalizedContext?.entryPoint) query.set('entry_point', normalizedContext.entryPoint);
+  if (normalizedContext?.recommendationScene) {
+    query.set('recommendation_scene', normalizedContext.recommendationScene);
+  }
+  const previewPath = query.size > 0
+    ? path + (path.includes('?') ? '&' : '?') + query.toString()
     : path;
   const data = await request<FilePreviewManifestDto | null>(
     previewPath,
@@ -1647,5 +1686,25 @@ export async function recordFileDownloadEvent(spaceId: number, fileId: number): 
     });
   } catch {
     // best-effort, ignore errors
+  }
+}
+
+export async function recordPortalSearchEvent(
+  query: string,
+  entryPoint: 'search_page' | 'home_hot_keyword',
+): Promise<void> {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return;
+  const response = await fetch('/api/v1/knowledge/telemetry/search', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: normalizedQuery,
+      entry_point: entryPoint,
+    }),
+  });
+  if (!response.ok) {
+    throw new ApiRequestError('搜索行为记录失败', response.status);
   }
 }

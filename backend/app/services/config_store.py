@@ -1,6 +1,13 @@
 from copy import deepcopy
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any
+
+
+@dataclass(frozen=True)
+class ConfigStoreWriteResult:
+    document: dict[str, Any]
+    version: int | None = None
 
 
 class InMemoryConfigStore:
@@ -13,6 +20,11 @@ class InMemoryConfigStore:
             payload = self._documents.get(table_name)
             return deepcopy(payload) if payload is not None else None
 
-    def upsert_document(self, table_name: str, payload: dict[str, Any]) -> None:
+    def upsert_document(
+        self,
+        table_name: str,
+        payload: dict[str, Any],
+    ) -> ConfigStoreWriteResult:
         with self._lock:
             self._documents[table_name] = deepcopy(payload)
+            return ConfigStoreWriteResult(document=deepcopy(payload))

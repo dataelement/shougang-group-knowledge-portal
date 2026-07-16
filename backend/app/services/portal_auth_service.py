@@ -525,6 +525,16 @@ class PortalAuthService:
             initial=name[:1].upper(),
             role=role or "内部员工",
             external_id=external_id,
+            user_id=self._first_positive_int(data, "user_id", "id"),
+            # BiSheng's current /user/info contract exposes the effective tenant
+            # as ``leaf_tenant_id``.  Keep the historical aliases for mixed-version
+            # deployments, but prefer the runtime field used by the real response.
+            tenant_id=self._first_positive_int(
+                data,
+                "leaf_tenant_id",
+                "tenant_id",
+                "tenantId",
+            ),
             login_at=int(time.time() * 1000),
         )
 
@@ -550,6 +560,20 @@ class PortalAuthService:
             if value not in (None, ""):
                 return str(value)
         return ""
+
+    @staticmethod
+    def _first_positive_int(data: dict, *keys: str) -> int | None:
+        for key in keys:
+            value = data.get(key)
+            if value in (None, "") or isinstance(value, bool):
+                continue
+            try:
+                normalized = int(value)
+            except (TypeError, ValueError):
+                continue
+            if normalized > 0:
+                return normalized
+        return None
 
 
 async def get_portal_session(auth_service: Any, request: Request) -> PortalSession | None:

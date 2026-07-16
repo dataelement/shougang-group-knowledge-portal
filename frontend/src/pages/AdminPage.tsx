@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2,
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, Network,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -118,6 +118,8 @@ import {
 } from '../utils/deptKnowledgeBinding';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
+import DepartmentBusinessDomainBindingsPanel from './admin/DepartmentBusinessDomainBindingsPanel';
+import RecommendationPersonalizationPanel from './admin/RecommendationPersonalizationPanel';
 import s from './AdminPage.module.css';
 
 function isBuiltinSection(section: SectionConfig): boolean {
@@ -142,6 +144,7 @@ const NAV_ITEMS = [
   { key: 'agentConfig', label: '智能应用配置', icon: MessageSquare },
   { key: 'search', label: '搜索配置', icon: SearchIcon },
   { key: 'recommend', label: '推荐策略', icon: Star },
+  { key: 'deptDomains', label: '部门业务域绑定', icon: Network },
   { key: 'display', label: '展示配置', icon: SlidersHorizontal },
   { key: 'bisheng', label: '数据源配置', icon: Server },
   { key: 'unifiedAuth', label: '统一认证', icon: KeyRound },
@@ -182,8 +185,6 @@ type QaDialogMode =
   | 'normal_mode_system_prompt'
   | 'expert_mode_system_prompt'
   | null;
-
-type RecommendationDialogKey = 'home_strategy' | 'detail_strategy' | null;
 
 interface QaModelDraft {
   general_model: string;
@@ -342,8 +343,6 @@ export default function AdminPage() {
   const [agentWorkflowLoadedKeyword, setAgentWorkflowLoadedKeyword] = useState('');
   const [agentWorkflowHasMore, setAgentWorkflowHasMore] = useState(false);
   const [agentWorkflowNextCursor, setAgentWorkflowNextCursor] = useState('');
-  const [recommendDialogKey, setRecommendDialogKey] = useState<RecommendationDialogKey>(null);
-  const [recommendDraft, setRecommendDraft] = useState('');
   const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
   const [bannerEditorIndex, setBannerEditorIndex] = useState<number | null>(null);
   const [bannerDraft, setBannerDraft] = useState<BannerDraft>(createBannerDraft());
@@ -739,11 +738,6 @@ export default function AdminPage() {
     openEditAgentDialog(application, index);
   }
 
-  function openRecommendationDialog(key: Exclude<RecommendationDialogKey, null>, value: string) {
-    setRecommendDialogKey(key);
-    setRecommendDraft(value);
-  }
-
   function openCreateBannerDialog() {
     setBannerEditorOpen(true);
     setBannerEditorIndex(null);
@@ -986,12 +980,26 @@ export default function AdminPage() {
               onUnbind={(binding) => setBindingUnbindTarget(binding)}
             />
           )}
+          {config && active === 'deptDomains' && (
+            <DepartmentBusinessDomainBindingsPanel domains={config.domains} />
+          )}
           {config && active === 'recommend' && (
-            <RecommendConfigTable
+            <RecommendationPersonalizationPanel
               recommendation={config.recommendation}
+              sectionPageSize={config.display.home.section_page_size}
               saving={saving}
-              onEditHome={() => openRecommendationDialog('home_strategy', config.recommendation.home_strategy)}
-              onEditDetail={() => openRecommendationDialog('detail_strategy', config.recommendation.detail_strategy)}
+              onSave={async (next) => {
+                setSaving(true);
+                setError('');
+                try {
+                  await persistRecommendation(next, setConfig);
+                } catch (saveError) {
+                  setError(saveError instanceof Error ? saveError.message : '保存失败');
+                  throw saveError;
+                } finally {
+                  setSaving(false);
+                }
+              }}
             />
           )}
           {config && active === 'display' && (
@@ -1652,27 +1660,6 @@ export default function AdminPage() {
                 applications: config.agent_config.applications.filter((_, index) => index !== target.index),
               }, setConfig);
               setAgentDeleteTarget(null);
-            });
-          }}
-        />
-      ) : null}
-      {config && recommendDialogKey ? (
-        <TextEditorDialog
-          open
-          title={recommendDialogKey === 'home_strategy' ? '编辑首页推荐策略' : '编辑详情页推荐策略'}
-          note="这里只修改当前场景的策略描述，provider 保持现状。"
-          label="策略描述"
-          value={recommendDraft}
-          saving={saving}
-          placeholder="例如：tag+updated_at"
-          onClose={() => setRecommendDialogKey(null)}
-          onChange={setRecommendDraft}
-          onSubmit={() => {
-            const trimmed = recommendDraft.trim();
-            if (!trimmed) return;
-            void runSave(async () => {
-              await persistRecommendation({ ...config.recommendation, [recommendDialogKey]: trimmed }, setConfig);
-              setRecommendDialogKey(null);
             });
           }}
         />
@@ -4385,60 +4372,6 @@ function QaTemplateDeleteDialog({
         </div>
       </div>
     </div>
-  );
-}
-
-function RecommendConfigTable({
-  recommendation,
-  saving,
-  onEditHome,
-  onEditDetail,
-}: {
-  recommendation: RecommendationConfig;
-  saving: boolean;
-  onEditHome: () => void;
-  onEditDetail: () => void;
-}) {
-  return (
-    <>
-      <div className={s.titleBar}>
-        <h2 className={s.pageTitle}>推荐策略配置</h2>
-      </div>
-      <p className={s.pageNote}>
-        推荐策略目前按场景拆分维护：首页分区推荐和详情页相关推荐可以分别调整，但都会沿用同一个 provider。
-      </p>
-      <table className={s.table}>
-        <thead>
-          <tr>
-            <th>场景</th>
-            <th>当前策略</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>首页分区推荐</td>
-            <td>
-              <div className={s.valueStack}>
-                <span className={s.valueTitle}>{recommendation.home_strategy}</span>
-                <span className={s.valueMeta}>Provider: {recommendation.provider}</span>
-              </div>
-            </td>
-            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditHome} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
-          </tr>
-          <tr>
-            <td>详情页相关推荐</td>
-            <td>
-              <div className={s.valueStack}>
-                <span className={s.valueTitle}>{recommendation.detail_strategy}</span>
-                <span className={s.valueMeta}>Provider: {recommendation.provider}</span>
-              </div>
-            </td>
-            <td><div className={s.actionGroup}><button className={s.inlineBtn} onClick={onEditDetail} disabled={saving}>{saving ? '保存中...' : '编辑'}</button></div></td>
-          </tr>
-        </tbody>
-      </table>
-    </>
   );
 }
 

@@ -16,6 +16,8 @@ class PortalUserView(BaseModel):
     initial: str = ""
     role: str = ""
     external_id: str = ""
+    user_id: int | None = None
+    tenant_id: int | None = None
     login_at: int
 
 

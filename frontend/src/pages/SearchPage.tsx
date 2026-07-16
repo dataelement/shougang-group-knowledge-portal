@@ -10,6 +10,7 @@ import {
   browseSearchFiles,
   fetchAggregatedTags,
   fetchKnowledgeSpaces,
+  recordPortalSearchEvent,
   recordFileDownloadEvent,
   searchKeywordFiles,
   streamChatCompletion,
@@ -608,6 +609,10 @@ export default function SearchPage() {
   }, [displayedFiles, canFavorite, loadStatuses]);
 
   const submitSearch = () => {
+    const submittedQuery = draft.trim();
+    if (user && submittedQuery) {
+      void recordPortalSearchEvent(submittedQuery, 'search_page').catch(() => undefined);
+    }
     setParams(createSubmittedSearchParams(params, draft));
   };
 
@@ -808,7 +813,11 @@ export default function SearchPage() {
         ) : null}
         {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
-        <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+        <FilePreviewModal
+          file={previewFile}
+          context={{ entryPoint: 'search', recommendationScene: null }}
+          onClose={() => setPreviewFile(null)}
+        />
       </div>
     </PageShell>
   );

@@ -72,6 +72,7 @@ PREVIEW_TASK_FAILURE_STATUSES = {"cancelled", "canceled", "error", "failed", "fa
 FRONTEND_PROXY_ASSET_PATH_PREFIXES = ("/bisheng/", "/skm-bisheng/", "/workspace/bisheng/", "/workspace/skm-bisheng/", "/tmp-dir")
 SHARE_ACCESS_COOKIE_NAME = "portal_share_access"
 LATEST_SELECTED_RECOMMENDATION = "latest_selected"
+PERSONALIZED_RECOMMENDATION = "personalized_v1"
 TYPICAL_CASE_SECTION_KEY = "typical_case"
 LOCAL_OFFSET_CURSOR_PREFIX = "offset:"
 FILTERED_TAG_CURSOR_PREFIX = "tagfilter:"
@@ -232,23 +233,52 @@ class KnowledgeService:
     async def iter_home_content(
         self, extra_space_ids: Optional[list[int]] = None
     ) -> AsyncIterator[tuple[str, list[KnowledgeFileItem]]]:
+        async for tag, items, _ in self.iter_home_content_with_modes(
+            extra_space_ids=extra_space_ids,
+        ):
+            yield tag, items
+
+    async def iter_home_content_with_modes(
+        self,
+        extra_space_ids: Optional[list[int]] = None,
+        *,
+        latest_recommendation: str = LATEST_SELECTED_RECOMMENDATION,
+        recommendation_limit: int | None = None,
+        fallback_latest_on_error: bool = False,
+    ) -> AsyncIterator[tuple[str, list[KnowledgeFileItem], str | None]]:
         """Yield ``(tag, items)`` for each enabled home section as soon as it is ready.
 
         Every section is fetched through an independent ``search_files`` request that
         runs concurrently; results are emitted in completion order so the caller can
         stream each section without waiting for the slowest one. A failing section
-        yields an empty list instead of aborting the whole stream.
+        yields an empty list instead of aborting the whole stream. Personalized
+        recommendation failures may be retried with ``latest_selected`` using the
+        same scoped client; a successful empty/partial response is not retried.
         """
         config = self._config_service.get_config()
         space_ids = await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
         sections = [section for section in config.sections if section.enabled and section.tag]
         if not space_ids or not sections:
-            for section in sections:
-                yield section.tag, []
+            for index, section in enumerate(sections):
+                recommendation_mode = (
+                    latest_recommendation
+                    if self._is_latest_selected_section(section, index)
+                    else None
+                )
+                yield section.tag, [], recommendation_mode
             return
 
-        async def fetch_section(section: Any, index: int) -> tuple[str, list[KnowledgeFileItem]]:
+        async def fetch_section(
+            section: Any,
+            index: int,
+        ) -> tuple[str, list[KnowledgeFileItem], str | None]:
             is_latest = self._is_latest_selected_section(section, index)
+            mode = latest_recommendation if is_latest else None
+            section_limit = (
+                recommendation_limit
+                if is_latest and recommendation_limit is not None
+                else config.display.home.section_page_size
+            )
             try:
                 result = await self.search_files(
                     q=None,
@@ -259,15 +289,48 @@ class KnowledgeService:
                     file_ext=None,
                     document_type=None,
                     business_domain_code=None,
-                    recommendation=LATEST_SELECTED_RECOMMENDATION if is_latest else None,
-                    sort="portal_read_count_desc" if is_latest else "updated_at_desc",
+                    recommendation=mode,
+                    sort=(
+                        "portal_read_count_desc"
+                        if mode == LATEST_SELECTED_RECOMMENDATION
+                        else "updated_at_desc"
+                    ),
                     cursor=None,
-                    limit=config.display.home.section_page_size,
+                    limit=section_limit,
                     extra_space_ids=extra_space_ids,
                 )
-                return section.tag, result.data
+                return section.tag, result.data, mode
             except Exception:
-                return section.tag, []
+                if (
+                    is_latest
+                    and mode == PERSONALIZED_RECOMMENDATION
+                    and fallback_latest_on_error
+                ):
+                    logger.exception(
+                        "personalized home recommendation failed; falling back to latest_selected"
+                    )
+                    try:
+                        fallback = await self.search_files(
+                            q=None,
+                            tag=None,
+                            base_tag=None,
+                            requested_space_ids=space_ids,
+                            space_level=None,
+                            file_ext=None,
+                            document_type=None,
+                            business_domain_code=None,
+                            recommendation=LATEST_SELECTED_RECOMMENDATION,
+                            sort="portal_read_count_desc",
+                            cursor=None,
+                            limit=config.display.home.section_page_size,
+                            extra_space_ids=extra_space_ids,
+                        )
+                        return section.tag, fallback.data, LATEST_SELECTED_RECOMMENDATION
+                    except Exception:
+                        logger.exception("latest_selected home fallback failed")
+                elif is_latest and mode == PERSONALIZED_RECOMMENDATION:
+                    raise
+                return section.tag, [], mode
 
         tasks = [
             asyncio.ensure_future(fetch_section(section, index))
@@ -275,8 +338,8 @@ class KnowledgeService:
         ]
         try:
             for completed in asyncio.as_completed(tasks):
-                tag, items = await completed
-                yield tag, items
+                tag, items, mode = await completed
+                yield tag, items, mode
         finally:
             for task in tasks:
                 if not task.done():

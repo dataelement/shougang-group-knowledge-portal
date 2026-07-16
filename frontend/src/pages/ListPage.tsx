@@ -45,6 +45,8 @@ import s from './ListPage.module.css';
 
 const EMPTY_SPACE_IDS: number[] = [];
 const LATEST_SELECTED_RECOMMENDATION = 'latest_selected';
+const PERSONALIZED_RECOMMENDATION = 'personalized_v1';
+const DEFAULT_PERSONALIZED_TOTAL_COUNT = 20;
 const SPACE_LEVEL_OPTIONS = [
   { value: 'public', label: '公共知识库' },
   { value: 'department', label: '部门知识库' },
@@ -76,7 +78,21 @@ export default function ListPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const displayConfig = toRuntimeDisplayConfig(config?.display);
-  const pageLimit = displayConfig.list.pageSize;
+  const isPersonalizedRecommendation = recommendationParam === PERSONALIZED_RECOMMENDATION;
+  const previewRecommendationScene = isPersonalizedRecommendation
+    ? PERSONALIZED_RECOMMENDATION
+    : recommendationParam === LATEST_SELECTED_RECOMMENDATION
+      ? LATEST_SELECTED_RECOMMENDATION
+      : null;
+  const configuredPersonalizedTotalCount = Number(config?.recommendation?.home_total_count);
+  const personalizedTotalCount = Number.isInteger(configuredPersonalizedTotalCount)
+    && configuredPersonalizedTotalCount >= 1
+    && configuredPersonalizedTotalCount <= 50
+    ? configuredPersonalizedTotalCount
+    : DEFAULT_PERSONALIZED_TOTAL_COUNT;
+  const pageLimit = isPersonalizedRecommendation
+    ? personalizedTotalCount
+    : displayConfig.list.pageSize;
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -193,6 +209,7 @@ export default function ListPage() {
 
   const fetchFilePage = useCallback((cursor?: string | null) => {
     const isLatestSelectedRecommendation = recommendationParam === LATEST_SELECTED_RECOMMENDATION;
+    const isRecommendationList = isLatestSelectedRecommendation || isPersonalizedRecommendation;
     const selectedSpaceAllowed = Number.isFinite(selectedSpaceFilterId)
       && selectedSpaceFilterId > 0
       && (!isDomainList || spaceIds.includes(selectedSpaceFilterId))
@@ -200,16 +217,18 @@ export default function ListPage() {
     const requestedSpaceIds = selectedSpaceAllowed ? [selectedSpaceFilterId] : undefined;
     const hasUserFilterTag = Boolean(filterTag);
     const baseParams = {
-      baseTag: !isLatestSelectedRecommendation && hasUserFilterTag ? tagParam || undefined : undefined,
-      tag: isLatestSelectedRecommendation ? undefined : filterTag || tagParam || undefined,
+      baseTag: !isRecommendationList && hasUserFilterTag ? tagParam || undefined : undefined,
+      tag: isRecommendationList ? undefined : filterTag || tagParam || undefined,
       spaceLevel: spaceLevel || undefined,
       fileExt: fileExt || undefined,
       documentType: documentType || undefined,
       fileSubcategoryCode: fileSubcategoryCode || undefined,
       businessDomainCode: showBusinessDomainFilter ? businessDomainFilter || undefined : undefined,
-      recommendation: isLatestSelectedRecommendation ? LATEST_SELECTED_RECOMMENDATION : undefined,
-      sort: timeSort || (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc'),
-      cursor: cursor || undefined,
+      recommendation: isRecommendationList ? recommendationParam : undefined,
+      sort: isPersonalizedRecommendation
+        ? undefined
+        : timeSort || (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc'),
+      cursor: isPersonalizedRecommendation ? undefined : cursor || undefined,
       limit: pageLimit,
     };
     if (isDomainList) {
@@ -240,6 +259,7 @@ export default function ListPage() {
     fileExt,
     fileSubcategoryCode,
     isDomainList,
+    isPersonalizedRecommendation,
     pageLimit,
     recommendationParam,
     selectedSpaceFilterId,
@@ -296,8 +316,8 @@ export default function ListPage() {
         const result = await fetchFilePage(null);
         if (!active) return;
         setFiles(result.data);
-        setHasMore(result.hasMore);
-        setNextCursor(result.nextCursor);
+        setHasMore(isPersonalizedRecommendation ? false : result.hasMore);
+        setNextCursor(isPersonalizedRecommendation ? null : result.nextCursor);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : '列表加载失败');
@@ -308,10 +328,10 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [config, fetchFilePage, listContext, resultsTopRef]);
+  }, [config, fetchFilePage, isPersonalizedRecommendation, listContext, resultsTopRef]);
 
   const handleLoadMore = useCallback(async () => {
-    if (!hasMore || !nextCursor || loading || loadingMore) return;
+    if (isPersonalizedRecommendation || !hasMore || !nextCursor || loading || loadingMore) return;
     setLoadingMore(true);
     setError('');
     try {
@@ -328,7 +348,7 @@ export default function ListPage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [fetchFilePage, hasMore, loading, loadingMore, nextCursor]);
+  }, [fetchFilePage, hasMore, isPersonalizedRecommendation, loading, loadingMore, nextCursor]);
 
   useEffect(() => {
     const node = loadMoreRef.current;
@@ -441,7 +461,14 @@ export default function ListPage() {
         </div>
         {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
-        <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+        <FilePreviewModal
+          file={previewFile}
+          context={{
+            entryPoint: recommendationParam ? 'recommendation_list' : 'knowledge_space',
+            recommendationScene: previewRecommendationScene,
+          }}
+          onClose={() => setPreviewFile(null)}
+        />
       </div>
     </PageShell>
   );

@@ -1,15 +1,17 @@
+import re
 import secrets
 import string
 from copy import deepcopy
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 
 
 _HIDDEN_TEXT_CHARS = "\u200b\u200c\u200d\ufeff"
 _DOCUMENT_TYPE_CHILD_CODE_RANDOM_ALPHABET = string.ascii_uppercase + string.digits
 _DOCUMENT_TYPE_CHILD_CODE_RANDOM_LENGTH = 4
+_BUSINESS_DOMAIN_CODE_PATTERN = re.compile(r"^[A-Z0-9_]{1,16}$")
 
 
 def _clean_config_text(value: str) -> str:
@@ -475,10 +477,38 @@ class RecommendationConfig(BaseModel):
     provider: str
     home_strategy: str
     detail_strategy: str
+    home_total_count: int = Field(default=20, ge=1, le=50, strict=True)
+    hot_half_life_days: int = Field(default=7, ge=1, le=90, strict=True)
+    home_entry_source_weight: float = Field(default=0.3, ge=0, le=1, allow_inf_nan=False)
+    stable_shuffle_score_gap: float = Field(default=5, ge=0, le=100, allow_inf_nan=False)
+    stable_shuffle_cycle_days: int = Field(default=7, ge=1, le=30, strict=True)
+    personalized_shadow_enabled: StrictBool = False
+    personalized_rollout_percent: int = Field(default=0, ge=0, le=100, strict=True)
+
+
+class DepartmentBusinessDomainBinding(BaseModel):
+    department_id: int = Field(gt=0, strict=True)
+    business_domain_codes: list[str] = Field(min_length=1)
+
+    @field_validator("business_domain_codes", mode="before")
+    @classmethod
+    def normalize_business_domain_codes(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, (list, tuple, set)):
+            raise ValueError("business_domain_codes must be a list")
+        normalized = sorted({str(code).strip().upper() for code in value if str(code).strip()})
+        if any(not _BUSINESS_DOMAIN_CODE_PATTERN.fullmatch(code) for code in normalized):
+            raise ValueError("business domain code is invalid")
+        return normalized
+
+
+class DepartmentBusinessDomainBindingsUpdate(BaseModel):
+    bindings: list[DepartmentBusinessDomainBinding] = Field(default_factory=list)
 
 
 class DisplayHomeConfig(BaseModel):
-    section_page_size: int = 6
+    section_page_size: int = Field(default=6, ge=1, le=50, strict=True)
     hot_tags_count: int = 8
     qa_hot_count: int = 4
     domain_count: int = 6
@@ -567,6 +597,7 @@ class PortalConfig(BaseModel):
     agent_config: AgentConfig = Field(default_factory=AgentConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     recommendation: RecommendationConfig
+    department_business_domain_bindings: list[DepartmentBusinessDomainBinding] = Field(default_factory=list)
     display: DisplayConfig
     banners: list[BannerSlide] = Field(default_factory=list)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
@@ -641,6 +672,31 @@ class PortalConfig(BaseModel):
         data["agent_config"] = agent_config
         data.pop("apps", None)
         return data
+
+    @model_validator(mode="after")
+    def validate_personalized_recommendation_config(self):
+        if self.recommendation.home_total_count < self.display.home.section_page_size:
+            raise ValueError("recommendation.home_total_count must be >= display.home.section_page_size")
+
+        enabled_domain_codes = {
+            domain.code.strip().upper()
+            for domain in self.domains
+            if domain.enabled and domain.code.strip()
+        }
+        normalized_bindings: list[DepartmentBusinessDomainBinding] = []
+        seen_department_ids: set[int] = set()
+        for binding in self.department_business_domain_bindings:
+            if binding.department_id in seen_department_ids:
+                raise ValueError("department_id must be unique in department business domain bindings")
+            if set(binding.business_domain_codes) - enabled_domain_codes:
+                raise ValueError("business domain binding references a missing or disabled domain")
+            seen_department_ids.add(binding.department_id)
+            normalized_bindings.append(binding)
+        self.department_business_domain_bindings = sorted(
+            normalized_bindings,
+            key=lambda item: item.department_id,
+        )
+        return self
 
 
 class DomainsConfigUpdate(BaseModel):

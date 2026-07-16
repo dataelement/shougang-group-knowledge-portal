@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 from time import monotonic
@@ -24,6 +25,9 @@ from app.schemas.knowledge import (
     FilePreviewSourceKind,
     HomeStatsData,
     PublishPrecheckRequest,
+    PortalPreviewEntryPoint,
+    PortalRecommendationScene,
+    PortalSearchTelemetryRequest,
     QaKnowledgeFolderStatsRequest,
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
@@ -36,6 +40,8 @@ from app.services.knowledge_service import (
     SHARE_ACCESS_TTL_SECONDS,
     BishengBusinessError,
     KnowledgeService,
+    LATEST_SELECTED_RECOMMENDATION,
+    PERSONALIZED_RECOMMENDATION,
     ShareAccessSession,
 )
 from app.services.portal_auth_service import (
@@ -339,11 +345,21 @@ async def browse_files(
     recommendation: Optional[str] = None,
     sort: str = "updated_at_desc",
     cursor: Optional[str] = None,
+    limit: int = 20,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    page_size = _configured_search_page_size(portal_config_service.get_config())
+    config = portal_config_service.get_config()
+    session = await get_portal_session(auth_service, request)
+    is_personalized = recommendation == PERSONALIZED_RECOMMENDATION
+    if is_personalized and session is None:
+        raise HTTPException(status_code=401, detail="个性化推荐仅对登录用户开放")
+    page_size = (
+        config.recommendation.home_total_count
+        if is_personalized
+        else _configured_search_page_size(config)
+    )
     service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
         request=request,
         auth_service=auth_service,
@@ -363,7 +379,7 @@ async def browse_files(
                 business_domain_code=business_domain_code,
                 recommendation=recommendation,
                 sort=sort,
-                cursor=cursor,
+                cursor=None if is_personalized else cursor,
                 limit=page_size,
                 extra_space_ids=extra_space_ids,
             )
@@ -395,6 +411,13 @@ async def search_files(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     session = await get_portal_session(auth_service, request)
+    config = portal_config_service.get_config()
+    is_personalized = recommendation == PERSONALIZED_RECOMMENDATION
+    if is_personalized and session is None:
+        raise HTTPException(status_code=401, detail="个性化推荐仅对登录用户开放")
+    effective_limit = config.recommendation.home_total_count if is_personalized else limit
+    effective_cursor = None if is_personalized else cursor
+    effective_q = None if is_personalized else q
 
     # 未登录：系统客户端（常驻单例，勿关闭），范围 = 后台启用库
     if session is None:
@@ -406,7 +429,7 @@ async def search_files(
         try:
             return response_ok(
                 await service.search_files(
-                    q=q,
+                    q=effective_q,
                     tag=tag,
                     base_tag=base_tag,
                     requested_space_ids=space_ids,
@@ -417,8 +440,8 @@ async def search_files(
                     business_domain_code=business_domain_code,
                     recommendation=recommendation,
                     sort=sort,
-                    cursor=cursor,
-                    limit=limit,
+                    cursor=effective_cursor,
+                    limit=effective_limit,
                     extra_space_ids=None,
                     fallback_to_public_spaces=False,
                 )
@@ -438,7 +461,7 @@ async def search_files(
         extra_space_ids = [space.id for space in visible_spaces.data]
         return response_ok(
             await service.search_files(
-                q=q,
+                q=effective_q,
                 tag=tag,
                 base_tag=base_tag,
                 requested_space_ids=space_ids,
@@ -449,8 +472,8 @@ async def search_files(
                 business_domain_code=business_domain_code,
                 recommendation=recommendation,
                 sort=sort,
-                cursor=cursor,
-                limit=limit,
+                cursor=effective_cursor,
+                limit=effective_limit,
                 extra_space_ids=extra_space_ids,
                 fallback_to_public_spaces=False,
             )
@@ -514,7 +537,14 @@ def _extract_cached_home_sections(payload: Any) -> list[dict[str, Any]] | None:
         items = section.get("items")
         if not isinstance(tag, str) or not isinstance(items, list):
             return None
-        normalized.append({"tag": tag, "items": items})
+        normalized_section: dict[str, Any] = {"tag": tag, "items": items}
+        recommendation_mode = section.get("recommendation_mode")
+        if recommendation_mode in {
+            LATEST_SELECTED_RECOMMENDATION,
+            PERSONALIZED_RECOMMENDATION,
+        }:
+            normalized_section["recommendation_mode"] = recommendation_mode
+        normalized.append(normalized_section)
     return normalized
 
 
@@ -524,9 +554,108 @@ async def _cached_home_stream(sections: list[dict[str, Any]]):
     yield _home_sse_event({"type": "done"})
 
 
+def _personalized_rollout_bucket(*, tenant_id: int, user_id: int) -> int:
+    raw = f"{tenant_id}:{user_id}:{PERSONALIZED_RECOMMENDATION}".encode("utf-8")
+    digest_prefix = hashlib.sha256(raw).digest()[:8]
+    return int.from_bytes(digest_prefix, "big", signed=False) % 100
+
+
+def _select_home_recommendation_mode(session: Any, config: PortalConfig) -> str:
+    if config.recommendation.personalized_shadow_enabled:
+        return LATEST_SELECTED_RECOMMENDATION
+    user = getattr(session, "user", None)
+    user_id = getattr(user, "user_id", None)
+    tenant_id = getattr(user, "tenant_id", None)
+    if not isinstance(user_id, int) or user_id <= 0:
+        return LATEST_SELECTED_RECOMMENDATION
+    if not isinstance(tenant_id, int) or tenant_id <= 0:
+        return LATEST_SELECTED_RECOMMENDATION
+    bucket = _personalized_rollout_bucket(tenant_id=tenant_id, user_id=user_id)
+    if bucket < config.recommendation.personalized_rollout_percent:
+        return PERSONALIZED_RECOMMENDATION
+    return LATEST_SELECTED_RECOMMENDATION
+
+
+async def _compute_shadow_home_recommendation(
+    *,
+    auth_service: PortalAuthService,
+    session: Any,
+    portal_config_service: PortalConfigService,
+    extra_space_ids: list[int],
+    baseline_file_keys: list[tuple[int, int]],
+) -> None:
+    started_at = monotonic()
+    result_count = 0
+    overlap_count = 0
+    success = False
+    error_type = ""
+    client = None
+    try:
+        client = auth_service.create_bisheng_client(session)
+        config = portal_config_service.get_config()
+        service = KnowledgeService(
+            bisheng_client=client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        result = await service.search_files(
+            q=None,
+            tag=None,
+            base_tag=None,
+            requested_space_ids=None,
+            space_level=None,
+            file_ext=None,
+            document_type=None,
+            file_subcategory_code=None,
+            business_domain_code=None,
+            recommendation=PERSONALIZED_RECOMMENDATION,
+            sort="updated_at_desc",
+            cursor=None,
+            limit=config.recommendation.home_total_count,
+            extra_space_ids=extra_space_ids,
+            fallback_to_public_spaces=False,
+        )
+        result_keys = {(item.space_id, item.id) for item in result.data}
+        result_count = len(result_keys)
+        overlap_count = len(result_keys.intersection(baseline_file_keys))
+        success = True
+    except Exception as exc:
+        error_type = type(exc).__name__
+    finally:
+        try:
+            if client is not None:
+                await client.aclose()
+        except Exception as exc:
+            success = False
+            error_type = error_type or type(exc).__name__
+        finally:
+            user = getattr(session, "user", None)
+            tenant_id = getattr(user, "tenant_id", 0)
+            user_id = getattr(user, "user_id", 0)
+            actor_hash = hashlib.sha256(f"{tenant_id}:{user_id}".encode("utf-8")).hexdigest()[:16]
+            baseline_count = len(set(baseline_file_keys))
+            logger.info(
+                "portal personalized shadow metric",
+                extra={
+                    "portal_shadow_success": success,
+                    "portal_shadow_duration_ms": round((monotonic() - started_at) * 1000, 3),
+                    "portal_shadow_result_count": result_count,
+                    "portal_shadow_baseline_count": baseline_count,
+                    "portal_shadow_overlap_count": overlap_count,
+                    "portal_shadow_overlap_rate": (
+                        round(overlap_count / baseline_count, 6) if baseline_count else None
+                    ),
+                    "portal_shadow_tenant_id": tenant_id,
+                    "portal_shadow_actor_hash": actor_hash,
+                    "portal_shadow_error_type": error_type,
+                },
+            )
+
+
 @router.get("/home")
 async def get_home_content(
     request: Request,
+    background_tasks: BackgroundTasks,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
     cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
@@ -550,8 +679,10 @@ async def get_home_content(
 
         async def anonymous_stream():
             sections: list[dict[str, Any]] = []
-            async for tag, items in service.iter_home_content():
+            async for tag, items, recommendation_mode in service.iter_home_content_with_modes():
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
+                if recommendation_mode:
+                    section["recommendation_mode"] = recommendation_mode
                 sections.append(section)
                 yield _home_sse_event({"type": "section", **section})
             yield _home_sse_event({"type": "done"})
@@ -574,25 +705,42 @@ async def get_home_content(
         await bisheng_client.aclose()
         raise
 
-    cache_key = cache_service.home_content_key(
-        config=config,
-        account=getattr(getattr(session, "user", None), "account", ""),
-        visible_space_ids=extra_space_ids,
-    )
-    cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
-    if cached_sections is not None:
-        await bisheng_client.aclose()
-        return StreamingResponse(_cached_home_stream(cached_sections), media_type="text/event-stream")
+    recommendation_mode = _select_home_recommendation_mode(session, config)
+    shadow_baseline_file_keys: list[tuple[int, int]] = []
+    if config.recommendation.personalized_shadow_enabled:
+        background_tasks.add_task(
+            _compute_shadow_home_recommendation,
+            auth_service=auth_service,
+            session=session,
+            portal_config_service=portal_config_service,
+            extra_space_ids=extra_space_ids,
+            baseline_file_keys=shadow_baseline_file_keys,
+        )
 
     async def authenticated_stream():
         try:
-            sections: list[dict[str, Any]] = []
-            async for tag, items in service.iter_home_content(extra_space_ids=extra_space_ids):
+            async for tag, items, actual_mode in service.iter_home_content_with_modes(
+                extra_space_ids=extra_space_ids,
+                latest_recommendation=recommendation_mode,
+                recommendation_limit=(
+                    config.recommendation.home_total_count
+                    if recommendation_mode == PERSONALIZED_RECOMMENDATION
+                    else config.display.home.section_page_size
+                ),
+                fallback_latest_on_error=True,
+            ):
+                if actual_mode:
+                    items = items[: config.display.home.section_page_size]
+                if (
+                    config.recommendation.personalized_shadow_enabled
+                    and actual_mode == LATEST_SELECTED_RECOMMENDATION
+                ):
+                    shadow_baseline_file_keys.extend((item.space_id, item.id) for item in items)
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
-                sections.append(section)
+                if actual_mode:
+                    section["recommendation_mode"] = actual_mode
                 yield _home_sse_event({"type": "section", **section})
             yield _home_sse_event({"type": "done"})
-            await cache_service.set_json(cache_key, {"sections": sections}, ttl_seconds)
         finally:
             await bisheng_client.aclose()
 
@@ -1215,7 +1363,8 @@ async def get_file_preview(
     file_id: int,
     request: Request,
     share_token: Optional[str] = None,
-    entry_point: Optional[str] = Query(default=None),
+    entry_point: Optional[PortalPreviewEntryPoint] = Query(default=None),
+    recommendation_scene: Optional[PortalRecommendationScene] = Query(default=None),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
@@ -1233,7 +1382,8 @@ async def get_file_preview(
                 event_type="portal_document_read",
                 source_app="shougang_portal",
                 scene="document_preview",
-                entry_point=entry_point or "search_result_preview",
+                entry_point=entry_point or "other",
+                recommendation_scene=recommendation_scene,
                 resource_type="document",
                 space_id=space_id,
                 file_id=file_id,
@@ -1440,6 +1590,32 @@ async def record_file_download_event(
         )
     background_tasks.add_task(_record)
     return response_ok({"accepted": True})
+
+
+@router.post("/telemetry/search")
+async def record_portal_search_event(
+    payload: PortalSearchTelemetryRequest,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+):
+    try:
+        session = await require_portal_session(auth_service, request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        await PortalTelemetryService(bisheng_client).record_event(
+            event_type="portal_search",
+            source_app="shougang_portal",
+            scene="knowledge_search",
+            entry_point=payload.entry_point,
+            resource_type="search_query",
+            query=payload.query,
+        )
+        return response_ok({"accepted": True})
+    finally:
+        await bisheng_client.aclose()
 
 
 @router.post("/publish/precheck")
