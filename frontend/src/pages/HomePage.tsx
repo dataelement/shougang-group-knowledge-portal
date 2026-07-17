@@ -685,6 +685,14 @@ export default function HomePage() {
 
   const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains) : []), [config]);
   const enabledSections = useMemo(() => (config ? getEnabledSections(config.sections) : []), [config]);
+  const qaHotQuestions = useMemo(() => {
+    const items = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
+    return items.slice(0, displayConfig.home.hotTagsCount);
+  }, [config?.qa.hot_questions, displayConfig.home.hotTagsCount]);
+  const displayHotQueries = useMemo(
+    () => (hotSearches.length > 0 ? hotSearches.map((item) => item.query) : qaHotQuestions),
+    [hotSearches, qaHotQuestions],
+  );
 
   useEffect(() => {
     let active = true;
@@ -702,8 +710,8 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (!hotSearches.length) setShowHotTagMenu(false);
-  }, [hotSearches.length]);
+    if (!displayHotQueries.length) setShowHotTagMenu(false);
+  }, [displayHotQueries.length]);
 
   useEffect(() => {
     let active = true;
@@ -762,7 +770,7 @@ export default function HomePage() {
   }));
   const homeSections = enabledSections.slice(0, 3);
   const contentSections = homeSections;
-  const showHotSearch = searchTab === 'global' && hotSearches.length > 0;
+  const showHotSearch = searchTab === 'global' && displayHotQueries.length > 0;
 
   const appEntryItems = (config?.qa.templates || []).filter((template) => template.enabled && template.show_on_home);
   const formatHomeStat = (value: number | undefined): string => {
@@ -1020,21 +1028,21 @@ export default function HomePage() {
             {showHotTagMenu && showHotSearch ? (
               <div id="home-hot-tag-menu" className={s.hotSearchMenu}>
                 <div className={s.hotSearchTags}>
-                  {hotSearches.map((item) => (
+                  {displayHotQueries.map((question) => (
                     <button
-                      key={`${item.rank}-${item.query}`}
+                      key={question}
                       type="button"
                       className={s.hotSearchTag}
                       onClick={() => {
                         setShowHotTagMenu(false);
-                        setQuery(item.query);
+                        setQuery(question);
                         if (user) {
-                          void recordPortalSearchEvent(item.query, 'home_hot_keyword').catch(() => undefined);
+                          void recordPortalSearchEvent(question, 'home_hot_keyword').catch(() => undefined);
                         }
-                        navigate(`/search?q=${encodeURIComponent(item.query)}`);
+                        navigate(`/search?q=${encodeURIComponent(question)}`);
                       }}
                     >
-                      <span className={s.hotSearchTagText}>{item.query}</span>
+                      <span className={s.hotSearchTagText}>{question}</span>
                     </button>
                   ))}
                 </div>
