@@ -65,6 +65,10 @@ class FakeBishengClient:
         self.telemetry_events = []
         self.multipart_payload = None
         self.model_online = {1: True, 10: True, 20: True}
+        self.stream_chunks = [
+            b"event: message\n",
+            b'data: {"category":"stream","type":"stream","message":{"content":"ok"}}\n\n',
+        ]
 
     def resolve_url(self, path_or_url: str) -> str:
         return path_or_url
@@ -624,8 +628,8 @@ class FakeBishengClient:
         if path == "/api/v1/knowledge/space/12/chat/file/1580":
             assert headers == {"X-Portal-Telemetry-Source": "shougang_portal_bff"}
         self.chat_payload = {"path": path, "json": json}
-        yield b"event: message\n"
-        yield b"data: {\"ok\":true}\n\n"
+        for chunk in self.stream_chunks:
+            yield chunk
 
     async def post_multipart(self, path: str, *, data=None, files=None):
         self.multipart_payload = {"path": path, "data": data, "files": files}
@@ -1776,7 +1780,7 @@ def test_chat_proxy_falls_back_to_general_qa_model(tmp_path: Path):
                 client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
-    assert b'"ok":true' in response.content
+    assert b'"content":"ok"' in response.content
     assert fake_bisheng.chat_payload is not None
     assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/shougang-portal/chat/completions"
     assert fake_bisheng.chat_payload["json"]["model"] == "10"
@@ -1791,6 +1795,45 @@ def test_chat_proxy_falls_back_to_general_qa_model(tmp_path: Path):
         "resource_type": "knowledge_space",
         "status": "success",
     }
+    assert len(
+        [event for event in fake_bisheng.telemetry_events if event["event_type"] == "portal_qa"]
+    ) == 1
+
+
+def test_chat_proxy_error_stream_does_not_record_success_telemetry(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            config_service.update_qa(
+                config_service.get_config().qa.model_copy(update={"general_model": "10"})
+            )
+            fake_bisheng.stream_chunks = [
+                (
+                    b'event: message\ndata: {"category":"stream","type":"stream",'
+                    b'"message":{"content":"partial"}}\n\n'
+                ),
+                b'event: error\ndata: {"status_code":500,"status_message":"Server error"}\n\n',
+            ]
+
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-07-17T10:00:00",
+                    "model": "10",
+                    "scene": "qa",
+                    "text": "触发问答错误",
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert b"event: error" in response.content
+    assert not [
+        event for event in fake_bisheng.telemetry_events if event["event_type"] == "portal_qa"
+    ]
 
 
 def test_chat_proxy_expert_mode_uses_reasoning_model_and_prompt(tmp_path: Path):
@@ -2723,7 +2766,7 @@ def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path)
         )
 
     assert response.status_code == 200
-    assert b'"ok":true' in response.content
+    assert b'"content":"ok"' in response.content
     assert fake_bisheng.chat_payload == {
         "path": "/api/v1/knowledge/space/12/chat/file/1580",
         "json": {
@@ -2741,6 +2784,30 @@ def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path)
         "space_id": 12,
         "file_id": 1580,
     }
+    assert len(
+        [event for event in fake_bisheng.telemetry_events if event["event_type"] == "portal_qa"]
+    ) == 1
+
+
+def test_document_file_chat_error_stream_does_not_record_success_telemetry(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        config_service.update_qa(
+            config_service.get_config().qa.model_copy(update={"selected_model": "1"})
+        )
+        fake_bisheng.stream_chunks = [
+            b'event: error\ndata: {"status_code":500,"status_message":"Server error"}\n\n'
+        ]
+
+        response = client.post(
+            "/api/v1/knowledge/space/12/files/1580/chat",
+            json={"query": "触发文档问答错误"},
+        )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"event: error")
+    assert not [
+        event for event in fake_bisheng.telemetry_events if event["event_type"] == "portal_qa"
+    ]
 
 
 def test_document_file_chat_rejects_disabled_model_before_upstream_call(tmp_path: Path):

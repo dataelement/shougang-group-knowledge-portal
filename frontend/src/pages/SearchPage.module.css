@@ -228,6 +228,18 @@
   font-size: 0.9rem;
 }
 
+.aiError {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.aiError span {
+  white-space: pre-line;
+}
+
 .spinner {
   color: var(--primary-600);
   animation: search-spin 0.9s linear infinite;

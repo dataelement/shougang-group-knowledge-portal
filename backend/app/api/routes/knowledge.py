@@ -34,6 +34,7 @@ from app.schemas.knowledge import (
 )
 from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.portal_config import DEFAULT_DOCUMENT_TYPES, DocumentTypeConfig, PortalConfig
+from app.services.chat_stream import ChatStreamObserver, safe_chat_stream
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
@@ -1590,20 +1591,19 @@ async def chat_document_file(
         raise HTTPException(status_code=400, detail=str(err)) from err
 
     async def stream():
-        telemetry_recorded = False
-        async for chunk in upstream:
-            if not telemetry_recorded:
-                await PortalTelemetryService(service._bisheng).record_event(
-                    event_type="portal_qa",
-                    source_app="shougang_portal",
-                    scene="search_result_document_qa",
-                    entry_point="search_result_document_qa",
-                    resource_type="document",
-                    space_id=space_id,
-                    file_id=file_id,
-                )
-                telemetry_recorded = True
+        observer = ChatStreamObserver()
+        async for chunk in safe_chat_stream(upstream, observer):
             yield chunk
+        if observer.has_answer and not observer.has_error:
+            await PortalTelemetryService(service._bisheng).record_event(
+                event_type="portal_qa",
+                source_app="shougang_portal",
+                scene="search_result_document_qa",
+                entry_point="search_result_document_qa",
+                resource_type="document",
+                space_id=space_id,
+                file_id=file_id,
+            )
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 

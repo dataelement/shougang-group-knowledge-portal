@@ -14,6 +14,8 @@ interface Props {
 interface Message {
   role: 'bot' | 'user';
   text: string;
+  error?: boolean;
+  retrying?: boolean;
 }
 
 const QUICK_QUESTIONS = [
@@ -34,7 +36,6 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
-  const [error, setError] = useState('');
   const requestSeq = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +43,6 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
     if (!open || !file) return;
     requestSeq.current += 1;
     setDraft('');
-    setError('');
     setStreaming(false);
     setMessages(getInitialMessages(file));
   }, [file, open]);
@@ -55,25 +55,29 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
 
   const view = buildFileListItemView(file);
 
-  const updateLastBotMessage = (text: string) => {
+  const updateBotMessage = (messageIndex: number, text: string, error = false, retrying = false) => {
     setMessages((prev) => {
       const next = [...prev];
-      const lastIndex = next.length - 1;
-      if (lastIndex < 0 || next[lastIndex].role !== 'bot') return prev;
-      next[lastIndex] = { ...next[lastIndex], text };
+      if (messageIndex < 0 || next[messageIndex]?.role !== 'bot') return prev;
+      next[messageIndex] = { ...next[messageIndex], text, error, retrying };
       return next;
     });
   };
 
-  const sendQuestion = (question?: string) => {
+  const sendQuestion = (question?: string, retryMessageIndex?: number) => {
     const text = (question ?? draft).trim();
     if (!text || streaming) return;
 
     const currentRequest = ++requestSeq.current;
+    const targetMessageIndex = retryMessageIndex ?? messages.length + 1;
     setDraft('');
-    setError('');
     setStreaming(true);
-    setMessages((prev) => [...prev, { role: 'user', text }, { role: 'bot', text: '' }]);
+    setMessages((prev) => retryMessageIndex === undefined
+      ? [...prev, { role: 'user', text }, { role: 'bot', text: '' }]
+      : prev.map((message, index) => (
+          index === retryMessageIndex ? { role: 'bot', text: '' } : message
+        ))
+    );
 
     void streamDocumentFileChat({
       spaceId: file.spaceId,
@@ -81,17 +85,33 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
       text,
       onUpdate(currentText) {
         if (requestSeq.current !== currentRequest) return;
-        updateLastBotMessage(currentText);
+        updateBotMessage(targetMessageIndex, currentText);
       },
-    }).catch(() => {
+      onRetry(progress) {
+        if (requestSeq.current !== currentRequest) return;
+        updateBotMessage(targetMessageIndex, progress.message, false, true);
+      },
+    }).catch((err: unknown) => {
       if (requestSeq.current !== currentRequest) return;
-      setError('问答请求失败，请稍后重试。');
-      updateLastBotMessage('问答请求失败，请稍后重试。');
+      updateBotMessage(
+        targetMessageIndex,
+        err instanceof Error && err.message ? err.message : '问答请求失败，请稍后重试。',
+        true,
+      );
     }).finally(() => {
       if (requestSeq.current === currentRequest) {
         setStreaming(false);
       }
     });
+  };
+
+  const retryQuestion = (messageIndex: number) => {
+    const previousQuestion = messages
+      .slice(0, messageIndex)
+      .reverse()
+      .find((message) => message.role === 'user');
+    if (!previousQuestion || streaming) return;
+    sendQuestion(previousQuestion.text, messageIndex);
   };
 
   const handleClose = () => {
@@ -142,9 +162,23 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
                   {message.role === 'bot' ? (
                     <div className={s.avatar}><Bot size={17} /></div>
                   ) : null}
-                  <div className={`${s.bubble} ${message.role === 'user' ? s.userBubble : s.botBubble}`}>
+                  <div className={`${s.bubble} ${message.role === 'user' ? s.userBubble : s.botBubble} ${message.error ? s.errorBubble : ''}`}>
                     {isThinking ? (
                       <span className={s.thinking}><Loader2 size={16} className={s.spin} />思考中...</span>
+                    ) : message.retrying ? (
+                      <span className={s.thinking}><Loader2 size={16} className={s.spin} />{message.text}</span>
+                    ) : message.error ? (
+                      <div className={s.errorContent} role="alert">
+                        <span>{message.text}</span>
+                        <button
+                          type="button"
+                          className={s.errorAction}
+                          onClick={() => retryQuestion(index)}
+                          disabled={streaming}
+                        >
+                          重新提问
+                        </button>
+                      </div>
                     ) : (
                       <div dangerouslySetInnerHTML={{ __html: renderChatMarkdown(message.text, []) }} />
                     )}
@@ -172,7 +206,6 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
         </div>
 
         <footer className={s.footer}>
-          {error ? <div className={s.errorText}>{error}</div> : null}
           <div className={s.inputRow}>
             <textarea
               className={s.input}

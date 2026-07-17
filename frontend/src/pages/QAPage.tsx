@@ -58,6 +58,18 @@ interface Message {
   text: string;
   files?: ChatAttachment[];
   citations?: Citation[];
+  error?: boolean;
+  retrying?: boolean;
+  requestSnapshot?: QaRequestSnapshot;
+}
+
+interface QaRequestSnapshot {
+  text: string;
+  allSpaceIds?: number[];
+  scope: QaKnowledgeScope;
+  files: ChatAttachment[];
+  answerMode: AnswerMode;
+  model: string;
 }
 
 export interface Session {
@@ -704,14 +716,13 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     }
   }
 
-  const updateLastBotMessage = (sessionId: string, mutator: (last: Message) => Message) => {
+  const updateBotMessage = (sessionId: string, messageIndex: number, mutator: (message: Message) => Message) => {
     setSessions((prev) =>
       prev.map((ss) => {
         if (ss.id !== sessionId) return ss;
         const msgs = [...ss.messages];
-        const lastIdx = msgs.length - 1;
-        if (lastIdx < 0 || msgs[lastIdx].role !== 'bot') return ss;
-        msgs[lastIdx] = mutator(msgs[lastIdx]);
+        if (messageIndex < 0 || msgs[messageIndex]?.role !== 'bot') return ss;
+        msgs[messageIndex] = mutator(msgs[messageIndex]);
         return { ...ss, messages: msgs };
       }),
     );
@@ -749,6 +760,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     scope?: QaKnowledgeScope;
     files?: ChatAttachment[];
     answerMode?: AnswerMode;
+    model?: string;
+    retryMessageIndex?: number;
   }) => {
     // 程序化发送(首页问答草稿/自动发送)时,选择项从 opts 显式带入,避免依赖异步 state。
     const programmatic = opts?.text !== undefined;
@@ -757,7 +770,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const messageFiles = programmatic ? (opts?.files ?? []) : attachedFiles;
     const effAnswerMode = opts?.answerMode ?? answerMode;
     const effModelChoice = effAnswerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
-    const effModel = effModelChoice?.id ?? '';
+    const effModel = opts?.model ?? effModelChoice?.id ?? '';
     const effScope = opts?.scope ?? selectedKnowledgeScope;
     if ((!text && !messageFiles.length) || streaming || uploadingFiles.length) return;
     if (effAnswerMode === 'expert' && !reasoningModelChoice) {
@@ -770,6 +783,16 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     }
     const finalText = text || '请分析附件内容。';
     const targetSessionId = activeId;
+    const retryMessageIndex = opts?.retryMessageIndex;
+    const targetMessageIndex = retryMessageIndex ?? activeSession.messages.length + 1;
+    const requestSnapshot: QaRequestSnapshot = {
+      text: finalText,
+      allSpaceIds: useAllSpaces ? [...opts!.allSpaceIds!] : undefined,
+      scope: effScope,
+      files: [...messageFiles],
+      answerMode: effAnswerMode,
+      model: effModel,
+    };
     onBeforeSend?.();
     setInput('');
     setAttachedFiles([]);
@@ -785,7 +808,17 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
           ? {
               ...ss,
               title: ss.title === '新会话' ? finalText.slice(0, 18) : ss.title,
-              messages: [...ss.messages, { role: 'user', text: finalText, files: messageFiles }, { role: 'bot', text: '' }],
+              messages: retryMessageIndex === undefined
+                ? [
+                    ...ss.messages,
+                    { role: 'user', text: finalText, files: messageFiles },
+                    { role: 'bot', text: '', requestSnapshot },
+                  ]
+                : ss.messages.map((message, index) => (
+                    index === retryMessageIndex
+                      ? { role: 'bot', text: '', requestSnapshot }
+                      : message
+                  )),
               // 盖上当前更新时间,发起会话后按"最近更新"排到分组最上面
               updatedAt: new Date().toISOString(),
             }
@@ -814,23 +847,55 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
         );
       },
       onUpdate(currentText) {
-        updateLastBotMessage(targetSessionId, (last) => ({ ...last, text: currentText }));
+        updateBotMessage(targetSessionId, targetMessageIndex, (last) => ({
+          ...last,
+          text: currentText,
+          error: false,
+          retrying: false,
+        }));
       },
       onCitations(list) {
-        updateLastBotMessage(targetSessionId, (last) => ({ ...last, citations: list }));
+        updateBotMessage(targetSessionId, targetMessageIndex, (last) => ({ ...last, citations: list }));
+      },
+      onRetry(progress) {
+        updateBotMessage(targetSessionId, targetMessageIndex, (last) => ({
+          ...last,
+          text: progress.message,
+          error: false,
+          retrying: true,
+          citations: undefined,
+        }));
       },
     }).catch((error: unknown) => {
       const text = error instanceof ApiRequestError
         ? error.message || '问答请求失败，请稍后重试。'
         : '问答请求失败，请稍后重试。';
-      updateLastBotMessage(targetSessionId, () => ({
+      updateBotMessage(targetSessionId, targetMessageIndex, (last) => ({
+        ...last,
         role: 'bot',
         text,
         citations: undefined,
+        error: true,
+        retrying: false,
       }));
     }).finally(() => {
       setStreaming(false);
       abortControllerRef.current = null;
+    });
+  };
+
+  const retryLastQuestion = (messageIndex: number) => {
+    const failedMessage = activeSession.messages[messageIndex];
+    const snapshot = failedMessage?.requestSnapshot;
+    if (!snapshot || streaming) return;
+    sendMessage({
+      text: snapshot.text,
+      allSpaceIds: snapshot.allSpaceIds,
+      scope: snapshot.scope,
+      files: snapshot.files,
+      answerMode: snapshot.answerMode,
+      model: snapshot.model,
+      retryMessageIndex: messageIndex,
     });
   };
 
@@ -1102,6 +1167,23 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                         <Loader2 size={16} className={s.spinner} />
                         <span>思考中...</span>
                       </div>
+                    ) : msg.retrying ? (
+                      <div className={`${s.msgBubble} ${s.msgBot} ${s.thinking}`} aria-live="polite">
+                        <Loader2 size={16} className={s.spinner} />
+                        <span>{msg.text}</span>
+                      </div>
+                    ) : msg.error ? (
+                      <div className={`${s.msgBubble} ${s.msgBot} ${s.msgError}`} role="alert">
+                        <span>{msg.text}</span>
+                        <button
+                          type="button"
+                          className={s.retryAction}
+                          onClick={() => retryLastQuestion(i)}
+                          disabled={streaming}
+                        >
+                          重新提问
+                        </button>
+                      </div>
                     ) : (
                       <div
                         className={`${s.msgBubble} ${s.msgBot} ${s.botContent}`}
@@ -1116,7 +1198,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                   {msg.files?.length ? (
                     <AttachmentChips files={msg.files} className={s.messageAttachments} />
                   ) : null}
-                  {msg.role === 'bot' && referenced.length > 0 ? (
+                  {msg.role === 'bot' && !msg.error && referenced.length > 0 ? (
                     <CitationList items={referenced} hideBackLink={isSmartAppsMode} />
                   ) : null}
                 </div>

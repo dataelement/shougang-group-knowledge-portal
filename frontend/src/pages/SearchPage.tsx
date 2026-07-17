@@ -158,6 +158,9 @@ export default function SearchPage() {
   const [aiText, setAiText] = useState('');
   const [aiCitations, setAiCitations] = useState<Citation[]>([]);
   const [aiThinking, setAiThinking] = useState(false);
+  const [aiRetryStatus, setAiRetryStatus] = useState('');
+  const [aiError, setAiError] = useState('');
+  const [aiRetryKey, setAiRetryKey] = useState(0);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -536,6 +539,8 @@ export default function SearchPage() {
     let active = true;
     setAiText('');
     setAiCitations([]);
+    setAiError('');
+    setAiRetryStatus('');
     setAiThinking(true);
     const currentRequest = ++requestSeq.current;
     void streamChatCompletion({
@@ -547,11 +552,23 @@ export default function SearchPage() {
         if (!active || requestSeq.current !== currentRequest) return;
         setAiText(text);
         setAiThinking(false);
+        setAiRetryStatus('');
       },
       onCitations(list) {
         if (!active || requestSeq.current !== currentRequest) return;
         setAiCitations(list);
       },
+      onRetry(progress) {
+        if (!active || requestSeq.current !== currentRequest) return;
+        setAiRetryStatus(progress.message);
+        setAiThinking(true);
+      },
+    }).catch((err: unknown) => {
+      if (!active || requestSeq.current !== currentRequest) return;
+      setAiError(err instanceof Error && err.message
+        ? err.message
+        : '问答请求失败，请稍后重试。');
+      setAiRetryStatus('');
     }).finally(() => {
       if (active && requestSeq.current === currentRequest) {
         setAiThinking(false);
@@ -560,7 +577,12 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [keywordMode, loading, q, rawFiles, rawTotal, resultsReady]);
+  }, [aiRetryKey, keywordMode, loading, q, rawFiles, rawTotal, resultsReady]);
+
+  const retryAiSummary = () => {
+    setAiError('');
+    setAiRetryKey((current) => current + 1);
+  };
 
   const handleLoadMore = useCallback(async () => {
     if (keywordMode) {
@@ -737,7 +759,12 @@ export default function SearchPage() {
                 {summaryCollapsed ? null : aiThinking ? (
                   <div className={s.aiThinking}>
                     <Loader2 size={16} className={s.spinner} />
-                    <span>思考中...</span>
+                    <span>{aiRetryStatus || '思考中...'}</span>
+                  </div>
+                ) : aiError ? (
+                  <div className={s.aiError} role="alert">
+                    <span>{aiError}</span>
+                    <button type="button" className={s.retryButton} onClick={retryAiSummary}>重试</button>
                   </div>
                 ) : (
                   <div
