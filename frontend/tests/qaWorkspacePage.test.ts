@@ -175,3 +175,13 @@ test('home quick app shortcuts open qa workspace templates without auto sending'
   assert.match(qaPageSource, /navigate\(nextUrl, \{ replace: true \}\)/);
   assert.doesNotMatch(qaPageSource, /streamChatCompletion\(\{\s*scene:\s*'qa',\s*text:\s*template\.prompt/);
 });
+
+test('home smart qa auto sends without a blocking preparation mask', () => {
+  assert.match(homePageSource, /navigate\('\/apps\?tab=qa&autosend=1&draft=1'\)/);
+  assert.match(qaPageSource, /homeQaAutoSentRef\.current/);
+  assert.match(qaPageSource, /if \(!knowledgeSpacesLoaded\)/);
+  assert.match(qaPageSource, /sendMessage\(\{ text: q,/);
+  assert.doesNotMatch(qaPageSource, /homeQaAutoSending/);
+  assert.doesNotMatch(qaPageSource, /正在准备智能问答/);
+  assert.doesNotMatch(qaPageStyles, /\.homeQaLoadingMask/);
+});

@@ -400,7 +400,6 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const homeQaAutoSentRef = useRef(false);
-  const [homeQaAutoSending, setHomeQaAutoSending] = useState(false);
   const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint());
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
@@ -480,9 +479,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     }
 
     // 自动发送:先确保模型配置与知识库列表已加载,再按草稿的选择发起新会话。
-    // 加载期间显示全屏遮罩,防止用户在等待时误操作。
     if (homeQaAutoSentRef.current) return;
-    setHomeQaAutoSending(true);
     const targetModelChoice = draftAnswerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
     if (!targetModelChoice) return;
     if (!knowledgeSpacesLoaded) {
@@ -502,15 +499,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       const allSpaceIds = availableSpaces.map((space) => space.id);
       sendMessage({ text: q, allSpaceIds, files: draftAttachments, answerMode: draftAnswerMode });
     }
-    setHomeQaAutoSending(false);
   }, [location.search, location.pathname, location.hash, navigate, knowledgeSpacesLoaded, generalModelChoice, reasoningModelChoice, availableSpaces]);
-
-  // 安全兜底:遮罩最多显示 12 秒,避免模型/空间异常时永久卡住
-  useEffect(() => {
-    if (!homeQaAutoSending) return;
-    const timer = window.setTimeout(() => setHomeQaAutoSending(false), 12000);
-    return () => window.clearTimeout(timer);
-  }, [homeQaAutoSending]);
 
   useEffect(() => {
     if (!pendingTemplateId || !templatesLoaded) return;
@@ -1391,20 +1380,10 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     renameSession,
   };
 
-  const homeQaLoadingMask = homeQaAutoSending ? (
-    <div className={s.homeQaLoadingMask} role="alert" aria-busy="true">
-      <div className={s.homeQaLoadingBox}>
-        <Loader2 size={26} className={s.spinner} />
-        <span>正在准备智能问答，请稍候…</span>
-      </div>
-    </div>
-  ) : null;
-
   if (children) {
     return (
       <>
         {children({ sidebar, workspace, qaContent, hasConversation, renderComposer, qaSidebarState })}
-        {homeQaLoadingMask}
       </>
     );
   }
@@ -1413,7 +1392,6 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     <>
       {sidebar}
       {workspace}
-      {homeQaLoadingMask}
     </>
   );
 }
