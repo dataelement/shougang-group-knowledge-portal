@@ -634,17 +634,19 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
         const remoteSessions = items
           .map(mapConversationToSession)
           .sort((a, b) => sessionSortTime(b) - sessionSortTime(a));
+        // 列表和 loading 必须在同一个回调里更新,React 才会合并成一次渲染;
+        // 若放到 .finally() 里,会先渲染「列表+加载中」再渲染「列表」,视觉上闪一下。
         setSessions((prev) => {
           const localSessions = prev.filter((item) => !item.conversationId);
           const merged = [...localSessions, ...remoteSessions];
           return merged.length ? merged : [createDraftSession()];
         });
+        setLoadingSessions(false);
       })
       .catch(() => {
-        if (active) setComposerTip('会话列表加载失败，请确认登录状态后重试。');
-      })
-      .finally(() => {
-        if (active) setLoadingSessions(false);
+        if (!active) return;
+        setComposerTip('会话列表加载失败，请确认登录状态后重试。');
+        setLoadingSessions(false);
       });
     return () => {
       active = false;
