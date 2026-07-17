@@ -234,16 +234,17 @@ async def _scoped_service_and_extra_ids(
     auth_service: PortalAuthService,
     bisheng_client: BishengClient,
     portal_config_service: PortalConfigService,
+    public_only: bool = False,
 ) -> tuple[KnowledgeService, Optional[list[int]], Optional[BishengClient]]:
     """Build a KnowledgeService scoped to the current user when logged in.
 
     Returns (service, extra_space_ids, client_to_close).
-    - Not logged in: system client (singleton), enabled-only scope, nothing to close.
+    - Not logged in or public-only: system client (singleton), public scope, nothing to close.
     - Logged in: per-user token client, scope = enabled ∪ personal-visible libraries,
       and the user client is returned so the caller can aclose() it in a finally.
     """
     session = await get_portal_session(auth_service, request)
-    if session is None:
+    if session is None or public_only:
         service = KnowledgeService(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
@@ -344,6 +345,7 @@ async def browse_files(
     file_subcategory_code: Optional[str] = None,
     business_domain_code: Optional[str] = None,
     recommendation: Optional[str] = None,
+    public_only: bool = False,
     sort: str = "updated_at_desc",
     cursor: Optional[str] = None,
     limit: int = 20,
@@ -372,6 +374,7 @@ async def browse_files(
         auth_service=auth_service,
         bisheng_client=bisheng_client,
         portal_config_service=portal_config_service,
+        public_only=public_only,
     )
     try:
         return response_ok(
@@ -389,6 +392,7 @@ async def browse_files(
                 cursor=None if is_personalized else cursor,
                 limit=page_size,
                 extra_space_ids=extra_space_ids,
+                public_only=public_only,
             )
         )
     except BishengBusinessError as err:
@@ -411,10 +415,12 @@ async def search_files(
     file_subcategory_code: Optional[str] = None,
     business_domain_code: Optional[str] = None,
     recommendation: Optional[str] = None,
+    public_only: bool = False,
     sort: str = "relevance",
     cursor: Optional[str] = None,
     limit: int = 20,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     session = await get_portal_session(auth_service, request)
@@ -432,10 +438,10 @@ async def search_files(
     effective_cursor = None if is_personalized else cursor
     effective_q = None if is_personalized else q
 
-    # 未登录：系统客户端（常驻单例，勿关闭），范围 = 后台启用库
-    if session is None:
+    # 未登录或显式公共范围：使用系统客户端（常驻单例，勿关闭）
+    if session is None or public_only:
         service = KnowledgeService(
-            bisheng_client=await get_bisheng_client(request),
+            bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
@@ -452,6 +458,7 @@ async def search_files(
                     file_subcategory_code=file_subcategory_code,
                     business_domain_code=business_domain_code,
                     recommendation=recommendation,
+                    public_only=public_only,
                     sort=sort,
                     cursor=effective_cursor,
                     limit=effective_limit,
@@ -471,7 +478,7 @@ async def search_files(
             default_model=get_settings().bisheng_default_model,
         )
         extra_space_ids = None
-        if not service.is_public_latest_selected_request(q, recommendation):
+        if not service.is_public_latest_selected_request(q, recommendation) and not public_only:
             visible_spaces = await service.list_visible_spaces()
             extra_space_ids = [space.id for space in visible_spaces.data]
         return response_ok(
@@ -486,6 +493,7 @@ async def search_files(
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=business_domain_code,
                 recommendation=recommendation,
+                public_only=public_only,
                 sort=sort,
                 cursor=effective_cursor,
                 limit=effective_limit,
@@ -505,6 +513,7 @@ async def get_aggregated_tags(
     space_ids: Annotated[Optional[list[int]], Query()] = None,
     space_level: Optional[str] = None,
     business_domain_code: Optional[str] = None,
+    public_only: bool = False,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
@@ -514,6 +523,7 @@ async def get_aggregated_tags(
         auth_service=auth_service,
         bisheng_client=bisheng_client,
         portal_config_service=portal_config_service,
+        public_only=public_only,
     )
     try:
         return response_ok(
@@ -610,7 +620,6 @@ async def _compute_shadow_home_recommendation(
     auth_service: PortalAuthService,
     session: Any,
     portal_config_service: PortalConfigService,
-    extra_space_ids: list[int],
     baseline_file_keys: list[tuple[int, int]],
 ) -> None:
     started_at = monotonic()
@@ -627,6 +636,8 @@ async def _compute_shadow_home_recommendation(
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
+        visible_spaces = await service.list_visible_spaces()
+        extra_space_ids = [space.id for space in visible_spaces.data]
         result = await service.search_files(
             q=None,
             tag=None,
@@ -720,19 +731,11 @@ async def get_home_content(
         return StreamingResponse(anonymous_stream(), media_type="text/event-stream")
 
     bisheng_client = auth_service.create_bisheng_client(session)
-    # Resolve visible spaces before streaming starts so an auth/upstream failure here
-    # surfaces as a clean HTTP error instead of aborting an already-open SSE stream.
-    try:
-        service = KnowledgeService(
-            bisheng_client=bisheng_client,
-            portal_config_service=portal_config_service,
-            default_model=get_settings().bisheng_default_model,
-        )
-        visible_spaces = await service.list_visible_spaces()
-        extra_space_ids = [space.id for space in visible_spaces.data]
-    except BaseException:
-        await bisheng_client.aclose()
-        raise
+    service = KnowledgeService(
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+        default_model=get_settings().bisheng_default_model,
+    )
 
     recommendation_mode = _select_home_recommendation_mode(session, config)
     shadow_baseline_file_keys: list[tuple[int, int]] = []
@@ -742,14 +745,13 @@ async def get_home_content(
             auth_service=auth_service,
             session=session,
             portal_config_service=portal_config_service,
-            extra_space_ids=extra_space_ids,
             baseline_file_keys=shadow_baseline_file_keys,
         )
 
     async def authenticated_stream():
         try:
             async for tag, items, actual_mode in service.iter_home_content_with_modes(
-                extra_space_ids=extra_space_ids,
+                resolve_user_visible_spaces=True,
                 latest_recommendation=recommendation_mode,
                 recommendation_limit=(
                     config.recommendation.home_total_count
@@ -939,12 +941,13 @@ async def get_domain_file_counts(
 @router.get("/spaces")
 async def list_visible_spaces(
     request: Request,
+    public_only: bool = False,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     session = await get_portal_session(auth_service, request)
-    if session is None:
+    if session is None or public_only:
         service = KnowledgeService(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,

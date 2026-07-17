@@ -30,6 +30,7 @@ AUTH_MESSAGE_MARKERS = (
     "token过期",
     "token 过期",
 )
+_AUTH_RETRIED_EXTENSION = "bisheng_auth_retried"
 
 
 class BishengAuthRefreshError(RuntimeError):
@@ -160,7 +161,23 @@ class BishengClient:
             file_positions=file_positions,
         )
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
+            self._restore_file_positions(file_positions)
+            response = await self._request(
+                "POST",
+                path,
+                retry_auth=False,
+                data=data,
+                files=files,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return payload
 
     async def get_json(
         self,
@@ -170,7 +187,11 @@ class BishengClient:
     ) -> dict:
         response = await self.get(path, params=params, headers=headers)
         payload = response.json()
-        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
             response = await self.get(path, params=params, headers=headers, retry_auth=False)
             payload = response.json()
         return payload
@@ -183,7 +204,11 @@ class BishengClient:
     ) -> dict:
         response = await self.post(path, json=json, headers=headers)
         payload = response.json()
-        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
             response = await self.post(path, json=json, headers=headers, retry_auth=False)
             payload = response.json()
         return payload
@@ -196,7 +221,11 @@ class BishengClient:
     ) -> dict:
         response = await self.put(path, json=json, headers=headers)
         payload = response.json()
-        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
             response = await self.put(path, json=json, headers=headers, retry_auth=False)
             payload = response.json()
         return payload
@@ -216,7 +245,11 @@ class BishengClient:
         )
         response.raise_for_status()
         payload = response.json()
-        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
             response = await self._request(
                 "DELETE",
                 path,
@@ -312,6 +345,7 @@ class BishengClient:
         **kwargs,
     ) -> httpx.Response:
         response = await self._client.request(method, path, **kwargs)
+        auth_retried = False
         if (
             retry_auth
             and self._is_auth_status(response.status_code)
@@ -319,6 +353,8 @@ class BishengClient:
         ):
             self._restore_file_positions(file_positions)
             response = await self._client.request(method, path, **kwargs)
+            auth_retried = True
+        response.extensions[_AUTH_RETRIED_EXTENSION] = auth_retried
         return response
 
     async def _refresh_auth_token(self) -> bool:
@@ -326,8 +362,8 @@ class BishengClient:
             return False
         try:
             next_token = (await self._auth_refresh_handler(self._api_token)).strip()
-        except Exception as err:
-            raise BishengAuthRefreshError(f"BiSheng 数据源自动重登失败：{err}") from err
+        except Exception:
+            raise BishengAuthRefreshError("BiSheng 数据源自动重登失败，请稍后重试") from None
         if not next_token:
             return False
         self.set_api_token(next_token)
@@ -336,6 +372,10 @@ class BishengClient:
     @staticmethod
     def _is_auth_status(status_code: int) -> bool:
         return status_code in AUTH_STATUS_CODES
+
+    @staticmethod
+    def _auth_was_retried(response: httpx.Response) -> bool:
+        return bool(response.extensions.get(_AUTH_RETRIED_EXTENSION))
 
     @staticmethod
     def _is_auth_payload(payload: object) -> bool:

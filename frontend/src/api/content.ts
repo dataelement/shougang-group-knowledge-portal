@@ -721,11 +721,13 @@ export async function fetchAggregatedTags(
   spaceIds?: number[],
   spaceLevel?: string,
   businessDomainCode?: string,
+  publicOnly = false,
 ): Promise<string[]> {
   const params = new URLSearchParams();
   spaceIds?.forEach((id) => params.append('space_ids', String(id)));
   if (spaceLevel) params.set('space_level', spaceLevel);
   if (businessDomainCode) params.set('business_domain_code', businessDomainCode);
+  if (publicOnly) params.set('public_only', 'true');
   const query = params.toString();
   return request<string[]>(`/api/v1/knowledge/tags${query ? `?${query}` : ''}`);
 }
@@ -826,6 +828,7 @@ export async function searchFiles(params: {
   limit?: number;
   businessDomainCode?: string;
   recommendation?: string;
+  publicOnly?: boolean;
 }): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
@@ -837,6 +840,7 @@ export async function searchFiles(params: {
   if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
   if (params.recommendation) query.set('recommendation', params.recommendation);
+  if (params.publicOnly) query.set('public_only', 'true');
   if (params.sort) query.set('sort', params.sort);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));
@@ -874,6 +878,7 @@ export async function browseSearchFiles(params: {
   documentType?: string;
   fileSubcategoryCode?: string;
   businessDomainCode?: string;
+  publicOnly?: boolean;
   sort?: string;
   cursor?: string | null;
 }): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
@@ -884,6 +889,7 @@ export async function browseSearchFiles(params: {
   if (params.documentType) query.set('document_type', params.documentType);
   if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
+  if (params.publicOnly) query.set('public_only', 'true');
   if (params.sort) query.set('sort', params.sort);
   if (params.cursor) query.set('cursor', params.cursor);
   params.spaceIds?.forEach((id) => query.append('space_ids', String(id)));
@@ -924,8 +930,11 @@ export async function fetchSpaceFiles(params: {
   };
 }
 
-export async function fetchKnowledgeSpaces(): Promise<{ data: KnowledgeSpace[]; total: number }> {
-  const data = await request<KnowledgeSpaceListDataDto>('/api/v1/knowledge/spaces');
+export async function fetchKnowledgeSpaces(
+  options: { publicOnly?: boolean } = {},
+): Promise<{ data: KnowledgeSpace[]; total: number }> {
+  const suffix = options.publicOnly ? '?public_only=true' : '';
+  const data = await request<KnowledgeSpaceListDataDto>(`/api/v1/knowledge/spaces${suffix}`);
   return {
     data: data.data.map(mapKnowledgeSpace),
     total: data.total,

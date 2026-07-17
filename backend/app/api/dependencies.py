@@ -48,6 +48,7 @@ async def get_bisheng_client(request: Request) -> BishengClient:
         return request.app.state.bisheng_client
     runtime_service = request.app.state.bisheng_runtime_service
     await _apply_remote_bisheng_runtime_config_if_needed(request, runtime_service)
+    await runtime_service.sync_shared_auth_state()
     return runtime_service.get_client()
 
 

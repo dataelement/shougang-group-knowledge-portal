@@ -1,19 +1,54 @@
 import asyncio
 import base64
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 from app.api.dependencies import get_bisheng_client
+from app.schemas.bisheng_runtime import (
+    BishengRuntimeAuthUser,
+    BishengRuntimeConfigUpdate,
+)
 from app.schemas.portal_admin_config import PortalBishengPersistentConfig
-from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
+from app.services.bisheng_auth_state_store import (
+    BishengSharedAuthState,
+    RedisBishengAuthStateStore,
+)
 from app.services.bisheng_runtime_service import (
     BishengRuntimeService,
     PORTAL_RUNTIME_TOKEN_PURPOSE,
     _decode_jwt_exp,
 )
 from app.services.config_store import InMemoryConfigStore
+
+
+class SharedFakeRedis:
+    def __init__(self):
+        self.values: dict[str, str] = {}
+
+    async def get(self, name: str):
+        return self.values.get(name)
+
+    async def set(self, name: str, value: str, *, ex: int, nx: bool = False):
+        if nx and name in self.values:
+            return False
+        self.values[name] = value
+        return True
+
+    async def delete(self, *names: str):
+        deleted = 0
+        for name in names:
+            if name in self.values:
+                deleted += 1
+                self.values.pop(name, None)
+        return deleted
+
+    async def eval(self, _script: str, _numkeys: int, key: str, owner: str):
+        if self.values.get(key) != owner:
+            return 0
+        return await self.delete(key)
 
 
 class FakeRuntimeBishengClient:
@@ -327,6 +362,230 @@ def test_auth_failure_refresh_reuses_token_refreshed_by_another_request(tmp_path
 
     assert token == fresh
     assert state["login_calls"] == 0
+
+
+def test_shared_auth_state_is_visible_to_another_worker_before_request(tmp_path: Path):
+    redis = SharedFakeRedis()
+    auth_store = RedisBishengAuthStateStore(redis)
+    old_token = _make_fake_jwt(2 * 3600)
+    fresh_token = _make_fake_jwt(24 * 3600)
+    first_path = tmp_path / "worker-1.json"
+    second_path = tmp_path / "worker-2.json"
+    _seed_runtime_config(first_path, api_token=old_token, username="portal-admin")
+    _seed_runtime_config(second_path, api_token=old_token, username="portal-admin")
+    factory, state = _make_scripted_factory()
+    first = BishengRuntimeService(
+        config_path=first_path,
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        default_username="portal-admin",
+        default_password="pwd",
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+        auth_state_store=auth_store,
+    )
+    second = BishengRuntimeService(
+        config_path=second_path,
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        default_username="portal-admin",
+        default_password="pwd",
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+        auth_state_store=auth_store,
+    )
+
+    async def _run():
+        fingerprint = first._config_fingerprint(first._read_config())
+        await auth_store.save(
+            fingerprint,
+            BishengSharedAuthState(
+                access_token=fresh_token,
+                connected=True,
+                auth_message="已连接",
+                auth_user=BishengRuntimeAuthUser(account="portal-admin", name="门户服务账号"),
+                last_auth_at="2026-07-17T10:00:00+00:00",
+                expires_at=time.time() + 24 * 3600,
+                version="worker-1-refresh",
+            ),
+        )
+        await second.sync_shared_auth_state()
+        view = await second.get_shared_public_config()
+        await first.aclose()
+        await second.aclose()
+        return view, second._read_config()
+
+    view, saved = asyncio.run(_run())
+
+    assert saved.api_token == fresh_token
+    assert view.connected is True
+    assert view.auth_user is not None
+    assert view.auth_user.account == "portal-admin"
+    assert state["login_calls"] == 0
+
+
+def test_auth_failure_refresh_is_single_flight_across_workers(tmp_path: Path):
+    redis = SharedFakeRedis()
+    auth_store = RedisBishengAuthStateStore(redis)
+    stale_token = _make_fake_jwt(2 * 3600)
+    fresh_token = _make_fake_jwt(24 * 3600)
+    factory, state = _make_scripted_factory(login_tokens=[fresh_token])
+    services = []
+    for index in range(2):
+        config_path = tmp_path / f"worker-{index}.json"
+        _seed_runtime_config(config_path, api_token=stale_token, username="portal-admin")
+        services.append(
+            BishengRuntimeService(
+                config_path=config_path,
+                default_base_url="http://example.com",
+                default_timeout_seconds=30.0,
+                default_username="portal-admin",
+                default_password="pwd",
+                client_factory=factory,
+                password_encryptor=lambda _pk, _p: "enc",
+                auth_state_store=auth_store,
+                shared_refresh_wait_seconds=1.0,
+                shared_refresh_poll_seconds=0.001,
+            )
+        )
+
+    async def _run():
+        fingerprint = services[0]._config_fingerprint(services[0]._read_config())
+        await auth_store.save(
+            fingerprint,
+            BishengSharedAuthState(
+                access_token=stale_token,
+                connected=True,
+                auth_message="已连接",
+                auth_user=BishengRuntimeAuthUser(account="portal-admin"),
+                last_auth_at="",
+                expires_at=time.time() + 2 * 3600,
+                version="stale",
+            ),
+        )
+        tokens = await asyncio.gather(
+            *(service.refresh_token_after_auth_failure(stale_token) for service in services)
+        )
+        shared = await auth_store.get(fingerprint)
+        for service in services:
+            await service.aclose()
+        return tokens, shared
+
+    tokens, shared = asyncio.run(_run())
+
+    assert tokens == [fresh_token, fresh_token]
+    assert state["login_calls"] == 1
+    assert shared is not None
+    assert shared.access_token == fresh_token
+    assert shared.connected is True
+
+
+def test_stale_worker_cannot_overwrite_newer_shared_token(tmp_path: Path):
+    redis = SharedFakeRedis()
+    auth_store = RedisBishengAuthStateStore(redis)
+    stale_token = _make_fake_jwt(2 * 3600)
+    fresh_token = _make_fake_jwt(24 * 3600)
+    config_path = tmp_path / "worker.json"
+    _seed_runtime_config(config_path, api_token=stale_token, username="portal-admin")
+    factory, _state = _make_scripted_factory()
+    service = BishengRuntimeService(
+        config_path=config_path,
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        default_username="portal-admin",
+        default_password="pwd",
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+        auth_state_store=auth_store,
+    )
+
+    async def _run():
+        fingerprint = service._config_fingerprint(service._read_config())
+        await auth_store.save(
+            fingerprint,
+            BishengSharedAuthState(
+                access_token=fresh_token,
+                connected=True,
+                auth_message="已连接",
+                last_auth_at="2026-07-17T10:00:00+00:00",
+                expires_at=time.time() + 24 * 3600,
+                version="fresh",
+            ),
+        )
+        service._connected = False
+        service._auth_message = "旧请求返回失败"
+        await service._publish_shared_state()
+        shared = await auth_store.get(fingerprint)
+        local = service.get_runtime_config_snapshot()
+        await service.aclose()
+        return shared, local
+
+    shared, local = asyncio.run(_run())
+
+    assert shared is not None
+    assert shared.access_token == fresh_token
+    assert shared.connected is True
+    assert local.api_token == fresh_token
+
+
+def test_shared_auth_refresh_failure_clears_token_for_all_workers(tmp_path: Path):
+    redis = SharedFakeRedis()
+    auth_store = RedisBishengAuthStateStore(redis)
+    stale_token = _make_fake_jwt(2 * 3600)
+    factory, _state = _make_scripted_factory(login_errors=[ValueError("bad credentials")])
+    services = []
+    for index in range(2):
+        config_path = tmp_path / f"worker-{index}.json"
+        _seed_runtime_config(config_path, api_token=stale_token, username="portal-admin")
+        services.append(
+            BishengRuntimeService(
+                config_path=config_path,
+                default_base_url="http://example.com",
+                default_timeout_seconds=30.0,
+                default_username="portal-admin",
+                default_password="pwd",
+                client_factory=factory,
+                password_encryptor=lambda _pk, _p: "enc",
+                auth_state_store=auth_store,
+            )
+        )
+
+    async def _run():
+        fingerprint = services[0]._config_fingerprint(services[0]._read_config())
+        await auth_store.save(
+            fingerprint,
+            BishengSharedAuthState(
+                access_token=stale_token,
+                connected=True,
+                auth_message="已连接",
+                last_auth_at="",
+                expires_at=time.time() + 2 * 3600,
+                version="stale",
+            ),
+        )
+        try:
+            await services[0].refresh_token_after_auth_failure(stale_token)
+        except ValueError as err:
+            message = str(err)
+        else:
+            raise AssertionError("Expected shared refresh failure")
+        await services[1].sync_shared_auth_state()
+        shared = await auth_store.get(fingerprint)
+        second_view = services[1].get_public_config()
+        for service in services:
+            await service.aclose()
+        return message, shared, second_view
+
+    message, shared, second_view = asyncio.run(_run())
+
+    assert "自动重登失败" in message
+    assert "bad credentials" not in message
+    assert shared is not None
+    assert shared.access_token == ""
+    assert shared.connected is False
+    assert shared.auth_user is None
+    assert second_view.has_token is False
+    assert second_view.connected is False
 
 
 # ---------------- 自动续期相关测试 ----------------

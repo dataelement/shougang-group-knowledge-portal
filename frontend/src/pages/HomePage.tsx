@@ -109,6 +109,7 @@ function resolveSectionItemIcon(title: string): string {
 }
 
 const LATEST_SELECTED_RECOMMENDATION = 'latest_selected';
+const TYPICAL_CASE_SECTION_KEY = 'typical_case';
 
 function isLatestSelectedSection(section: SectionConfig): boolean {
   return section.builtin_key === LATEST_SELECTED_RECOMMENDATION;
@@ -128,7 +129,10 @@ function buildSectionMoreLink(section: SectionConfig, recommendationMode?: Recom
     const mode = recommendationMode ?? LATEST_SELECTED_RECOMMENDATION;
     return `/list?recommendation=${mode}&${titleParam}`;
   }
-  return `${section.link}${section.link.includes('?') ? '&' : '?'}${titleParam}`;
+  const publicScopeParam = section.builtin_key === TYPICAL_CASE_SECTION_KEY
+    ? 'public_only=true&'
+    : '';
+  return `${section.link}${section.link.includes('?') ? '&' : '?'}${publicScopeParam}${titleParam}`;
 }
 
 function buildHomeFilePath(file: FileItem, recommendationMode?: RecommendationMode): string {

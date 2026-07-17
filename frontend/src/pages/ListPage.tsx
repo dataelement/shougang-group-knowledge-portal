@@ -66,6 +66,7 @@ export default function ListPage() {
   const filterTag = params.get('filter_tag') || '';
   const titleParam = params.get('title') || '';
   const recommendationParam = params.get('recommendation') || '';
+  const publicOnly = params.get('public_only') === 'true';
   const spaceLevel = params.get('space_level') || '';
   const selectedSpaceFilter = params.get('space_id') || '';
   const fileExt = params.get('file_ext') || '';
@@ -126,12 +127,12 @@ export default function ListPage() {
   );
 
   useEffect(() => {
-    if (!user) {
+    if (!user && !publicOnly) {
       setVisibleSpaces([]);
       return;
     }
     let active = true;
-    void fetchKnowledgeSpaces()
+    void fetchKnowledgeSpaces({ publicOnly })
       .then((res) => {
         if (!active) return;
         setVisibleSpaces(res.data.map((sp) => ({ id: sp.id, name: sp.name, spaceLevel: sp.spaceLevel })));
@@ -142,7 +143,7 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [publicOnly, user]);
 
   const spaceOptions = useMemo<SpaceOption[]>(() => {
     const contextSpaceIds = new Set<number>();
@@ -225,6 +226,7 @@ export default function ListPage() {
       fileSubcategoryCode: fileSubcategoryCode || undefined,
       businessDomainCode: showBusinessDomainFilter ? businessDomainFilter || undefined : undefined,
       recommendation: isRecommendationList ? recommendationParam : undefined,
+      publicOnly,
       sort: isPersonalizedRecommendation
         ? undefined
         : timeSort || (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc'),
@@ -261,6 +263,7 @@ export default function ListPage() {
     isDomainList,
     isPersonalizedRecommendation,
     pageLimit,
+    publicOnly,
     recommendationParam,
     selectedSpaceFilterId,
     showBusinessDomainFilter,
@@ -290,7 +293,7 @@ export default function ListPage() {
           if (active) setAvailableTags(tags);
           return;
         }
-        const tags = await fetchAggregatedTags();
+        const tags = await fetchAggregatedTags(undefined, undefined, undefined, publicOnly);
         if (active) setAvailableTags(tags);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : '标签加载失败');
@@ -299,7 +302,7 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [businessDomainCode, config, isDomainList, listContext, spaceId, spaceIds]);
+  }, [businessDomainCode, config, isDomainList, listContext, publicOnly, spaceId, spaceIds]);
 
   useEffect(() => {
     let active = true;

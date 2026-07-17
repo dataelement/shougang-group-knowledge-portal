@@ -322,6 +322,7 @@ def test_shadow_mode_emits_failure_metric_without_file_metadata(tmp_path: Path, 
         if message == "portal personalized shadow metric":
             shadow_metrics.append(kwargs["extra"])
 
+    monkeypatch.setattr(KnowledgeService, "list_visible_spaces", _visible_spaces)
     monkeypatch.setattr(KnowledgeService, "search_files", search_files)
     monkeypatch.setattr("app.api.routes.knowledge.logger.info", capture_shadow_metric)
     auth = SessionAuthService()
@@ -331,7 +332,6 @@ def test_shadow_mode_emits_failure_metric_without_file_metadata(tmp_path: Path, 
             auth_service=auth,
             session=auth.session,
             portal_config_service=config_service,
-            extra_space_ids=[12],
             baseline_file_keys=[(12, 123)],
         )
     )
