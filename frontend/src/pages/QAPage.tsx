@@ -400,7 +400,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const homeQaAutoSentRef = useRef(false);
-  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint());
+  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint(user?.account));
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
   const knowledgePanelRef = useRef<HTMLDivElement>(null);
@@ -634,6 +634,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const timer = window.setTimeout(() => setComposerTip(''), 2200);
     return () => window.clearTimeout(timer);
   }, [composerTip]);
+
+  // 气泡按用户各自记录:切换账号(登录/退出)后按新用户重新判定是否提示。
+  useEffect(() => {
+    setQaKbHintOpen(shouldShowQaKbHint(user?.account));
+  }, [user?.account]);
 
   // 智能应用问答输入框:随内容自增高,到上限后内部滚动(仅作用于带 data-autogrow 的智能问答输入框)。
   // 覆盖程序化改动(如清空、草稿回填);用户输入时另由 onChange 直接对当前元素调整。
@@ -1198,7 +1203,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                 <button
                   type="button"
                   className={s.kbHintClose}
-                  onClick={() => { dismissQaKbHint(); setQaKbHintOpen(false); }}
+                  onClick={() => { dismissQaKbHint(user?.account); setQaKbHintOpen(false); }}
                   aria-label="关闭提示"
                 >
                   <X size={12} />

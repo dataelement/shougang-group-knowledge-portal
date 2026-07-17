@@ -355,7 +355,7 @@ export default function HomePage() {
   const qaPickerBtnRef = useRef<HTMLButtonElement>(null);
   const qaPickerPanelRef = useRef<HTMLDivElement>(null);
   const [qaPickerPos, setQaPickerPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
-  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint());
+  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint(user?.account));
   const [qaKbHintPos, setQaKbHintPos] = useState<{ left: number; top: number } | null>(null);
 
   const qaGeneralLabel = config?.qa?.general_model_display_name?.trim() || '通用模型';
@@ -589,6 +589,11 @@ export default function HomePage() {
     const timer = window.setTimeout(() => setQaTip(''), 2200);
     return () => window.clearTimeout(timer);
   }, [qaTip]);
+
+  // 气泡按用户各自记录:切换账号(登录/退出)后按新用户重新判定是否提示。
+  useEffect(() => {
+    setQaKbHintOpen(shouldShowQaKbHint(user?.account));
+  }, [user?.account]);
 
   useEffect(() => {
     if (!qaModelMenuOpen && !qaPickerOpen) return undefined;
@@ -999,7 +1004,7 @@ export default function HomePage() {
                               <button
                                 type="button"
                                 className={s.qaKbHintClose}
-                                onClick={() => { dismissQaKbHint(); setQaKbHintOpen(false); }}
+                                onClick={() => { dismissQaKbHint(user?.account); setQaKbHintOpen(false); }}
                                 aria-label="关闭提示"
                               >
                                 <X size={12} />
