@@ -250,8 +250,9 @@ function SmartAppsSidebar({
       </div>
 
       <div className={s.historyList}>
-        {loading ? <div className={s.historyEmpty}>会话加载中...</div> : null}
-        {!loading && HISTORY_GROUP_ORDER.map((group) => {
+        {/* 只有「还没有任何会话可展示」时才显示加载提示;已经有列表时不因后台二次加载把它藏掉(否则会闪) */}
+        {loading && !visibleRecords.length ? <div className={s.historyEmpty}>会话加载中...</div> : null}
+        {HISTORY_GROUP_ORDER.map((group) => {
           const groupRecords = visibleRecords.filter((record) => record.group === group);
           if (groupRecords.length === 0) return null;
           return (
