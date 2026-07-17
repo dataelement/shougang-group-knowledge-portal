@@ -1072,7 +1072,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               <span>正在加载会话...</span>
             </div>
           ) : null}
-          {!activeSessionLoading && activeSession.messages.length === 0 ? (
+          {/* 从首页问答自动发送跳转过来时,消息马上就会到,不显示空会话提示 */}
+          {!activeSessionLoading && !homeQaAutoSending && activeSession.messages.length === 0 ? (
             <div className={s.emptyConversation}>
               <Bot size={18} />
               <span>当前会话暂无历史消息，请输入问题继续对话。</span>
