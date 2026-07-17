@@ -340,7 +340,9 @@ export default function AppsPage() {
   const [selectedUrlApplicationId, setSelectedUrlApplicationId] = useState('');
   const [selectedAgentConversationId, setSelectedAgentConversationId] = useState('');
   const [agentWorkflowConversations, setAgentWorkflowConversations] = useState<AgentWorkflowConversation[]>([]);
-  const [loadingAgentWorkflowConversations, setLoadingAgentWorkflowConversations] = useState(false);
+  // 初始即为 true:该加载要等 config / agent 列表就绪后才启动,若从 false 起步,
+  // 会话列表会先渲染出来、随后被这里翻回 true 又整个藏起来(闪一下)。保持单调 true→false。
+  const [loadingAgentWorkflowConversations, setLoadingAgentWorkflowConversations] = useState(true);
   const [activeAgentRecordId, setActiveAgentRecordId] = useState('');
   const [agentLaunchKey, setAgentLaunchKey] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(false);
@@ -449,7 +451,13 @@ export default function AppsPage() {
     : '';
 
   useEffect(() => {
-    if (configLoading || configError || loadingAgentWorkflows || agentWorkflowsError) return undefined;
+    // 还在等前置数据:保持加载态,等它们就绪后本 effect 会再跑
+    if (configLoading || loadingAgentWorkflows) return undefined;
+    // 前置数据出错:别把加载态永远挂着,否则会话列表一直不显示
+    if (configError || agentWorkflowsError) {
+      setLoadingAgentWorkflowConversations(false);
+      return undefined;
+    }
     const enabledWorkflowAgents = enabledAgents.filter((agent) => agent.type === 'workflow');
     if (!enabledWorkflowAgents.length) {
       setAgentWorkflowConversations([]);
