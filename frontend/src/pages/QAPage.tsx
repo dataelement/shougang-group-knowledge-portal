@@ -400,6 +400,12 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const homeQaAutoSentRef = useRef(false);
+  // 首帧就识别「从首页智能问答跳转过来、要自动发送」:effect 跑在首次绘制之后,
+  // 若等到 effect 再置位,模板落地页会先闪一下。这里同步读 URL,直接进会话态 + 遮罩。
+  const [homeQaAutoSending, setHomeQaAutoSending] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('autosend') === '1';
+  });
   const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint(user?.account));
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
@@ -417,7 +423,9 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   });
   const hasConversation = Boolean(activeSession.conversationId)
     || activeSession.messages.some((msg) => msg.role === 'user')
-    || streaming;
+    || streaming
+    // 自动发送期间直接按会话态渲染,避免先展示模板落地页再跳成会话
+    || homeQaAutoSending;
   const activeSessionLoading = loadingSessionId === activeSession.id;
   const answerMode = activeSession.answerMode;
   const generalModelChoice = modelChoices.find((choice) => choice.typeLabel === '通用模型');
@@ -451,7 +459,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const draft = hasDraft ? readHomeQaDraft() : null;
     const q = (draft?.keyword ?? params.get('q') ?? '').trim();
     const draftAttachments = draft?.attachments ?? [];
-    if (!q && !draftAttachments.length) return;
+    if (!q && !draftAttachments.length) {
+      // 没有可发送内容(如草稿丢失):撤掉遮罩,回到正常的模板落地页
+      setHomeQaAutoSending(false);
+      return;
+    }
     const autosend = params.get('autosend') === '1';
 
     const draftAnswerMode: AnswerMode = draft?.answerMode ?? 'normal';
@@ -467,6 +479,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     };
 
     if (!autosend) {
+      setHomeQaAutoSending(false);
       setInput(q);
       if (draft) {
         setSessions((prev) => prev.map((ss) => (ss.id === activeId ? { ...ss, answerMode: draftAnswerMode } : ss)));
@@ -499,7 +512,16 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       const allSpaceIds = availableSpaces.map((space) => space.id);
       sendMessage({ text: q, allSpaceIds, files: draftAttachments, answerMode: draftAnswerMode });
     }
+    // 已发出:消息已入会话,撤掉遮罩交给正常的会话视图
+    setHomeQaAutoSending(false);
   }, [location.search, location.pathname, location.hash, navigate, knowledgeSpacesLoaded, generalModelChoice, reasoningModelChoice, availableSpaces]);
+
+  // 安全兜底:遮罩最多 12 秒,避免模型/知识库异常时永久卡住
+  useEffect(() => {
+    if (!homeQaAutoSending) return undefined;
+    const timer = window.setTimeout(() => setHomeQaAutoSending(false), 12000);
+    return () => window.clearTimeout(timer);
+  }, [homeQaAutoSending]);
 
   useEffect(() => {
     if (!pendingTemplateId || !templatesLoaded) return;
