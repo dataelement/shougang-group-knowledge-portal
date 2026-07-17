@@ -452,7 +452,6 @@ export default function SearchPage() {
     setLoadMoreError('');
     setRawFiles([]);
     setFiles([]);
-    setVisibleLimit(pageLimit);
     setHasMore(false);
     setNextCursor(null);
     setAiText('');
@@ -472,7 +471,12 @@ export default function SearchPage() {
       .finally(() => {
         if (requestSeq.current === currentRequest) setLoading(false);
       });
-  }, [keywordMode, keywordSort, pageLimit, q]);
+  }, [keywordMode, keywordSort, q]);
+
+  useEffect(() => {
+    if (!keywordMode) return;
+    setVisibleLimit(pageLimit);
+  }, [keywordMode, pageLimit]);
 
   useEffect(() => {
     if (keywordMode) return;
