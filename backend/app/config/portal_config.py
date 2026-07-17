@@ -251,8 +251,8 @@ DEFAULT_PORTAL_CONFIG = {
         },
         {
             "title": "典型案例 · 事故分析",
-            "tag": "典型案例",
-            "link": "/list?tag=典型案例",
+            "tag": "行业情报",
+            "link": "/list?tag=行业情报",
             "icon": "AlertTriangle",
             "builtin_key": "typical_case",
             "color": "#dc2626",

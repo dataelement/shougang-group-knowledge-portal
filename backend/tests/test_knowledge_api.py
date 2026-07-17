@@ -3139,16 +3139,19 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
     class RecommendationBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
-            if path == "/api/v1/knowledge/shougang-portal/files/browse":
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
                 assert json == {
+                    "q": None,
                     "tag": None,
-                    "space_ids": [12, 18, 25],
+                    "space_ids": [],
                     "space_level": "public",
                     "file_ext": None,
                     "sort": "portal_read_count_desc",
                     "cursor": None,
                     "limit": 5,
                     "recommendation": "latest_selected",
+                    "rerank_model_id": "",
+                    "public_only": True,
                 }
                 return {
                     "data": {
@@ -3190,6 +3193,56 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
     assert body["data"][0]["space_id"] == 12
     assert body["data"][0]["file_subcategory_code"] == "RPT"
     assert fake_bisheng.post_calls[0][1]["tag"] is None
+
+
+def test_logged_in_latest_selected_does_not_resolve_visible_spaces(tmp_path: Path):
+    class PublicLatestBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/space/grouped":
+                raise AssertionError("latest_selected must not resolve the user's visible spaces")
+            return await super().get_json(path, params=params, headers=headers)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": None,
+                    "tag": None,
+                    "space_ids": [],
+                    "space_level": "public",
+                    "file_ext": None,
+                    "sort": "portal_read_count_desc",
+                    "cursor": None,
+                    "limit": 5,
+                    "recommendation": "latest_selected",
+                    "public_only": True,
+                    "rerank_model_id": "",
+                }
+                return {
+                    "data": {
+                        "data": [self._portal_file_1580()],
+                        "has_more": False,
+                        "next_cursor": None,
+                    }
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = PublicLatestBishengClient()
+    with TestClient(app) as client:
+        previous_auth = client.app.state.portal_auth_service
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.get(
+                "/api/v1/knowledge/files?recommendation=latest_selected"
+                "&sort=portal_read_count_desc&limit=5"
+            )
+        finally:
+            client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert response.json()["data"]["data"][0]["space_id"] == 12
 
 
 def test_search_files_does_not_fallback_to_public_spaces_when_flag_is_present(tmp_path: Path):
@@ -3546,16 +3599,19 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
     class HomeBuiltinSearchBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
-            if path == "/api/v1/knowledge/shougang-portal/files/browse":
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
                 if json == {
+                    "q": None,
                     "tag": None,
-                    "space_ids": [12, 18, 25],
+                    "space_ids": [],
                     "space_level": "public",
                     "file_ext": None,
                     "sort": "portal_read_count_desc",
                     "cursor": None,
                     "limit": 6,
                     "recommendation": "latest_selected",
+                    "rerank_model_id": "",
+                    "public_only": True,
                 }:
                     return {
                         "data": {
@@ -3577,8 +3633,10 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
                             "next_cursor": None,
                         }
                     }
+                raise AssertionError(f"Unexpected portal file search request: {json}")
+            if path == "/api/v1/knowledge/shougang-portal/files/browse":
                 if json == {
-                    "tag": "典型案例",
+                    "tag": "行业情报",
                     "space_ids": [12, 18, 25],
                     "space_level": "public",
                     "file_ext": None,
@@ -3606,7 +3664,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
                             "next_cursor": None,
                         }
                     }
-                raise AssertionError(f"Unexpected portal file search request: {json}")
+                raise AssertionError(f"Unexpected portal file browse request: {json}")
             if path == "/api/v1/knowledge/shougang-portal/home":
                 raise AssertionError("builtin latest selected and typical case should not use home batch endpoint")
             if path == "/api/v1/knowledge/shougang-portal/tags/search":
@@ -3626,6 +3684,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_home_cache_service = PortalHomeCacheService()
         response = client.get("/api/v1/knowledge/home")
 
     assert response.status_code == 200
@@ -3633,26 +3692,29 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
     sections, done = _parse_home_sse(response)
     assert done is True
     assert sections["知识推荐"][0]["space_id"] == 12
-    assert sections["典型案例"][0]["id"] == 1590
-    assert sections["典型案例"][0]["space_id"] == 18
+    assert sections["行业情报"][0]["id"] == 1590
+    assert sections["行业情报"][0]["space_id"] == 18
     # latest_selected section is fetched via the portal file-search endpoint with the recommendation flag
     assert (
-        "/api/v1/knowledge/shougang-portal/files/browse",
+        "/api/v1/knowledge/shougang-portal/files/search",
         {
+            "q": None,
             "tag": None,
-            "space_ids": [12, 18, 25],
+            "space_ids": [],
             "space_level": "public",
             "file_ext": None,
             "sort": "portal_read_count_desc",
             "cursor": None,
             "limit": 6,
             "recommendation": "latest_selected",
+            "rerank_model_id": "",
+            "public_only": True,
         },
     ) in fake_bisheng.post_calls
     assert (
         "/api/v1/knowledge/shougang-portal/files/browse",
         {
-            "tag": "典型案例",
+            "tag": "行业情报",
             "space_ids": [12, 18, 25],
             "space_level": "public",
             "file_ext": None,
@@ -3665,24 +3727,26 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
     assert all(path != "/api/v1/knowledge/shougang-portal/tags/search" for path, _ in fake_bisheng.post_calls)
 
 
-def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_path: Path):
+def test_get_home_content_uses_public_latest_and_visible_spaces_for_other_sections(tmp_path: Path):
     class LoggedHomeBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
-            if path == "/api/v1/knowledge/shougang-portal/files/browse":
-                assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
                 if json.get("recommendation") == "latest_selected":
+                    assert json["space_ids"] == []
+                    assert json["space_level"] == "public"
+                    assert json["public_only"] is True
                     assert json["tag"] is None
                     assert json["sort"] == "portal_read_count_desc"
                     return {
                         "data": {
                             "data": [
                                 {
-                                    "id": 710101,
-                                    "space_id": 7101,
-                                    "title": "登录用户可见热门文档",
-                                    "summary": "用户可见空间内的热门文档",
-                                    "source": "冷轧设备故障复盘库",
+                                    "id": 1580,
+                                    "space_id": 12,
+                                    "title": "公共库热门文档",
+                                    "summary": "公共知识库内的热门文档",
+                                    "source": "轧线技术案例库",
                                     "updated_at": "2026-04-26T09:20:00",
                                     "tags": ["设备"],
                                     "file_ext": "pdf",
@@ -3694,7 +3758,10 @@ def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_
                             "next_cursor": None,
                         }
                     }
-                if json.get("tag") == "典型案例":
+                raise AssertionError(f"Unexpected portal file search request: {json}")
+            if path == "/api/v1/knowledge/shougang-portal/files/browse":
+                if json.get("tag") == "行业情报":
+                    assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
                     assert json.get("recommendation") is None
                     assert json["sort"] == "updated_at_desc"
                     return {
@@ -3717,7 +3784,7 @@ def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_
                             "next_cursor": None,
                         }
                     }
-                raise AssertionError(f"Unexpected portal file search request: {json}")
+                raise AssertionError(f"Unexpected portal file browse request: {json}")
             if path == "/api/v1/knowledge/shougang-portal/home":
                 raise AssertionError("builtin latest selected and typical case should not use home batch endpoint")
             if path == "/api/v1/knowledge/shougang-portal/tags/search":
@@ -3732,6 +3799,7 @@ def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_config_service = config_service
         client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        client.app.state.portal_home_cache_service = PortalHomeCacheService()
         try:
             response = client.get("/api/v1/knowledge/home")
         finally:
@@ -3742,8 +3810,8 @@ def test_get_home_content_uses_logged_in_visible_spaces_for_latest_selected(tmp_
     assert response.headers["content-type"].startswith("text/event-stream")
     sections, done = _parse_home_sse(response)
     assert done is True
-    assert sections["最新精选"][0]["space_id"] == 7101
-    assert sections["典型案例"][0]["space_id"] == 7102
+    assert sections["最新精选"][0]["space_id"] == 12
+    assert sections["行业情报"][0]["space_id"] == 7102
 
 
 def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path):
@@ -4072,9 +4140,9 @@ def test_iter_home_content_streams_sections_in_completion_order(tmp_path: Path):
         return emitted
 
     tags_in_order = asyncio.run(collect())
-    assert set(tags_in_order) == {"最新精选", "典型案例"}
+    assert set(tags_in_order) == {"最新精选", "行业情报"}
     # The fast typical_case section is emitted before the slow latest_selected one.
-    assert tags_in_order.index("典型案例") < tags_in_order.index("最新精选")
+    assert tags_in_order.index("行业情报") < tags_in_order.index("最新精选")
 
 
 def test_keyword_search_route_uses_dedicated_top_50_contract(tmp_path: Path):

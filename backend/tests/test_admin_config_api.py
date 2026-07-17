@@ -10,12 +10,14 @@ from app.main import app
 from app.schemas.auth import PortalUserView
 from app.schemas.portal_config import DomainsConfigUpdate, PortalConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
+from app.services.config_store import InMemoryConfigStore
 from app.services.portal_auth_service import PortalAuthError
 from app.services.portal_config_service import PortalConfigService
 
 
 class FakeBishengClient:
     def __init__(self):
+        self.get_calls: list[str] = []
         self.post_calls: list[tuple[str, dict | None]] = []
         self.put_calls: list[tuple[str, dict | None]] = []
         self.delete_calls: list[int] = []
@@ -26,6 +28,7 @@ class FakeBishengClient:
         self.departments: list[dict] = [{"id": 3, "name": "研发部", "children": []}]
 
     async def get_json(self, path: str, params=None):
+        self.get_calls.append(path)
         if path == "/api/v1/workstation/config":
             return {
                 "data": {
@@ -136,6 +139,29 @@ class FakeBishengClient:
                     "id": space_id,
                     "name": f"空间{space_id}",
                     "file_num": space_id + 1,
+                }
+            }
+        if path == "/api/v1/knowledge/shougang-portal/spaces/domain-bindable":
+            return {
+                "data": {
+                    "spaces": [
+                        {
+                            "id": 19,
+                            "name": "公共知识空间",
+                            "description": "测试空间",
+                            "file_num": 0,
+                            "space_level": "public",
+                            "business_domain_codes": [],
+                        },
+                        {
+                            "id": 20,
+                            "name": "部门知识空间",
+                            "description": "部门空间",
+                            "file_num": 0,
+                            "space_level": "department",
+                            "business_domain_codes": ["QM"],
+                        },
+                    ]
                 }
             }
         if path == "/api/v1/knowledge/space/grouped":
@@ -1391,10 +1417,13 @@ def test_post_admin_sections_persists_icon_and_color_fields(tmp_path: Path):
     body = response.json()
     assert body["data"]["sections"][0]["icon"] == "Star"
     assert body["data"]["sections"][0]["builtin_key"] == "latest_selected"
+    assert body["data"]["sections"][0]["tag"] == "最新精选"
     assert body["data"]["sections"][0]["link"] == "/list?recommendation=latest_selected"
     assert body["data"]["sections"][0]["color"] == "#2563eb"
     assert body["data"]["sections"][0]["bg"] == "#eff6ff"
     assert body["data"]["sections"][1]["builtin_key"] == "typical_case"
+    assert body["data"]["sections"][1]["tag"] == "行业情报"
+    assert body["data"]["sections"][1]["link"] == "/list?tag=行业情报"
     assert service.get_config().sections[0].color == "#2563eb"
     assert service.get_config().sections[0].bg == "#eff6ff"
 
@@ -1416,7 +1445,41 @@ def test_post_admin_sections_keeps_builtin_sections_when_payload_deletes_them(tm
     sections = response.json()["data"]["sections"]
     assert [section["builtin_key"] for section in sections[:2]] == ["latest_selected", "typical_case"]
     assert sections[0]["title"] == "知识推荐 · 最新精选"
+    assert sections[0]["tag"] == "最新精选"
+    assert sections[0]["link"] == "/list?recommendation=latest_selected"
     assert sections[1]["title"] == "典型案例 · 事故分析"
+    assert sections[1]["tag"] == "行业情报"
+    assert sections[1]["link"] == "/list?tag=行业情报"
+
+
+def test_get_admin_config_normalizes_builtin_section_tags_and_links(tmp_path: Path):
+    store = InMemoryConfigStore()
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json", store=store)
+    stored_config = service.get_config().model_dump(mode="json")
+    latest_selected = next(
+        section for section in stored_config["sections"] if section["builtin_key"] == "latest_selected"
+    )
+    typical_case = next(
+        section for section in stored_config["sections"] if section["builtin_key"] == "typical_case"
+    )
+    latest_selected["tag"] = "行业情报"
+    latest_selected["link"] = "/list?tag=行业情报"
+    typical_case["tag"] = "知识推荐"
+    typical_case["link"] = "/list?tag=知识推荐"
+    store.upsert_document("portal_config", stored_config)
+
+    normalized = service.get_config()
+    normalized_latest_selected = next(
+        section for section in normalized.sections if section.builtin_key == "latest_selected"
+    )
+    normalized_typical_case = next(
+        section for section in normalized.sections if section.builtin_key == "typical_case"
+    )
+
+    assert normalized_latest_selected.tag == "最新精选"
+    assert normalized_latest_selected.link == "/list?recommendation=latest_selected"
+    assert normalized_typical_case.tag == "行业情报"
+    assert normalized_typical_case.link == "/list?tag=行业情报"
 
 
 def test_get_admin_qa_model_options_uses_bisheng_model_management_list(tmp_path: Path):
@@ -1517,7 +1580,7 @@ def test_get_admin_qa_model_options_keeps_saved_display_names_when_model_list_fa
     assert body["models"] == []
 
 
-def test_get_admin_space_options_uses_bisheng_visible_space_list(tmp_path: Path):
+def test_get_admin_space_options_uses_domain_bindable_space_list(tmp_path: Path):
     service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     runtime_service = create_runtime_service(tmp_path)
     bisheng_client = FakeBishengClient()
@@ -1535,7 +1598,7 @@ def test_get_admin_space_options_uses_bisheng_visible_space_list(tmp_path: Path)
                 "id": 19,
                 "name": "公共知识空间",
                 "description": "测试空间",
-                "file_count": 20,
+                "file_count": 0,
                 "space_level": "public",
                 "business_domain_codes": [],
             },
@@ -1543,13 +1606,16 @@ def test_get_admin_space_options_uses_bisheng_visible_space_list(tmp_path: Path)
                 "id": 20,
                 "name": "部门知识空间",
                 "description": "部门空间",
-                "file_count": 30,
+                "file_count": 0,
                 "space_level": "department",
                 "business_domain_codes": ["QM"],
             }
         ]
     }
     assert bisheng_client.post_calls == []
+    assert bisheng_client.get_calls == [
+        "/api/v1/knowledge/shougang-portal/spaces/domain-bindable"
+    ]
 
 
 def test_get_admin_space_files_uses_bisheng_file_list(tmp_path: Path):
@@ -1575,7 +1641,9 @@ def test_get_admin_space_files_uses_bisheng_file_list(tmp_path: Path):
 def test_admin_config_endpoints_fail_soft_when_bisheng_is_unauthorized(tmp_path: Path):
     class UnauthorizedBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None):
+            self.get_calls.append(path)
             if path in {
+                "/api/v1/knowledge/shougang-portal/spaces/domain-bindable",
                 "/api/v1/knowledge/space/grouped",
                 "/api/v1/knowledge",
                 "/api/v1/llm",
@@ -1597,6 +1665,10 @@ def test_admin_config_endpoints_fail_soft_when_bisheng_is_unauthorized(tmp_path:
 
     assert space_options_response.status_code == 200
     assert space_options_response.json()["data"]["options"] == []
+    assert "/api/v1/knowledge/shougang-portal/spaces/domain-bindable" in (
+        client.app.state.bisheng_client.get_calls
+    )
+    assert "/api/v1/knowledge/space/grouped" not in client.app.state.bisheng_client.get_calls
 
     assert model_options_response.status_code == 200
     model_options = model_options_response.json()["data"]

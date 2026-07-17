@@ -51,7 +51,10 @@ test('business domain tree wires indeterminate state to checkbox and accessibili
 });
 
 test('validate requires both', () => {
-  assert.ok(validateBindingDraft({ spaceId: null, departmentId: 3 }));
+  assert.equal(
+    validateBindingDraft({ spaceId: null, departmentId: 3 }),
+    '请选择要绑定的团队/科室知识库',
+  );
   assert.ok(validateBindingDraft({ spaceId: 10, departmentId: null }));
   assert.equal(validateBindingDraft({ spaceId: 10, departmentId: 3 }), null);
 });
