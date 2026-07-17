@@ -414,22 +414,24 @@ class KnowledgeService:
             sections.append(payload)
         return sections
 
-    async def fetch_hot_searches(
-        self,
-        extra_space_ids: Optional[list[int]] = None,
-    ) -> list[PortalHotSearchItem]:
+    async def fetch_hot_searches(self) -> list[PortalHotSearchItem]:
         config = self._config_service.get_config()
         try:
-            space_ids = await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
             response = await self._bisheng.post_json(
                 "/api/v1/knowledge/shougang-portal/home",
                 json={
-                    "space_ids": space_ids,
+                    "space_ids": [],
                     "space_level": None,
                     "sections": self._build_home_batch_sections(),
                     "hot_tags_limit": config.display.home.hot_tags_count,
                 },
             )
+            if isinstance(response, dict) and response.get("detail") and not response.get("data"):
+                logger.warning(
+                    "BiSheng home batch returned error payload for hot searches: %s",
+                    response.get("detail"),
+                )
+                return []
             data = self._extract_success_data(response)
         except Exception:
             logger.exception("failed to fetch portal hot searches from BiSheng home batch endpoint")
@@ -2253,17 +2255,21 @@ class KnowledgeService:
     @staticmethod
     def _extract_success_data(response: dict[str, Any]) -> Any:
         status_code = response.get("status_code")
-        if status_code not in (None, 200):
+        normalized_status_code: int | None
+        if status_code is None:
+            normalized_status_code = None
+        else:
             try:
-                numeric_status_code = int(status_code)
+                normalized_status_code = int(status_code)
             except (TypeError, ValueError):
-                numeric_status_code = None
+                normalized_status_code = None
+        if normalized_status_code is not None and normalized_status_code != 200:
             raise BishengBusinessError(
-                numeric_status_code or 502,
+                normalized_status_code or 502,
                 normalize_user_facing_message(
                     response.get("status_message"),
                     fallback="BiSheng 请求失败",
-                    status_code=numeric_status_code,
+                    status_code=normalized_status_code,
                 ),
             )
         return response.get("data") or {}

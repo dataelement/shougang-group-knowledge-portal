@@ -322,6 +322,7 @@ export default function HomePage() {
   const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [hotSearches, setHotSearches] = useState<PortalHotSearchItem[]>([]);
+  const [hotSearchesReady, setHotSearchesReady] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
   const [domainCountsLoading, setDomainCountsLoading] = useState(true);
@@ -698,10 +699,11 @@ export default function HomePage() {
     const items = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
     return items.slice(0, displayConfig.home.hotTagsCount);
   }, [config?.qa.hot_questions, displayConfig.home.hotTagsCount]);
-  const displayHotQueries = useMemo(
-    () => (hotSearches.length > 0 ? hotSearches.map((item) => item.query) : qaHotQuestions),
-    [hotSearches, qaHotQuestions],
-  );
+  const displayHotQueries = useMemo(() => {
+    if (!hotSearchesReady) return [];
+    if (hotSearches.length > 0) return hotSearches.map((item) => item.query);
+    return qaHotQuestions;
+  }, [hotSearches, hotSearchesReady, qaHotQuestions]);
 
   useEffect(() => {
     let active = true;
@@ -711,6 +713,8 @@ export default function HomePage() {
         if (active) setHotSearches(items);
       } catch {
         if (active) setHotSearches([]);
+      } finally {
+        if (active) setHotSearchesReady(true);
       }
     })();
     return () => {

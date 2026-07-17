@@ -814,14 +814,21 @@ async def get_hot_searches(
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
-    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
-        request=request,
-        auth_service=auth_service,
-        bisheng_client=bisheng_client,
-        portal_config_service=portal_config_service,
-    )
+    """Fetch tenant hot searches; prefer the logged-in user's BiSheng token when available."""
+    session = await get_portal_session(auth_service, request)
+    active_client = bisheng_client
+    client_to_close: BishengClient | None = None
+    if session is not None:
+        active_client = auth_service.create_bisheng_client(session)
+        client_to_close = active_client
+
     try:
-        hot_searches = await service.fetch_hot_searches(extra_space_ids=extra_space_ids)
+        service = KnowledgeService(
+            bisheng_client=active_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        hot_searches = await service.fetch_hot_searches()
         return response_ok(
             {
                 "hot_searches": [

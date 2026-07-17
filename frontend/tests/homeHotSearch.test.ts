@@ -13,6 +13,8 @@ test('hot search API reads BiSheng-backed endpoint', () => {
 test('home page falls back to qa.hot_questions when auto hot search is empty', () => {
   assert.match(homeSource, /fetchHotSearches\(\)/);
   assert.match(homeSource, /config\?\.qa\.hot_questions/);
-  assert.match(homeSource, /hotSearches\.length > 0 \? hotSearches\.map/);
+  assert.match(homeSource, /hotSearchesReady/);
+  assert.match(homeSource, /if \(!hotSearchesReady\) return \[\]/);
+  assert.match(homeSource, /if \(hotSearches\.length > 0\) return hotSearches\.map/);
   assert.match(homeSource, /showHotSearch = searchTab === 'global' && displayHotQueries\.length > 0/);
 });
