@@ -124,6 +124,11 @@ export interface HomeStats {
   qaCount: number;
 }
 
+export interface PortalHotSearchItem {
+  rank: number;
+  query: string;
+}
+
 export type ShareDocumentType = 'link' | 'invite_code';
 export type ShareDocumentVisibility = 'department' | 'public';
 
@@ -793,6 +798,14 @@ export async function fetchHomeStats(): Promise<HomeStats> {
     favoriteCount: data.favorite_count ?? 0,
     qaCount: data.qa_count ?? 0,
   };
+}
+
+export async function fetchHotSearches(): Promise<PortalHotSearchItem[]> {
+  const data = await request<{ hot_searches?: PortalHotSearchItem[] }>('/api/v1/knowledge/hot-searches');
+  return (data.hot_searches ?? [])
+    .filter((item) => item.query?.trim())
+    .sort((left, right) => left.rank - right.rank)
+    .slice(0, 5);
 }
 
 export async function fetchSpaceTags(spaceId: number): Promise<string[]> {

@@ -804,6 +804,34 @@ async def get_home_stats(
     return response_ok(data)
 
 
+@router.get("/hot-searches")
+async def get_hot_searches(
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request=request,
+        auth_service=auth_service,
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+    )
+    try:
+        hot_searches = await service.fetch_hot_searches(extra_space_ids=extra_space_ids)
+        return response_ok(
+            {
+                "hot_searches": [
+                    item.model_dump(mode="json")
+                    for item in hot_searches
+                ],
+            }
+        )
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
+
+
 @router.get("/config")
 async def get_portal_config(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),

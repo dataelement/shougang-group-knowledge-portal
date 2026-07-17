@@ -260,6 +260,11 @@ class FilePreviewData(BaseModel):
     preview_url: str
 
 
+class PortalHotSearchItem(BaseModel):
+    rank: int = Field(ge=1, le=5)
+    query: str = Field(min_length=1)
+
+
 PortalSearchEntryPoint = Literal["search_page", "home_hot_keyword"]
 PortalPreviewEntryPoint = Literal[
     "home_recommendation",

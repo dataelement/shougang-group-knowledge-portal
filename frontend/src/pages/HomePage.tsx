@@ -16,6 +16,7 @@ import {
   streamHomeContent,
   fetchDomainFileCounts,
   fetchHomeStats,
+  fetchHotSearches,
   fetchQaKnowledgeTreeSpaces,
   fetchQaKnowledgeTreeChildren,
   fetchQaKnowledgeFolderStats,
@@ -26,6 +27,7 @@ import {
   type FileItem,
   type HomeStats,
   type KnowledgeSpace,
+  type PortalHotSearchItem,
   type QaKnowledgeScope,
   type RecommendationMode,
 } from '../api/content';
@@ -315,6 +317,7 @@ export default function HomePage() {
   const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
   const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
+  const [hotSearches, setHotSearches] = useState<PortalHotSearchItem[]>([]);
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
   const [domainCountsLoading, setDomainCountsLoading] = useState(true);
@@ -685,6 +688,25 @@ export default function HomePage() {
 
   useEffect(() => {
     let active = true;
+    void (async () => {
+      try {
+        const items = await fetchHotSearches();
+        if (active) setHotSearches(items);
+      } catch {
+        if (active) setHotSearches([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hotSearches.length) setShowHotTagMenu(false);
+  }, [hotSearches.length]);
+
+  useEffect(() => {
+    let active = true;
     if (!config) return () => {
       active = false;
     };
@@ -740,8 +762,7 @@ export default function HomePage() {
   }));
   const homeSections = enabledSections.slice(0, 3);
   const contentSections = homeSections;
-  const qaHotQuestionsTemp = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
-  const qaHotQuestions = qaHotQuestionsTemp?.slice(0, displayConfig.home.hotTagsCount) || [];
+  const showHotSearch = searchTab === 'global' && hotSearches.length > 0;
 
   const appEntryItems = (config?.qa.templates || []).filter((template) => template.enabled && template.show_on_home);
   const formatHomeStat = (value: number | undefined): string => {
@@ -857,7 +878,7 @@ export default function HomePage() {
                 </div>
               ) : null}
               <div className={s.searchBoxBar}>
-                {searchTab === 'global' ? (
+                {showHotSearch ? (
                   <button
                     type="button"
                     className={`${s.searchModeBtn} ${showHotTagMenu ? s.searchModeBtnActive : ''}`}
@@ -866,9 +887,11 @@ export default function HomePage() {
                     onClick={() => setShowHotTagMenu((open) => !open)}
                   >
                     <img src={iconHot} alt="" className={s.searchModeIcon} />
-                    <span>热门搜索</span>
+                    <span>热搜</span>
                     <ChevronRight size={10} className={s.searchModeCaret} />
                   </button>
+                ) : searchTab === 'global' ? (
+                  <span />
                 ) : (
                   <div className={s.qaToolbar}>
                     <input
@@ -994,30 +1017,27 @@ export default function HomePage() {
                 </button>
               </div>
             </div>
-            {showHotTagMenu ? (
+            {showHotTagMenu && showHotSearch ? (
               <div id="home-hot-tag-menu" className={s.hotSearchMenu}>
-                {qaHotQuestions.length > 0 ? (
-                  <div className={s.hotSearchTags}>
-                    {qaHotQuestions.map((question) => (
-                      <button
-                        key={question}
-                        type="button"
-                        className={s.hotSearchTag}
-                        onClick={() => {
-                          setShowHotTagMenu(false);
-                          if (user) {
-                            void recordPortalSearchEvent(question, 'home_hot_keyword').catch(() => undefined);
-                          }
-                          navigate(`/search?q=${encodeURIComponent(question)}`);
-                        }}
-                      >
-                        <span className={s.hotSearchTagText}>{question}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className={s.hotSearchEmpty}>暂无热门问题</div>
-                )}
+                <div className={s.hotSearchTags}>
+                  {hotSearches.map((item) => (
+                    <button
+                      key={`${item.rank}-${item.query}`}
+                      type="button"
+                      className={s.hotSearchTag}
+                      onClick={() => {
+                        setShowHotTagMenu(false);
+                        setQuery(item.query);
+                        if (user) {
+                          void recordPortalSearchEvent(item.query, 'home_hot_keyword').catch(() => undefined);
+                        }
+                        navigate(`/search?q=${encodeURIComponent(item.query)}`);
+                      }}
+                    >
+                      <span className={s.hotSearchTagText}>{item.query}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>

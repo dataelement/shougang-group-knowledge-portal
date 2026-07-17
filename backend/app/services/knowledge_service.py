@@ -49,6 +49,7 @@ from app.schemas.knowledge import (
     ShareDocumentData,
     ShareDocumentMeta,
     ShareDocumentRequest,
+    PortalHotSearchItem,
 )
 from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_config_service import PortalConfigService
@@ -380,6 +381,64 @@ class KnowledgeService:
                     task.cancel()
             if space_ids_task is not None and not space_ids_task.done():
                 space_ids_task.cancel()
+
+    def _build_home_batch_sections(self) -> list[dict[str, Any]]:
+        config = self._config_service.get_config()
+        sections: list[dict[str, Any]] = []
+        for index, section in enumerate(config.sections):
+            if not section.enabled or not section.tag:
+                continue
+            payload: dict[str, Any] = {
+                "tag": section.tag,
+                "page_size": config.display.home.section_page_size,
+            }
+            if self._is_latest_selected_section(section, index):
+                payload["recommendation"] = LATEST_SELECTED_RECOMMENDATION
+            sections.append(payload)
+        return sections
+
+    async def fetch_hot_searches(
+        self,
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[PortalHotSearchItem]:
+        config = self._config_service.get_config()
+        try:
+            space_ids = await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
+            response = await self._bisheng.post_json(
+                "/api/v1/knowledge/shougang-portal/home",
+                json={
+                    "space_ids": space_ids,
+                    "space_level": None,
+                    "sections": self._build_home_batch_sections(),
+                    "hot_tags_limit": config.display.home.hot_tags_count,
+                },
+            )
+            data = self._extract_success_data(response)
+        except Exception:
+            logger.exception("failed to fetch portal hot searches from BiSheng home batch endpoint")
+            return []
+
+        raw_items = data.get("hot_searches") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            return []
+
+        items: list[PortalHotSearchItem] = []
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+            query = str(raw.get("query") or "").strip()
+            if not query:
+                continue
+            try:
+                rank = int(raw.get("rank") or 0)
+            except (TypeError, ValueError):
+                continue
+            if rank < 1:
+                continue
+            items.append(PortalHotSearchItem(rank=rank, query=query))
+
+        items.sort(key=lambda item: item.rank)
+        return items[:5]
 
     async def list_visible_spaces(self) -> KnowledgeSpaceListData:
         grouped_spaces = await self._fetch_grouped_spaces()

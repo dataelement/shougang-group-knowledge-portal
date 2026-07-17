@@ -4372,3 +4372,55 @@ def test_logged_in_browse_route_includes_personal_visible_spaces(tmp_path: Path)
             client.app.state.portal_auth_service = previous_auth
 
     assert response.status_code == 200
+
+
+def test_get_hot_searches_returns_ranked_queries(tmp_path: Path):
+    class HotSearchBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/home":
+                self.post_calls.append((path, json))
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "sections": {},
+                        "tags": [],
+                        "hot_searches": [
+                            {"rank": 2, "query": "能源管理制度如何执行？"},
+                            {"rank": 1, "query": "设备检修安全要求有哪些？"},
+                        ],
+                    },
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = HotSearchBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/hot-searches")
+
+    assert response.status_code == 200
+    body = response.json()["data"]["hot_searches"]
+    assert [item["query"] for item in body] == [
+        "设备检修安全要求有哪些？",
+        "能源管理制度如何执行？",
+    ]
+    assert fake_bisheng.post_calls[0][0] == "/api/v1/knowledge/shougang-portal/home"
+
+
+def test_get_hot_searches_returns_empty_when_upstream_fails(tmp_path: Path):
+    class BrokenHotSearchBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/home":
+                raise httpx.ConnectError("boom")
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = BrokenHotSearchBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get("/api/v1/knowledge/hot-searches")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["hot_searches"] == []
