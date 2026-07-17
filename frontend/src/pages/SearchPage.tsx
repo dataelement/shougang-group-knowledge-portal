@@ -162,6 +162,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const requestSeq = useRef(0);
+  const latestSearchRequestRef = useRef(0);
+  const searchPendingRef = useRef(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
   // const { openShare, shareModalProps } = useShareDocument();
@@ -446,6 +448,8 @@ export default function SearchPage() {
   useEffect(() => {
     if (!keywordMode) return;
     const currentRequest = ++requestSeq.current;
+    latestSearchRequestRef.current = currentRequest;
+    searchPendingRef.current = true;
     setLoading(true);
     setResultsReady(false);
     setError('');
@@ -458,18 +462,19 @@ export default function SearchPage() {
     setAiCitations([]);
     void searchKeywordFiles({ q: q.trim(), sort: keywordSort })
       .then((result) => {
-        if (requestSeq.current !== currentRequest) return;
+        if (latestSearchRequestRef.current !== currentRequest) return;
         setRawFiles(result.data);
         setRawTotal(result.data.length);
         setResultsReady(true);
       })
       .catch((err) => {
-        if (requestSeq.current !== currentRequest) return;
+        if (latestSearchRequestRef.current !== currentRequest) return;
         setError(err instanceof Error ? err.message : '搜索失败');
         setAiThinking(false);
       })
       .finally(() => {
-        if (requestSeq.current === currentRequest) setLoading(false);
+        searchPendingRef.current = false;
+        if (latestSearchRequestRef.current === currentRequest) setLoading(false);
       });
   }, [keywordMode, keywordSort, q]);
 
@@ -527,7 +532,7 @@ export default function SearchPage() {
   }, [filteredFiles, keywordMode, loading, pageLimit, resultsReady]);
 
   useEffect(() => {
-    if (!keywordMode || loading || !resultsReady) return;
+    if (!keywordMode || loading || !resultsReady || searchPendingRef.current) return;
     let active = true;
     setAiText('');
     setAiCitations([]);
