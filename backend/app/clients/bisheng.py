@@ -37,6 +37,12 @@ class BishengAuthRefreshError(RuntimeError):
     pass
 
 
+class BishengMultipartReplayError(RuntimeError):
+    """Raised when an upload stream cannot be safely replayed after auth refresh."""
+
+    pass
+
+
 class BishengClient:
     def __init__(
         self,
@@ -150,15 +156,27 @@ class BishengClient:
         response.raise_for_status()
         return response
 
-    async def post_multipart(self, path: str, *, data: Optional[dict] = None, files: Optional[dict] = None) -> dict:
+    async def post_multipart(
+        self,
+        path: str,
+        *,
+        data: Optional[dict] = None,
+        files: Optional[dict] = None,
+        timeout: httpx.Timeout | float | None = None,
+    ) -> dict:
         file_positions = self._snapshot_file_positions(files)
+        request_options = {
+            "data": data,
+            "files": files,
+            "file_positions": file_positions,
+        }
+        if timeout is not None:
+            request_options["timeout"] = timeout
         response = await self._request(
             "POST",
             path,
             retry_auth=True,
-            data=data,
-            files=files,
-            file_positions=file_positions,
+            **request_options,
         )
         response.raise_for_status()
         payload = response.json()
@@ -174,6 +192,7 @@ class BishengClient:
                 retry_auth=False,
                 data=data,
                 files=files,
+                **({"timeout": timeout} if timeout is not None else {}),
             )
             response.raise_for_status()
             payload = response.json()
@@ -397,11 +416,14 @@ class BishengClient:
         positions = {}
         for value in files.values():
             file_obj = value[1] if isinstance(value, tuple) and len(value) > 1 else value
-            if hasattr(file_obj, "tell") and hasattr(file_obj, "seek"):
-                try:
-                    positions[file_obj] = file_obj.tell()
-                except OSError:
-                    continue
+            if isinstance(file_obj, (bytes, bytearray)):
+                continue
+            if not hasattr(file_obj, "tell") or not hasattr(file_obj, "seek"):
+                raise BishengMultipartReplayError("上传文件流不支持安全重试")
+            try:
+                positions[file_obj] = file_obj.tell()
+            except (OSError, ValueError) as exc:
+                raise BishengMultipartReplayError("无法记录上传文件流位置") from exc
         return positions or None
 
     @staticmethod
@@ -411,5 +433,5 @@ class BishengClient:
         for file_obj, position in positions.items():
             try:
                 file_obj.seek(position)
-            except OSError:
-                continue
+            except (OSError, ValueError) as exc:
+                raise BishengMultipartReplayError("无法恢复上传文件流位置") from exc

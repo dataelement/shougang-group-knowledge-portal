@@ -6,7 +6,7 @@ import {
   BarChart3, Bot, ChevronLeft, ChevronRight, ChevronDown, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, Leaf, Truck, Wrench, GraduationCap,
-  Flame, Briefcase, Users, ScrollText, Loader2, Plus, X,
+  Briefcase, Users, ScrollText, Loader2, Plus, X,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
@@ -48,7 +48,8 @@ import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
 import { buildGuestLoginPath } from '../utils/guestAccess';
-import { COURSE_LIST_ITEMS } from '../data/courseMock';
+import { fetchCourses } from '../api/courses';
+import { formatCourseDuration, type Course } from '../types/course';
 import s from './HomePage.module.css';
 import navIcon from '../assets/nav-icon@2x.png';
 import iconCourse from '../assets/icon-course@2x.png';
@@ -328,6 +329,8 @@ export default function HomePage() {
   const [domainCountsLoading, setDomainCountsLoading] = useState(true);
   const [homeStats, setHomeStats] = useState<HomeStats | null>(null);
   const [homeStatsFailed, setHomeStatsFailed] = useState(false);
+  const [homeCourses, setHomeCourses] = useState<Course[]>([]);
+  const [homeCoursesLoading, setHomeCoursesLoading] = useState(true);
   const [welcomeToast, setWelcomeToast] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     try {
@@ -464,6 +467,23 @@ export default function HomePage() {
         if (active) setDomainCountsLoading(false);
       }
     })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetchCourses('home')
+      .then((courses) => {
+        if (active) setHomeCourses(courses);
+      })
+      .catch(() => {
+        if (active) setHomeCourses([]);
+      })
+      .finally(() => {
+        if (active) setHomeCoursesLoading(false);
+      });
     return () => {
       active = false;
     };
@@ -1287,41 +1307,30 @@ export default function HomePage() {
                   <img src={iconCourse} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>专业课程 · 岗位赋能</span>
                 </div>
-                <Link
-                  to="/course"
-                  className={s.panelMore}
-                  onClick={(event) => {
-                    if (user) return;
-                    event.preventDefault();
-                    navigate(buildGuestLoginPath('/course'));
-                  }}
-                >
+                <Link to="/course" className={s.panelMore}>
                   全部课程 <ChevronRight size={14} />
                 </Link>
               </div>
               <div className={s.courseList}>
-                {COURSE_LIST_ITEMS.map((c) => (
+                {homeCourses.map((course) => {
+                  const displayTag = course.tags.find((tag) => tag.displayType === 'domain') ?? course.tags[0];
+                  return (
                   <button
-                    key={c.id}
+                    key={course.id}
                     type="button"
                     className={s.courseRow}
-                    onClick={() => {
-                      const target = `/course/${c.id}`;
-                      navigate(user ? target : buildGuestLoginPath(target));
-                    }}
+                    onClick={() => navigate(`/course/${course.id}`)}
                   >
                     <img src={iconVideo} alt="" className={s.courseRowIcon} />
-                    <span className={s.courseRowTitle}>{c.title}</span>
-                    {c.hot ? (
-                      <span className={s.courseHotTag}>
-                        <Flame size={10} />热门
-                      </span>
-                    ) : c.domain ? (
-                      <span className={s.courseDomainTag}>{c.domain}</span>
-                    ) : null}
-                    <span className={s.courseRowDuration}>{c.duration}</span>
+                    <span className={s.courseRowTitle}>{course.name}</span>
+                    {displayTag ? <span className={s.courseDomainTag}>{displayTag.label}</span> : null}
+                    <span className={s.courseRowDuration}>{formatCourseDuration(course.totalDurationSeconds)}</span>
                   </button>
-                ))}
+                  );
+                })}
+                {!homeCoursesLoading && homeCourses.length === 0 ? (
+                  <div className={s.sectionEmpty}>暂无首页课程</div>
+                ) : null}
               </div>
             </div>
 

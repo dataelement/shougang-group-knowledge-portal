@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle,
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap,
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -121,6 +121,7 @@ import {
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import RecommendationPersonalizationPanel from './admin/RecommendationPersonalizationPanel';
+import CourseManagementPanel from './admin/CourseManagementPanel';
 import s from './AdminPage.module.css';
 
 function isBuiltinSection(section: SectionConfig): boolean {
@@ -139,6 +140,7 @@ const NAV_ITEMS = [
   { key: 'domains', label: '业务域', icon: Building },
   { key: 'sections', label: '首页分区', icon: Tag },
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
+  { key: 'courses', label: '课程管理', icon: GraduationCap },
   { key: 'documentTypes', label: '文件分类', icon: FileText },
   { key: 'qa', label: '问答配置', icon: Bot },
   { key: 'qaTemplates', label: '问答模板', icon: FileText },
@@ -1054,6 +1056,7 @@ export default function AdminPage() {
               onMoveDown={(index) => void handleMoveBanner(config.banners, index, 1, runSave, setConfig)}
             />
           )}
+          {active === 'courses' && <CourseManagementPanel />}
           {config && active === 'integrations' && (
             <IntegrationsConfigTable
               integrations={config.integrations}
