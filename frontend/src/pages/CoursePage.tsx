@@ -3,6 +3,7 @@ import {
   Building2,
   CheckCircle2,
   Clock3,
+  PauseCircle,
   PlayCircle,
   UserCircle,
 } from 'lucide-react';
@@ -10,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { fetchCourse } from '../api/courses';
+import CourseVideoPlayer from '../components/course/CourseVideoPlayer';
 import PageShell from '../components/PageShell';
 import { useAuth } from '../hooks/useAuth';
 import { useVideoProgress } from '../hooks/useVideoProgress';
@@ -19,7 +21,20 @@ import {
   getPlayableCourseVideos,
   type Course,
 } from '../types/course';
+import {
+  getCourseLearningCounts,
+  getCourseVideoPresentation,
+  type CoursePlaybackState,
+  type CourseVideoPresentationState,
+} from '../utils/coursePlayback';
 import s from './CoursePage.module.css';
+
+function DirectoryStateIcon({ state }: { state: CourseVideoPresentationState }) {
+  if (state === 'completed') return <CheckCircle2 size={12} />;
+  if (state === 'playing') return <PlayCircle size={12} />;
+  if (state === 'paused') return <PauseCircle size={12} />;
+  return <Clock3 size={12} />;
+}
 
 export default function CoursePage() {
   const { courseId = '' } = useParams<{ courseId: string }>();
@@ -30,7 +45,11 @@ export default function CoursePage() {
     error: '',
   });
   const [selectedVideoId, setSelectedVideoId] = useState('');
-  const [playError, setPlayError] = useState('');
+  const [playbackView, setPlaybackView] = useState<{
+    videoId: string;
+    state: CoursePlaybackState;
+    hasStarted: boolean;
+  }>({ videoId: '', state: 'idle', hasStarted: false });
 
   useEffect(() => {
     let active = true;
@@ -38,8 +57,9 @@ export default function CoursePage() {
       .then((item) => {
         if (!active) return;
         setLoadState({ courseId, course: item, error: '' });
-        setSelectedVideoId(getPlayableCourseVideos(item)[0]?.id ?? '');
-        setPlayError('');
+        const firstVideoId = getPlayableCourseVideos(item)[0]?.id ?? '';
+        setSelectedVideoId(firstVideoId);
+        setPlaybackView({ videoId: firstVideoId, state: 'idle', hasStarted: false });
       })
       .catch((loadError: unknown) => {
         if (!active) return;
@@ -63,6 +83,7 @@ export default function CoursePage() {
   const {
     videoRef,
     progressByVideo,
+    progressReady,
     progressError,
     handleLoadedMetadata,
     handlePlaying,
@@ -80,9 +101,21 @@ export default function CoursePage() {
   const switchVideo = (videoId: string) => {
     if (videoId === selectedVideo?.id) return;
     flushBeforeVideoSwitch();
-    setPlayError('');
+    setPlaybackView({ videoId, state: 'idle', hasStarted: false });
     setSelectedVideoId(videoId);
   };
+
+  const learningCounts = useMemo(
+    () => getCourseLearningCounts(videos, progressByVideo),
+    [progressByVideo, videos],
+  );
+  const selectedPresentation = selectedVideo ? getCourseVideoPresentation({
+    active: true,
+    playbackState: playbackView.videoId === selectedVideo.id ? playbackView.state : 'idle',
+    hasStarted: playbackView.videoId === selectedVideo.id && playbackView.hasStarted,
+    progress: progressByVideo[selectedVideo.id],
+    durationSeconds: selectedVideo.durationSeconds,
+  }) : undefined;
 
   if (loading) {
     return <PageShell><div className={s.pageState}>正在加载课程...</div></PageShell>;
@@ -117,43 +150,24 @@ export default function CoursePage() {
         ) : (
           <div className={viewMode === 'directory' ? s.layout : s.singleLayout}>
             <div className={s.mainColumn}>
-              <section className={s.playerCard}>
-                <div className={s.videoWrap}>
-                  <video
-                    key={selectedVideo.id}
-                    ref={videoRef}
-                    className={s.video}
-                    src={selectedVideo.playUrl}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onPlaying={handlePlaying}
-                    onPause={handlePause}
-                    onEnded={handleEnded}
-                    onError={() => setPlayError('当前视频无法播放，请稍后重试或联系管理员检查视频来源。')}
-                  >
-                    当前浏览器不支持视频播放。
-                  </video>
-                </div>
-                <div className={s.playerMeta}>
-                  <div>
-                    <span className={s.nowPlaying}>正在播放</span>
-                    <h2>{selectedVideo.title}</h2>
-                  </div>
-                  {user ? (
-                    <div className={s.learningState}>
-                      {progressByVideo[selectedVideo.id]?.completed ? (
-                        <><CheckCircle2 size={16} />已学完</>
-                      ) : (
-                        <><Clock3 size={16} />已学 {formatCourseDuration(progressByVideo[selectedVideo.id]?.progressSeconds ?? 0)}</>
-                      )}
-                    </div>
-                  ) : <span className={s.guestHint}>登录后可记录学习进度</span>}
-                </div>
-                {playError ? <div className={s.playerError} role="alert">{playError}</div> : null}
-                {progressError ? <div className={s.progressHint}>{progressError}</div> : null}
-              </section>
+              <CourseVideoPlayer
+                key={selectedVideo.id}
+                video={selectedVideo}
+                courseTitle={course.name}
+                videoRef={videoRef}
+                learningStatus={viewMode === 'single' && user && progressReady && !progressError
+                  ? selectedPresentation
+                  : undefined}
+                guestHint={viewMode === 'single' && !user}
+                onLoadedMetadata={handleLoadedMetadata}
+                onPlaying={handlePlaying}
+                onPause={handlePause}
+                onEnded={handleEnded}
+                onPlaybackStateChange={(state, hasStarted) => {
+                  setPlaybackView({ videoId: selectedVideo.id, state, hasStarted });
+                }}
+              />
+              {progressError ? <div className={s.progressHint}>{progressError}</div> : null}
 
               <section className={s.infoCard}>
                 <div className={s.tags}>
@@ -175,32 +189,43 @@ export default function CoursePage() {
               <aside className={s.directory}>
                 <div className={s.directoryHead}>
                   <div><BookOpen size={17} />课程目录</div>
-                  <span>{videos.length} 个视频</span>
+                  {user ? (
+                    progressReady && !progressError ? (
+                      <span className={s.directoryStats}>
+                        <strong>已学 {learningCounts.learned}</strong>
+                        <em>未学 {learningCounts.unlearned}</em>
+                      </span>
+                    ) : <span>{progressError ? '学习进度暂不可用' : '学习进度加载中...'}</span>
+                  ) : <span>登录后可记录学习进度</span>}
                 </div>
                 <div className={s.videoList}>
                   {videos.map((video, index) => {
                     const progress = progressByVideo[video.id];
                     const active = video.id === selectedVideo.id;
+                    const presentation = getCourseVideoPresentation({
+                      active,
+                      playbackState: active && playbackView.videoId === video.id
+                        ? playbackView.state
+                        : 'idle',
+                      hasStarted: active && playbackView.videoId === video.id && playbackView.hasStarted,
+                      progress,
+                      durationSeconds: video.durationSeconds,
+                    });
                     return (
                       <button
                         type="button"
                         key={video.id}
-                        className={`${s.videoItem} ${active ? s.videoItemActive : ''}`}
+                        className={s.videoItem}
+                        data-state={presentation.state}
+                        aria-current={active ? 'true' : undefined}
                         onClick={() => switchVideo(video.id)}
                       >
                         <span className={s.videoIndex}>{String(index + 1).padStart(2, '0')}</span>
                         <span className={s.videoInfo}>
                           <strong>{video.title}</strong>
                           <small>
-                            {progress?.completed ? (
-                              <><CheckCircle2 size={12} />已学完</>
-                            ) : active ? (
-                              <><PlayCircle size={12} />正在播放</>
-                            ) : progress?.progressSeconds ? (
-                              <>已学 {formatCourseDuration(progress.progressSeconds)}</>
-                            ) : (
-                              <>{formatCourseDuration(video.durationSeconds)}</>
-                            )}
+                            <DirectoryStateIcon state={presentation.state} />
+                            {presentation.label}
                           </small>
                         </span>
                       </button>

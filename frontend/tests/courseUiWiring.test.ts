@@ -6,6 +6,10 @@ const appSource = readFileSync('src/App.tsx', 'utf8');
 const homeSource = readFileSync('src/pages/HomePage.tsx', 'utf8');
 const detailSource = readFileSync('src/pages/CoursePage.tsx', 'utf8');
 const adminSource = readFileSync('src/pages/AdminPage.tsx', 'utf8');
+const coursePlayerPath = 'src/components/course/CourseVideoPlayer.tsx';
+const coursePlayerStylePath = 'src/components/course/CourseVideoPlayer.module.css';
+const coursePlayerSource = existsSync(coursePlayerPath) ? readFileSync(coursePlayerPath, 'utf8') : '';
+const coursePlayerStyle = existsSync(coursePlayerStylePath) ? readFileSync(coursePlayerStylePath, 'utf8') : '';
 const courseManagementSource = readFileSync('src/pages/admin/CourseManagementPanel.tsx', 'utf8');
 const courseManagementStyle = readFileSync('src/pages/admin/CourseManagementPanel.module.css', 'utf8');
 const progressHookSource = readFileSync('src/hooks/useVideoProgress.ts', 'utf8');
@@ -28,12 +32,41 @@ test('首页课程读取全部 home placement 数据且访客可直接进入课�
   assert.doesNotMatch(coursePanel, /buildGuestLoginPath/);
 });
 
-test('详情使用原生 video 并按视频数切换单视频与目录视图', () => {
-  assert.match(detailSource, /<video/);
-  assert.match(detailSource, /controls/);
+test('详情使用真实自定义播放器并按视频数切换单视频与目录视图', () => {
+  assert.equal(existsSync(coursePlayerPath), true);
+  assert.equal(existsSync(coursePlayerStylePath), true);
+  assert.match(detailSource, /import CourseVideoPlayer from/);
+  assert.match(detailSource, /<CourseVideoPlayer/);
+  assert.doesNotMatch(detailSource, /<video/);
   assert.match(detailSource, /getCourseViewMode\(course\)/);
   assert.match(detailSource, /viewMode === 'directory'/);
   assert.doesNotMatch(detailSource, /subtitle/);
+
+  assert.match(coursePlayerSource, /<video/);
+  const videoTagStart = coursePlayerSource.indexOf('<video');
+  const videoTagEnd = coursePlayerSource.indexOf('>', videoTagStart);
+  assert.doesNotMatch(coursePlayerSource.slice(videoTagStart, videoTagEnd), /\bcontrols\b/);
+  assert.match(coursePlayerSource, /onTimeUpdate=/);
+  assert.match(coursePlayerSource, /onPlaying=/);
+  assert.match(coursePlayerSource, /onPause=/);
+  assert.match(coursePlayerSource, /onEnded=/);
+  assert.match(coursePlayerSource, /aria-label="后退 10 秒"/);
+  assert.match(coursePlayerSource, /aria-label="前进 10 秒"/);
+  assert.match(coursePlayerSource, /aria-label="播放进度"/);
+  assert.match(coursePlayerSource, /aria-label=\{isFullscreen \? '退出全屏' : '全屏'\}/);
+  assert.match(coursePlayerSource, /document\.fullscreenEnabled/);
+  assert.match(coursePlayerSource, /当前浏览器不支持全屏播放/);
+  assert.match(coursePlayerStyle, /\.videoStage/);
+  assert.match(coursePlayerStyle, /\.controls/);
+});
+
+test('课程目录接线五态、登录学习统计和访客提示', () => {
+  assert.match(detailSource, /getCourseVideoPresentation/);
+  assert.match(detailSource, /getCourseLearningCounts/);
+  assert.match(detailSource, /data-state=\{presentation\.state\}/);
+  assert.match(detailSource, /已学 \{learningCounts\.learned\}/);
+  assert.match(detailSource, /未学 \{learningCounts\.unlearned\}/);
+  assert.match(detailSource, /登录后可记录学习进度/);
 });
 
 test('进度 hook 接线 playing、pause、ended、hidden 与 pagehide', () => {
