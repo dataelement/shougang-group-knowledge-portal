@@ -479,7 +479,7 @@ async def search_files(
             default_model=get_settings().bisheng_default_model,
         )
         extra_space_ids = None
-        if not service.is_public_latest_selected_request(q, recommendation) and not public_only:
+        if not service.is_latest_selected_scoped_request(recommendation) and not public_only:
             visible_spaces = await service.list_visible_spaces()
             extra_space_ids = [space.id for space in visible_spaces.data]
         return response_ok(

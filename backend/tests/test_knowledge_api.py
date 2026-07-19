@@ -2917,6 +2917,8 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_keyword_search(tmp
                     "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
+                    "cursor": None,
+                    "limit": 10,
                     "rerank_model_id": "",
                 }
                 return {
@@ -2969,10 +2971,172 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_keyword_search(tmp
                 "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
+                "cursor": None,
+                "limit": 10,
                 "rerank_model_id": "",
             },
         )
     ]
+
+
+def test_search_files_passes_keyword_with_latest_selected_recommendation(tmp_path: Path):
+    class KeywordRecommendationBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": "设备",
+                    "tag": None,
+                    "space_ids": [],
+                    "space_level": "public",
+                    "file_ext": None,
+                    "sort": "relevance",
+                    "cursor": None,
+                    "limit": 20,
+                    "recommendation": "latest_selected",
+                    "public_only": True,
+                    "rerank_model_id": "",
+                }
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1580,
+                                "space_id": 12,
+                                "title": "设备维护手册",
+                                "summary": "设备维护摘要",
+                                "updated_at": "2026-04-13T10:30:00",
+                                "tags": ["设备"],
+                                "file_ext": "pdf",
+                                "file_size": "949.33KB",
+                                "file_encoding": "GF-ZD-SC-202604-01201",
+                            }
+                        ],
+                        "has_more": False,
+                        "next_cursor": None,
+                    }
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = KeywordRecommendationBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get(
+            "/api/v1/knowledge/files?q=%E8%AE%BE%E5%A4%87&recommendation=latest_selected"
+        )
+
+    assert response.status_code == 200
+    assert len(response.json()["data"]["data"]) == 1
+    assert fake_bisheng.post_calls[0][1]["q"] == "设备"
+    assert fake_bisheng.post_calls[0][1]["recommendation"] == "latest_selected"
+    assert fake_bisheng.post_calls[0][1]["space_ids"] == []
+    assert fake_bisheng.post_calls[0][1]["public_only"] is True
+
+
+def test_logged_in_latest_selected_keyword_does_not_resolve_visible_spaces(tmp_path: Path):
+    class PublicLatestKeywordBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == "/api/v1/knowledge/space/grouped":
+                raise AssertionError("latest_selected keyword search must not resolve visible spaces")
+            return await super().get_json(path, params=params, headers=headers)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json == {
+                    "q": "技术研究报告",
+                    "tag": None,
+                    "space_ids": [],
+                    "space_level": "public",
+                    "file_ext": None,
+                    "sort": "relevance",
+                    "cursor": None,
+                    "limit": 20,
+                    "recommendation": "latest_selected",
+                    "public_only": True,
+                    "rerank_model_id": "",
+                }
+                return {
+                    "data": {
+                        "data": [self._portal_file_1580()],
+                        "has_more": False,
+                        "next_cursor": None,
+                    }
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = PublicLatestKeywordBishengClient()
+    with TestClient(app) as client:
+        previous_auth = client.app.state.portal_auth_service
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.get(
+                "/api/v1/knowledge/files"
+                "?q=%E6%8A%80%E6%9C%AF%E7%A0%94%E7%A9%B6%E6%8A%A5%E5%91%8A"
+                "&recommendation=latest_selected"
+            )
+        finally:
+            client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert response.json()["data"]["data"][0]["space_id"] == 12
+    assert fake_bisheng.post_calls[0][1]["public_only"] is True
+
+
+def test_search_files_passes_keyword_with_public_only_and_cursor(tmp_path: Path):
+    class KeywordPublicOnlyBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/search":
+                assert json["q"] == "事故"
+                assert json["tag"] == "行业情报"
+                assert json["public_only"] is True
+                assert json["sort"] == "relevance"
+                assert json["cursor"] == "cursor-1"
+                assert json["limit"] == 5
+                assert isinstance(json["space_ids"], list)
+                assert len(json["space_ids"]) >= 1
+                return {
+                    "data": {
+                        "data": [
+                            {
+                                "id": 1801,
+                                "space_id": 18,
+                                "title": "行业事故分析.pdf",
+                                "summary": "事故分析摘要",
+                                "updated_at": "2026-04-15T08:00:00",
+                                "tags": ["行业情报"],
+                                "file_size": "18KB",
+                                "file_encoding": "SG-NEW",
+                            }
+                        ],
+                        "has_more": True,
+                        "next_cursor": "cursor-2",
+                    }
+                }
+            return await super().post_json(path, json=json)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = KeywordPublicOnlyBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.get(
+            "/api/v1/knowledge/files"
+            "?q=%E4%BA%8B%E6%95%85&tag=%E8%A1%8C%E4%B8%9A%E6%83%85%E6%8A%A5&public_only=true&cursor=cursor-1&limit=5"
+        )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["has_more"] is True
+    assert body["next_cursor"] == "cursor-2"
+    assert fake_bisheng.post_calls[0][1]["public_only"] is True
 
 
 def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tmp_path: Path):

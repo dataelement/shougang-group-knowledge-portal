@@ -224,8 +224,12 @@ class KnowledgeService:
         return builtin_key == LATEST_SELECTED_RECOMMENDATION or (not builtin_key and index == 0)
 
     @staticmethod
+    def is_latest_selected_scoped_request(recommendation: Optional[str]) -> bool:
+        return (recommendation or "").strip() == LATEST_SELECTED_RECOMMENDATION
+
+    @staticmethod
     def is_public_latest_selected_request(q: Optional[str], recommendation: Optional[str]) -> bool:
-        return not (q or "").strip() and (recommendation or "").strip() == LATEST_SELECTED_RECOMMENDATION
+        return not (q or "").strip() and KnowledgeService.is_latest_selected_scoped_request(recommendation)
 
     @staticmethod
     def _is_typical_case_section(section: Any) -> bool:
@@ -840,6 +844,23 @@ class KnowledgeService:
                 public_only=True,
             )
 
+        if keyword and self.is_latest_selected_scoped_request(recommendation):
+            return await self._search_shougang_portal_files(
+                q=keyword,
+                tag=effective_tag,
+                space_ids=[],
+                space_level="public",
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=normalized_business_domain_code,
+                recommendation=recommendation,
+                sort=sort or "relevance",
+                cursor=cursor,
+                limit=limit,
+                public_only=True,
+            )
+
         if public_only and not keyword:
             return await self._browse_shougang_portal_files(
                 tag=effective_tag,
@@ -898,7 +919,10 @@ class KnowledgeService:
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=normalized_business_domain_code,
                 recommendation=recommendation,
-                sort=sort,
+                sort=sort or "relevance",
+                cursor=cursor,
+                limit=limit,
+                public_only=public_only,
             )
 
         return await self._browse_shougang_portal_files(

@@ -26,6 +26,76 @@
   margin-bottom: 24px;
 }
 
+.listSearchBar {
+  margin-bottom: 20px;
+}
+
+.listSearchInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.listSearchIcon {
+  flex-shrink: 0;
+  color: var(--neutral-400);
+}
+
+.listSearchInput {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border: none;
+  background: transparent;
+  font-size: 0.98rem;
+  color: var(--neutral-800);
+  outline: none;
+}
+
+.listSearchInput::placeholder {
+  color: var(--neutral-400);
+}
+
+.listSearchClear {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 0.92rem;
+  color: var(--neutral-500);
+  cursor: pointer;
+}
+
+.listSearchClear:hover {
+  color: var(--neutral-700);
+  background: var(--neutral-100);
+}
+
+.listSearchBtn {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary-600);
+  font-size: 0.98rem;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.listSearchBtn:hover {
+  background: var(--primary-700);
+}
+
 .filterBar {
   display: flex;
   align-items: center;
