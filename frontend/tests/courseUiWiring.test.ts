@@ -5,6 +5,7 @@ import test from 'node:test';
 const appSource = readFileSync('src/App.tsx', 'utf8');
 const homeSource = readFileSync('src/pages/HomePage.tsx', 'utf8');
 const detailSource = readFileSync('src/pages/CoursePage.tsx', 'utf8');
+const detailStyle = readFileSync('src/pages/CoursePage.module.css', 'utf8');
 const adminSource = readFileSync('src/pages/AdminPage.tsx', 'utf8');
 const coursePlayerPath = 'src/components/course/CourseVideoPlayer.tsx';
 const coursePlayerStylePath = 'src/components/course/CourseVideoPlayer.module.css';
@@ -67,6 +68,38 @@ test('课程目录接线五态、登录学习统计和访客提示', () => {
   assert.match(detailSource, /已学 \{learningCounts\.learned\}/);
   assert.match(detailSource, /未学 \{learningCounts\.unlearned\}/);
   assert.match(detailSource, /登录后可记录学习进度/);
+});
+
+test('课程目录以 aria-current 独立呈现选中态并保留学习状态颜色', () => {
+  assert.match(detailSource, /aria-current=\{active \? 'true' : undefined\}/);
+  assert.match(detailStyle, /\.videoItem\[aria-current="true"\]\s*\{/);
+  assert.match(detailStyle, /\.videoItem\[aria-current="true"\] \.videoIndex\s*\{/);
+  assert.match(detailStyle, /\.videoItem\[aria-current="true"\] \.videoInfo strong\s*\{/);
+  assert.match(detailStyle, /\.videoItem\[data-state="completed"\] \.videoInfo small/);
+  assert.match(detailStyle, /\.videoItem\[data-state="learning"\] \.videoInfo small/);
+  assert.match(detailStyle, /\.videoItem\[data-state="playing"\] \.videoInfo small/);
+  assert.match(detailStyle, /\.videoItem\[data-state="paused"\] \.videoInfo small/);
+});
+
+test('课程信息卡恢复标签、四栏统计、日期和描述且不含副标题', () => {
+  assert.match(detailSource, /formatCourseDate/);
+  assert.match(detailSource, /className=\{s\.metaTags\}/);
+  assert.match(detailSource, /className=\{s\.metaTitle\}/);
+  assert.match(detailSource, /className=\{s\.metaStats\}/);
+  assert.match(detailSource, /className=\{s\.metaStat\}/);
+  assert.match(detailSource, /className=\{s\.metaDesc\}/);
+  assert.match(detailSource, />课程时长</);
+  assert.match(detailSource, />主讲</);
+  assert.match(detailSource, />所属单位</);
+  assert.match(detailSource, />更新日期</);
+  assert.match(detailSource, /formatCourseDate\(course\.updatedAt, course\.createdAt\)/);
+  assert.doesNotMatch(detailSource, /subtitle/);
+
+  assert.match(detailStyle, /\.infoCard\s*\{[^}]*border-top:\s*3px solid var\(--primary-700\)/s);
+  assert.match(detailStyle, /\.metaStats\s*\{/);
+  assert.match(detailStyle, /\.metaStat\s*\{/);
+  assert.match(detailStyle, /\.metaDesc\s*\{/);
+  assert.match(detailStyle, /@media \(max-width: 720px\)/);
 });
 
 test('进度 hook 接线 playing、pause、ended、hidden 与 pagehide', () => {

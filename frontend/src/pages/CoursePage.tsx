@@ -1,6 +1,7 @@
 import {
   BookOpen,
   Building2,
+  Calendar,
   CheckCircle2,
   Clock3,
   PauseCircle,
@@ -16,6 +17,7 @@ import PageShell from '../components/PageShell';
 import { useAuth } from '../hooks/useAuth';
 import { useVideoProgress } from '../hooks/useVideoProgress';
 import {
+  formatCourseDate,
   formatCourseDuration,
   getCourseViewMode,
   getPlayableCourseVideos,
@@ -132,6 +134,11 @@ export default function CoursePage() {
     );
   }
 
+  const descriptionParagraphs = course.description
+    .split(/\r?\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
   return (
     <PageShell>
       <section className={s.hero}>
@@ -170,18 +177,39 @@ export default function CoursePage() {
               {progressError ? <div className={s.progressHint}>{progressError}</div> : null}
 
               <section className={s.infoCard}>
-                <div className={s.tags}>
+                <div className={s.metaTags}>
                   {course.tags.map((tag) => (
                     <span key={`${tag.displayType}-${tag.label}`} data-tone={tag.displayType}>{tag.label}</span>
                   ))}
                 </div>
-                <h2>{course.name}</h2>
-                <div className={s.courseMeta}>
-                  <span><Clock3 size={15} />总时长 {formatCourseDuration(course.totalDurationSeconds)}</span>
-                  {course.instructor ? <span><UserCircle size={15} />讲师 {course.instructor}</span> : null}
-                  {course.organization ? <span><Building2 size={15} />所属单位 {course.organization}</span> : null}
+                <h2 className={s.metaTitle}>{course.name}</h2>
+                <div className={s.metaStats}>
+                  <div className={s.metaStat}>
+                    <div className={s.metaStatLabel}><Clock3 size={12} />课程时长</div>
+                    <div className={`${s.metaStatValue} ${s.metaStatValueMono}`}>
+                      {formatCourseDuration(course.totalDurationSeconds)}
+                    </div>
+                  </div>
+                  <div className={s.metaStat}>
+                    <div className={s.metaStatLabel}><UserCircle size={12} />主讲</div>
+                    <div className={s.metaStatValue}>{course.instructor || '—'}</div>
+                  </div>
+                  <div className={s.metaStat}>
+                    <div className={s.metaStatLabel}><Building2 size={12} />所属单位</div>
+                    <div className={s.metaStatValue}>{course.organization || '—'}</div>
+                  </div>
+                  <div className={s.metaStat}>
+                    <div className={s.metaStatLabel}><Calendar size={12} />更新日期</div>
+                    <div className={`${s.metaStatValue} ${s.metaStatValueMono}`}>
+                      {formatCourseDate(course.updatedAt, course.createdAt)}
+                    </div>
+                  </div>
                 </div>
-                {course.description ? <p>{course.description}</p> : <p className={s.muted}>暂无课程描述。</p>}
+                <div className={s.metaDesc}>
+                  {descriptionParagraphs.length > 0 ? descriptionParagraphs.map((paragraph, index) => (
+                    <p key={`${index}-${paragraph}`}>{paragraph}</p>
+                  )) : <p className={s.muted}>暂无课程描述。</p>}
+                </div>
               </section>
             </div>
 

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   MAX_COURSE_VIDEO_BYTES,
+  formatCourseDate,
   formatCourseDuration,
   getCourseViewMode,
   mapCourseList,
@@ -106,6 +107,17 @@ test('课程时长、发布、外链与上传前置校验符合约束', () => {
     /1 GiB/,
   );
   assert.match(validateCourseUpload({ name: 'a.mov', size: 10 }), /MP4 或 WebM/);
+});
+
+test('课程更新日期优先使用更新时间并回退创建时间', () => {
+  assert.equal(
+    formatCourseDate('2026-04-12T08:30:00+08:00', '2026-01-01T00:00:00+08:00'),
+    '2026-04-12',
+  );
+  assert.equal(formatCourseDate(undefined, '2026-03-05T09:00:00+08:00'), '2026-03-05');
+  assert.equal(formatCourseDate('  ', '2026-02-03'), '2026-02-03');
+  assert.equal(formatCourseDate('not-a-date', '2026-02-03'), '—');
+  assert.equal(formatCourseDate(undefined, undefined), '—');
 });
 
 test('上传媒体校验错误保留上游安全业务文案与错误码', () => {
