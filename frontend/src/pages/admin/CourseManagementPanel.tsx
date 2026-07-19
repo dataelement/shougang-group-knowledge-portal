@@ -105,6 +105,7 @@ export default function CourseManagementPanel() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [uploadError, setUploadError] = useState('');
   const [notice, setNotice] = useState('');
   const [addMode, setAddMode] = useState<'url' | 'upload'>('url');
   const [videoForm, setVideoForm] = useState<VideoFormState>(EMPTY_VIDEO_FORM);
@@ -282,17 +283,18 @@ export default function CourseManagementPanel() {
   const startUpload = (replacement = false) => {
     const targetCourse = selectedCourse;
     const file = videoForm.file;
+    setUploadError('');
     if (!targetCourse || !file) {
-      setError('请选择视频文件');
+      setUploadError('请选择视频文件');
       return;
     }
     const validation = validateCourseUpload(file);
     if (validation) {
-      setError(validation);
+      setUploadError(validation);
       return;
     }
     if (!videoForm.title.trim()) {
-      setError('视频标题不能为空');
+      setUploadError('视频标题不能为空');
       return;
     }
     if (replacement && replaceTarget && !window.confirm(
@@ -320,7 +322,7 @@ export default function CourseManagementPanel() {
         setReplaceTarget(null);
         setNotice(replacement ? '视频来源已替换，原学习进度已清除' : '视频已上传并通过媒体校验');
       })
-      .catch((uploadError) => setError(errorMessage(uploadError)))
+      .catch((uploadFailure) => setUploadError(errorMessage(uploadFailure)))
       .finally(() => {
         setBusy(false);
         setUploadProgress(null);
@@ -352,6 +354,7 @@ export default function CourseManagementPanel() {
   });
 
   const openReplacement = (video: CourseVideo) => {
+    setUploadError('');
     setReplaceTarget(video);
     setReplaceMode(video.sourceType === 'url' ? 'url' : 'upload');
     setVideoForm({
@@ -489,8 +492,8 @@ export default function CourseManagementPanel() {
 
                   <div className={s.addVideo}>
                     <div className={s.modeTabs}>
-                      <button type="button" className={addMode === 'url' ? s.modeActive : ''} onClick={() => { setAddMode('url'); setVideoForm(EMPTY_VIDEO_FORM); }}><Link2 size={14} />添加外链</button>
-                      <button type="button" className={addMode === 'upload' ? s.modeActive : ''} onClick={() => { setAddMode('upload'); setVideoForm(EMPTY_VIDEO_FORM); }}><Upload size={14} />上传视频</button>
+                      <button type="button" className={addMode === 'url' ? s.modeActive : ''} onClick={() => { setAddMode('url'); setVideoForm(EMPTY_VIDEO_FORM); setUploadError(''); }}><Link2 size={14} />添加外链</button>
+                      <button type="button" className={addMode === 'upload' ? s.modeActive : ''} onClick={() => { setAddMode('upload'); setVideoForm(EMPTY_VIDEO_FORM); setUploadError(''); }}><Upload size={14} />上传视频</button>
                     </div>
                     <VideoSourceForm form={videoForm} mode={addMode} onChange={setVideoForm} />
                     {uploadProgress !== null ? (
@@ -500,6 +503,7 @@ export default function CourseManagementPanel() {
                         <button type="button" onClick={() => uploadOperationRef.current?.cancel()}>取消上传</button>
                       </div>
                     ) : null}
+                    {uploadError && !replaceTarget ? <div className={s.uploadError} role="alert">{uploadError}</div> : null}
                     <button type="button" className={s.primaryButton} disabled={busy} onClick={addMode === 'url' ? addUrlVideo : () => startUpload(false)}>
                       {busy ? <Loader2 className={s.spin} size={14} /> : addMode === 'url' ? <Link2 size={14} /> : <Upload size={14} />}
                       {addMode === 'url' ? '预检并添加' : '上传并校验'}
@@ -518,11 +522,12 @@ export default function CourseManagementPanel() {
           <div className={s.modal} role="dialog" aria-modal="true" aria-label="替换视频来源">
             <div className={s.modalHeader}><div><h3>替换视频来源</h3><p>替换“{replaceTarget.title}”成功后，会清除所有用户对该视频的学习进度。</p></div><button type="button" onClick={() => setReplaceTarget(null)} disabled={busy}><X size={18} /></button></div>
             <div className={s.modeTabs}>
-              <button type="button" className={replaceMode === 'url' ? s.modeActive : ''} onClick={() => { setReplaceMode('url'); setVideoForm((current) => ({ ...current, file: null })); }}><Link2 size={14} />外链</button>
-              <button type="button" className={replaceMode === 'upload' ? s.modeActive : ''} onClick={() => { setReplaceMode('upload'); setVideoForm((current) => ({ ...current, sourceUrl: '' })); }}><Upload size={14} />上传文件</button>
+              <button type="button" className={replaceMode === 'url' ? s.modeActive : ''} onClick={() => { setReplaceMode('url'); setVideoForm((current) => ({ ...current, file: null })); setUploadError(''); }}><Link2 size={14} />外链</button>
+              <button type="button" className={replaceMode === 'upload' ? s.modeActive : ''} onClick={() => { setReplaceMode('upload'); setVideoForm((current) => ({ ...current, sourceUrl: '' })); setUploadError(''); }}><Upload size={14} />上传文件</button>
             </div>
             <VideoSourceForm form={videoForm} mode={replaceMode} onChange={setVideoForm} />
             {uploadProgress !== null ? <div className={s.uploadStatus}><div><span style={{ width: `${uploadProgress}%` }} /></div><strong>{uploadProgress}%</strong><button type="button" onClick={() => uploadOperationRef.current?.cancel()}>取消上传</button></div> : null}
+            {uploadError ? <div className={s.uploadError} role="alert">{uploadError}</div> : null}
             <div className={s.modalActions}><button type="button" className={s.secondaryButton} onClick={() => setReplaceTarget(null)} disabled={busy}>取消</button><button type="button" className={s.dangerPrimaryButton} onClick={replaceMode === 'url' ? replaceWithUrl : () => startUpload(true)} disabled={busy}>确认替换并清除进度</button></div>
           </div>
         </div>

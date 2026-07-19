@@ -33,6 +33,17 @@
 
 .notice { border-color: #bbf7d0; color: #166534; background: #f0fdf4; }
 
+.uploadError {
+  margin: 10px 0;
+  padding: 10px 13px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  color: #b91c1c;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  background: #fff7f7;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);

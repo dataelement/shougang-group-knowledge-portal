@@ -6,6 +6,8 @@ const appSource = readFileSync('src/App.tsx', 'utf8');
 const homeSource = readFileSync('src/pages/HomePage.tsx', 'utf8');
 const detailSource = readFileSync('src/pages/CoursePage.tsx', 'utf8');
 const adminSource = readFileSync('src/pages/AdminPage.tsx', 'utf8');
+const courseManagementSource = readFileSync('src/pages/admin/CourseManagementPanel.tsx', 'utf8');
+const courseManagementStyle = readFileSync('src/pages/admin/CourseManagementPanel.module.css', 'utf8');
 const progressHookSource = readFileSync('src/hooks/useVideoProgress.ts', 'utf8');
 
 test('课程列表与详情使用独立路由并完全移除 mock 数据源', () => {
@@ -48,4 +50,17 @@ test('课程管理入口紧随首页 Banner 且使用独立管理面板', () => 
   const coursePosition = adminSource.indexOf("{ key: 'courses', label: '课程管理'");
   assert.ok(bannerPosition >= 0 && coursePosition > bannerPosition);
   assert.match(adminSource, /active === 'courses' && <CourseManagementPanel \/>/);
+});
+
+test('课程上传错误在普通上传区和替换弹窗内就近展示', () => {
+  assert.match(courseManagementSource, /const \[uploadError, setUploadError\] = useState\(''\)/);
+  assert.match(
+    courseManagementSource,
+    /\.catch\(\(uploadFailure\) => setUploadError\(errorMessage\(uploadFailure\)\)\)/,
+  );
+  const localAlerts = courseManagementSource.match(
+    /className=\{s\.uploadError\} role="alert"/g,
+  ) ?? [];
+  assert.equal(localAlerts.length, 2);
+  assert.match(courseManagementStyle, /\.uploadError\s*\{/);
 });

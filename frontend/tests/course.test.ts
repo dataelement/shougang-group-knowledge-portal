@@ -10,8 +10,10 @@ import {
   validateUrlVideoInput,
 } from '../src/types/course';
 import {
+  CourseApiError,
   fetchCourseProgress,
   fetchCourses,
+  parseCourseEnvelopeText,
   reportVideoProgress,
 } from '../src/api/courses';
 import {
@@ -104,6 +106,26 @@ test('课程时长、发布、外链与上传前置校验符合约束', () => {
     /1 GiB/,
   );
   assert.match(validateCourseUpload({ name: 'a.mov', size: 10 }), /MP4 或 WebM/);
+});
+
+test('上传媒体校验错误保留上游安全业务文案与错误码', () => {
+  assert.throws(
+    () => parseCourseEnvelopeText(
+      JSON.stringify({
+        status_code: 25005,
+        status_message: '视频容器或编码不受支持',
+        data: { exception: '内部媒体探测异常' },
+      }),
+      422,
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof CourseApiError);
+      assert.equal(error.message, '视频容器或编码不受支持');
+      assert.equal(error.code, 25005);
+      assert.doesNotMatch(error.message, /内部媒体探测异常/);
+      return true;
+    },
+  );
 });
 
 test('公开课程和进度请求使用约定路径且不提交身份字段', async () => {
