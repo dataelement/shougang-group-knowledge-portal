@@ -125,14 +125,14 @@ test('上传媒体校验错误保留上游安全业务文案与错误码', () =>
     () => parseCourseEnvelopeText(
       JSON.stringify({
         status_code: 25005,
-        status_message: '视频容器或编码不受支持',
+        status_message: '检测到 HEVC/H.265 视频编码。请转换为 H.264',
         data: { exception: '内部媒体探测异常' },
       }),
       422,
     ),
     (error: unknown) => {
       assert.ok(error instanceof CourseApiError);
-      assert.equal(error.message, '视频容器或编码不受支持');
+      assert.equal(error.message, '检测到 HEVC/H.265 视频编码。请转换为 H.264');
       assert.equal(error.code, 25005);
       assert.doesNotMatch(error.message, /内部媒体探测异常/);
       return true;

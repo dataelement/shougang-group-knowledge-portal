@@ -17,7 +17,11 @@ from app.clients.bisheng import (
     BishengMultipartReplayError,
 )
 from app.schemas.course import CourseUpdate, ProgressUpdate, VideoUpdate
-from app.services.course_service import normalize_course_payload
+from app.services.course_service import (
+    CourseBffService,
+    CourseUpstreamError,
+    normalize_course_payload,
+)
 
 
 def test_multipart_supports_a_per_request_long_timeout():
@@ -95,6 +99,22 @@ def test_course_payload_hides_storage_fields_and_rewrites_only_uploaded_media():
     assert payload["videos"][1]["play_url"] == (
         "https://media.example.com/video.mp4?token=external"
     )
+
+
+def test_course_bff_preserves_specific_safe_media_error_message():
+    payload = {
+        "status_code": 25005,
+        "status_message": "检测到 HEVC/H.265 视频编码。请转换为 H.264",
+        "data": {"exception": "不得作为用户提示展示的内部字段"},
+    }
+
+    with pytest.raises(CourseUpstreamError) as caught:
+        CourseBffService._unwrap(payload)
+
+    assert caught.value.code == 25005
+    assert caught.value.http_status == 422
+    assert str(caught.value) == "检测到 HEVC/H.265 视频编码。请转换为 H.264"
+    assert caught.value.payload == payload
 
 
 def test_progress_schema_rejects_forged_identity():
