@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  getDocument,
-  PDFWorker,
-  type PDFDocumentProxy,
-  type RenderTask,
-} from 'pdfjs-dist';
-import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
+// Keep the main bundle and worker on the same polyfilled build for managed browsers.
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?worker&url';
 import s from './DocumentPreview.module.css';
 
 const PDF_RANGE_CHUNK_SIZE = 1024 * 1024;
@@ -13,6 +9,8 @@ const PDF_RENDER_CONCURRENCY = 2;
 const PDF_RENDER_SCALE = 1.25;
 const PDF_MAX_DEVICE_PIXEL_RATIO = 1.5;
 const PDF_PAGE_PLACEHOLDER_HEIGHT = 1040;
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 interface Props {
   sourceUrl: string;
@@ -88,7 +86,7 @@ function PdfPage({
   onFirstPageReady,
   onRenderFailure,
 }: {
-  pdfDocument: PDFDocumentProxy;
+  pdfDocument: pdfjsLib.PDFDocumentProxy;
   pageNumber: number;
   queue: RenderQueue;
   onFirstPageReady: () => void;
@@ -128,7 +126,7 @@ function PdfPage({
     if (!isNearViewport) return undefined;
 
     const controller = new AbortController();
-    let renderTask: RenderTask | null = null;
+    let renderTask: pdfjsLib.RenderTask | null = null;
 
     void queue.enqueue(async () => {
       const page = await pdfDocument.getPage(pageNumber);
@@ -190,18 +188,15 @@ function PdfPage({
 }
 
 export default function PdfPreview({ sourceUrl, onPreviewFailure }: Props) {
-  const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null);
+  const [pdfDocument, setPdfDocument] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [firstPageReady, setFirstPageReady] = useState(false);
   const [renderQueue] = useState(() => createRenderQueue(PDF_RENDER_CONCURRENCY));
 
   useEffect(() => {
     let active = true;
-    let pdfWorker: PDFWorker | null = null;
 
-    pdfWorker = PDFWorker.create({ port: new PdfWorker() });
-    const loadingTask = getDocument({
+    const loadingTask = pdfjsLib.getDocument({
       url: sourceUrl,
-      worker: pdfWorker,
       withCredentials: true,
       rangeChunkSize: PDF_RANGE_CHUNK_SIZE,
       disableStream: true,
@@ -222,7 +217,6 @@ export default function PdfPreview({ sourceUrl, onPreviewFailure }: Props) {
     return () => {
       active = false;
       void loadingTask.destroy();
-      pdfWorker?.destroy();
     };
   }, [onPreviewFailure, sourceUrl]);
 
