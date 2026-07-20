@@ -224,8 +224,12 @@ class KnowledgeService:
         return builtin_key == LATEST_SELECTED_RECOMMENDATION or (not builtin_key and index == 0)
 
     @staticmethod
+    def is_latest_selected_scoped_request(recommendation: Optional[str]) -> bool:
+        return (recommendation or "").strip() == LATEST_SELECTED_RECOMMENDATION
+
+    @staticmethod
     def is_public_latest_selected_request(q: Optional[str], recommendation: Optional[str]) -> bool:
-        return not (q or "").strip() and (recommendation or "").strip() == LATEST_SELECTED_RECOMMENDATION
+        return not (q or "").strip() and KnowledgeService.is_latest_selected_scoped_request(recommendation)
 
     @staticmethod
     def _is_typical_case_section(section: Any) -> bool:
@@ -253,6 +257,7 @@ class KnowledgeService:
         self,
         extra_space_ids: Optional[list[int]] = None,
         *,
+        resolve_user_visible_spaces: bool = False,
         latest_recommendation: str = LATEST_SELECTED_RECOMMENDATION,
         recommendation_limit: int | None = None,
         fallback_latest_on_error: bool = False,
@@ -284,12 +289,25 @@ class KnowledgeService:
             return
 
         needs_scoped_spaces = any(
-            not self._is_latest_selected_section(section, index)
-            or latest_recommendation != LATEST_SELECTED_RECOMMENDATION
+            (
+                not self._is_latest_selected_section(section, index)
+                and not self._is_typical_case_section(section)
+            )
+            or (
+                self._is_latest_selected_section(section, index)
+                and latest_recommendation != LATEST_SELECTED_RECOMMENDATION
+            )
             for section, index in sections
         )
+
+        async def resolve_home_space_ids() -> list[int]:
+            if resolve_user_visible_spaces and extra_space_ids is None:
+                visible_spaces = await self.list_visible_spaces()
+                return [space.id for space in visible_spaces.data]
+            return await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
+
         space_ids_task = (
-            asyncio.ensure_future(self.resolve_requested_space_ids(extra_space_ids=extra_space_ids))
+            asyncio.ensure_future(resolve_home_space_ids())
             if needs_scoped_spaces
             else None
         )
@@ -299,32 +317,35 @@ class KnowledgeService:
             index: int,
         ) -> tuple[str, list[KnowledgeFileItem], str | None]:
             is_latest = self._is_latest_selected_section(section, index)
+            is_public_tag_section = self._is_typical_case_section(section)
             mode = latest_recommendation if is_latest else None
             uses_public_latest = is_latest and mode == LATEST_SELECTED_RECOMMENDATION
+            uses_public_scope = uses_public_latest or is_public_tag_section
             section_limit = (
                 recommendation_limit
                 if is_latest and recommendation_limit is not None
                 else config.display.home.section_page_size
             )
             try:
-                if uses_public_latest:
+                if uses_public_scope:
                     space_ids = None
                 elif space_ids_task is None:
                     return section.tag, [], mode
                 else:
                     space_ids = await space_ids_task
-                if not uses_public_latest and not space_ids:
+                if not uses_public_scope and not space_ids:
                     return section.tag, [], mode
                 result = await self.search_files(
                     q=None,
                     tag=None if is_latest else section.tag,
                     base_tag=None,
-                    requested_space_ids=None if uses_public_latest else space_ids,
+                    requested_space_ids=None if uses_public_scope else space_ids,
                     space_level=None,
                     file_ext=None,
                     document_type=None,
                     business_domain_code=None,
                     recommendation=mode,
+                    public_only=is_public_tag_section,
                     sort=(
                         "portal_read_count_desc"
                         if mode == LATEST_SELECTED_RECOMMENDATION
@@ -332,7 +353,7 @@ class KnowledgeService:
                     ),
                     cursor=None,
                     limit=section_limit,
-                    extra_space_ids=None if uses_public_latest else extra_space_ids,
+                    extra_space_ids=None if uses_public_scope else extra_space_ids,
                 )
                 return section.tag, result.data, mode
             except Exception:
@@ -397,22 +418,24 @@ class KnowledgeService:
             sections.append(payload)
         return sections
 
-    async def fetch_hot_searches(
-        self,
-        extra_space_ids: Optional[list[int]] = None,
-    ) -> list[PortalHotSearchItem]:
+    async def fetch_hot_searches(self) -> list[PortalHotSearchItem]:
         config = self._config_service.get_config()
         try:
-            space_ids = await self.resolve_requested_space_ids(extra_space_ids=extra_space_ids)
             response = await self._bisheng.post_json(
                 "/api/v1/knowledge/shougang-portal/home",
                 json={
-                    "space_ids": space_ids,
+                    "space_ids": [],
                     "space_level": None,
                     "sections": self._build_home_batch_sections(),
                     "hot_tags_limit": config.display.home.hot_tags_count,
                 },
             )
+            if isinstance(response, dict) and response.get("detail") and not response.get("data"):
+                logger.warning(
+                    "BiSheng home batch returned error payload for hot searches: %s",
+                    response.get("detail"),
+                )
+                return []
             data = self._extract_success_data(response)
         except Exception:
             logger.exception("failed to fetch portal hot searches from BiSheng home batch endpoint")
@@ -781,6 +804,7 @@ class KnowledgeService:
         file_subcategory_code: Optional[str] = None,
         business_domain_code: Optional[str] = None,
         recommendation: Optional[str] = None,
+        public_only: bool = False,
         fallback_to_public_spaces: bool = False,
     ) -> CursorKnowledgeFileData:
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
@@ -797,6 +821,7 @@ class KnowledgeService:
             or file_subcategory_code
             or normalized_business_domain_code
             or recommendation
+            or public_only
         )
         keyword = (q or "").strip()
         if not keyword and not has_filter:
@@ -807,6 +832,39 @@ class KnowledgeService:
                 q=None,
                 tag=effective_tag,
                 space_ids=[],
+                space_level="public",
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=normalized_business_domain_code,
+                recommendation=recommendation,
+                sort=sort,
+                cursor=cursor,
+                limit=limit,
+                public_only=True,
+            )
+
+        if keyword and self.is_latest_selected_scoped_request(recommendation):
+            return await self._search_shougang_portal_files(
+                q=keyword,
+                tag=effective_tag,
+                space_ids=[],
+                space_level="public",
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=normalized_business_domain_code,
+                recommendation=recommendation,
+                sort=sort or "relevance",
+                cursor=cursor,
+                limit=limit,
+                public_only=True,
+            )
+
+        if public_only and not keyword:
+            return await self._browse_shougang_portal_files(
+                tag=effective_tag,
+                space_ids=list(requested_space_ids or []),
                 space_level="public",
                 file_ext=file_ext,
                 document_type=document_type,
@@ -861,7 +919,10 @@ class KnowledgeService:
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=normalized_business_domain_code,
                 recommendation=recommendation,
-                sort=sort,
+                sort=sort or "relevance",
+                cursor=cursor,
+                limit=limit,
+                public_only=public_only,
             )
 
         return await self._browse_shougang_portal_files(
@@ -934,10 +995,26 @@ class KnowledgeService:
         cursor: Optional[str],
         limit: int,
         extra_space_ids: Optional[list[int]],
+        public_only: bool = False,
     ) -> CursorKnowledgeFileData:
         normalized_tag = (tag or "").strip()
         normalized_base_tag = (base_tag or "").strip()
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
+        if public_only:
+            return await self._browse_shougang_portal_files(
+                tag=normalized_base_tag or normalized_tag or None,
+                space_ids=list(requested_space_ids or []),
+                space_level="public",
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=normalized_business_domain_code,
+                recommendation=recommendation,
+                sort=sort,
+                cursor=cursor,
+                limit=limit,
+                public_only=True,
+            )
         space_ids = await self.resolve_requested_space_ids(
             requested_space_ids,
             space_level,
@@ -1347,6 +1424,7 @@ class KnowledgeService:
         sort: str,
         cursor: Optional[str],
         limit: int,
+        public_only: bool = False,
     ) -> CursorKnowledgeFileData:
         request_body = {
             "tag": tag,
@@ -1359,6 +1437,8 @@ class KnowledgeService:
         }
         if recommendation:
             request_body["recommendation"] = recommendation
+        if public_only:
+            request_body["public_only"] = True
         normalized_document_type = self._normalize_document_type_code(document_type)
         if normalized_document_type:
             request_body["document_type"] = normalized_document_type
@@ -2199,17 +2279,21 @@ class KnowledgeService:
     @staticmethod
     def _extract_success_data(response: dict[str, Any]) -> Any:
         status_code = response.get("status_code")
-        if status_code not in (None, 200):
+        normalized_status_code: int | None
+        if status_code is None:
+            normalized_status_code = None
+        else:
             try:
-                numeric_status_code = int(status_code)
+                normalized_status_code = int(status_code)
             except (TypeError, ValueError):
-                numeric_status_code = None
+                normalized_status_code = None
+        if normalized_status_code is not None and normalized_status_code != 200:
             raise BishengBusinessError(
-                numeric_status_code or 502,
+                normalized_status_code or 502,
                 normalize_user_facing_message(
                     response.get("status_message"),
                     fallback="BiSheng 请求失败",
-                    status_code=numeric_status_code,
+                    status_code=normalized_status_code,
                 ),
             )
         return response.get("data") or {}

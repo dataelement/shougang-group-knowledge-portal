@@ -21,6 +21,14 @@ test('home latest selected more link uses recommendation mode instead of tag que
   assert.equal(homePageSource.includes('to={`${sec.link}${sec.link.includes'), false);
 });
 
+test('typical case more link keeps the industry-intelligence list on public scope', () => {
+  assert.ok(homePageSource.includes("const TYPICAL_CASE_SECTION_KEY = 'typical_case'"));
+  assert.ok(homePageSource.includes("section.builtin_key === TYPICAL_CASE_SECTION_KEY"));
+  assert.ok(homePageSource.includes("public_only=true"));
+  assert.ok(listPageSource.includes("const publicOnly = params.get('public_only') === 'true'"));
+  assert.ok(listPageSource.includes('publicOnly,'));
+});
+
 test('list page recommendation mode does not send tag filter', () => {
   assert.ok(listPageSource.includes("const LATEST_SELECTED_RECOMMENDATION = 'latest_selected'"));
   assert.ok(listPageSource.includes("const PERSONALIZED_RECOMMENDATION = 'personalized_v1'"));

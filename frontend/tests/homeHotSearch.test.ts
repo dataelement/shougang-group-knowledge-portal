@@ -10,9 +10,11 @@ test('hot search API reads BiSheng-backed endpoint', () => {
   assert.match(contentSource, /\/api\/v1\/knowledge\/hot-searches/);
 });
 
-test('home page hides hot search when list is empty', () => {
+test('home page falls back to qa.hot_questions when auto hot search is empty', () => {
   assert.match(homeSource, /fetchHotSearches\(\)/);
-  assert.match(homeSource, /showHotSearch = searchTab === 'global' && hotSearches\.length > 0/);
-  assert.doesNotMatch(homeSource, /qa\.hot_questions/);
-  assert.doesNotMatch(homeSource, /暂无热门问题/);
+  assert.match(homeSource, /config\?\.qa\.hot_questions/);
+  assert.match(homeSource, /hotSearchesReady/);
+  assert.match(homeSource, /if \(!hotSearchesReady\) return \[\]/);
+  assert.match(homeSource, /if \(hotSearches\.length > 0\) return hotSearches\.map/);
+  assert.match(homeSource, /showHotSearch = searchTab === 'global' && displayHotQueries\.length > 0/);
 });

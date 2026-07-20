@@ -291,6 +291,84 @@ def test_get_json_does_not_retry_auth_failure_more_than_once():
     assert len(request_client.calls) == 2
 
 
+def test_get_json_does_not_refresh_again_when_retry_returns_auth_payload():
+    refresh_calls: list[str] = []
+
+    async def refresh_token(failed_token: str) -> str:
+        refresh_calls.append(failed_token)
+        return "new-token"
+
+    client = BishengClient(
+        "https://bisheng.example.com",
+        5,
+        api_token="old-token",
+        auth_refresh_handler=refresh_token,
+    )
+    original_client = client._client
+    original_plain_client = client._plain_client
+    asyncio.run(original_client.aclose())
+    asyncio.run(original_plain_client.aclose())
+
+    request_client = RequestSequenceClient(
+        [
+            httpx.Response(401, request=httpx.Request("GET", "https://bisheng.example.com/protected")),
+            httpx.Response(
+                200,
+                json={"status_code": 401, "status_message": "登录已过期"},
+                request=httpx.Request("GET", "https://bisheng.example.com/protected"),
+            ),
+        ]
+    )
+    client._client = request_client
+    client._plain_client = RecordingAsyncClient("plain")
+
+    try:
+        result = asyncio.run(client.get_json("/protected"))
+    finally:
+        asyncio.run(client.aclose())
+
+    assert result == {"status_code": 401, "status_message": "登录已过期"}
+    assert refresh_calls == ["old-token"]
+    assert len(request_client.calls) == 2
+
+
+def test_get_json_does_not_reauthenticate_after_http_403():
+    refresh_calls: list[str] = []
+
+    async def refresh_token(failed_token: str) -> str:
+        refresh_calls.append(failed_token)
+        return "new-token"
+
+    client = BishengClient(
+        "https://bisheng.example.com",
+        5,
+        api_token="old-token",
+        auth_refresh_handler=refresh_token,
+    )
+    original_client = client._client
+    original_plain_client = client._plain_client
+    asyncio.run(original_client.aclose())
+    asyncio.run(original_plain_client.aclose())
+    request_client = RequestSequenceClient(
+        [httpx.Response(403, request=httpx.Request("GET", "https://bisheng.example.com/protected"))]
+    )
+    client._client = request_client
+    client._plain_client = RecordingAsyncClient("plain")
+
+    try:
+        try:
+            asyncio.run(client.get_json("/protected"))
+        except httpx.HTTPStatusError as err:
+            assert err.response.status_code == 403
+        else:
+            raise AssertionError("Expected HTTPStatusError")
+    finally:
+        asyncio.run(client.aclose())
+
+    assert refresh_calls == []
+    assert len(request_client.calls) == 1
+
+
 def test_get_json_reports_auth_refresh_failure_clearly():
     async def refresh_token(_failed_token: str) -> str:
         raise ValueError("password expired")
@@ -317,7 +395,7 @@ def test_get_json_reports_auth_refresh_failure_clearly():
             asyncio.run(client.get_json("/protected"))
         except BishengAuthRefreshError as err:
             assert "BiSheng 数据源自动重登失败" in str(err)
-            assert "password expired" in str(err)
+            assert "password expired" not in str(err)
         else:
             raise AssertionError("Expected BishengAuthRefreshError")
     finally:

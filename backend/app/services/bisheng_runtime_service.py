@@ -1,8 +1,11 @@
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import os
+import secrets
+import time
 from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -17,6 +20,11 @@ from app.schemas.bisheng_runtime import (
     BishengRuntimeConfigView,
 )
 from app.schemas.portal_admin_config import PortalBishengPersistentConfig
+from app.services.bisheng_auth_state_store import (
+    BishengAuthStateStore,
+    BishengAuthStateStoreError,
+    BishengSharedAuthState,
+)
 from app.services.config_store import InMemoryConfigStore
 from app.services.error_messages import normalize_user_facing_message
 
@@ -27,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_REFRESH_INTERVAL_SECONDS = 30 * 60
 DEFAULT_REFRESH_THRESHOLD_SECONDS = 60 * 60
+DEFAULT_SHARED_REFRESH_WAIT_SECONDS = 10.0
+DEFAULT_SHARED_REFRESH_POLL_SECONDS = 0.05
+DEFAULT_DISCONNECTED_STATE_TTL_SECONDS = 5 * 60
+DEFAULT_OPAQUE_TOKEN_TTL_SECONDS = 60 * 60
 PORTAL_RUNTIME_TOKEN_PURPOSE = "portal_runtime"
 
 
@@ -54,6 +66,9 @@ class BishengRuntimeService:
         refresh_threshold_seconds: float = DEFAULT_REFRESH_THRESHOLD_SECONDS,
         sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
         store: Any | None = None,
+        auth_state_store: BishengAuthStateStore | None = None,
+        shared_refresh_wait_seconds: float = DEFAULT_SHARED_REFRESH_WAIT_SECONDS,
+        shared_refresh_poll_seconds: float = DEFAULT_SHARED_REFRESH_POLL_SECONDS,
     ):
         self._config_path = config_path
         self._store = store or InMemoryConfigStore()
@@ -68,6 +83,9 @@ class BishengRuntimeService:
         self._refresh_interval_seconds = refresh_interval_seconds
         self._refresh_threshold_seconds = refresh_threshold_seconds
         self._sleeper = sleeper
+        self._auth_state_store = auth_state_store
+        self._shared_refresh_wait_seconds = shared_refresh_wait_seconds
+        self._shared_refresh_poll_seconds = shared_refresh_poll_seconds
         self._lock = asyncio.Lock()
         self._client: BishengClient | None = None
         self._refresh_task: asyncio.Task | None = None
@@ -77,6 +95,7 @@ class BishengRuntimeService:
         self._ensure_seeded()
 
     async def initialize(self) -> None:
+        await self.sync_shared_auth_state()
         async with self._lock:
             await self._replace_client(self._read_config())
         if self._can_auto_refresh():
@@ -106,6 +125,20 @@ class BishengRuntimeService:
     def get_public_config(self) -> BishengRuntimeConfigView:
         return self._to_public_view(self._read_config())
 
+    async def get_shared_public_config(self) -> BishengRuntimeConfigView:
+        await self.sync_shared_auth_state()
+        return self.get_public_config()
+
+    async def sync_shared_auth_state(self) -> BishengSharedAuthState | None:
+        if self._auth_state_store is None:
+            return None
+        current = self._read_config()
+        shared = await self._auth_state_store.get(self._config_fingerprint(current))
+        if shared is None:
+            return None
+        await self._apply_shared_state(shared)
+        return shared
+
     async def apply_persistent_config(
         self,
         config: PortalBishengPersistentConfig,
@@ -119,8 +152,10 @@ class BishengRuntimeService:
             )
             next_token = "" if endpoint_changed else current.api_token
             last_auth_at = config.last_auth_at if not endpoint_changed else ""
-            should_login = bool(username and config.saved_password) and (
-                not next_token or self._is_token_due_for_refresh(next_token)
+            should_login = (
+                self._auth_state_store is None
+                and bool(username and config.saved_password)
+                and (not next_token or self._is_token_due_for_refresh(next_token))
             )
             if should_login:
                 try:
@@ -147,6 +182,10 @@ class BishengRuntimeService:
             await self._replace_client(updated)
             if self._can_auto_refresh():
                 self._ensure_refresh_task()
+        if self._auth_state_store is not None:
+            await self.sync_shared_auth_state()
+            if self._is_token_due_for_refresh(self._read_config().api_token):
+                await self._refresh_token_if_due()
         await self._refresh_runtime_account_info()
         return self.get_public_config()
 
@@ -154,6 +193,7 @@ class BishengRuntimeService:
         return not self._connected
 
     async def refresh_connection_status(self) -> BishengRuntimeConfigView:
+        await self.sync_shared_auth_state()
         async with self._lock:
             if self._client is None:
                 await self._replace_client(self._read_config())
@@ -179,6 +219,7 @@ class BishengRuntimeService:
         )
 
     async def update_config(self, payload: BishengRuntimeConfigUpdate) -> BishengRuntimeConfigView:
+        await self.sync_shared_auth_state()
         async with self._lock:
             current = self._read_config()
             password = payload.password.get_secret_value().strip() if payload.password else ""
@@ -239,6 +280,19 @@ class BishengRuntimeService:
                 logger.exception("BiSheng token 自动刷新循环异常，将在下次轮询重试")
 
     async def _refresh_token_if_due(self) -> None:
+        if self._auth_state_store is not None:
+            await self.sync_shared_auth_state()
+            current = self._read_config()
+            if not self._is_token_due_for_refresh(current.api_token):
+                return
+            try:
+                await self._refresh_shared_token(current.api_token)
+            except ValueError as err:
+                logger.warning("BiSheng token 自动续期失败：%s", err)
+                return
+            await self._refresh_runtime_account_info()
+            return
+
         refreshed = False
         async with self._lock:
             current = self._read_config()
@@ -296,6 +350,9 @@ class BishengRuntimeService:
             self._refresh_task = asyncio.create_task(self._refresh_loop())
 
     async def refresh_token_after_auth_failure(self, failed_token: str = "") -> str:
+        if self._auth_state_store is not None:
+            return await self._refresh_shared_token(failed_token)
+
         async with self._lock:
             current = self._read_config()
             if failed_token and current.api_token and current.api_token != failed_token:
@@ -326,6 +383,123 @@ class BishengRuntimeService:
             self._set_current_client_token(next_token)
             logger.info("BiSheng token 已在认证失败后自动重登")
             return next_token
+
+    async def _refresh_shared_token(self, failed_token: str) -> str:
+        if self._auth_state_store is None:
+            raise RuntimeError("BiSheng shared auth state store is not configured")
+        current = self._read_config()
+        fingerprint = self._config_fingerprint(current)
+        shared = await self._auth_state_store.get(fingerprint)
+        if shared and shared.access_token and shared.access_token != failed_token:
+            await self._apply_shared_state(shared)
+            return shared.access_token
+
+        owner = secrets.token_urlsafe(24)
+        lock_ttl_seconds = max(60, int(current.timeout_seconds * 3))
+        acquired = await self._auth_state_store.acquire_refresh_lock(
+            fingerprint,
+            owner,
+            ttl_seconds=lock_ttl_seconds,
+        )
+        if not acquired:
+            return await self._wait_for_shared_refresh(
+                fingerprint,
+                failed_token=failed_token,
+                previous_version=shared.version if shared else "",
+            )
+
+        try:
+            latest = await self._auth_state_store.get(fingerprint)
+            if latest and latest.access_token and latest.access_token != failed_token:
+                await self._apply_shared_state(latest)
+                return latest.access_token
+
+            username = current.username.strip() or self._default_username
+            password = self._runtime_password(current)
+            if not username or not password:
+                await self._save_disconnected_shared_state(
+                    current,
+                    "BiSheng 数据源自动重登失败，请检查服务账号配置",
+                )
+                raise ValueError("BiSheng 数据源自动重登失败，请检查服务账号配置")
+
+            try:
+                next_token = await self._login_and_get_token(
+                    base_url=str(current.base_url),
+                    username=username,
+                    password=password,
+                    timeout_seconds=current.timeout_seconds,
+                )
+            except Exception as err:
+                logger.warning("BiSheng 数据源共享登录态刷新失败：%s", err.__class__.__name__)
+                await self._save_disconnected_shared_state(
+                    current,
+                    "BiSheng 数据源自动重登失败，请检查服务账号配置",
+                )
+                raise ValueError("BiSheng 数据源自动重登失败，请检查服务账号配置") from err
+
+            last_auth_at = _utc_now()
+            next_state = BishengSharedAuthState(
+                access_token=next_token,
+                connected=True,
+                auth_message="已连接",
+                auth_user=latest.auth_user if latest else self._auth_user,
+                last_auth_at=last_auth_at,
+                expires_at=self._shared_token_expires_at(next_token),
+                version=secrets.token_urlsafe(16),
+            )
+            await self._auth_state_store.save(fingerprint, next_state)
+            await self._apply_shared_state(next_state)
+            logger.info("BiSheng token 已在认证失败后完成跨 Worker 自动重登")
+            return next_token
+        finally:
+            try:
+                await self._auth_state_store.release_refresh_lock(fingerprint, owner)
+            except BishengAuthStateStoreError:
+                # 锁带有租期；释放失败不回滚已经成功写入的共享登录态。
+                logger.warning("BiSheng 共享登录刷新锁释放失败，将等待租期自动清理")
+
+    async def _wait_for_shared_refresh(
+        self,
+        fingerprint: str,
+        *,
+        failed_token: str,
+        previous_version: str,
+    ) -> str:
+        if self._auth_state_store is None:
+            raise RuntimeError("BiSheng shared auth state store is not configured")
+        deadline = time.monotonic() + self._shared_refresh_wait_seconds
+        while time.monotonic() < deadline:
+            await asyncio.sleep(self._shared_refresh_poll_seconds)
+            shared = await self._auth_state_store.get(fingerprint)
+            if shared is None:
+                continue
+            if shared.access_token and shared.access_token != failed_token:
+                await self._apply_shared_state(shared)
+                return shared.access_token
+            if not shared.access_token and shared.version != previous_version:
+                await self._apply_shared_state(shared)
+                raise ValueError("BiSheng 数据源自动重登失败，请检查服务账号配置")
+        raise ValueError("BiSheng 数据源自动重登超时，请稍后重试")
+
+    async def _save_disconnected_shared_state(
+        self,
+        config: BishengRuntimeConfig,
+        message: str,
+    ) -> None:
+        if self._auth_state_store is None:
+            return
+        state = BishengSharedAuthState(
+            access_token="",
+            connected=False,
+            auth_message=message,
+            auth_user=None,
+            last_auth_at=config.last_auth_at,
+            expires_at=time.time() + DEFAULT_DISCONNECTED_STATE_TTL_SECONDS,
+            version=secrets.token_urlsafe(16),
+        )
+        await self._auth_state_store.save(self._config_fingerprint(config), state)
+        await self._apply_shared_state(state)
 
     async def _login_and_get_token(
         self,
@@ -385,14 +559,20 @@ class BishengRuntimeService:
                 self._connected = False
                 self._auth_user = None
                 self._auth_message = "未配置 BiSheng 数据源 token"
-                return
-            if self._client is None:
+                client = None
+                token = ""
+            elif self._client is None:
                 self._connected = False
                 self._auth_user = None
                 self._auth_message = "BiSheng client is not initialized"
-                return
-            client = self._client
-            token = current.api_token
+                client = None
+                token = current.api_token
+            else:
+                client = self._client
+                token = current.api_token
+        if client is None:
+            await self._publish_shared_state()
+            return
 
         try:
             response = await client.get_json("/api/v1/user/info")
@@ -408,7 +588,8 @@ class BishengRuntimeService:
                     f"BiSheng 数据源登录信息获取失败："
                     f"{self._sanitize_error_message(err, current.api_token or token)}"
                 )
-                return
+            await self._publish_shared_state()
+            return
 
         account = self._first_str(data, "user_name", "username", "account", "email") or current.username
         name = self._first_str(data, "nick_name", "nickname", "name", "real_name", "user_name") or account
@@ -424,6 +605,7 @@ class BishengRuntimeService:
             self._auth_user = auth_user
             self._connected = True
             self._auth_message = "已连接"
+        await self._publish_shared_state()
 
     def _ensure_seeded(self) -> None:
         if self._store.get_document(self._TABLE_NAME, legacy_key=self._LEGACY_CONFIG_KEY) is not None:
@@ -457,6 +639,74 @@ class BishengRuntimeService:
 
     def _write_config(self, config: BishengRuntimeConfig) -> None:
         self._store.upsert_document(self._TABLE_NAME, config.model_dump(mode="json"))
+
+    async def _apply_shared_state(self, state: BishengSharedAuthState) -> None:
+        async with self._lock:
+            current = self._read_config()
+            if current.api_token != state.access_token or current.last_auth_at != state.last_auth_at:
+                current = current.model_copy(
+                    update={
+                        "api_token": state.access_token,
+                        "last_auth_at": state.last_auth_at,
+                    }
+                )
+                self._write_config(current)
+            self._connected = state.connected
+            self._auth_message = state.auth_message
+            self._auth_user = state.auth_user
+            self._set_current_client_token(state.access_token)
+
+    async def _publish_shared_state(self) -> None:
+        if self._auth_state_store is None:
+            return
+        async with self._lock:
+            current = self._read_config()
+            token = current.api_token
+            state = BishengSharedAuthState(
+                access_token=token,
+                connected=self._connected,
+                auth_message=self._auth_message,
+                auth_user=self._auth_user,
+                last_auth_at=current.last_auth_at,
+                expires_at=(
+                    self._shared_token_expires_at(token)
+                    if token
+                    else time.time() + DEFAULT_DISCONNECTED_STATE_TTL_SECONDS
+                ),
+                version=secrets.token_urlsafe(16),
+            )
+            fingerprint = self._config_fingerprint(current)
+        owner = secrets.token_urlsafe(24)
+        acquired = await self._auth_state_store.acquire_refresh_lock(
+            fingerprint,
+            owner,
+            ttl_seconds=max(60, int(current.timeout_seconds * 3)),
+        )
+        if not acquired:
+            return
+        try:
+            latest = await self._auth_state_store.get(fingerprint)
+            if latest is not None and latest.access_token != state.access_token:
+                await self._apply_shared_state(latest)
+                return
+            await self._auth_state_store.save(fingerprint, state)
+        finally:
+            try:
+                await self._auth_state_store.release_refresh_lock(fingerprint, owner)
+            except BishengAuthStateStoreError:
+                logger.warning("BiSheng 共享登录状态发布锁释放失败，将等待租期自动清理")
+
+    @staticmethod
+    def _config_fingerprint(config: BishengRuntimeConfig) -> str:
+        source = f"{str(config.base_url).rstrip('/')}|{config.username.strip().lower()}"
+        return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _shared_token_expires_at(token: str) -> float:
+        expires_at = _decode_jwt_exp(token)
+        if expires_at is not None:
+            return expires_at.timestamp()
+        return time.time() + DEFAULT_OPAQUE_TOKEN_TTL_SECONDS
 
     async def _replace_client(self, config: BishengRuntimeConfig) -> None:
         next_client = self._create_runtime_client(config)

@@ -6,7 +6,7 @@ import {
   BarChart3, Bot, ChevronLeft, ChevronRight, ChevronDown, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, Leaf, Truck, Wrench, GraduationCap,
-  Flame, Briefcase, Users, ScrollText, Loader2, Plus, X,
+  Briefcase, Users, ScrollText, Loader2, Plus, X,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
@@ -48,7 +48,8 @@ import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
 import { buildGuestLoginPath } from '../utils/guestAccess';
-import { COURSE_LIST_ITEMS } from '../data/courseMock';
+import { fetchCourses } from '../api/courses';
+import { formatCourseDuration, type Course } from '../types/course';
 import s from './HomePage.module.css';
 import navIcon from '../assets/nav-icon@2x.png';
 import iconCourse from '../assets/icon-course@2x.png';
@@ -69,20 +70,20 @@ import { formatDisplayDateTime } from '../utils/dateTime';
 
 /** 积分榜单前三名(领奖台),按 展示顺序 [第二, 第一, 第三] 排列 */
 const POINTS_PODIUM = [
-  { rank: 2, name: '李思', dept: '技术研发部', score: 3850, medal: medalSilver, tone: 'silver' as const },
-  { rank: 1, name: '王丽', dept: '质量管理部', score: 4120, medal: medalGold, tone: 'gold' as const },
-  { rank: 3, name: '赵峰', dept: '生产运营部', score: 3620, medal: medalBronze, tone: 'bronze' as const },
+  { rank: 2, name: '李思', dept: '炼铁作业部', score: 3850, medal: medalSilver, tone: 'silver' as const },
+  { rank: 1, name: '王丽', dept: '炼钢作业部', score: 4120, medal: medalGold, tone: 'gold' as const },
+  { rank: 3, name: '赵峰', dept: '热轧作业部', score: 3620, medal: medalBronze, tone: 'bronze' as const },
 ];
 
 /** 积分榜单 4~10 名列表,me 标记当前登录用户所在行 */
 const POINTS_ROWS = [
-  { rank: 4, name: '尉仁子', dept: '设备管理部', score: 3280, delta: 290 },
-  { rank: 5, name: '索世泽', dept: '安全环保部', score: 3150, delta: 260 },
-  { rank: 6, name: '多琦娜(我)', dept: '技术研发部', score: 3129, delta: 150 },
-  { rank: 7, name: '茶慧伦', dept: '生产运营部', score: 2580, delta: 156 },
-  { rank: 8, name: '滑良和', dept: '知识管理部', score: 2217, delta: 310 },
-  { rank: 9, name: '潘世', dept: '技术研发部', score: 1640, delta: 124 },
-  { rank: 10, name: '尹胜', dept: '生产运营部', score: 1500, delta: 100 },
+  { rank: 4, name: '尉仁子', dept: '首钢冷轧', score: 3280, delta: 290 },
+  { rank: 5, name: '索世泽', dept: '安全部', score: 3150, delta: 260 },
+  { rank: 6, name: '多琦娜(我)', dept: '采购中心', score: 3129, delta: 150 },
+  { rank: 7, name: '茶慧伦', dept: '迁顺技术中心', score: 2580, delta: 156 },
+  { rank: 8, name: '滑良和', dept: '设备部库', score: 2217, delta: 310 },
+  { rank: 9, name: '潘世', dept: '制造部', score: 1640, delta: 124 },
+  { rank: 10, name: '尹胜', dept: '炼铁作业部', score: 1500, delta: 100 },
 ];
 
 /** Resolve a homepage panel header icon (PNG) from its title keywords. */
@@ -109,6 +110,7 @@ function resolveSectionItemIcon(title: string): string {
 }
 
 const LATEST_SELECTED_RECOMMENDATION = 'latest_selected';
+const TYPICAL_CASE_SECTION_KEY = 'typical_case';
 
 function isLatestSelectedSection(section: SectionConfig): boolean {
   return section.builtin_key === LATEST_SELECTED_RECOMMENDATION;
@@ -128,7 +130,10 @@ function buildSectionMoreLink(section: SectionConfig, recommendationMode?: Recom
     const mode = recommendationMode ?? LATEST_SELECTED_RECOMMENDATION;
     return `/list?recommendation=${mode}&${titleParam}`;
   }
-  return `${section.link}${section.link.includes('?') ? '&' : '?'}${titleParam}`;
+  const publicScopeParam = section.builtin_key === TYPICAL_CASE_SECTION_KEY
+    ? 'public_only=true&'
+    : '';
+  return `${section.link}${section.link.includes('?') ? '&' : '?'}${publicScopeParam}${titleParam}`;
 }
 
 function buildHomeFilePath(file: FileItem, recommendationMode?: RecommendationMode): string {
@@ -318,11 +323,14 @@ export default function HomePage() {
   const [sectionDataLoading, setSectionDataLoading] = useState(false);
   const [showHotTagMenu, setShowHotTagMenu] = useState(false);
   const [hotSearches, setHotSearches] = useState<PortalHotSearchItem[]>([]);
+  const [hotSearchesReady, setHotSearchesReady] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
   const [domainCountsLoading, setDomainCountsLoading] = useState(true);
   const [homeStats, setHomeStats] = useState<HomeStats | null>(null);
   const [homeStatsFailed, setHomeStatsFailed] = useState(false);
+  const [homeCourses, setHomeCourses] = useState<Course[]>([]);
+  const [homeCoursesLoading, setHomeCoursesLoading] = useState(true);
   const [welcomeToast, setWelcomeToast] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     try {
@@ -355,7 +363,7 @@ export default function HomePage() {
   const qaPickerBtnRef = useRef<HTMLButtonElement>(null);
   const qaPickerPanelRef = useRef<HTMLDivElement>(null);
   const [qaPickerPos, setQaPickerPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
-  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint());
+  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint(user?.account));
   const [qaKbHintPos, setQaKbHintPos] = useState<{ left: number; top: number } | null>(null);
 
   const qaGeneralLabel = config?.qa?.general_model_display_name?.trim() || '通用模型';
@@ -459,6 +467,23 @@ export default function HomePage() {
         if (active) setDomainCountsLoading(false);
       }
     })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetchCourses('home')
+      .then((courses) => {
+        if (active) setHomeCourses(courses);
+      })
+      .catch(() => {
+        if (active) setHomeCourses([]);
+      })
+      .finally(() => {
+        if (active) setHomeCoursesLoading(false);
+      });
     return () => {
       active = false;
     };
@@ -590,6 +615,11 @@ export default function HomePage() {
     return () => window.clearTimeout(timer);
   }, [qaTip]);
 
+  // 气泡按用户各自记录:切换账号(登录/退出)后按新用户重新判定是否提示。
+  useEffect(() => {
+    setQaKbHintOpen(shouldShowQaKbHint(user?.account));
+  }, [user?.account]);
+
   useEffect(() => {
     if (!qaModelMenuOpen && !qaPickerOpen) return undefined;
     const onPointerDown = (event: MouseEvent) => {
@@ -685,6 +715,15 @@ export default function HomePage() {
 
   const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains) : []), [config]);
   const enabledSections = useMemo(() => (config ? getEnabledSections(config.sections) : []), [config]);
+  const qaHotQuestions = useMemo(() => {
+    const items = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
+    return items.slice(0, displayConfig.home.hotTagsCount);
+  }, [config?.qa.hot_questions, displayConfig.home.hotTagsCount]);
+  const displayHotQueries = useMemo(() => {
+    if (!hotSearchesReady) return [];
+    if (hotSearches.length > 0) return hotSearches.map((item) => item.query);
+    return qaHotQuestions;
+  }, [hotSearches, hotSearchesReady, qaHotQuestions]);
 
   useEffect(() => {
     let active = true;
@@ -694,6 +733,8 @@ export default function HomePage() {
         if (active) setHotSearches(items);
       } catch {
         if (active) setHotSearches([]);
+      } finally {
+        if (active) setHotSearchesReady(true);
       }
     })();
     return () => {
@@ -702,8 +743,8 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (!hotSearches.length) setShowHotTagMenu(false);
-  }, [hotSearches.length]);
+    if (!displayHotQueries.length) setShowHotTagMenu(false);
+  }, [displayHotQueries.length]);
 
   useEffect(() => {
     let active = true;
@@ -762,7 +803,7 @@ export default function HomePage() {
   }));
   const homeSections = enabledSections.slice(0, 3);
   const contentSections = homeSections;
-  const showHotSearch = searchTab === 'global' && hotSearches.length > 0;
+  const showHotSearch = searchTab === 'global' && displayHotQueries.length > 0;
 
   const appEntryItems = (config?.qa.templates || []).filter((template) => template.enabled && template.show_on_home);
   const formatHomeStat = (value: number | undefined): string => {
@@ -959,46 +1000,46 @@ export default function HomePage() {
                       </button>
                       {qaPickerOpen && qaPickerPos
                         ? createPortal(
-                            <div
-                              ref={qaPickerPanelRef}
-                              className={s.qaPickerPortal}
-                              style={{ position: 'fixed', left: qaPickerPos.left, top: qaPickerPos.top }}
-                            >
-                              <QAKnowledgeTreePicker
-                                spaces={qaSpaces}
-                                scope={qaScope}
-                                loading={qaSpacesLoading}
-                                onChange={setQaScope}
-                                onLoadChildren={fetchQaKnowledgeTreeChildren}
-                                onLoadFolderStats={fetchQaKnowledgeFolderStats}
-                                onSearchFiles={searchQaKnowledgeFiles}
-                                onTip={setQaTip}
-                                onClose={() => setQaPickerOpen(false)}
-                                maxHeight={qaPickerPos.maxHeight}
-                              />
-                            </div>,
-                            document.body,
-                          )
+                          <div
+                            ref={qaPickerPanelRef}
+                            className={s.qaPickerPortal}
+                            style={{ position: 'fixed', left: qaPickerPos.left, top: qaPickerPos.top }}
+                          >
+                            <QAKnowledgeTreePicker
+                              spaces={qaSpaces}
+                              scope={qaScope}
+                              loading={qaSpacesLoading}
+                              onChange={setQaScope}
+                              onLoadChildren={fetchQaKnowledgeTreeChildren}
+                              onLoadFolderStats={fetchQaKnowledgeFolderStats}
+                              onSearchFiles={searchQaKnowledgeFiles}
+                              onTip={setQaTip}
+                              onClose={() => setQaPickerOpen(false)}
+                              maxHeight={qaPickerPos.maxHeight}
+                            />
+                          </div>,
+                          document.body,
+                        )
                         : null}
                       {qaKbHintOpen && qaKbHintPos && !qaPickerOpen
                         ? createPortal(
-                            <div
-                              className={s.qaKbHintBubble}
-                              style={{ position: 'fixed', left: qaKbHintPos.left, top: qaKbHintPos.top } as CSSProperties}
-                              role="note"
+                          <div
+                            className={s.qaKbHintBubble}
+                            style={{ position: 'fixed', left: qaKbHintPos.left, top: qaKbHintPos.top } as CSSProperties}
+                            role="note"
+                          >
+                            <span className={s.qaKbHintText}>{QA_KB_HINT_TEXT}</span>
+                            <button
+                              type="button"
+                              className={s.qaKbHintClose}
+                              onClick={() => { dismissQaKbHint(user?.account); setQaKbHintOpen(false); }}
+                              aria-label="关闭提示"
                             >
-                              <span className={s.qaKbHintText}>{QA_KB_HINT_TEXT}</span>
-                              <button
-                                type="button"
-                                className={s.qaKbHintClose}
-                                onClick={() => { dismissQaKbHint(); setQaKbHintOpen(false); }}
-                                aria-label="关闭提示"
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>,
-                            document.body,
-                          )
+                              <X size={12} />
+                            </button>
+                          </div>,
+                          document.body,
+                        )
                         : null}
                     </div>
                     {qaTip ? <span className={s.qaTip}>{qaTip}</span> : null}
@@ -1020,21 +1061,21 @@ export default function HomePage() {
             {showHotTagMenu && showHotSearch ? (
               <div id="home-hot-tag-menu" className={s.hotSearchMenu}>
                 <div className={s.hotSearchTags}>
-                  {hotSearches.map((item) => (
+                  {displayHotQueries.map((question) => (
                     <button
-                      key={`${item.rank}-${item.query}`}
+                      key={question}
                       type="button"
                       className={s.hotSearchTag}
                       onClick={() => {
                         setShowHotTagMenu(false);
-                        setQuery(item.query);
+                        setQuery(question);
                         if (user) {
-                          void recordPortalSearchEvent(item.query, 'home_hot_keyword').catch(() => undefined);
+                          void recordPortalSearchEvent(question, 'home_hot_keyword').catch(() => undefined);
                         }
-                        navigate(`/search?q=${encodeURIComponent(item.query)}`);
+                        navigate(`/search?q=${encodeURIComponent(question)}`);
                       }}
                     >
-                      <span className={s.hotSearchTagText}>{item.query}</span>
+                      <span className={s.hotSearchTagText}>{question}</span>
                     </button>
                   ))}
                 </div>
@@ -1266,41 +1307,30 @@ export default function HomePage() {
                   <img src={iconCourse} alt="" className={s.panelIconImg} />
                   <span className={s.panelTitle}>专业课程 · 岗位赋能</span>
                 </div>
-                <Link
-                  to="/course"
-                  className={s.panelMore}
-                  onClick={(event) => {
-                    if (user) return;
-                    event.preventDefault();
-                    navigate(buildGuestLoginPath('/course'));
-                  }}
-                >
+                <Link to="/course" className={s.panelMore}>
                   全部课程 <ChevronRight size={14} />
                 </Link>
               </div>
               <div className={s.courseList}>
-                {COURSE_LIST_ITEMS.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={s.courseRow}
-                    onClick={() => {
-                      const target = `/course/${c.id}`;
-                      navigate(user ? target : buildGuestLoginPath(target));
-                    }}
-                  >
-                    <img src={iconVideo} alt="" className={s.courseRowIcon} />
-                    <span className={s.courseRowTitle}>{c.title}</span>
-                    {c.hot ? (
-                      <span className={s.courseHotTag}>
-                        <Flame size={10} />热门
-                      </span>
-                    ) : c.domain ? (
-                      <span className={s.courseDomainTag}>{c.domain}</span>
-                    ) : null}
-                    <span className={s.courseRowDuration}>{c.duration}</span>
-                  </button>
-                ))}
+                {homeCourses.map((course) => {
+                  const displayTag = course.tags.find((tag) => tag.displayType === 'domain') ?? course.tags[0];
+                  return (
+                    <button
+                      key={course.id}
+                      type="button"
+                      className={s.courseRow}
+                      onClick={() => navigate(`/course/${course.id}`)}
+                    >
+                      <img src={iconVideo} alt="" className={s.courseRowIcon} />
+                      <span className={s.courseRowTitle}>{course.name}</span>
+                      {displayTag ? <span className={s.courseDomainTag}>{displayTag.label}</span> : null}
+                      <span className={s.courseRowDuration}>{formatCourseDuration(course.totalDurationSeconds)}</span>
+                    </button>
+                  );
+                })}
+                {!homeCoursesLoading && homeCourses.length === 0 ? (
+                  <div className={s.sectionEmpty}>暂无首页课程</div>
+                ) : null}
               </div>
             </div>
 

@@ -228,12 +228,25 @@ interface ApiEnvelope<T> {
 export class ApiRequestError extends Error {
   status: number;
   code?: number;
+  kind: ChatErrorKind;
+  title: string;
+  reason: string;
+  retryable: boolean;
 
-  constructor(message: string, status: number, code?: number) {
+  constructor(
+    message: string,
+    status: number,
+    code?: number,
+    details: Partial<Pick<ApiRequestError, 'kind' | 'title' | 'reason' | 'retryable'>> = {},
+  ) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
     this.code = code;
+    this.kind = details.kind ?? 'system';
+    this.title = details.title ?? '问答服务异常';
+    this.reason = details.reason ?? message;
+    this.retryable = details.retryable === true;
   }
 }
 
@@ -721,11 +734,13 @@ export async function fetchAggregatedTags(
   spaceIds?: number[],
   spaceLevel?: string,
   businessDomainCode?: string,
+  publicOnly = false,
 ): Promise<string[]> {
   const params = new URLSearchParams();
   spaceIds?.forEach((id) => params.append('space_ids', String(id)));
   if (spaceLevel) params.set('space_level', spaceLevel);
   if (businessDomainCode) params.set('business_domain_code', businessDomainCode);
+  if (publicOnly) params.set('public_only', 'true');
   const query = params.toString();
   return request<string[]>(`/api/v1/knowledge/tags${query ? `?${query}` : ''}`);
 }
@@ -741,7 +756,7 @@ export async function streamHomeContent(params: {
     headers: { Accept: 'text/event-stream' },
   });
   if (!response.ok) {
-    const payload = await response.clone().json().catch(() => null) as { detail?: string; status_code?: number; status_message?: string } | null;
+    const payload = await response.clone().json().catch(() => null) as BishengStreamPayload | null;
     const message = normalizeUserFacingMessage(
       payload?.status_message || payload?.detail,
       '首页数据加载失败，请稍后重试。',
@@ -826,6 +841,7 @@ export async function searchFiles(params: {
   limit?: number;
   businessDomainCode?: string;
   recommendation?: string;
+  publicOnly?: boolean;
 }): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
@@ -837,6 +853,7 @@ export async function searchFiles(params: {
   if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
   if (params.recommendation) query.set('recommendation', params.recommendation);
+  if (params.publicOnly) query.set('public_only', 'true');
   if (params.sort) query.set('sort', params.sort);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));
@@ -874,6 +891,7 @@ export async function browseSearchFiles(params: {
   documentType?: string;
   fileSubcategoryCode?: string;
   businessDomainCode?: string;
+  publicOnly?: boolean;
   sort?: string;
   cursor?: string | null;
 }): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
@@ -884,6 +902,7 @@ export async function browseSearchFiles(params: {
   if (params.documentType) query.set('document_type', params.documentType);
   if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
   if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
+  if (params.publicOnly) query.set('public_only', 'true');
   if (params.sort) query.set('sort', params.sort);
   if (params.cursor) query.set('cursor', params.cursor);
   params.spaceIds?.forEach((id) => query.append('space_ids', String(id)));
@@ -924,8 +943,11 @@ export async function fetchSpaceFiles(params: {
   };
 }
 
-export async function fetchKnowledgeSpaces(): Promise<{ data: KnowledgeSpace[]; total: number }> {
-  const data = await request<KnowledgeSpaceListDataDto>('/api/v1/knowledge/spaces');
+export async function fetchKnowledgeSpaces(
+  options: { publicOnly?: boolean } = {},
+): Promise<{ data: KnowledgeSpace[]; total: number }> {
+  const suffix = options.publicOnly ? '?public_only=true' : '';
+  const data = await request<KnowledgeSpaceListDataDto>(`/api/v1/knowledge/spaces${suffix}`);
   return {
     data: data.data.map(mapKnowledgeSpace),
     total: data.total,
@@ -1446,17 +1468,108 @@ export interface Citation {
 interface BishengStreamPayload {
   category?: string;
   type?: string;
+  status_code?: number;
+  status_message?: string;
+  detail?: string;
+  data?: unknown;
   chat_id?: string;
   message?: string | { content?: string; msg?: string; text?: string; conversationId?: string };
   citations?: Citation[];
   conversation?: { conversationId?: string };
   final?: boolean;
   responseMessage?: { text?: string; citations?: Citation[]; conversationId?: string };
+  kind?: ChatErrorKind;
+  title?: string;
+  reason?: string;
+  retryable?: boolean;
+  attempt?: number;
+  max_attempts?: number;
+  retry_after_ms?: number;
 }
+
+export type ChatErrorKind = 'model' | 'retrieval' | 'document' | 'rate_limit' | 'network' | 'auth' | 'config' | 'system';
+
+export interface ChatRetryProgress {
+  attempt: number;
+  maxAttempts: number;
+  retryAfterMs: number;
+  message: string;
+}
+
+const CHAT_ERROR_COPY: Record<ChatErrorKind, { title: string; reason: string }> = {
+  model: { title: '模型调用失败', reason: '模型服务暂时不可用，请稍后重试。' },
+  retrieval: { title: '知识检索失败', reason: '暂时无法检索相关知识，请稍后重试。' },
+  document: { title: '文档暂不可用', reason: '文档可能尚未就绪或已失效，请稍后再试。' },
+  rate_limit: { title: '请求过于频繁', reason: '服务当前繁忙，请稍后重试。' },
+  network: { title: '网络连接失败', reason: '连接问答服务超时或中断，请稍后重试。' },
+  auth: { title: '认证或权限失败', reason: '当前账号无权执行此操作，请检查登录状态或权限。' },
+  config: { title: '问答配置异常', reason: '问答模型或服务尚未正确配置，请联系管理员。' },
+  system: { title: '问答服务异常', reason: '问答服务暂时不可用，请稍后重试。' },
+};
 
 function getStreamMessageText(payload: BishengStreamPayload): string {
   if (typeof payload.message === 'string') return payload.message;
   return payload.message?.content ?? payload.message?.msg ?? payload.message?.text ?? '';
+}
+
+function normalizeChatStreamErrorMessage(message: unknown, status?: number): string {
+  const raw = typeof message === 'string' ? message.trim() : '';
+  const containsTechnicalDetail = raw.length > 200
+    || /(?:traceback|exception|stack|provider|database|token|secret|api[_ -]?key|https?:\/\/|\/users\/|\/home\/)/i.test(raw);
+  return normalizeUserFacingMessage(
+    containsTechnicalDetail ? undefined : raw,
+    '问答请求失败，请稍后重试。',
+    status,
+  );
+}
+
+function buildChatStreamError(payload: BishengStreamPayload, status = 500): ApiRequestError {
+  const kind = payload.kind && payload.kind in CHAT_ERROR_COPY
+    ? payload.kind
+    : payload.status_code === 429
+      ? 'rate_limit'
+      : payload.status_code === 401 || payload.status_code === 403
+        ? 'auth'
+        : 'system';
+  const fallback = CHAT_ERROR_COPY[kind];
+  const hasStructuredDetails = Boolean(payload.kind || payload.title || payload.reason);
+  if (!hasStructuredDetails) {
+    const legacyMessage = normalizeChatStreamErrorMessage(
+      payload.status_message || payload.detail,
+      status,
+    );
+    return new ApiRequestError(
+      legacyMessage,
+      status,
+      payload.status_code,
+      { kind, title: legacyMessage, reason: legacyMessage, retryable: false },
+    );
+  }
+  const title = payload.title
+    ? normalizeChatStreamErrorMessage(payload.title, status)
+    : fallback.title;
+  const reasonSource = payload.reason || payload.status_message || payload.detail;
+  const normalizedReason = reasonSource
+    ? normalizeChatStreamErrorMessage(reasonSource, status)
+    : fallback.reason;
+  const reason = normalizedReason === title ? fallback.reason : normalizedReason;
+  return new ApiRequestError(
+    `${title}\n${reason}`,
+    status,
+    payload.status_code,
+    { kind, title, reason, retryable: payload.retryable === true },
+  );
+}
+
+function buildChatRetryProgress(payload: BishengStreamPayload): ChatRetryProgress {
+  const maxAttempts = Math.max(1, Math.min(2, Number(payload.max_attempts) || 2));
+  const attempt = Math.max(1, Math.min(maxAttempts, Number(payload.attempt) || 1));
+  return {
+    attempt,
+    maxAttempts,
+    retryAfterMs: Math.max(0, Math.min(30_000, Number(payload.retry_after_ms) || 0)),
+    message: `正在重试（${attempt}/${maxAttempts}）`,
+  };
 }
 
 function buildQaKnowledgeScopePayload(scope?: QaKnowledgeScope, fallbackSpaceIds: number[] = []) {
@@ -1507,15 +1620,11 @@ async function consumeChatStream(
   onUpdate: (text: string) => void,
   onCitations?: (citations: Citation[]) => void,
   onConversationId?: (conversationId: string) => void,
+  onRetry?: (progress: ChatRetryProgress) => void,
 ): Promise<void> {
   if (!response.ok) {
     const payload = await response.clone().json().catch(() => null) as { detail?: string; status_code?: number; status_message?: string } | null;
-    const message = normalizeUserFacingMessage(
-      payload?.status_message || payload?.detail,
-      '问答请求失败，请稍后重试。',
-      response.status,
-    );
-    throw new ApiRequestError(message, response.status, payload?.status_code);
+    throw buildChatStreamError(payload ?? {}, response.status);
   }
   if (!response.body) {
     throw new Error('问答请求失败');
@@ -1527,10 +1636,12 @@ async function consumeChatStream(
   let accumulated = '';
   let finalText = '';
   let lastCitations: Citation[] = [];
+  let sawAnswer = false;
 
   const emit = (text: string) => {
     if (text && text !== accumulated) {
       accumulated = text;
+      sawAnswer = true;
       onUpdate(text);
     }
   };
@@ -1552,51 +1663,78 @@ async function consumeChatStream(
     }
   };
 
+  const consumeEvent = (event: string) => {
+    const lines = event.split('\n');
+    const eventName = lines
+      .find((line) => line.startsWith('event:'))
+      ?.slice('event:'.length)
+      .trim();
+    const dataLines = lines
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice('data:'.length).replace(/^ /, ''));
+    if (dataLines.length === 0) return;
+    const raw = dataLines.join('\n');
+    let payload: BishengStreamPayload;
+    try {
+      payload = JSON.parse(raw) as BishengStreamPayload;
+    } catch {
+      return;
+    }
+    if (eventName === 'retry') {
+      onRetry?.(buildChatRetryProgress(payload));
+      return;
+    }
+    if (eventName === 'error' || (payload.status_code !== undefined && payload.status_code !== 200)) {
+      const status = payload.status_code && payload.status_code >= 400 && payload.status_code <= 599
+        ? payload.status_code
+        : undefined;
+      throw buildChatStreamError(payload, status ?? 500);
+    }
+    emitConversationId(payload);
+    if (payload.category === 'agent_answer') {
+      const msg = getStreamMessageText(payload);
+      if (payload.type === 'end') {
+        if (msg) {
+          finalText = msg;
+          emit(msg);
+        }
+        emitCitations(payload.citations);
+      } else if (msg) {
+        emit(accumulated + msg);
+      }
+    } else if (payload.category === 'stream') {
+      const content = getStreamMessageText(payload);
+      if (payload.type === 'end') {
+        if (content) {
+          finalText = content;
+          emit(content);
+        }
+        emitCitations(payload.citations);
+      } else if (content) {
+        emit(accumulated + content);
+      }
+    } else if (payload.final) {
+      const text = payload.responseMessage?.text || finalText || accumulated;
+      if (text) emit(text);
+      emitCitations(payload.responseMessage?.citations ?? lastCitations);
+    }
+  };
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
+    buffer = buffer.replace(/\r\n/g, '\n');
     const events = buffer.split('\n\n');
     buffer = events.pop() || '';
     for (const event of events) {
-      const dataLines = event.split('\n').filter((line) => line.startsWith('data: '));
-      if (dataLines.length === 0) continue;
-      const raw = dataLines.map((line) => line.slice(6)).join('\n');
-      let payload: BishengStreamPayload;
-      try {
-        payload = JSON.parse(raw) as BishengStreamPayload;
-      } catch {
-        continue;
-      }
-      emitConversationId(payload);
-      if (payload.category === 'agent_answer') {
-        const msg = getStreamMessageText(payload);
-        if (payload.type === 'end') {
-          if (msg) {
-            finalText = msg;
-            emit(msg);
-          }
-          emitCitations(payload.citations);
-        } else if (msg) {
-          emit(accumulated + msg);
-        }
-      } else if (payload.category === 'stream') {
-        const content = getStreamMessageText(payload);
-        if (payload.type === 'end') {
-          if (content) {
-            finalText = content;
-            emit(content);
-          }
-          emitCitations(payload.citations);
-        } else if (content) {
-          emit(accumulated + content);
-        }
-      } else if (payload.final) {
-        const text = payload.responseMessage?.text || finalText || accumulated;
-        if (text) emit(text);
-        emitCitations(payload.responseMessage?.citations ?? lastCitations);
-      }
+      consumeEvent(event);
     }
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) consumeEvent(buffer);
+  if (!sawAnswer) {
+    throw new ApiRequestError('问答请求失败，请稍后重试。', 502);
   }
 }
 
@@ -1615,6 +1753,7 @@ export async function streamChatCompletion(params: {
   onUpdate: (text: string) => void;
   onCitations?: (citations: Citation[]) => void;
   onConversationId?: (conversationId: string) => void;
+  onRetry?: (progress: ChatRetryProgress) => void;
   signal?: AbortSignal;
 }): Promise<void> {
   try {
@@ -1640,7 +1779,7 @@ export async function streamChatCompletion(params: {
         files: params.files ?? [],
       }),
     });
-    await consumeChatStream(response, params.onUpdate, params.onCitations, params.onConversationId);
+    await consumeChatStream(response, params.onUpdate, params.onCitations, params.onConversationId, params.onRetry);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') return;
     if (error instanceof ApiRequestError) throw error;
@@ -1679,6 +1818,7 @@ export async function streamDocumentFileChat(params: {
   model?: string;
   onUpdate: (text: string) => void;
   onCitations?: (citations: Citation[]) => void;
+  onRetry?: (progress: ChatRetryProgress) => void;
 }): Promise<void> {
   try {
     const response = await fetch(`/api/v1/knowledge/space/${params.spaceId}/files/${params.fileId}/chat`, {
@@ -1690,9 +1830,9 @@ export async function streamDocumentFileChat(params: {
         model: params.model ?? '',
       }),
     });
-    await consumeChatStream(response, params.onUpdate, params.onCitations);
+    await consumeChatStream(response, params.onUpdate, params.onCitations, undefined, params.onRetry);
   } catch (error) {
-    if (error instanceof ApiRequestError) throw new Error('问答请求失败，请稍后重试。');
+    if (error instanceof ApiRequestError) throw error;
     throw new Error(normalizeUserFacingErrorMessage(error, '问答请求失败，请稍后重试。'));
   }
 }

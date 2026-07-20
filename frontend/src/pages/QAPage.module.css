@@ -642,6 +642,37 @@
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
 }
 
+.msgError {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-color: #fecaca;
+  background: #fff7f7;
+  color: #b91c1c;
+  white-space: normal;
+}
+
+.msgError span {
+  white-space: pre-line;
+}
+
+.retryAction {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  background: #fff;
+  color: #b91c1c;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.retryAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .msgUser {
   background: #2563eb;
   color: #fff;
@@ -739,35 +770,6 @@
 
 .spinner {
   animation: qa-spin 0.9s linear infinite;
-}
-
-/* 首页「智能问答」检索跳转过来、等待加载知识库时的全屏遮罩 */
-.homeQaLoadingMask {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(15, 23, 42, 0.32);
-  backdrop-filter: blur(1.5px);
-}
-
-.homeQaLoadingBox {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 24px 32px;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.22);
-  color: #273142;
-  font-size: 14px;
-}
-
-.homeQaLoadingBox .spinner {
-  color: #3662e3;
 }
 
 @keyframes qa-spin {

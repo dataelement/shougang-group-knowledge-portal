@@ -20,6 +20,7 @@ import LoginBanner from './components/LoginBanner';
 import WikiPage from './pages/WikiPage';
 import WikiDetailPage from './pages/WikiDetailPage';
 import CoursePage from './pages/CoursePage';
+import CourseListPage from './pages/CourseListPage';
 import { usePortalConfig } from './hooks/usePortalConfig';
 import { useAuth } from './hooks/useAuth';
 import Header from './components/Header';
@@ -144,7 +145,7 @@ export default function App() {
         <Route path="/expert-qa/:questionId" element={<ExpertQADetailPage />} />
         <Route path="/wiki" element={<WikiPage />} />
         <Route path="/wiki/:wikiId" element={<WikiDetailPage />} />
-        <Route path="/course" element={<CoursePage />} />
+        <Route path="/course" element={<CourseListPage />} />
         <Route path="/course/:courseId" element={<CoursePage />} />
         <Route path="/apps" element={<AppsPage />} />
         <Route path="/admin" element={<AdminRoute />} />

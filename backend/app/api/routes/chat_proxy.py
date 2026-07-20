@@ -16,6 +16,7 @@ from app.schemas.chat import PortalChatCompletionRequest
 from app.schemas.common import response_ok
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.chat_proxy_service import ChatProxyService
+from app.services.chat_stream import ChatStreamObserver, safe_chat_stream
 from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_auth_service import (
     PortalAuthError,
@@ -333,22 +334,27 @@ async def chat_completions(
         raise HTTPException(status_code=403, detail=str(err)) from err
 
     async def stream():
-        telemetry_recorded = False
+        observer = ChatStreamObserver()
         try:
-            async for chunk in service.stream_prepared_chat_completion(path, request_body):
-                if not telemetry_recorded and path == "/api/v1/workstation/shougang-portal/chat/completions":
-                    await PortalTelemetryService(bisheng_client).record_event(
-                        event_type="portal_qa",
-                        source_app="shougang_portal",
-                        scene="smart_qa",
-                        entry_point=payload.entry_point or "qa_page",
-                        resource_type="knowledge_space",
-                        conversation_id=payload.conversationId,
-                    )
-                    telemetry_recorded = True
+            upstream = service.stream_prepared_chat_completion(path, request_body)
+            async for chunk in safe_chat_stream(upstream, observer):
                 yield chunk
-            for event in trailing_events:
-                yield event
+            if not observer.has_error:
+                for event in trailing_events:
+                    yield event
+            if (
+                observer.has_answer
+                and not observer.has_error
+                and path == "/api/v1/workstation/shougang-portal/chat/completions"
+            ):
+                await PortalTelemetryService(bisheng_client).record_event(
+                    event_type="portal_qa",
+                    source_app="shougang_portal",
+                    scene="smart_qa",
+                    entry_point=payload.entry_point or "qa_page",
+                    resource_type="knowledge_space",
+                    conversation_id=payload.conversationId,
+                )
         finally:
             await _close_owned_client()
 

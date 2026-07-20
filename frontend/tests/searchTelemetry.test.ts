@@ -13,7 +13,7 @@ test('search telemetry API accepts only explicit entry points', () => {
 
 test('home search and hot keyword clicks report once at their handlers', () => {
   assert.match(homeSource, /recordPortalSearchEvent\(keyword, 'search_page'\)/);
-  assert.match(homeSource, /recordPortalSearchEvent\(item\.query, 'home_hot_keyword'\)/);
+  assert.match(homeSource, /recordPortalSearchEvent\(question, 'home_hot_keyword'\)/);
 });
 
 test('search page reports only from submitSearch and tags preview as search', () => {

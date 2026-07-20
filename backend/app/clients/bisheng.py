@@ -30,9 +30,16 @@ AUTH_MESSAGE_MARKERS = (
     "token过期",
     "token 过期",
 )
+_AUTH_RETRIED_EXTENSION = "bisheng_auth_retried"
 
 
 class BishengAuthRefreshError(RuntimeError):
+    pass
+
+
+class BishengMultipartReplayError(RuntimeError):
+    """Raised when an upload stream cannot be safely replayed after auth refresh."""
+
     pass
 
 
@@ -149,18 +156,47 @@ class BishengClient:
         response.raise_for_status()
         return response
 
-    async def post_multipart(self, path: str, *, data: Optional[dict] = None, files: Optional[dict] = None) -> dict:
+    async def post_multipart(
+        self,
+        path: str,
+        *,
+        data: Optional[dict] = None,
+        files: Optional[dict] = None,
+        timeout: httpx.Timeout | float | None = None,
+    ) -> dict:
         file_positions = self._snapshot_file_positions(files)
+        request_options = {
+            "data": data,
+            "files": files,
+            "file_positions": file_positions,
+        }
+        if timeout is not None:
+            request_options["timeout"] = timeout
         response = await self._request(
             "POST",
             path,
             retry_auth=True,
-            data=data,
-            files=files,
-            file_positions=file_positions,
+            **request_options,
         )
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
+            self._restore_file_positions(file_positions)
+            response = await self._request(
+                "POST",
+                path,
+                retry_auth=False,
+                data=data,
+                files=files,
+                **({"timeout": timeout} if timeout is not None else {}),
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return payload
 
     async def get_json(
         self,
@@ -170,7 +206,11 @@ class BishengClient:
     ) -> dict:
         response = await self.get(path, params=params, headers=headers)
         payload = response.json()
-        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
             response = await self.get(path, params=params, headers=headers, retry_auth=False)
             payload = response.json()
         return payload
@@ -183,7 +223,11 @@ class BishengClient:
     ) -> dict:
         response = await self.post(path, json=json, headers=headers)
         payload = response.json()
-        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
             response = await self.post(path, json=json, headers=headers, retry_auth=False)
             payload = response.json()
         return payload
@@ -196,7 +240,11 @@ class BishengClient:
     ) -> dict:
         response = await self.put(path, json=json, headers=headers)
         payload = response.json()
-        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
             response = await self.put(path, json=json, headers=headers, retry_auth=False)
             payload = response.json()
         return payload
@@ -216,7 +264,11 @@ class BishengClient:
         )
         response.raise_for_status()
         payload = response.json()
-        if self._is_auth_payload(payload) and await self._refresh_auth_token():
+        if (
+            self._is_auth_payload(payload)
+            and not self._auth_was_retried(response)
+            and await self._refresh_auth_token()
+        ):
             response = await self._request(
                 "DELETE",
                 path,
@@ -312,6 +364,7 @@ class BishengClient:
         **kwargs,
     ) -> httpx.Response:
         response = await self._client.request(method, path, **kwargs)
+        auth_retried = False
         if (
             retry_auth
             and self._is_auth_status(response.status_code)
@@ -319,6 +372,8 @@ class BishengClient:
         ):
             self._restore_file_positions(file_positions)
             response = await self._client.request(method, path, **kwargs)
+            auth_retried = True
+        response.extensions[_AUTH_RETRIED_EXTENSION] = auth_retried
         return response
 
     async def _refresh_auth_token(self) -> bool:
@@ -326,8 +381,8 @@ class BishengClient:
             return False
         try:
             next_token = (await self._auth_refresh_handler(self._api_token)).strip()
-        except Exception as err:
-            raise BishengAuthRefreshError(f"BiSheng 数据源自动重登失败：{err}") from err
+        except Exception:
+            raise BishengAuthRefreshError("BiSheng 数据源自动重登失败，请稍后重试") from None
         if not next_token:
             return False
         self.set_api_token(next_token)
@@ -336,6 +391,10 @@ class BishengClient:
     @staticmethod
     def _is_auth_status(status_code: int) -> bool:
         return status_code in AUTH_STATUS_CODES
+
+    @staticmethod
+    def _auth_was_retried(response: httpx.Response) -> bool:
+        return bool(response.extensions.get(_AUTH_RETRIED_EXTENSION))
 
     @staticmethod
     def _is_auth_payload(payload: object) -> bool:
@@ -357,11 +416,14 @@ class BishengClient:
         positions = {}
         for value in files.values():
             file_obj = value[1] if isinstance(value, tuple) and len(value) > 1 else value
-            if hasattr(file_obj, "tell") and hasattr(file_obj, "seek"):
-                try:
-                    positions[file_obj] = file_obj.tell()
-                except OSError:
-                    continue
+            if isinstance(file_obj, (bytes, bytearray)):
+                continue
+            if not hasattr(file_obj, "tell") or not hasattr(file_obj, "seek"):
+                raise BishengMultipartReplayError("上传文件流不支持安全重试")
+            try:
+                positions[file_obj] = file_obj.tell()
+            except (OSError, ValueError) as exc:
+                raise BishengMultipartReplayError("无法记录上传文件流位置") from exc
         return positions or None
 
     @staticmethod
@@ -371,5 +433,5 @@ class BishengClient:
         for file_obj, position in positions.items():
             try:
                 file_obj.seek(position)
-            except OSError:
-                continue
+            except (OSError, ValueError) as exc:
+                raise BishengMultipartReplayError("无法恢复上传文件流位置") from exc

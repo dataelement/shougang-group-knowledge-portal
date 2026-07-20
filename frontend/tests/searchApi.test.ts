@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { browseSearchFiles, searchKeywordFiles } from '../src/api/content';
+import { browseSearchFiles, searchFiles, searchKeywordFiles } from '../src/api/content';
 
 test('keyword search uses the dedicated endpoint without pagination parameters', async () => {
   const originalFetch = globalThis.fetch;
@@ -50,6 +50,33 @@ test('empty search browse uses the dedicated endpoint and forwards filters and c
     });
     assert.equal(result.hasMore, true);
     assert.equal(result.nextCursor, 'next-2');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('public section list forwards the public-only scope', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(
+      String(input),
+      '/api/v1/knowledge/files?tag=%E8%A1%8C%E4%B8%9A%E6%83%85%E6%8A%A5&public_only=true&sort=updated_at_desc&limit=20',
+    );
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { data: [], has_more: false, next_cursor: null },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await searchFiles({
+      tag: '行业情报',
+      publicOnly: true,
+      sort: 'updated_at_desc',
+      limit: 20,
+    });
+    assert.equal(result.hasMore, false);
   } finally {
     globalThis.fetch = originalFetch;
   }

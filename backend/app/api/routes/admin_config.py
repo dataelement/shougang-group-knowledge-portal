@@ -577,7 +577,7 @@ async def update_site_config(
 async def get_bisheng_runtime_config(
     service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
 ):
-    return response_ok(service.get_public_config())
+    return response_ok(await service.get_shared_public_config())
 
 
 @router.post("/bisheng")

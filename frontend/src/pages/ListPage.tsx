@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Search } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
 // import ShareDocumentModal from '../components/ShareDocumentModal';
@@ -11,6 +11,7 @@ import {
   fetchAggregatedTags,
   fetchKnowledgeSpaces,
   fetchSpaceTags,
+  recordPortalSearchEvent,
   searchFiles,
   type FileItem,
   type KnowledgeSpace,
@@ -41,6 +42,7 @@ import {
 import { recordFileDownloadEvent } from '../api/content';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildGuestLoginPath } from '../utils/guestAccess';
+import { createSubmittedSearchParams } from '../utils/searchParams';
 import s from './ListPage.module.css';
 
 const EMPTY_SPACE_IDS: number[] = [];
@@ -64,8 +66,10 @@ export default function ListPage() {
   const { config, error: configError } = usePortalConfig();
   const tagParam = params.get('tag') || '';
   const filterTag = params.get('filter_tag') || '';
+  const keyword = (params.get('q') || '').trim();
   const titleParam = params.get('title') || '';
   const recommendationParam = params.get('recommendation') || '';
+  const publicOnly = params.get('public_only') === 'true';
   const spaceLevel = params.get('space_level') || '';
   const selectedSpaceFilter = params.get('space_id') || '';
   const fileExt = params.get('file_ext') || '';
@@ -98,6 +102,7 @@ export default function ListPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [draft, setDraft] = useState(keyword);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { user } = useAuth();
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
@@ -126,12 +131,12 @@ export default function ListPage() {
   );
 
   useEffect(() => {
-    if (!user) {
+    if (!user && !publicOnly) {
       setVisibleSpaces([]);
       return;
     }
     let active = true;
-    void fetchKnowledgeSpaces()
+    void fetchKnowledgeSpaces({ publicOnly })
       .then((res) => {
         if (!active) return;
         setVisibleSpaces(res.data.map((sp) => ({ id: sp.id, name: sp.name, spaceLevel: sp.spaceLevel })));
@@ -142,7 +147,7 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [publicOnly, user]);
 
   const spaceOptions = useMemo<SpaceOption[]>(() => {
     const contextSpaceIds = new Set<number>();
@@ -207,6 +212,26 @@ export default function ListPage() {
     setError(configError);
   }, [configError]);
 
+  useEffect(() => {
+    setDraft(keyword);
+  }, [keyword]);
+
+  const submitSearch = useCallback(() => {
+    const submitted = draft.trim();
+    if (user && submitted) {
+      void recordPortalSearchEvent(submitted, 'search_page').catch(() => undefined);
+    }
+    setParams(createSubmittedSearchParams(params, draft));
+  }, [draft, params, setParams, user]);
+
+  const clearKeyword = useCallback(() => {
+    const next = new URLSearchParams(params);
+    next.delete('q');
+    next.delete('page');
+    setDraft('');
+    setParams(next);
+  }, [params, setParams]);
+
   const fetchFilePage = useCallback((cursor?: string | null) => {
     const isLatestSelectedRecommendation = recommendationParam === LATEST_SELECTED_RECOMMENDATION;
     const isRecommendationList = isLatestSelectedRecommendation || isPersonalizedRecommendation;
@@ -217,6 +242,7 @@ export default function ListPage() {
     const requestedSpaceIds = selectedSpaceAllowed ? [selectedSpaceFilterId] : undefined;
     const hasUserFilterTag = Boolean(filterTag);
     const baseParams = {
+      q: keyword || undefined,
       baseTag: !isRecommendationList && hasUserFilterTag ? tagParam || undefined : undefined,
       tag: isRecommendationList ? undefined : filterTag || tagParam || undefined,
       spaceLevel: spaceLevel || undefined,
@@ -225,9 +251,10 @@ export default function ListPage() {
       fileSubcategoryCode: fileSubcategoryCode || undefined,
       businessDomainCode: showBusinessDomainFilter ? businessDomainFilter || undefined : undefined,
       recommendation: isRecommendationList ? recommendationParam : undefined,
+      publicOnly,
       sort: isPersonalizedRecommendation
         ? undefined
-        : timeSort || (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc'),
+        : timeSort || (keyword ? 'relevance' : (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc')),
       cursor: isPersonalizedRecommendation ? undefined : cursor || undefined,
       limit: pageLimit,
     };
@@ -258,9 +285,11 @@ export default function ListPage() {
     filterTag,
     fileExt,
     fileSubcategoryCode,
+    keyword,
     isDomainList,
     isPersonalizedRecommendation,
     pageLimit,
+    publicOnly,
     recommendationParam,
     selectedSpaceFilterId,
     showBusinessDomainFilter,
@@ -290,7 +319,7 @@ export default function ListPage() {
           if (active) setAvailableTags(tags);
           return;
         }
-        const tags = await fetchAggregatedTags();
+        const tags = await fetchAggregatedTags(undefined, undefined, undefined, publicOnly);
         if (active) setAvailableTags(tags);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : '标签加载失败');
@@ -299,7 +328,7 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [businessDomainCode, config, isDomainList, listContext, spaceId, spaceIds]);
+  }, [businessDomainCode, config, isDomainList, listContext, publicOnly, spaceId, spaceIds]);
 
   useEffect(() => {
     let active = true;
@@ -375,6 +404,30 @@ export default function ListPage() {
 
         <h1 className={s.pageTitle}>{pageTitle}</h1>
 
+        <div className={s.listSearchBar}>
+          <div className={s.listSearchInputWrap}>
+            <Search size={18} className={s.listSearchIcon} />
+            <input
+              className={s.listSearchInput}
+              placeholder={`在「${pageTitle}」内搜索`}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitSearch();
+              }}
+              aria-label="列表关键词搜索"
+            />
+            {keyword ? (
+              <button type="button" className={s.listSearchClear} onClick={clearKeyword}>
+                清除
+              </button>
+            ) : null}
+            <button type="button" className={s.listSearchBtn} onClick={submitSearch}>
+              搜索
+            </button>
+          </div>
+        </div>
+
         <div className={s.filterBar}>
           <select
             className={s.filterSelect}
@@ -434,16 +487,20 @@ export default function ListPage() {
         </div>
 
         <div className={s.fileCount}>
-          已加载 {files.length} 篇文档
+          {keyword ? `共找到 ${files.length} 篇相关文档` : `已加载 ${files.length} 篇文档`}
         </div>
 
         {error ? <div className={s.fileCount}>{error}</div> : null}
         {loading ? <div className={s.fileCount}>正在加载列表...</div> : null}
+        {!loading && keyword && files.length === 0 ? (
+          <div className={s.fileCount}>当前列表下未找到包含「{keyword}」的文档</div>
+        ) : null}
 
         {!loading && files.map((f) => (
           <FileListItem
             key={f.id}
             file={f}
+            highlightQuery={keyword || undefined}
             visibleTagCount={displayConfig.list.visibleTagCount}
             onFavorite={canFavorite ? handleToggleFavorite : undefined}
             favorited={isFavorited(f.spaceId, f.id)}

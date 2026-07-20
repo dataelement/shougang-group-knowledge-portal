@@ -58,6 +58,18 @@ interface Message {
   text: string;
   files?: ChatAttachment[];
   citations?: Citation[];
+  error?: boolean;
+  retrying?: boolean;
+  requestSnapshot?: QaRequestSnapshot;
+}
+
+interface QaRequestSnapshot {
+  text: string;
+  allSpaceIds?: number[];
+  scope: QaKnowledgeScope;
+  files: ChatAttachment[];
+  answerMode: AnswerMode;
+  model: string;
 }
 
 export interface Session {
@@ -400,8 +412,13 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const homeQaAutoSentRef = useRef(false);
-  const [homeQaAutoSending, setHomeQaAutoSending] = useState(false);
-  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint());
+  // 首帧就识别「从首页智能问答跳转过来、要自动发送」:effect 跑在首次绘制之后,
+  // 若等到 effect 再置位,模板落地页会先闪一下。这里同步读 URL,直接进会话态 + 遮罩。
+  const [homeQaAutoSending, setHomeQaAutoSending] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('autosend') === '1';
+  });
+  const [qaKbHintOpen, setQaKbHintOpen] = useState(() => shouldShowQaKbHint(user?.account));
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const knowledgePickerRef = useRef<HTMLDivElement>(null);
   const knowledgePanelRef = useRef<HTMLDivElement>(null);
@@ -418,7 +435,9 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   });
   const hasConversation = Boolean(activeSession.conversationId)
     || activeSession.messages.some((msg) => msg.role === 'user')
-    || streaming;
+    || streaming
+    // 自动发送期间直接按会话态渲染,避免先展示模板落地页再跳成会话
+    || homeQaAutoSending;
   const activeSessionLoading = loadingSessionId === activeSession.id;
   const answerMode = activeSession.answerMode;
   const generalModelChoice = modelChoices.find((choice) => choice.typeLabel === '通用模型');
@@ -452,7 +471,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const draft = hasDraft ? readHomeQaDraft() : null;
     const q = (draft?.keyword ?? params.get('q') ?? '').trim();
     const draftAttachments = draft?.attachments ?? [];
-    if (!q && !draftAttachments.length) return;
+    if (!q && !draftAttachments.length) {
+      // 没有可发送内容(如草稿丢失):撤掉遮罩,回到正常的模板落地页
+      setHomeQaAutoSending(false);
+      return;
+    }
     const autosend = params.get('autosend') === '1';
 
     const draftAnswerMode: AnswerMode = draft?.answerMode ?? 'normal';
@@ -468,6 +491,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     };
 
     if (!autosend) {
+      setHomeQaAutoSending(false);
       setInput(q);
       if (draft) {
         setSessions((prev) => prev.map((ss) => (ss.id === activeId ? { ...ss, answerMode: draftAnswerMode } : ss)));
@@ -480,9 +504,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     }
 
     // 自动发送:先确保模型配置与知识库列表已加载,再按草稿的选择发起新会话。
-    // 加载期间显示全屏遮罩,防止用户在等待时误操作。
     if (homeQaAutoSentRef.current) return;
-    setHomeQaAutoSending(true);
     const targetModelChoice = draftAnswerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
     if (!targetModelChoice) return;
     if (!knowledgeSpacesLoaded) {
@@ -502,12 +524,13 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       const allSpaceIds = availableSpaces.map((space) => space.id);
       sendMessage({ text: q, allSpaceIds, files: draftAttachments, answerMode: draftAnswerMode });
     }
+    // 已发出:消息已入会话,撤掉遮罩交给正常的会话视图
     setHomeQaAutoSending(false);
   }, [location.search, location.pathname, location.hash, navigate, knowledgeSpacesLoaded, generalModelChoice, reasoningModelChoice, availableSpaces]);
 
-  // 安全兜底:遮罩最多显示 12 秒,避免模型/空间异常时永久卡住
+  // 安全兜底:遮罩最多 12 秒,避免模型/知识库异常时永久卡住
   useEffect(() => {
-    if (!homeQaAutoSending) return;
+    if (!homeQaAutoSending) return undefined;
     const timer = window.setTimeout(() => setHomeQaAutoSending(false), 12000);
     return () => window.clearTimeout(timer);
   }, [homeQaAutoSending]);
@@ -623,17 +646,19 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
         const remoteSessions = items
           .map(mapConversationToSession)
           .sort((a, b) => sessionSortTime(b) - sessionSortTime(a));
+        // 列表和 loading 必须在同一个回调里更新,React 才会合并成一次渲染;
+        // 若放到 .finally() 里,会先渲染「列表+加载中」再渲染「列表」,视觉上闪一下。
         setSessions((prev) => {
           const localSessions = prev.filter((item) => !item.conversationId);
           const merged = [...localSessions, ...remoteSessions];
           return merged.length ? merged : [createDraftSession()];
         });
+        setLoadingSessions(false);
       })
       .catch(() => {
-        if (active) setComposerTip('会话列表加载失败，请确认登录状态后重试。');
-      })
-      .finally(() => {
-        if (active) setLoadingSessions(false);
+        if (!active) return;
+        setComposerTip('会话列表加载失败，请确认登录状态后重试。');
+        setLoadingSessions(false);
       });
     return () => {
       active = false;
@@ -645,6 +670,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const timer = window.setTimeout(() => setComposerTip(''), 2200);
     return () => window.clearTimeout(timer);
   }, [composerTip]);
+
+  // 气泡按用户各自记录:切换账号(登录/退出)后按新用户重新判定是否提示。
+  useEffect(() => {
+    setQaKbHintOpen(shouldShowQaKbHint(user?.account));
+  }, [user?.account]);
 
   // 智能应用问答输入框:随内容自增高,到上限后内部滚动(仅作用于带 data-autogrow 的智能问答输入框)。
   // 覆盖程序化改动(如清空、草稿回填);用户输入时另由 onChange 直接对当前元素调整。
@@ -686,14 +716,13 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     }
   }
 
-  const updateLastBotMessage = (sessionId: string, mutator: (last: Message) => Message) => {
+  const updateBotMessage = (sessionId: string, messageIndex: number, mutator: (message: Message) => Message) => {
     setSessions((prev) =>
       prev.map((ss) => {
         if (ss.id !== sessionId) return ss;
         const msgs = [...ss.messages];
-        const lastIdx = msgs.length - 1;
-        if (lastIdx < 0 || msgs[lastIdx].role !== 'bot') return ss;
-        msgs[lastIdx] = mutator(msgs[lastIdx]);
+        if (messageIndex < 0 || msgs[messageIndex]?.role !== 'bot') return ss;
+        msgs[messageIndex] = mutator(msgs[messageIndex]);
         return { ...ss, messages: msgs };
       }),
     );
@@ -731,6 +760,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     scope?: QaKnowledgeScope;
     files?: ChatAttachment[];
     answerMode?: AnswerMode;
+    model?: string;
+    retryMessageIndex?: number;
   }) => {
     // 程序化发送(首页问答草稿/自动发送)时,选择项从 opts 显式带入,避免依赖异步 state。
     const programmatic = opts?.text !== undefined;
@@ -739,7 +770,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const messageFiles = programmatic ? (opts?.files ?? []) : attachedFiles;
     const effAnswerMode = opts?.answerMode ?? answerMode;
     const effModelChoice = effAnswerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
-    const effModel = effModelChoice?.id ?? '';
+    const effModel = opts?.model ?? effModelChoice?.id ?? '';
     const effScope = opts?.scope ?? selectedKnowledgeScope;
     if ((!text && !messageFiles.length) || streaming || uploadingFiles.length) return;
     if (effAnswerMode === 'expert' && !reasoningModelChoice) {
@@ -752,6 +783,16 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     }
     const finalText = text || '请分析附件内容。';
     const targetSessionId = activeId;
+    const retryMessageIndex = opts?.retryMessageIndex;
+    const targetMessageIndex = retryMessageIndex ?? activeSession.messages.length + 1;
+    const requestSnapshot: QaRequestSnapshot = {
+      text: finalText,
+      allSpaceIds: useAllSpaces ? [...opts!.allSpaceIds!] : undefined,
+      scope: effScope,
+      files: [...messageFiles],
+      answerMode: effAnswerMode,
+      model: effModel,
+    };
     onBeforeSend?.();
     setInput('');
     setAttachedFiles([]);
@@ -767,7 +808,17 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
           ? {
               ...ss,
               title: ss.title === '新会话' ? finalText.slice(0, 18) : ss.title,
-              messages: [...ss.messages, { role: 'user', text: finalText, files: messageFiles }, { role: 'bot', text: '' }],
+              messages: retryMessageIndex === undefined
+                ? [
+                    ...ss.messages,
+                    { role: 'user', text: finalText, files: messageFiles },
+                    { role: 'bot', text: '', requestSnapshot },
+                  ]
+                : ss.messages.map((message, index) => (
+                    index === retryMessageIndex
+                      ? { role: 'bot', text: '', requestSnapshot }
+                      : message
+                  )),
               // 盖上当前更新时间,发起会话后按"最近更新"排到分组最上面
               updatedAt: new Date().toISOString(),
             }
@@ -796,23 +847,55 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
         );
       },
       onUpdate(currentText) {
-        updateLastBotMessage(targetSessionId, (last) => ({ ...last, text: currentText }));
+        updateBotMessage(targetSessionId, targetMessageIndex, (last) => ({
+          ...last,
+          text: currentText,
+          error: false,
+          retrying: false,
+        }));
       },
       onCitations(list) {
-        updateLastBotMessage(targetSessionId, (last) => ({ ...last, citations: list }));
+        updateBotMessage(targetSessionId, targetMessageIndex, (last) => ({ ...last, citations: list }));
+      },
+      onRetry(progress) {
+        updateBotMessage(targetSessionId, targetMessageIndex, (last) => ({
+          ...last,
+          text: progress.message,
+          error: false,
+          retrying: true,
+          citations: undefined,
+        }));
       },
     }).catch((error: unknown) => {
       const text = error instanceof ApiRequestError
         ? error.message || '问答请求失败，请稍后重试。'
         : '问答请求失败，请稍后重试。';
-      updateLastBotMessage(targetSessionId, () => ({
+      updateBotMessage(targetSessionId, targetMessageIndex, (last) => ({
+        ...last,
         role: 'bot',
         text,
         citations: undefined,
+        error: true,
+        retrying: false,
       }));
     }).finally(() => {
       setStreaming(false);
       abortControllerRef.current = null;
+    });
+  };
+
+  const retryLastQuestion = (messageIndex: number) => {
+    const failedMessage = activeSession.messages[messageIndex];
+    const snapshot = failedMessage?.requestSnapshot;
+    if (!snapshot || streaming) return;
+    sendMessage({
+      text: snapshot.text,
+      allSpaceIds: snapshot.allSpaceIds,
+      scope: snapshot.scope,
+      files: snapshot.files,
+      answerMode: snapshot.answerMode,
+      model: snapshot.model,
+      retryMessageIndex: messageIndex,
     });
   };
 
@@ -1056,7 +1139,8 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               <span>正在加载会话...</span>
             </div>
           ) : null}
-          {!activeSessionLoading && activeSession.messages.length === 0 ? (
+          {/* 从首页问答自动发送跳转过来时,消息马上就会到,不显示空会话提示 */}
+          {!activeSessionLoading && !homeQaAutoSending && activeSession.messages.length === 0 ? (
             <div className={s.emptyConversation}>
               <Bot size={18} />
               <span>当前会话暂无历史消息，请输入问题继续对话。</span>
@@ -1083,6 +1167,23 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                         <Loader2 size={16} className={s.spinner} />
                         <span>思考中...</span>
                       </div>
+                    ) : msg.retrying ? (
+                      <div className={`${s.msgBubble} ${s.msgBot} ${s.thinking}`} aria-live="polite">
+                        <Loader2 size={16} className={s.spinner} />
+                        <span>{msg.text}</span>
+                      </div>
+                    ) : msg.error ? (
+                      <div className={`${s.msgBubble} ${s.msgBot} ${s.msgError}`} role="alert">
+                        <span>{msg.text}</span>
+                        <button
+                          type="button"
+                          className={s.retryAction}
+                          onClick={() => retryLastQuestion(i)}
+                          disabled={streaming}
+                        >
+                          重新提问
+                        </button>
+                      </div>
                     ) : (
                       <div
                         className={`${s.msgBubble} ${s.msgBot} ${s.botContent}`}
@@ -1097,7 +1198,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                   {msg.files?.length ? (
                     <AttachmentChips files={msg.files} className={s.messageAttachments} />
                   ) : null}
-                  {msg.role === 'bot' && referenced.length > 0 ? (
+                  {msg.role === 'bot' && !msg.error && referenced.length > 0 ? (
                     <CitationList items={referenced} hideBackLink={isSmartAppsMode} />
                   ) : null}
                 </div>
@@ -1209,7 +1310,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                 <button
                   type="button"
                   className={s.kbHintClose}
-                  onClick={() => { dismissQaKbHint(); setQaKbHintOpen(false); }}
+                  onClick={() => { dismissQaKbHint(user?.account); setQaKbHintOpen(false); }}
                   aria-label="关闭提示"
                 >
                   <X size={12} />
@@ -1391,20 +1492,10 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     renameSession,
   };
 
-  const homeQaLoadingMask = homeQaAutoSending ? (
-    <div className={s.homeQaLoadingMask} role="alert" aria-busy="true">
-      <div className={s.homeQaLoadingBox}>
-        <Loader2 size={26} className={s.spinner} />
-        <span>正在准备智能问答，请稍候…</span>
-      </div>
-    </div>
-  ) : null;
-
   if (children) {
     return (
       <>
         {children({ sidebar, workspace, qaContent, hasConversation, renderComposer, qaSidebarState })}
-        {homeQaLoadingMask}
       </>
     );
   }
@@ -1413,7 +1504,6 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     <>
       {sidebar}
       {workspace}
-      {homeQaLoadingMask}
     </>
   );
 }
