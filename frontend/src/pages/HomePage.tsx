@@ -889,7 +889,7 @@ export default function HomePage() {
             <div className={s.searchBox}>
               <textarea
                 className={s.searchInput}
-                placeholder={searchTab === 'qa' ? '输入问题，钢小智为您解答，选定知识库，答复精准可溯源。' : '输入关键词搜索知识文档'}
+                placeholder={searchTab === 'qa' ? '输入问题，钢小智为您解答，挑选知识库，回答精准可溯源。' : '输入关键词搜索知识文档'}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKey}

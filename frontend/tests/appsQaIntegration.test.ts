@@ -48,7 +48,7 @@ test('/apps uses the app-style shared qa composer instead of the standalone qa w
 });
 
 test('smart qa entries use the Steel Xiaozhi product copy consistently', () => {
-  const qaPlaceholder = '输入问题，钢小智为您解答，选定知识库，答复精准可溯源。';
+  const qaPlaceholder = '输入问题，钢小智为您解答，挑选知识库，回答精准可溯源。';
 
   assert.match(homePageSource, />\s*小智知道\s*<\/button>/);
   assert.ok(homePageSource.includes(qaPlaceholder));
