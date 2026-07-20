@@ -70,20 +70,20 @@ import { formatDisplayDateTime } from '../utils/dateTime';
 
 /** 积分榜单前三名(领奖台),按 展示顺序 [第二, 第一, 第三] 排列 */
 const POINTS_PODIUM = [
-  { rank: 2, name: '李思', dept: '技术研发部', score: 3850, medal: medalSilver, tone: 'silver' as const },
-  { rank: 1, name: '王丽', dept: '质量管理部', score: 4120, medal: medalGold, tone: 'gold' as const },
-  { rank: 3, name: '赵峰', dept: '生产运营部', score: 3620, medal: medalBronze, tone: 'bronze' as const },
+  { rank: 2, name: '李思', dept: '炼铁作业部', score: 3850, medal: medalSilver, tone: 'silver' as const },
+  { rank: 1, name: '王丽', dept: '炼钢作业部', score: 4120, medal: medalGold, tone: 'gold' as const },
+  { rank: 3, name: '赵峰', dept: '热轧作业部', score: 3620, medal: medalBronze, tone: 'bronze' as const },
 ];
 
 /** 积分榜单 4~10 名列表,me 标记当前登录用户所在行 */
 const POINTS_ROWS = [
-  { rank: 4, name: '尉仁子', dept: '设备管理部', score: 3280, delta: 290 },
-  { rank: 5, name: '索世泽', dept: '安全环保部', score: 3150, delta: 260 },
-  { rank: 6, name: '多琦娜(我)', dept: '技术研发部', score: 3129, delta: 150 },
-  { rank: 7, name: '茶慧伦', dept: '生产运营部', score: 2580, delta: 156 },
-  { rank: 8, name: '滑良和', dept: '知识管理部', score: 2217, delta: 310 },
-  { rank: 9, name: '潘世', dept: '技术研发部', score: 1640, delta: 124 },
-  { rank: 10, name: '尹胜', dept: '生产运营部', score: 1500, delta: 100 },
+  { rank: 4, name: '尉仁子', dept: '首钢冷轧', score: 3280, delta: 290 },
+  { rank: 5, name: '索世泽', dept: '安全部', score: 3150, delta: 260 },
+  { rank: 6, name: '多琦娜(我)', dept: '采购中心', score: 3129, delta: 150 },
+  { rank: 7, name: '茶慧伦', dept: '迁顺技术中心', score: 2580, delta: 156 },
+  { rank: 8, name: '滑良和', dept: '设备部库', score: 2217, delta: 310 },
+  { rank: 9, name: '潘世', dept: '制造部', score: 1640, delta: 124 },
+  { rank: 10, name: '尹胜', dept: '炼铁作业部', score: 1500, delta: 100 },
 ];
 
 /** Resolve a homepage panel header icon (PNG) from its title keywords. */
@@ -1000,46 +1000,46 @@ export default function HomePage() {
                       </button>
                       {qaPickerOpen && qaPickerPos
                         ? createPortal(
-                            <div
-                              ref={qaPickerPanelRef}
-                              className={s.qaPickerPortal}
-                              style={{ position: 'fixed', left: qaPickerPos.left, top: qaPickerPos.top }}
-                            >
-                              <QAKnowledgeTreePicker
-                                spaces={qaSpaces}
-                                scope={qaScope}
-                                loading={qaSpacesLoading}
-                                onChange={setQaScope}
-                                onLoadChildren={fetchQaKnowledgeTreeChildren}
-                                onLoadFolderStats={fetchQaKnowledgeFolderStats}
-                                onSearchFiles={searchQaKnowledgeFiles}
-                                onTip={setQaTip}
-                                onClose={() => setQaPickerOpen(false)}
-                                maxHeight={qaPickerPos.maxHeight}
-                              />
-                            </div>,
-                            document.body,
-                          )
+                          <div
+                            ref={qaPickerPanelRef}
+                            className={s.qaPickerPortal}
+                            style={{ position: 'fixed', left: qaPickerPos.left, top: qaPickerPos.top }}
+                          >
+                            <QAKnowledgeTreePicker
+                              spaces={qaSpaces}
+                              scope={qaScope}
+                              loading={qaSpacesLoading}
+                              onChange={setQaScope}
+                              onLoadChildren={fetchQaKnowledgeTreeChildren}
+                              onLoadFolderStats={fetchQaKnowledgeFolderStats}
+                              onSearchFiles={searchQaKnowledgeFiles}
+                              onTip={setQaTip}
+                              onClose={() => setQaPickerOpen(false)}
+                              maxHeight={qaPickerPos.maxHeight}
+                            />
+                          </div>,
+                          document.body,
+                        )
                         : null}
                       {qaKbHintOpen && qaKbHintPos && !qaPickerOpen
                         ? createPortal(
-                            <div
-                              className={s.qaKbHintBubble}
-                              style={{ position: 'fixed', left: qaKbHintPos.left, top: qaKbHintPos.top } as CSSProperties}
-                              role="note"
+                          <div
+                            className={s.qaKbHintBubble}
+                            style={{ position: 'fixed', left: qaKbHintPos.left, top: qaKbHintPos.top } as CSSProperties}
+                            role="note"
+                          >
+                            <span className={s.qaKbHintText}>{QA_KB_HINT_TEXT}</span>
+                            <button
+                              type="button"
+                              className={s.qaKbHintClose}
+                              onClick={() => { dismissQaKbHint(user?.account); setQaKbHintOpen(false); }}
+                              aria-label="关闭提示"
                             >
-                              <span className={s.qaKbHintText}>{QA_KB_HINT_TEXT}</span>
-                              <button
-                                type="button"
-                                className={s.qaKbHintClose}
-                                onClick={() => { dismissQaKbHint(user?.account); setQaKbHintOpen(false); }}
-                                aria-label="关闭提示"
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>,
-                            document.body,
-                          )
+                              <X size={12} />
+                            </button>
+                          </div>,
+                          document.body,
+                        )
                         : null}
                     </div>
                     {qaTip ? <span className={s.qaTip}>{qaTip}</span> : null}
@@ -1315,17 +1315,17 @@ export default function HomePage() {
                 {homeCourses.map((course) => {
                   const displayTag = course.tags.find((tag) => tag.displayType === 'domain') ?? course.tags[0];
                   return (
-                  <button
-                    key={course.id}
-                    type="button"
-                    className={s.courseRow}
-                    onClick={() => navigate(`/course/${course.id}`)}
-                  >
-                    <img src={iconVideo} alt="" className={s.courseRowIcon} />
-                    <span className={s.courseRowTitle}>{course.name}</span>
-                    {displayTag ? <span className={s.courseDomainTag}>{displayTag.label}</span> : null}
-                    <span className={s.courseRowDuration}>{formatCourseDuration(course.totalDurationSeconds)}</span>
-                  </button>
+                    <button
+                      key={course.id}
+                      type="button"
+                      className={s.courseRow}
+                      onClick={() => navigate(`/course/${course.id}`)}
+                    >
+                      <img src={iconVideo} alt="" className={s.courseRowIcon} />
+                      <span className={s.courseRowTitle}>{course.name}</span>
+                      {displayTag ? <span className={s.courseDomainTag}>{displayTag.label}</span> : null}
+                      <span className={s.courseRowDuration}>{formatCourseDuration(course.totalDurationSeconds)}</span>
+                    </button>
                   );
                 })}
                 {!homeCoursesLoading && homeCourses.length === 0 ? (
