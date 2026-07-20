@@ -1236,7 +1236,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
             ref={inputRef}
             data-autogrow="smart"
             aria-label="输入智能问答问题，Enter 发送，Shift+Enter 换行"
-            placeholder="开始提问..."
+            placeholder="输入问题，钢小智为您解答，选定知识库，答复精准可溯源。"
             value={input}
             rows={1}
             onChange={(e) => {

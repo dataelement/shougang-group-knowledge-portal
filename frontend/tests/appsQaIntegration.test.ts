@@ -47,6 +47,17 @@ test('/apps uses the app-style shared qa composer instead of the standalone qa w
   assert.doesNotMatch(appsPageSource, /<div className=\{activeTab === 'qa' \? s\.qaPane : s\.hiddenPane\}>\s*\{\s*workspace\s*\}/);
 });
 
+test('smart qa entries use the Steel Xiaozhi product copy consistently', () => {
+  const qaPlaceholder = '输入问题，钢小智为您解答，选定知识库，答复精准可溯源。';
+
+  assert.match(homePageSource, />\s*小智知道\s*<\/button>/);
+  assert.ok(homePageSource.includes(qaPlaceholder));
+  assert.ok(qaPageSource.includes(`placeholder="${qaPlaceholder}"`));
+  assert.match(floatingQaSource, /aria-label="进入钢小智"/);
+  assert.match(floatingQaSource, /title="钢小智"/);
+  assert.match(floatingQaSource, />钢小智<\/span>/);
+});
+
 test('/apps places main tabs below the top composer and hides them in qa message mode', () => {
   assert.match(appsPageSource, /showMainTabs/);
   assert.match(appsPageSource, /const showMainTabs = !hasSelectedAgentWorkflow && !hasQaConversation/);

@@ -883,13 +883,13 @@ export default function HomePage() {
                   setShowHotTagMenu(false);
                 }}
               >
-                智能问答
+                小智知道
               </button>
             </div>
             <div className={s.searchBox}>
               <textarea
                 className={s.searchInput}
-                placeholder={searchTab === 'qa' ? '输入问题,智能问答为你解答' : '输入关键词搜索知识文档'}
+                placeholder={searchTab === 'qa' ? '输入问题，钢小智为您解答，选定知识库，答复精准可溯源。' : '输入关键词搜索知识文档'}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKey}

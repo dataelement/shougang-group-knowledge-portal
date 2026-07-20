@@ -55,11 +55,11 @@ export default function FloatingQaButton() {
     <button
       type="button"
       className={s.button}
-      aria-label="进入智能问答"
-      title="智能问答"
+      aria-label="进入钢小智"
+      title="钢小智"
       onClick={() => navigate('/apps?tab=qa')}
     >
-      <span className={s.label}>智能问答</span>
+      <span className={s.label}>钢小智</span>
       <img className={s.icon} src="/qa-floating-icon.png" alt="" aria-hidden="true" />
     </button>
   );
