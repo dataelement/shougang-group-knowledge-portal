@@ -1659,6 +1659,7 @@ class KnowledgeService:
             **data,
             "original_url": str(data.get("original_url") or "").strip(),
             "preview_url": str(data.get("preview_url") or "").strip(),
+            "pdf_preview_url": str(data.get("pdf_preview_url") or "").strip(),
         }
         return FilePreviewData.model_validate(normalized)
 
@@ -1669,6 +1670,8 @@ class KnowledgeService:
         space_id: int,
         file_id: int,
     ) -> str:
+        if source_kind == "pdf_preview_url":
+            return raw_preview.pdf_preview_url if raw_preview else ""
         if source_kind == "preview_url":
             return raw_preview.preview_url if raw_preview else ""
         if source_kind == "original_url":
@@ -1680,11 +1683,16 @@ class KnowledgeService:
     def _get_preview_source_priority(self, file_ext: str) -> tuple[FilePreviewSourceKind, ...]:
         if file_ext == "pdf" or file_ext in IMAGE_EXTENSIONS:
             return ("preview_url", "original_url", "preview_task")
+        # Word files: prefer bisheng's LibreOffice-rendered PDF — it lays the page out
+        # like Word does, unlike rendering the docx in the browser (which drops e-seals
+        # and shape positioning). Empty pdf_preview_url falls straight through to the
+        # previous behaviour, so files without a PDF are unaffected.
         if file_ext in LEGACY_WORD_EXTENSIONS:
-            return ("preview_url", "original_url", "preview_task")
+            return ("pdf_preview_url", "preview_url", "original_url", "preview_task")
+        if file_ext == "docx":
+            return ("pdf_preview_url", "original_url", "preview_url", "preview_task")
         if (
-            file_ext == "docx"
-            or file_ext in SPREADSHEET_EXTENSIONS
+            file_ext in SPREADSHEET_EXTENSIONS
             or file_ext in MARKDOWN_EXTENSIONS
             or file_ext in HTML_EXTENSIONS
             or file_ext in TEXT_EXTENSIONS

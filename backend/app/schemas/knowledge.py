@@ -258,6 +258,9 @@ class DocumentFileChatRequest(BaseModel):
 class FilePreviewData(BaseModel):
     original_url: str
     preview_url: str
+    # PDF rendition of a Word preview (LibreOffice-rendered by bisheng). Empty when
+    # conversion failed or the file predates it — callers fall back to preview_url.
+    pdf_preview_url: str = ""
 
 
 class PortalHotSearchItem(BaseModel):
@@ -289,7 +292,7 @@ class PortalSearchTelemetryRequest(BaseModel):
 
 
 FilePreviewMode = Literal["pdf", "docx", "spreadsheet", "markdown", "html", "text", "image", "unsupported", "chunks"]
-FilePreviewSourceKind = Literal["preview_url", "original_url", "preview_task", "none"]
+FilePreviewSourceKind = Literal["pdf_preview_url", "preview_url", "original_url", "preview_task", "none"]
 
 
 class FilePreviewManifest(BaseModel):
