@@ -110,6 +110,9 @@ function parseInvitedExperts(
         introduction: null,
         depart_ment: null,
         major: null,
+        position: null,
+        job_family: null,
+        job_category: null,
         answer_count: 0,
         adoption_count: 0,
         vote_count: 0,
@@ -896,7 +899,7 @@ export default function ExpertQAAskPage() {
                             <span className={s.pickerInfo}>
                               <span className={s.pickerName}>{expert.expert_name}</span>
                               {expert.depart_ment && (
-                                <span className={s.pickerDept}>{expert.depart_ment}</span>
+                                <span className={s.pickerDept}>{expert.depart_ment} · {expert.position || '?'}  （{expert.job_family?.replace(/族$/, '') || '?'} - {expert.job_category?.replace(/类$/, '') || '?'}) </span>
                               )}
                             </span>
                             <span className={s.expertInfo}>

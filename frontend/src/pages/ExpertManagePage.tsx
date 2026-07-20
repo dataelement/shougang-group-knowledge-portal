@@ -71,7 +71,11 @@ const EMPTY_FORM: ExpertUpsertPayload = {
   expert_name: '',
   introduction: '',
   depart_ment: '',
+  department_id: '',
   major: '',
+  position: '',
+  job_family: '',
+  job_category: '',
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -110,7 +114,10 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
       Number(form.user_id || 0) !== Number(initial.user_id || 0) ||
       normalize(form.depart_ment) !== normalize(initial.depart_ment) ||
       normalize(form.introduction) !== normalize(initial.introduction) ||
-      normalize(form.major) !== normalize(initial.major)
+      normalize(form.major) !== normalize(initial.major) ||
+      normalize(form.position) !== normalize(initial.position) ||
+      normalize(form.job_family) !== normalize(initial.job_family) ||
+      normalize(form.job_category) !== normalize(initial.job_category)
     );
   }, [form, initial]);
 
@@ -198,6 +205,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
       user_id: user.user_id,
       expert_name: user.user_name,
       depart_ment: getUserDepartment(user),
+      department_id: user.department_id ?? '',
     }));
     setUserSearch(user.user_name);
     setUserPickerOpen(false);
@@ -243,8 +251,11 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
           user_id: userId,
           expert_name: expertName,
           introduction: form.introduction?.trim(),
-          depart_ment: form.depart_ment?.trim(),
+          depart_ment: form.department_id?.toString() || '',
           major: form.major?.trim(),
+          position: form.position?.trim(),
+          job_family: form.job_family?.trim(),
+          job_category: form.job_category?.trim(),
         });
       } else {
         result = await createExpert({
@@ -253,6 +264,9 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
           introduction: form.introduction?.trim(),
           depart_ment: selectedUser?.department_id?.toString() || '',
           major: form.major?.trim(),
+          position: form.position?.trim(),
+          job_family: form.job_family?.trim(),
+          job_category: form.job_category?.trim(),
         });
       }
       onSuccess(result);
@@ -358,6 +372,12 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
               readOnly
               disabled={true}
             />
+            <input
+                type="hidden"
+                value={form.department_id || ''}
+                disabled={usersLoading}
+                readOnly
+              />
           </div>
 
           <div className={s.field}>
@@ -369,14 +389,45 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
               placeholder="专家的主要技能领域、从业经验等（可选）"
             />
           </div>
-          <div className={s.field}>
-            <label className={s.fieldLabel}>所属专业</label>
-            <input
-              className={s.input}
-              value={form.major ?? ''}
-              onChange={(e) => set('major', e.target.value)}
-              placeholder="请输入所属专业"
-            />
+          <div className={s.row2}>
+            <div className={s.field}>
+              <label className={s.fieldLabel}>所属职位族</label>
+              <input
+                className={s.input}
+                value={form.job_family ?? ''}
+                onChange={(e) => set('job_family', e.target.value)}
+                placeholder="请输入所属职位族"
+              />
+            </div>
+            <div className={s.field}>
+              <label className={s.fieldLabel}>所属职位类</label>
+              <input
+                className={s.input}
+                value={form.job_category ?? ''}
+                onChange={(e) => set('job_category', e.target.value)}
+                placeholder="请输入所属职位类"
+              />
+            </div>
+          </div>
+          <div className={s.row2}>
+            <div className={s.field}>
+              <label className={s.fieldLabel}>所属职务</label>
+              <input
+                className={s.input}
+                value={form.position ?? ''}
+                onChange={(e) => set('position', e.target.value)}
+                placeholder="请输入所属职务"
+              />
+            </div>
+            <div className={s.field}>
+              <label className={s.fieldLabel}>所属岗位</label>
+              <input
+                className={s.input}
+                value={form.major ?? ''}
+                onChange={(e) => set('major', e.target.value)}
+                placeholder="请输入所属岗位"
+              />
+            </div>
           </div>
         </div>
 
@@ -657,6 +708,10 @@ export default function ExpertManagePage() {
                 <tr>
                   <th>名字</th>
                   <th>部门</th>
+                  <th>职位族</th>
+                  <th>职位类</th>
+                  <th>职务</th>
+                  <th>岗位</th>
                   <th>回答数</th>
                   <th>采纳数</th>
                   <th>获赞数</th>
@@ -706,6 +761,19 @@ export default function ExpertManagePage() {
                       {/* 部门 */}
                       <td>
                         <span className={s.cellText}>{expert.depart_ment || '—'}</span>
+                      </td>
+
+                      <td>
+                        <span className={s.cellText}>{expert.job_family || '—'}</span>
+                      </td>
+                      <td>
+                        <span className={s.cellText}>{expert.job_category || '—'}</span>
+                      </td>
+                      <td>
+                        <span className={s.cellText}>{expert.position || '—'}</span>
+                      </td>
+                      <td>
+                        <span className={s.cellText}>{expert.major || '—'}</span>
                       </td>
 
                       {/* 统计 */}
@@ -818,13 +886,17 @@ export default function ExpertManagePage() {
         <ExpertFormModal
           mode="edit"
           initial={{
-            id: modal.expert.id,
-            user_id: modal.expert.user_id,
-            expert_name: modal.expert.expert_name,
-            introduction: modal.expert.introduction ?? '',
-            depart_ment: modal.expert.depart_ment ?? '',
-            major: modal.expert.major ?? '',
-          }}
+          id: modal.expert.id,
+          user_id: modal.expert.user_id,
+          expert_name: modal.expert.expert_name,
+          introduction: modal.expert.introduction ?? '',
+          depart_ment: modal.expert.depart_ment ?? '',
+          department_id: modal.expert.department_id ?? '',
+          major: modal.expert.major ?? '',
+          position: modal.expert.position ?? '',
+          job_family: modal.expert.job_family ?? '',
+          job_category: modal.expert.job_category ?? '',
+        }}
           onClose={() => setModal({ type: 'none' })}
           onSuccess={handleEditSuccess}
         />
