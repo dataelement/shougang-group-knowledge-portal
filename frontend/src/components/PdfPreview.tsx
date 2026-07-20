@@ -160,7 +160,10 @@ function PdfPage({
         controller.signal.removeEventListener('abort', cancelRender);
       }
     }, controller.signal).catch((error: unknown) => {
-      if (!isCancelledRender(error, controller.signal)) onRenderFailure();
+      if (!isCancelledRender(error, controller.signal)) {
+        console.error(`[portal][pdf-preview] Failed to render page ${pageNumber}`, error);
+        onRenderFailure();
+      }
     });
 
     return () => {
@@ -210,8 +213,10 @@ export default function PdfPreview({ sourceUrl, onPreviewFailure }: Props) {
         if (!active) return;
         setPdfDocument(document);
       })
-      .catch(() => {
-        if (active) onPreviewFailure();
+      .catch((error: unknown) => {
+        if (!active) return;
+        console.error('[portal][pdf-preview] Failed to load document', error);
+        onPreviewFailure();
       });
 
     return () => {
