@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     bisheng_base_url: AnyHttpUrl = Field(default="http://localhost:7860")
     bisheng_asset_base_url: str = ""
     bisheng_timeout_seconds: float = 30.0
-    bisheng_download_timeout_seconds: float = 70.0
+    bisheng_download_timeout_seconds: float = 370.0
     bisheng_api_token: Optional[str] = None
     bisheng_username: Optional[str] = None
     bisheng_password: Optional[SecretStr] = None

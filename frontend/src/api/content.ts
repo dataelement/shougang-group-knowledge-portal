@@ -1262,8 +1262,18 @@ export async function fetchPortalPdfDownload(
     } catch {
       // 非 JSON 错误体不得直接展示，按 HTTP 状态返回稳定文案。
     }
+    const fallbackByStatus: Record<number, string> = {
+      409: 'PDF 生成失败，请稍后重试。',
+      429: '下载任务繁忙，请稍后重试。',
+      500: 'PDF 生成失败，请稍后重试。',
+      503: '下载服务暂不可用，请稍后重试。',
+      504: 'PDF 生成超时，请稍后重试。',
+    };
+    const normalizedMessage = message
+      ? normalizeUserFacingMessage(message, '下载失败，请稍后重试。', response.status)
+      : fallbackByStatus[response.status] ?? '下载失败，请稍后重试。';
     throw new ApiRequestError(
-      normalizeUserFacingMessage(message, '下载失败，请稍后重试。', response.status),
+      normalizedMessage,
       response.status,
     );
   }

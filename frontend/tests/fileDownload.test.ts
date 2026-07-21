@@ -64,14 +64,14 @@ test('surfaces JSON and non-JSON download errors without creating a Blob downloa
   await assert.rejects(
     fetchPortalPdfDownload(
       { spaceId: 12, fileId: 1580, entryPoint: 'detail' },
-      async () => new Response(JSON.stringify({ detail: 'PDF 产物暂不可用' }), {
+      async () => new Response(JSON.stringify({ detail: 'PDF 生成失败，请稍后重试' }), {
         status: 409,
         headers: { 'Content-Type': 'application/json' },
       }),
     ),
     (error: unknown) => error instanceof ApiRequestError
       && error.status === 409
-      && error.message === 'PDF 产物暂不可用',
+      && error.message === 'PDF 生成失败，请稍后重试',
   );
 
   await assert.rejects(
@@ -81,7 +81,19 @@ test('surfaces JSON and non-JSON download errors without creating a Blob downloa
     ),
     (error: unknown) => error instanceof ApiRequestError
       && error.status === 504
+      && error.message === 'PDF 生成超时，请稍后重试。'
       && !error.message.includes('gateway html'),
+  );
+
+  await assert.rejects(
+    fetchPortalPdfDownload(
+      { spaceId: 12, fileId: 1580, entryPoint: 'detail' },
+      async () => new Response('internal details', { status: 500 }),
+    ),
+    (error: unknown) => error instanceof ApiRequestError
+      && error.status === 500
+      && error.message === 'PDF 生成失败，请稍后重试。'
+      && !error.message.includes('internal details'),
   );
 });
 

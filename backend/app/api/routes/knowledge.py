@@ -75,13 +75,14 @@ _DEFAULT_SEARCH_PAGE_SIZE = 10
 _MAX_SEARCH_PAGE_SIZE = 100
 _QA_MODEL_OPTIONS_CACHE_TTL_SECONDS = 300.0
 _DOWNLOAD_ERROR_BODY_LIMIT = 64 * 1024
-_DOWNLOAD_ERROR_STATUSES = {401, 403, 404, 409, 429, 503, 504}
+_DOWNLOAD_ERROR_STATUSES = {401, 403, 404, 409, 429, 500, 503, 504}
 _DOWNLOAD_ERROR_FALLBACKS = {
     401: "请先登录",
     403: "无权下载该文档",
     404: "文档不存在",
-    409: "PDF 产物暂不可用",
+    409: "PDF 生成失败，请稍后重试",
     429: "下载任务繁忙，请稍后重试",
+    500: "PDF 生成失败，请稍后重试",
     503: "下载服务暂不可用，请稍后重试",
     504: "PDF 生成超时，请稍后重试",
 }
@@ -1759,7 +1760,8 @@ async def download_portal_pdf(
                 else 500
             )
             if status_code == 500:
-                message = "下载失败，请稍后重试"
+                # 上游 500 错误体不透传，避免内部异常细节暴露给浏览器。
+                message = _DOWNLOAD_ERROR_FALLBACKS[500]
             elif not message:
                 message = _DOWNLOAD_ERROR_FALLBACKS[status_code]
             raise HTTPException(status_code=status_code, detail=message)

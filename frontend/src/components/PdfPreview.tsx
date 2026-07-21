@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?worker&url';
 import s from './DocumentPreview.module.css';
+import { PreviewWatermarkOverlay } from './PreviewWatermark';
 
 const PDF_RANGE_CHUNK_SIZE = 1024 * 1024;
 const PDF_RENDER_CONCURRENCY = 2;
@@ -172,6 +173,7 @@ function PdfPage({
 
   const minHeight = pageSize ? pageSize.height + 62 : PDF_PAGE_PLACEHOLDER_HEIGHT;
   const width = pageSize ? pageSize.width + 34 : undefined;
+  const canvasMinHeight = pageSize ? pageSize.height : PDF_PAGE_PLACEHOLDER_HEIGHT - 62;
 
   return (
     <section
@@ -181,8 +183,15 @@ function PdfPage({
       aria-label={`PDF 第 ${pageNumber} 页`}
     >
       <div className={s.pageLabel}>第 {pageNumber} 页</div>
-      <canvas ref={canvasRef} />
-      {!rendered ? <div className={s.pdfPagePlaceholder}>正在加载第 {pageNumber} 页...</div> : null}
+      <div
+        className={`${s.pdfCanvasSurface} ${s.watermarkSurface}`}
+        data-preview-watermark-surface
+        style={{ minHeight: canvasMinHeight, width: pageSize?.width }}
+      >
+        <canvas ref={canvasRef} />
+        {!rendered ? <div className={s.pdfPagePlaceholder}>正在加载第 {pageNumber} 页...</div> : null}
+        {rendered ? <PreviewWatermarkOverlay /> : null}
+      </div>
     </section>
   );
 }

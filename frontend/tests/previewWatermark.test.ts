@@ -44,13 +44,26 @@ test('portal preview watermark falls back to account without external id', () =>
 test('portal watermark layer is visual-only and detail page blocks anonymous body requests', () => {
   const componentSource = readSource('src/components/PreviewWatermark.tsx');
   const styleSource = readSource('src/components/PreviewWatermark.module.css');
+  const documentPreviewSource = readSource('src/components/DocumentPreview.tsx');
+  const documentPreviewStyleSource = readSource('src/components/DocumentPreview.module.css');
+  const pdfPreviewSource = readSource('src/components/PdfPreview.tsx');
   const detailSource = readSource('src/pages/DetailPage.tsx');
 
+  assert.match(componentSource, /createContext/);
+  assert.match(componentSource, /export function PreviewWatermarkOverlay/);
   assert.match(componentSource, /aria-hidden="true"/);
   assert.match(componentSource, /useState\(\(\) => new Date\(\)\)/);
   assert.match(styleSource, /pointer-events:\s*none/);
   assert.match(styleSource, /user-select:\s*none/);
   assert.match(styleSource, /transform:\s*rotate\(-\d+deg\)/);
+  assert.match(documentPreviewStyleSource, /\.watermarkSurface\s*\{[^}]*position:\s*relative[^}]*overflow:\s*hidden/s);
+  assert.ok(
+    (documentPreviewSource.match(/data-preview-watermark-surface/g)?.length ?? 0) >= 7,
+    'all non-PDF document surfaces must clip their own watermark',
+  );
+  assert.match(documentPreviewSource, /<PreviewWatermarkOverlay\s*\/>/);
+  assert.match(pdfPreviewSource, /data-preview-watermark-surface/);
+  assert.match(pdfPreviewSource, /<PreviewWatermarkOverlay\s*\/>/);
 
   assert.match(detailSource, /const canPreview = Boolean\(user\);/);
   assert.match(detailSource, /canPreview\s*\?\s*fetchFilePreview/);

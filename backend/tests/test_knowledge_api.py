@@ -1283,7 +1283,7 @@ def test_portal_pdf_download_streams_safe_headers_with_dedicated_timeout(tmp_pat
             "path": "/api/v1/knowledge/shougang-portal/files/12/1580/download",
             "params": {"entry_point": "search"},
             "headers": None,
-            "timeout_seconds": 70.0,
+            "timeout_seconds": 370.0,
         }
     ]
     assert fake_bisheng.download_stream is not None
@@ -1384,7 +1384,7 @@ def test_portal_pdf_download_requires_login_before_opening_upstream(tmp_path: Pa
 def test_portal_pdf_download_preserves_upstream_business_status_and_closes_stream(tmp_path: Path):
     fake_bisheng = DownloadBishengClient(
         status_code=409,
-        error_payload={"status_code": 18085, "status_message": "PDF 产物暂不可用"},
+        error_payload={"status_code": 18085, "status_message": "PDF 生成失败，请稍后重试"},
     )
     with TestClient(app) as client:
         client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
@@ -1394,10 +1394,27 @@ def test_portal_pdf_download_preserves_upstream_business_status_and_closes_strea
         )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "PDF 产物暂不可用"
+    assert response.json()["detail"] == "PDF 生成失败，请稍后重试"
     assert fake_bisheng.download_stream is not None
     assert fake_bisheng.download_stream.closed is True
     assert fake_bisheng.closed is True
+
+
+def test_portal_pdf_download_masks_upstream_generation_failure(tmp_path: Path):
+    fake_bisheng = DownloadBishengClient(
+        status_code=500,
+        error_payload={"status_code": 18089, "status_message": "database password leaked"},
+    )
+    with TestClient(app) as client:
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        client.app.state.portal_share_access_session_store = InMemoryPortalShareAccessSessionStore()
+        response = client.get(
+            "/api/v1/knowledge/space/12/files/1580/download?entry_point=detail"
+        )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "PDF 生成失败，请稍后重试"
+    assert "password" not in response.text
 
 
 def test_preview_never_exposes_original_download_url_and_detail_keeps_permission(tmp_path: Path):
