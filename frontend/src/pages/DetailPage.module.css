@@ -206,6 +206,40 @@
   color: var(--neutral-500);
 }
 
+.previewLoginRequired {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 72vh;
+  padding: 32px;
+  color: var(--neutral-500);
+  text-align: center;
+}
+
+.previewLoginRequired strong {
+  color: var(--neutral-800);
+  font-size: 1.1rem;
+}
+
+.previewLoginLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-600);
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.previewLoginLink:hover {
+  background: var(--primary-700);
+}
+
 .previewFrame {
   width: 100%;
   min-height: 72vh;

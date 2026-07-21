@@ -669,14 +669,21 @@ class InMemoryRedis:
         return True
 
 
-def make_client(tmp_path: Path):
+def make_client(tmp_path: Path, *, authenticated: bool = False):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
     fake_bisheng = FakeBishengClient()
     with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
-        yield client, config_service, fake_bisheng
+        if authenticated:
+            client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            yield client, config_service, fake_bisheng
+        finally:
+            if authenticated and previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
 
 
 def test_home_stats_uses_redis_cache(tmp_path: Path):
@@ -759,6 +766,77 @@ class NoSessionPortalAuthService(FakePortalAuthService):
         from app.services.portal_auth_service import PortalAuthError
 
         raise PortalAuthError("请先登录", status_code=401)
+
+
+def test_anonymous_user_can_read_detail_but_not_preview_content(tmp_path: Path):
+    class PreviewTrackingBishengClient(FakeBishengClient):
+        def __init__(self):
+            super().__init__()
+            self.preview_upstream_calls: list[str] = []
+
+        async def get_json(self, path: str, params=None, headers=None):
+            if "/preview" in path or path.endswith("/chunks"):
+                self.preview_upstream_calls.append(path)
+            return await super().get_json(path, params=params, headers=headers)
+
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580/verify":
+                assert json == {
+                    "password": "secret",
+                    "invite_code": "ABC123",
+                    "issue_download_grant": False,
+                }
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "share_token": "share-token-1580",
+                        "space_id": 12,
+                        "file_id": 1580,
+                        "allow_download": False,
+                    },
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = PreviewTrackingBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        client.app.state.portal_share_access_session_store = InMemoryPortalShareAccessSessionStore()
+        try:
+            meta_response = client.get("/api/v1/knowledge/share-links/share-token-1580")
+            access_response = client.post(
+                "/api/v1/knowledge/share-links/share-token-1580/access",
+                json={"password": "secret", "invite_code": "ABC123"},
+            )
+            share_query = "share_token=share-token-1580"
+            detail_response = client.get(
+                f"/api/v1/knowledge/space/12/files/1580?{share_query}"
+            )
+            preview_response = client.get(
+                f"/api/v1/knowledge/space/12/files/1580/preview?{share_query}"
+            )
+            content_response = client.get(
+                "/api/v1/knowledge/space/12/files/1580/preview/content"
+                f"?source_kind=preview_url&{share_query}"
+            )
+            chunks_response = client.get(
+                f"/api/v1/knowledge/space/12/files/1580/chunks?{share_query}"
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert meta_response.status_code == 200
+    assert access_response.status_code == 200
+    assert detail_response.status_code == 200
+    assert detail_response.json()["data"]["summary"] == "振动纹治理实践摘要"
+    for response in (preview_response, content_response, chunks_response):
+        assert response.status_code == 401
+        assert response.json()["detail"] == "请登录后预览"
+    assert fake_bisheng.preview_upstream_calls == []
 
 
 def test_list_visible_spaces_uses_grouped_bisheng_endpoint(tmp_path: Path):
@@ -1410,7 +1488,7 @@ def test_list_space_files_maps_bisheng_results(tmp_path: Path):
 
 
 def test_get_file_detail_and_preview(tmp_path: Path):
-    for client, _, fake_bisheng in make_client(tmp_path):
+    for client, _, fake_bisheng in make_client(tmp_path, authenticated=True):
         detail_response = client.get("/api/v1/knowledge/space/12/files/1580")
         preview_response = client.get("/api/v1/knowledge/space/12/files/1580/preview")
 
@@ -1487,6 +1565,7 @@ def test_get_doc_file_preview_uses_bisheng_preview_resource(tmp_path: Path):
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         preview_response = client.get("/api/v1/knowledge/space/12/files/1591/preview")
         content_response = client.get(
             "/api/v1/knowledge/space/12/files/1591/preview/content?source_kind=preview_url"
@@ -1539,6 +1618,7 @@ def test_get_doc_file_preview_returns_unsupported_when_no_preview_source(tmp_pat
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         preview_response = client.get("/api/v1/knowledge/space/12/files/1591/preview")
 
     assert preview_response.status_code == 200
@@ -1549,7 +1629,7 @@ def test_get_doc_file_preview_returns_unsupported_when_no_preview_source(tmp_pat
     assert preview["reason"] == "当前文件类型暂不支持在线预览，请下载原文件查看。"
 
 
-def test_get_ppt_file_preview_remains_unsupported(tmp_path: Path):
+def test_get_ppt_file_preview_uses_generated_pdf(tmp_path: Path):
     class PptPreviewBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/knowledge/shougang-portal/files/12/1592":
@@ -1581,13 +1661,15 @@ def test_get_ppt_file_preview_remains_unsupported(tmp_path: Path):
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         preview_response = client.get("/api/v1/knowledge/space/12/files/1592/preview")
 
     assert preview_response.status_code == 200
     preview = preview_response.json()["data"]
-    assert preview["mode"] == "unsupported"
+    assert preview["mode"] == "pdf"
+    assert preview["source_kind"] == "preview_url"
     assert preview["download_url"] == ""
-    assert preview["supports_chunks_fallback"] is False
+    assert preview["supports_chunks_fallback"] is True
 
 
 def test_home_stats_returns_document_and_telemetry_counts(tmp_path: Path):
@@ -1715,6 +1797,7 @@ def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_asse
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         preview_response = client.get("/api/v1/knowledge/space/12/files/1580/preview")
 
     assert preview_response.status_code == 200
@@ -1763,6 +1846,7 @@ def test_get_file_preview_uses_preview_task_when_direct_urls_missing(tmp_path: P
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         preview_response = client.get("/api/v1/knowledge/space/12/files/1580/preview")
         content_response = client.get(
             "/api/v1/knowledge/space/12/files/1580/preview/content?source_kind=preview_task"
@@ -1780,7 +1864,7 @@ def test_get_file_preview_uses_preview_task_when_direct_urls_missing(tmp_path: P
 
 
 def test_get_file_preview_content_proxies_selected_source(tmp_path: Path):
-    for client, _, fake_bisheng in make_client(tmp_path):
+    for client, _, fake_bisheng in make_client(tmp_path, authenticated=True):
         response = client.get("/api/v1/knowledge/space/12/files/1580/preview/content?source_kind=preview_url")
 
     assert response.status_code == 200
@@ -1818,6 +1902,7 @@ def test_get_file_preview_content_streams_range_response(tmp_path: Path):
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         response = client.get(
             "/api/v1/knowledge/space/12/files/1580/preview/content?source_kind=preview_url",
             headers={"Range": "bytes=0-3", "If-Range": '"preview-etag"'},
@@ -1849,6 +1934,7 @@ def test_get_file_preview_content_returns_chinese_message_when_source_missing(tm
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         response = client.get("/api/v1/knowledge/space/12/files/1580/preview/content?source_kind=preview_url")
 
     assert response.status_code == 404
@@ -1899,6 +1985,7 @@ def test_get_file_preview_content_uses_preview_asset_fetcher_for_original_urls(t
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
         response = client.get("/api/v1/knowledge/space/12/files/1580/preview/content?source_kind=original_url")
 
     assert response.status_code == 200
@@ -1912,7 +1999,7 @@ def test_get_file_preview_content_uses_preview_asset_fetcher_for_original_urls(t
 
 
 def test_get_file_chunks_returns_sorted_chunk_text(tmp_path: Path):
-    for client, _, _ in make_client(tmp_path):
+    for client, _, _ in make_client(tmp_path, authenticated=True):
         response = client.get("/api/v1/knowledge/space/12/files/1580/chunks")
 
     assert response.status_code == 200

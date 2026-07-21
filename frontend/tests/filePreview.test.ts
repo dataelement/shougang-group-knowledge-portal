@@ -120,7 +120,7 @@ test('embedded preview detail page does not refetch preview when display config 
   assert.match(source, /relatedFilesCount === 0\s*\?\s*Promise\.resolve\(\[\]\)/);
   assert.match(
     source,
-    /\}, \[fileId, previewEntryPoint, recommendationScene, relatedFilesCount, shareToken, spaceId\]\);/,
+    /\}, \[canPreview, fileId, previewEntryPoint, previewUserKey, recommendationScene, relatedFilesCount, shareToken, spaceId\]\);/,
   );
   assert.doesNotMatch(source, /\}, \[displayConfig\.detail\.relatedFilesCount, embed, fileId, shareToken, spaceId\]\);/);
 });

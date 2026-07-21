@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useParams, useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Download, Loader2, Sparkles, Star } from 'lucide-react';
 import PageShell from '../components/PageShell';
+import PreviewWatermark from '../components/PreviewWatermark';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
 import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewContext, type FilePreviewManifest, type PortalDownloadEntryPoint } from '../api/content';
@@ -83,26 +84,30 @@ export default function DetailPage() {
   const hideBack = searchParams.get('hideBack') === '1';
   const relatedFilesCount = embed || shareToken ? 0 : displayConfig.detail.relatedFilesCount;
   const backTarget = resolveDetailBackTarget(location.state?.returnTo, spaceIdStr);
+  const canPreview = Boolean(user);
+  const previewUserKey = user ? `${user.account}:${user.externalId || ''}` : '';
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError('');
     setClientFallbackActive(false);
+    setPreview(null);
+    setChunks([]);
     void (async () => {
       try {
         const [detailResult, previewResult, relatedResult] = await Promise.all([
           fetchFileDetail(spaceId, fileId, shareToken || undefined),
-          fetchFilePreview(spaceId, fileId, shareToken || undefined, {
+          canPreview ? fetchFilePreview(spaceId, fileId, shareToken || undefined, {
             entryPoint: previewEntryPoint,
             recommendationScene,
-          }),
+          }) : Promise.resolve(null),
           relatedFilesCount === 0
             ? Promise.resolve([])
             : fetchRelatedFiles(spaceId, fileId, relatedFilesCount),
         ]);
         if (!active) return;
-        const chunkResult = (previewResult?.mode === 'chunks' && detailResult)
+        const chunkResult = (canPreview && previewResult?.mode === 'chunks' && detailResult)
           ? await fetchFileChunks(spaceId, fileId, shareToken || undefined)
           : [];
         if (!active) return;
@@ -120,7 +125,7 @@ export default function DetailPage() {
     return () => {
       active = false;
     };
-  }, [fileId, previewEntryPoint, recommendationScene, relatedFilesCount, shareToken, spaceId]);
+  }, [canPreview, fileId, previewEntryPoint, previewUserKey, recommendationScene, relatedFilesCount, shareToken, spaceId]);
 
   const wrap = (children: ReactNode) =>
     embed ? <div className={s.embedRoot}>{children}</div> : <PageShell>{children}</PageShell>;
@@ -169,6 +174,7 @@ export default function DetailPage() {
   }
 
   async function handlePreviewFailure() {
+    if (!canPreview) return;
     if (!clientFallbackActive) setClientFallbackActive(true);
     if (!resolvedPreview.supportsChunksFallback) return;
     if (chunks.length > 0) return;
@@ -199,6 +205,20 @@ export default function DetailPage() {
       setDownloadPending(false);
     }
   }
+
+  const previewContent = (
+    <Suspense fallback={<div className={s.previewLoading}>正在加载阅读器...</div>}>
+      <DocumentPreview
+        chunks={chunks}
+        onPreviewFailure={() => void handlePreviewFailure()}
+        preview={effectivePreview}
+        title={detail.title}
+      />
+    </Suspense>
+  );
+  const hasPreviewContent = effectivePreview.mode === 'chunks'
+    ? chunks.length > 0
+    : effectivePreview.mode !== 'unsupported' && Boolean(effectivePreview.viewerUrl);
 
   return wrap(
     <div className={s.container}>
@@ -269,14 +289,24 @@ export default function DetailPage() {
             <div className={s.summaryText}>{detail.summary}</div>
           </div>
           <div className={s.previewArea}>
-            <Suspense fallback={<div className={s.previewLoading}>正在加载阅读器...</div>}>
-              <DocumentPreview
-                chunks={chunks}
-                onPreviewFailure={() => void handlePreviewFailure()}
-                preview={effectivePreview}
-                title={detail.title}
-              />
-            </Suspense>
+            {canPreview && user ? (
+              hasPreviewContent ? (
+                <PreviewWatermark key={previewUserKey} user={user}>
+                  {previewContent}
+                </PreviewWatermark>
+              ) : previewContent
+            ) : (
+              <div className={s.previewLoginRequired} role="status">
+                <strong>登录后预览</strong>
+                <span>登录后可查看文档正文，文件信息与 AI 概览仍可继续浏览。</span>
+                <Link
+                  className={s.previewLoginLink}
+                  to={`/login?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`}
+                >
+                  去登录
+                </Link>
+              </div>
+            )}
           </div>
           {canDownload ? (
             <div className={s.downloadArea}>

@@ -288,6 +288,14 @@ async def _scoped_service_and_extra_ids(
         raise
 
 
+async def _require_preview_session(
+    auth_service: PortalAuthService,
+    request: Request,
+) -> None:
+    if await get_portal_session(auth_service, request) is None:
+        raise HTTPException(status_code=401, detail="请登录后预览")
+
+
 async def _require_share_access(
     request: Request,
     share_token: str,
@@ -1561,6 +1569,7 @@ async def get_file_preview(
         get_portal_share_access_session_store
     ),
 ):
+    await _require_preview_session(auth_service, request)
     if share_token:
         await _require_share_access(
             request,
@@ -1622,6 +1631,7 @@ async def get_file_preview_content(
         get_portal_share_access_session_store
     ),
 ):
+    await _require_preview_session(auth_service, request)
     if share_token:
         await _require_share_access(
             request,
@@ -1824,6 +1834,7 @@ async def get_file_chunks(
         get_portal_share_access_session_store
     ),
 ):
+    await _require_preview_session(auth_service, request)
     if share_token:
         await _require_share_access(
             request,
