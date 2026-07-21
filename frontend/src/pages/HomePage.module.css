@@ -959,7 +959,7 @@
   grid-template-columns: minmax(0, 810fr) minmax(0, 440fr);
   gap: 24px;
   margin-top: 24px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .leftColumn {
@@ -973,6 +973,17 @@
   flex-direction: column;
   gap: 24px;
   min-width: 0;
+}
+
+/* 左侧「知识推荐」「典型案例」等需要与右侧对齐时均分额外高度 */
+.leftFillPanel {
+  flex: 1 1 auto;
+}
+
+/* 右侧三大块在左侧较高时均分额外高度 */
+.sideColumn > .qaPanel,
+.sideColumn > .panel {
+  flex: 1 1 auto;
 }
 
 .primarySectionPanel {
