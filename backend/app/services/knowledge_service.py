@@ -64,7 +64,10 @@ MARKDOWN_EXTENSIONS = {"markdown", "md"}
 HTML_EXTENSIONS = {"htm", "html"}
 TEXT_EXTENSIONS = {"txt"}
 LEGACY_WORD_EXTENSIONS = {"doc"}
-UNSUPPORTED_PREVIEW_EXTENSIONS = {"ppt", "pptx"}
+# Presentations are converted to PDF by bisheng and served via preview_url, so they
+# preview as PDFs rather than being unsupported.
+PPT_EXTENSIONS = {"ppt", "pptx", "dps"}
+UNSUPPORTED_PREVIEW_EXTENSIONS: set[str] = set()
 PREVIEW_TASK_CACHE_TTL_SECONDS = 900.0
 PREVIEW_TASK_POLL_ATTEMPTS = 6
 PREVIEW_TASK_POLL_DELAY_SECONDS = 0.4
@@ -1661,6 +1664,12 @@ class KnowledgeService:
             return ("pdf_preview_url", "preview_url", "original_url", "preview_task")
         if file_ext == "docx":
             return ("pdf_preview_url", "original_url", "preview_url", "preview_task")
+        # Presentations: bisheng converts them to PDF and serves it via preview_url
+        # (pdf_preview_url is currently produced only for Word, kept first for
+        # forward-compatibility). The original .ppt/.pptx is not browser-previewable,
+        # so it is not in the priority list.
+        if file_ext in PPT_EXTENSIONS:
+            return ("pdf_preview_url", "preview_url", "preview_task")
         if (
             file_ext in SPREADSHEET_EXTENSIONS
             or file_ext in MARKDOWN_EXTENSIONS
