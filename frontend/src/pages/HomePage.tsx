@@ -11,6 +11,7 @@ import {
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/Tooltip';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
   streamHomeContent,
@@ -1140,7 +1141,8 @@ export default function HomePage() {
       </section>
 
       {/* Main content */}
-      <div className={s.container}>
+      <TooltipProvider delayDuration={100}>
+        <div className={s.container}>
         {/* Domain navigation */}
         <div className={`${s.section} ${s.domainSection}`}>
           <div className={s.domainHeader}>
@@ -1224,6 +1226,8 @@ export default function HomePage() {
               const moreLink = buildSectionMoreLink(sec, recommendationMode);
               // 需要参与「左右高度补长」的左侧板块
               const isLeftFillPanel = /知识推荐|典型案例/.test(sec.title);
+              // 仅「知识推荐」「典型案例」摘要开启 hover 全文提示
+              const enableSummaryTooltip = /知识推荐|典型案例/.test(sec.title);
               return (
                 <div
                   key={sectionKey}
@@ -1276,7 +1280,18 @@ export default function HomePage() {
                             <img src={resolveSectionItemIcon(sec.title)} alt="" className={s.itemIcon} />
                             <div className={s.itemBody}>
                               <div className={s.itemTitle}>{f.title}</div>
-                              <div className={s.itemSummary}>{f.summary ?? ''}</div>
+                              {enableSummaryTooltip && f.summary ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className={s.itemSummary}>{f.summary}</div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
+                                    {f.summary}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <div className={s.itemSummary}>{f.summary ?? ''}</div>
+                              )}
                             </div>
                             {f.date ? (
                               <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
@@ -1386,7 +1401,8 @@ export default function HomePage() {
         {error || loadError ? <div className={s.bottomPad}>{error || loadError}</div> : null}
 
         <div className={s.bottomPad} />
-      </div>
+        </div>
+      </TooltipProvider>
     </PageShell>
   );
 }
