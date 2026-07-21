@@ -34,12 +34,7 @@ import {
   getBusinessDomainFilterOptions,
   normalizeBusinessDomainCode,
 } from '../utils/businessDomains';
-import {
-  buildDownloadFileName,
-  openFileDownloadUrl,
-  resolveFileDownloadUrl,
-} from '../utils/fileDownload';
-import { recordFileDownloadEvent } from '../api/content';
+import { downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildGuestLoginPath } from '../utils/guestAccess';
 import { createSubmittedSearchParams } from '../utils/searchParams';
@@ -186,15 +181,15 @@ export default function ListPage() {
   const handleDownload = useCallback(async (file: FileItem) => {
     setError('');
     try {
-      const downloadUrl = await resolveFileDownloadUrl(file);
-      if (!downloadUrl) {
-        setError('该文档暂不可下载');
-        return;
-      }
-      openFileDownloadUrl(downloadUrl, buildDownloadFileName(file));
-      void recordFileDownloadEvent(file.spaceId, file.id);
+      await downloadWatermarkedFile({
+        spaceId: file.spaceId,
+        fileId: file.id,
+        entryPoint: 'knowledge_list',
+        title: file.title,
+        ext: file.ext,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '下载链接获取失败');
+      setError(err instanceof Error ? err.message : '文档下载失败');
     }
   }, []);
 

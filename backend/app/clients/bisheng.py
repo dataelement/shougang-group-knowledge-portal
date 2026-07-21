@@ -120,6 +120,42 @@ class BishengClient:
         response.raise_for_status()
         return response
 
+    async def open_authenticated_download_stream(
+        self,
+        path: str,
+        params: Optional[dict] = None,
+        headers: Optional[dict[str, str]] = None,
+        *,
+        timeout_seconds: float,
+    ) -> httpx.Response:
+        """打开门户下载响应，调用方负责在全部终止路径关闭响应。"""
+        timeout = httpx.Timeout(timeout_seconds)
+        request = self._client.build_request(
+            "GET",
+            path,
+            params=params,
+            headers=headers,
+            timeout=timeout,
+        )
+        response = await self._client.send(request, stream=True)
+        if self._is_auth_status(response.status_code):
+            try:
+                refreshed = await self._refresh_auth_token()
+            except Exception:
+                await response.aclose()
+                raise
+            if refreshed:
+                await response.aclose()
+                request = self._client.build_request(
+                    "GET",
+                    path,
+                    params=params,
+                    headers=headers,
+                    timeout=timeout,
+                )
+                response = await self._client.send(request, stream=True)
+        return response
+
     async def post(
         self,
         path: str,

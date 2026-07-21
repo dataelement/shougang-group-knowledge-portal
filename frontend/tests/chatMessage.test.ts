@@ -44,7 +44,7 @@ test('单引用占位符渲染为可点击角标', () => {
   const html = renderChatMarkdownWithSanitizer(text, [K1], identity);
   assert.match(html, /<sup class="citationRef">/);
   assert.match(html, /data-cite-key="knowledgesearch_aaa:5"/);
-  assert.match(html, /href="\/space\/3313\/file\/86146"/);
+  assert.match(html, /href="\/space\/3313\/file\/86146\?entry_point=qa_citation"/);
   assert.match(html, />1</);
   assert.match(html, /target="_blank"/);
   assert.match(html, /rel="noopener noreferrer"/);

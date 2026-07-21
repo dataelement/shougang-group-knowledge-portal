@@ -2,10 +2,13 @@ import asyncio
 import hashlib
 import json
 import logging
+import secrets
+import time
 from time import monotonic
 from typing import Annotated, Any, NoReturn, Optional
 from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -14,6 +17,7 @@ from app.api.dependencies import (
     get_portal_auth_service,
     get_portal_config_service,
     get_portal_home_cache_service,
+    get_portal_share_access_session_store,
 )
 from app.clients.bisheng import BishengClient
 from app.schemas.common import response_ok
@@ -30,6 +34,7 @@ from app.schemas.knowledge import (
     PortalSearchTelemetryRequest,
     QaKnowledgeFolderStatsRequest,
     ShareDocumentAccessRequest,
+    ShareDocumentAccessData,
     ShareDocumentRequest,
 )
 from app.config.portal_config import DEFAULT_PORTAL_CONFIG
@@ -38,13 +43,10 @@ from app.services.chat_stream import ChatStreamObserver, safe_chat_stream
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
-    SHARE_ACCESS_COOKIE_NAME,
-    SHARE_ACCESS_TTL_SECONDS,
     BishengBusinessError,
     KnowledgeService,
     LATEST_SELECTED_RECOMMENDATION,
     PERSONALIZED_RECOMMENDATION,
-    ShareAccessSession,
 )
 from app.services.portal_auth_service import (
     PortalAuthError,
@@ -54,6 +56,13 @@ from app.services.portal_auth_service import (
 )
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
+from app.services.portal_share_access_store import (
+    SHARE_ACCESS_COOKIE_NAME,
+    SHARE_ACCESS_TTL_SECONDS,
+    PortalShareAccessSession,
+    PortalShareAccessSessionStore,
+    PortalShareAccessStoreError,
+)
 from app.services.portal_telemetry_service import PortalTelemetryService, PortalTelemetryStatsError
 from app.settings import get_settings
 
@@ -65,6 +74,17 @@ _BISHENG_PERMISSION_DENIED_CODE = 18040
 _DEFAULT_SEARCH_PAGE_SIZE = 10
 _MAX_SEARCH_PAGE_SIZE = 100
 _QA_MODEL_OPTIONS_CACHE_TTL_SECONDS = 300.0
+_DOWNLOAD_ERROR_BODY_LIMIT = 64 * 1024
+_DOWNLOAD_ERROR_STATUSES = {401, 403, 404, 409, 429, 503, 504}
+_DOWNLOAD_ERROR_FALLBACKS = {
+    401: "请先登录",
+    403: "无权下载该文档",
+    404: "文档不存在",
+    409: "PDF 产物暂不可用",
+    429: "下载任务繁忙，请稍后重试",
+    503: "下载服务暂不可用，请稍后重试",
+    504: "PDF 生成超时，请稍后重试",
+}
 _qa_model_raw_servers_cache: dict[str, Any] = {
     "expires_at": 0.0,
     "raw_servers": [],
@@ -268,22 +288,56 @@ async def _scoped_service_and_extra_ids(
         raise
 
 
-def _require_share_access(
+async def _require_share_access(
     request: Request,
     share_token: str,
     space_id: int,
     file_id: int,
-) -> ShareAccessSession:
+    store: PortalShareAccessSessionStore,
+    *,
+    portal_session_id: str = "",
+    require_download: bool = False,
+) -> PortalShareAccessSession:
     session_id = request.cookies.get(SHARE_ACCESS_COOKIE_NAME, "")
-    session = KnowledgeService.get_share_access_session(
-        session_id=session_id,
-        share_token=share_token,
-        space_id=space_id,
-        file_id=file_id,
-    )
+    try:
+        session = await store.get(
+            session_id,
+            share_token=share_token,
+            space_id=space_id,
+            file_id=file_id,
+            portal_session_id=portal_session_id,
+            require_download=require_download,
+        )
+    except PortalShareAccessStoreError as err:
+        raise HTTPException(status_code=503, detail=str(err)) from err
     if session is None:
         raise HTTPException(status_code=403, detail="分享访问未验证或已过期")
     return session
+
+
+async def _read_download_error_message(upstream: httpx.Response) -> str:
+    body = bytearray()
+    if upstream.is_stream_consumed:
+        body.extend(upstream.content[:_DOWNLOAD_ERROR_BODY_LIMIT])
+    else:
+        async for chunk in upstream.aiter_bytes():
+            remaining = _DOWNLOAD_ERROR_BODY_LIMIT - len(body)
+            if remaining <= 0:
+                break
+            body.extend(chunk[:remaining])
+    if not body:
+        return ""
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("status_message", "detail", "message"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 @router.get("/files/search")
@@ -1316,6 +1370,9 @@ async def access_share_link(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    share_access_store: PortalShareAccessSessionStore = Depends(
+        get_portal_share_access_session_store
+    ),
 ):
     session = await get_portal_session(auth_service, request)
     metadata_service = KnowledgeService(
@@ -1337,17 +1394,55 @@ async def access_share_link(
             bisheng_client=scoped_client,
             portal_config_service=portal_config_service,
         )
-        access = await service.verify_share_link_access(share_token, req)
-        share_session = KnowledgeService.create_share_access_session(access)
+        access = await service.verify_share_link_access(
+            share_token,
+            req,
+            issue_download_grant=session is not None,
+        )
+        now = time.time()
+        grant_expires_at = float(access.download_grant_expires_at or 0)
+        download_grant = access.download_grant
+        if (
+            session is None
+            or not access.allow_download
+            or not download_grant
+            or grant_expires_at <= now
+        ):
+            download_grant = ""
+        expires_at = now + SHARE_ACCESS_TTL_SECONDS
+        if download_grant:
+            expires_at = min(expires_at, grant_expires_at)
+        share_session = PortalShareAccessSession(
+            session_id=secrets.token_urlsafe(32),
+            share_token=access.share_token,
+            space_id=access.space_id,
+            file_id=access.file_id,
+            allow_download=access.allow_download,
+            download_grant=download_grant,
+            portal_session_id=(getattr(session, "session_id", "") if download_grant else ""),
+            expires_at=expires_at,
+        )
+        try:
+            await share_access_store.save(share_session)
+        except PortalShareAccessStoreError as err:
+            raise HTTPException(status_code=503, detail=str(err)) from err
         response.set_cookie(
             key=SHARE_ACCESS_COOKIE_NAME,
             value=share_session.session_id,
             httponly=True,
             samesite="lax",
-            max_age=SHARE_ACCESS_TTL_SECONDS,
+            secure=get_settings().portal_session_cookie_secure,
+            max_age=max(1, int(share_session.expires_at - now)),
             path="/",
         )
-        return response_ok(access)
+        return response_ok(
+            ShareDocumentAccessData(
+                share_token=access.share_token,
+                space_id=access.space_id,
+                file_id=access.file_id,
+                allow_download=access.allow_download,
+            )
+        )
     except BishengBusinessError as err:
         _raise_bisheng_business_error(err)
     finally:
@@ -1416,9 +1511,19 @@ async def get_file_detail(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    share_access_store: PortalShareAccessSessionStore = Depends(
+        get_portal_share_access_session_store
+    ),
 ):
+    share_session = None
     if share_token:
-        _require_share_access(request, share_token, space_id, file_id)
+        share_session = await _require_share_access(
+            request,
+            share_token,
+            space_id,
+            file_id,
+            share_access_store,
+        )
     service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
         request, auth_service, bisheng_client, portal_config_service
     )
@@ -1426,6 +1531,15 @@ async def get_file_detail(
         detail = await service.get_file_detail(
             space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
         )
+        if detail is not None and share_session is not None:
+            portal_session = await get_portal_session(auth_service, request)
+            detail.can_download = bool(
+                portal_session is not None
+                and share_session.allow_download
+                and share_session.download_grant
+                and share_session.portal_session_id
+                == getattr(portal_session, "session_id", "")
+            )
         return response_ok(detail)
     finally:
         if client_to_close is not None:
@@ -1443,8 +1557,18 @@ async def get_file_preview(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    share_access_store: PortalShareAccessSessionStore = Depends(
+        get_portal_share_access_session_store
+    ),
 ):
-    share_session = _require_share_access(request, share_token, space_id, file_id) if share_token else None
+    if share_token:
+        await _require_share_access(
+            request,
+            share_token,
+            space_id,
+            file_id,
+            share_access_store,
+        )
     service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
         request, auth_service, bisheng_client, portal_config_service
     )
@@ -1463,7 +1587,7 @@ async def get_file_preview(
                 space_id=space_id,
                 file_id=file_id,
             )
-        if preview and share_session and not share_session.allow_download:
+        if preview:
             preview.download_url = ""
         if (
             preview
@@ -1494,9 +1618,18 @@ async def get_file_preview_content(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    share_access_store: PortalShareAccessSessionStore = Depends(
+        get_portal_share_access_session_store
+    ),
 ):
     if share_token:
-        _require_share_access(request, share_token, space_id, file_id)
+        await _require_share_access(
+            request,
+            share_token,
+            space_id,
+            file_id,
+            share_access_store,
+        )
     service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
         request, auth_service, bisheng_client, portal_config_service
     )
@@ -1560,6 +1693,124 @@ async def get_file_preview_content(
             await client_to_close.aclose()
 
 
+@router.get("/space/{space_id}/files/{file_id}/download")
+async def download_portal_pdf(
+    space_id: int,
+    file_id: int,
+    request: Request,
+    entry_point: str = Query(default="other", max_length=64),
+    share_token: Optional[str] = None,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    share_access_store: PortalShareAccessSessionStore = Depends(
+        get_portal_share_access_session_store
+    ),
+):
+    try:
+        portal_session = await require_portal_session(auth_service, request)
+    except PortalAuthError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message) from err
+
+    scoped_client = auth_service.create_bisheng_client(portal_session)
+    upstream: httpx.Response | None = None
+    try:
+        share_access_grant = ""
+        if share_token:
+            share_session = await _require_share_access(
+                request,
+                share_token,
+                space_id,
+                file_id,
+                share_access_store,
+                portal_session_id=getattr(portal_session, "session_id", ""),
+                require_download=True,
+            )
+            share_access_grant = share_session.download_grant
+
+        service = KnowledgeService(
+            bisheng_client=scoped_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        upstream = await service.open_portal_pdf_download_stream(
+            space_id=space_id,
+            file_id=file_id,
+            entry_point=entry_point,
+            share_access_grant=share_access_grant,
+            timeout_seconds=get_settings().bisheng_download_timeout_seconds,
+        )
+
+        content_type = upstream.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if not (200 <= upstream.status_code < 300) or content_type != "application/pdf":
+            message = await _read_download_error_message(upstream)
+            status_code = (
+                upstream.status_code
+                if upstream.status_code in _DOWNLOAD_ERROR_STATUSES
+                else 500
+            )
+            if status_code == 500:
+                message = "下载失败，请稍后重试"
+            elif not message:
+                message = _DOWNLOAD_ERROR_FALLBACKS[status_code]
+            raise HTTPException(status_code=status_code, detail=message)
+
+        response_headers: dict[str, str] = {}
+        for header_name in (
+            "content-type",
+            "content-disposition",
+            "content-length",
+            "cache-control",
+            "x-content-type-options",
+        ):
+            value = upstream.headers.get(header_name)
+            if value:
+                response_headers[header_name] = value
+        response_headers["content-type"] = "application/pdf"
+        response_headers["cache-control"] = "private, no-store"
+        response_headers["x-content-type-options"] = "nosniff"
+
+        streaming_upstream = upstream
+        streaming_client = scoped_client
+
+        async def stream_body():
+            try:
+                if streaming_upstream.is_stream_consumed:
+                    yield streaming_upstream.content
+                    return
+                async for chunk in streaming_upstream.aiter_raw():
+                    if chunk:
+                        yield chunk
+            finally:
+                await streaming_upstream.aclose()
+                await streaming_client.aclose()
+
+        response = StreamingResponse(
+            stream_body(),
+            status_code=upstream.status_code,
+            headers=response_headers,
+        )
+        upstream = None
+        scoped_client = None
+        return response
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as err:
+        raise HTTPException(status_code=504, detail=_DOWNLOAD_ERROR_FALLBACKS[504]) from err
+    except httpx.RequestError as err:
+        raise HTTPException(status_code=503, detail=_DOWNLOAD_ERROR_FALLBACKS[503]) from err
+    except Exception as err:
+        logger.exception(
+            "门户 PDF 下载上游调用失败",
+            extra={"portal_space_id": space_id, "portal_file_id": file_id},
+        )
+        raise HTTPException(status_code=500, detail="下载失败，请稍后重试") from err
+    finally:
+        if upstream is not None:
+            await upstream.aclose()
+        if scoped_client is not None:
+            await scoped_client.aclose()
+
+
 @router.get("/space/{space_id}/files/{file_id}/chunks")
 async def get_file_chunks(
     space_id: int,
@@ -1569,9 +1820,18 @@ async def get_file_chunks(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    share_access_store: PortalShareAccessSessionStore = Depends(
+        get_portal_share_access_session_store
+    ),
 ):
     if share_token:
-        _require_share_access(request, share_token, space_id, file_id)
+        await _require_share_access(
+            request,
+            share_token,
+            space_id,
+            file_id,
+            share_access_store,
+        )
     service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
         request, auth_service, bisheng_client, portal_config_service
     )
@@ -1646,23 +1906,8 @@ async def get_related_files(
 async def record_file_download_event(
     space_id: int,
     file_id: int,
-    request: Request,
-    background_tasks: BackgroundTasks,
-    bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
-    """Record a download telemetry event for a file. Best-effort, always returns 200."""
-    async def _record() -> None:
-        telemetry = PortalTelemetryService(bisheng_client)
-        await telemetry.record_event(
-            event_type="portal_document_download",
-            source_app="shougang_portal",
-            scene="document_download",
-            entry_point="detail_page",
-            resource_type="document",
-            space_id=space_id,
-            file_id=file_id,
-        )
-    background_tasks.add_task(_record)
+    """保留旧接口兼容；成功下载事件由 BiSheng 首块发送时统一记录。"""
     return response_ok({"accepted": True})
 
 

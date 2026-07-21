@@ -163,6 +163,22 @@ export interface ShareDocumentAccessResult {
   allowDownload: boolean;
 }
 
+export type PortalDownloadEntryPoint =
+  | 'search'
+  | 'knowledge_list'
+  | 'detail'
+  | 'home_recommendation'
+  | 'favorite'
+  | 'share'
+  | 'expert_qa'
+  | 'qa_citation'
+  | 'other';
+
+export interface PortalPdfDownloadResult {
+  blob: Blob;
+  fileName: string;
+}
+
 export interface WorkstationConversation {
   conversationId: string;
   title: string;
@@ -1192,6 +1208,75 @@ export async function fetchFileDetail(spaceId: number, fileId: number, shareToke
   return data ? mapKnowledgeFileDetail(data) : null;
 }
 
+function normalizePdfDownloadFileName(value: string): string {
+  const basename = value.split(/[\\/]/).pop()?.trim() ?? '';
+  const safeName = basename
+    .replace(/[\p{Cc}<>:"|?*]/gu, '_')
+    .replace(/^\.+|\.+$/g, '')
+    .trim();
+  if (!safeName) return '';
+  if (/\.pdf$/i.test(safeName)) return safeName;
+  return safeName.replace(/\.[^.]+$/, '') + '.pdf';
+}
+
+function parseDownloadResponseFileName(contentDisposition: string | null): string {
+  if (!contentDisposition) return '';
+  const encoded = contentDisposition.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i)?.[1]
+    ?.trim()
+    .replace(/^"|"$/g, '');
+  if (encoded) {
+    try {
+      return normalizePdfDownloadFileName(decodeURIComponent(encoded));
+    } catch {
+      // 继续尝试 ASCII filename。
+    }
+  }
+  const ascii = contentDisposition.match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i);
+  return normalizePdfDownloadFileName((ascii?.[1] ?? ascii?.[2] ?? '').trim());
+}
+
+export async function fetchPortalPdfDownload(
+  params: {
+    spaceId: number;
+    fileId: number;
+    entryPoint: PortalDownloadEntryPoint;
+    shareToken?: string;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<PortalPdfDownloadResult> {
+  const query = new URLSearchParams({ entry_point: params.entryPoint });
+  if (params.shareToken) query.set('share_token', params.shareToken);
+  const path = `/api/v1/knowledge/space/${params.spaceId}/files/${params.fileId}/download?${query.toString()}`;
+  let response: Response;
+  try {
+    response = await fetchImpl(path, { method: 'GET', credentials: 'include' });
+  } catch (error) {
+    throw new Error(normalizeUserFacingErrorMessage(error, '下载请求失败，请稍后重试。'));
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    let message = '';
+    try {
+      const payload = JSON.parse(text) as Partial<ApiEnvelope<unknown>> & { message?: string };
+      message = payload.status_message || payload.detail || payload.message || '';
+    } catch {
+      // 非 JSON 错误体不得直接展示，按 HTTP 状态返回稳定文案。
+    }
+    throw new ApiRequestError(
+      normalizeUserFacingMessage(message, '下载失败，请稍后重试。', response.status),
+      response.status,
+    );
+  }
+  const contentType = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase();
+  if (contentType !== 'application/pdf') {
+    throw new ApiRequestError('下载服务未返回有效的 PDF 文件，请稍后重试。', 502);
+  }
+  return {
+    blob: await response.blob(),
+    fileName: parseDownloadResponseFileName(response.headers.get('content-disposition')),
+  };
+}
+
 export async function fetchFilePreview(
   spaceId: number,
   fileId: number,
@@ -1834,17 +1919,6 @@ export async function streamDocumentFileChat(params: {
   } catch (error) {
     if (error instanceof ApiRequestError) throw error;
     throw new Error(normalizeUserFacingErrorMessage(error, '问答请求失败，请稍后重试。'));
-  }
-}
-
-export async function recordFileDownloadEvent(spaceId: number, fileId: number): Promise<void> {
-  try {
-    await fetch(`/api/v1/knowledge/space/${spaceId}/files/${fileId}/download-event`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-  } catch {
-    // best-effort, ignore errors
   }
 }
 

@@ -250,6 +250,11 @@ class ShareDocumentAccessData(BaseModel):
     allow_download: bool = False
 
 
+class ShareDocumentAccessInternalData(ShareDocumentAccessData):
+    download_grant: str = ""
+    download_grant_expires_at: int | None = None
+
+
 class DocumentFileChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
     model: str = ""
@@ -276,6 +281,17 @@ PortalPreviewEntryPoint = Literal[
     "knowledge_space",
     "direct",
     "favorite",
+    "other",
+]
+PortalDownloadEntryPoint = Literal[
+    "search",
+    "knowledge_list",
+    "detail",
+    "home_recommendation",
+    "favorite",
+    "share",
+    "expert_qa",
+    "qa_citation",
     "other",
 ]
 PortalRecommendationScene = Literal["personalized_v1", "latest_selected"]

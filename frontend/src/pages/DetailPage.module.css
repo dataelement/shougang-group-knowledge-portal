@@ -278,6 +278,17 @@
   justify-content: flex-end;
 }
 
+.downloadArea {
+  display: grid;
+  gap: 8px;
+}
+
+.downloadError {
+  color: var(--danger-600, #dc2626);
+  font-size: 0.85rem;
+  text-align: right;
+}
+
 .downloadBtn {
   display: inline-flex;
   align-items: center;
@@ -286,6 +297,8 @@
   font-size: 0.92rem;
   background: var(--primary-600);
   color: #fff;
+  border: 0;
+  cursor: pointer;
   border-radius: var(--radius-sm);
   box-shadow: 0 1px 3px rgba(37,99,235,0.25);
   transition: background 0.15s ease;
@@ -295,10 +308,18 @@
   background: var(--primary-700);
 }
 
-.downloadBtn[aria-disabled="true"] {
+.downloadBtn:disabled {
   pointer-events: none;
   background: var(--neutral-300);
   box-shadow: none;
+}
+
+.downloadSpinner {
+  animation: detail-download-spin 0.8s linear infinite;
+}
+
+@keyframes detail-download-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Related */

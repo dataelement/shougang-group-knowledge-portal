@@ -10,6 +10,7 @@ from app.main import app
 from app.schemas.portal_config import AgentConfig, SectionsConfigUpdate
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
+from app.services.portal_share_access_store import InMemoryPortalShareAccessSessionStore
 
 
 def _parse_home_sse(response) -> tuple[dict, bool]:
@@ -612,7 +613,11 @@ class FakeBishengClient:
                 },
             }
         if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580/verify":
-            assert json == {"password": "secret", "invite_code": "ABC123"}
+            assert json == {
+                "password": "secret",
+                "invite_code": "ABC123",
+                "issue_download_grant": True,
+            }
             return {
                 "status_code": 200,
                 "data": {
@@ -734,12 +739,13 @@ def test_home_content_serves_cached_sse_without_upstream_request(tmp_path: Path)
 class FakePortalAuthService:
     def __init__(self, client):
         self._client = client
+        self.session = type("TestPortalSession", (), {"session_id": "portal-session-1"})()
 
     def get_session(self, _request):
-        return object()
+        return self.session
 
     def require_session(self, _request):
-        return object()
+        return self.session
 
     def create_bisheng_client(self, _session):
         return self._client
@@ -1058,6 +1064,7 @@ def test_share_access_session_controls_detail_and_preview_download(tmp_path: Pat
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        client.app.state.portal_share_access_session_store = InMemoryPortalShareAccessSessionStore()
         try:
             meta_response = client.get("/api/v1/knowledge/share-links/share-token-1580")
             access_response = client.post(
@@ -1079,6 +1086,268 @@ def test_share_access_session_controls_detail_and_preview_download(tmp_path: Pat
     assert preview_response.status_code == 200
     assert preview["download_url"] == ""
     assert "share_token=share-token-1580" in preview["viewer_url"]
+
+
+class DownloadResponseStream(httpx.AsyncByteStream):
+    def __init__(self, chunks: list[bytes]):
+        self.chunks = chunks
+        self.iterated = False
+        self.closed = False
+
+    async def __aiter__(self):
+        self.iterated = True
+        for chunk in self.chunks:
+            yield chunk
+
+    async def aclose(self):
+        self.closed = True
+
+
+class DownloadBishengClient(FakeBishengClient):
+    def __init__(self, *, status_code: int = 200, error_payload: dict | None = None):
+        super().__init__()
+        self.status_code = status_code
+        self.error_payload = error_payload
+        self.download_calls: list[dict] = []
+        self.download_stream: DownloadResponseStream | None = None
+        self.closed = False
+
+    @staticmethod
+    def _portal_file_1580() -> dict:
+        return {**FakeBishengClient._portal_file_1580(), "can_download": True}
+
+    async def post_json(self, path: str, json=None, headers=None):
+        if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580/verify":
+            assert json == {
+                "password": "secret",
+                "invite_code": "ABC123",
+                "issue_download_grant": True,
+            }
+            return {
+                "status_code": 200,
+                "data": {
+                    "share_token": "share-token-1580",
+                    "space_id": 12,
+                    "file_id": 1580,
+                    "allow_download": True,
+                    "download_grant": "opaque-download-grant",
+                    "download_grant_expires_at": int(__import__("time").time()) + 300,
+                },
+            }
+        return await super().post_json(path, json=json, headers=headers)
+
+    async def open_authenticated_download_stream(
+        self,
+        path: str,
+        params=None,
+        headers=None,
+        *,
+        timeout_seconds: float,
+    ):
+        self.download_calls.append(
+            {
+                "path": path,
+                "params": params,
+                "headers": headers,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        if self.error_payload is not None:
+            body = json.dumps(self.error_payload, ensure_ascii=False).encode("utf-8")
+            content_type = "application/json"
+        else:
+            body = b"%PDF-watermarked"
+            content_type = "application/pdf"
+        self.download_stream = DownloadResponseStream([body[:5], body[5:]])
+        return httpx.Response(
+            self.status_code,
+            request=httpx.Request("GET", path),
+            headers={
+                "content-type": content_type,
+                "content-disposition": "attachment; filename*=UTF-8''demo.pdf",
+                "content-length": str(len(body)),
+                "cache-control": "private, no-store",
+                "x-content-type-options": "nosniff",
+                "set-cookie": "internal=secret",
+                "x-minio-object": "private/object.pdf",
+                "x-debug-grant": "opaque-download-grant",
+            },
+            stream=self.download_stream,
+        )
+
+    async def aclose(self):
+        self.closed = True
+
+
+def test_portal_pdf_download_streams_safe_headers_with_dedicated_timeout(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = DownloadBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        client.app.state.portal_share_access_session_store = InMemoryPortalShareAccessSessionStore()
+        response = client.get(
+            "/api/v1/knowledge/space/12/files/1580/download?entry_point=search"
+        )
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF-watermarked"
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"].endswith("demo.pdf")
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "set-cookie" not in response.headers
+    assert "x-minio-object" not in response.headers
+    assert "x-debug-grant" not in response.headers
+    assert fake_bisheng.download_calls == [
+        {
+            "path": "/api/v1/knowledge/shougang-portal/files/12/1580/download",
+            "params": {"entry_point": "search"},
+            "headers": None,
+            "timeout_seconds": 70.0,
+        }
+    ]
+    assert fake_bisheng.download_stream is not None
+    assert fake_bisheng.download_stream.iterated is True
+    assert fake_bisheng.download_stream.closed is True
+    assert fake_bisheng.closed is True
+
+
+def test_share_verify_hides_grant_and_download_forwards_server_session_grant(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = DownloadBishengClient()
+    store = InMemoryPortalShareAccessSessionStore()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        client.app.state.portal_share_access_session_store = store
+        access = client.post(
+            "/api/v1/knowledge/share-links/share-token-1580/access",
+            json={"password": "secret", "invite_code": "ABC123"},
+        )
+        response = client.get(
+            "/api/v1/knowledge/space/12/files/1580/download"
+            "?entry_point=share&share_token=share-token-1580"
+        )
+
+    assert access.status_code == 200
+    assert access.json()["data"] == {
+        "share_token": "share-token-1580",
+        "space_id": 12,
+        "file_id": 1580,
+        "allow_download": True,
+    }
+    assert "opaque-download-grant" not in access.text
+    assert response.status_code == 200
+    assert fake_bisheng.download_calls[-1]["headers"] == {
+        "X-Portal-Share-Access-Grant": "opaque-download-grant"
+    }
+
+
+def test_anonymous_share_view_cannot_be_replayed_for_download_after_login(tmp_path: Path):
+    class AnonymousShareBishengClient(DownloadBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            if path == "/api/v1/knowledge/shougang-portal/share-links/share-token-1580/verify":
+                assert json["issue_download_grant"] is False
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "share_token": "share-token-1580",
+                        "space_id": 12,
+                        "file_id": 1580,
+                        "allow_download": True,
+                    },
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = AnonymousShareBishengClient()
+    store = InMemoryPortalShareAccessSessionStore()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_share_access_session_store = store
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        access = client.post(
+            "/api/v1/knowledge/share-links/share-token-1580/access",
+            json={"password": "secret", "invite_code": "ABC123"},
+        )
+        detail = client.get(
+            "/api/v1/knowledge/space/12/files/1580?share_token=share-token-1580"
+        )
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        download = client.get(
+            "/api/v1/knowledge/space/12/files/1580/download"
+            "?entry_point=share&share_token=share-token-1580"
+        )
+
+    assert access.status_code == 200
+    assert detail.status_code == 200
+    assert detail.json()["data"]["can_download"] is False
+    assert download.status_code == 403
+    assert fake_bisheng.download_calls == []
+
+
+def test_portal_pdf_download_requires_login_before_opening_upstream(tmp_path: Path):
+    fake_bisheng = DownloadBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_auth_service = NoSessionPortalAuthService(fake_bisheng)
+        client.app.state.portal_share_access_session_store = InMemoryPortalShareAccessSessionStore()
+        response = client.get(
+            "/api/v1/knowledge/space/12/files/1580/download?entry_point=detail"
+        )
+
+    assert response.status_code == 401
+    assert fake_bisheng.download_calls == []
+
+
+def test_portal_pdf_download_preserves_upstream_business_status_and_closes_stream(tmp_path: Path):
+    fake_bisheng = DownloadBishengClient(
+        status_code=409,
+        error_payload={"status_code": 18085, "status_message": "PDF 产物暂不可用"},
+    )
+    with TestClient(app) as client:
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        client.app.state.portal_share_access_session_store = InMemoryPortalShareAccessSessionStore()
+        response = client.get(
+            "/api/v1/knowledge/space/12/files/1580/download?entry_point=detail"
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "PDF 产物暂不可用"
+    assert fake_bisheng.download_stream is not None
+    assert fake_bisheng.download_stream.closed is True
+    assert fake_bisheng.closed is True
+
+
+def test_preview_never_exposes_original_download_url_and_detail_keeps_permission(tmp_path: Path):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    fake_bisheng = DownloadBishengClient()
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        detail = client.get("/api/v1/knowledge/space/12/files/1580")
+        preview = client.get("/api/v1/knowledge/space/12/files/1580/preview")
+
+    assert detail.status_code == 200
+    assert detail.json()["data"]["can_download"] is True
+    assert preview.status_code == 200
+    assert preview.json()["data"]["download_url"] == ""
+    assert preview.json()["data"]["viewer_url"]
+
+
+def test_legacy_download_event_is_compatible_noop(tmp_path: Path):
+    fake_bisheng = DownloadBishengClient()
+    with TestClient(app) as client:
+        client.app.state.bisheng_client = fake_bisheng
+        response = client.post("/api/v1/knowledge/space/12/files/1580/download-event")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["accepted"] is True
+    assert fake_bisheng.telemetry_events == []
 
 
 def test_department_share_access_requires_portal_login_session(tmp_path: Path):
@@ -1159,7 +1428,7 @@ def test_get_file_detail_and_preview(tmp_path: Path):
     preview = preview_response.json()["data"]
     assert preview["mode"] == "pdf"
     assert preview["source_kind"] == "preview_url"
-    assert preview["download_url"] == "https://example.com/original/1580.pdf"
+    assert preview["download_url"] == ""
     assert preview["viewer_url"].endswith("source_kind=preview_url")
     assert fake_bisheng.telemetry_events[-1] == {
         "event_type": "portal_document_read",
@@ -1227,7 +1496,7 @@ def test_get_doc_file_preview_uses_bisheng_preview_resource(tmp_path: Path):
     preview = preview_response.json()["data"]
     assert preview["mode"] == "docx"
     assert preview["source_kind"] == "preview_url"
-    assert preview["download_url"] == "https://example.com/original/1591.doc"
+    assert preview["download_url"] == ""
     assert preview["supports_chunks_fallback"] is False
     assert preview["viewer_url"].endswith("source_kind=preview_url")
 
@@ -1317,7 +1586,7 @@ def test_get_ppt_file_preview_remains_unsupported(tmp_path: Path):
     assert preview_response.status_code == 200
     preview = preview_response.json()["data"]
     assert preview["mode"] == "unsupported"
-    assert preview["download_url"] == "https://example.com/original/1592.ppt"
+    assert preview["download_url"] == ""
     assert preview["supports_chunks_fallback"] is False
 
 
@@ -1451,12 +1720,9 @@ def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_asse
     assert preview_response.status_code == 200
     preview = preview_response.json()["data"]
     assert preview["mode"] == "pdf"
-    assert (
-        preview["download_url"]
-        == "/bisheng/original/1580.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=demo"
-    )
+    assert preview["download_url"] == ""
     assert preview["source_kind"] == "original_url"
-    assert preview["viewer_url"] == preview["download_url"]
+    assert preview["viewer_url"].startswith("/bisheng/original/1580.pdf?")
     assert fake_bisheng.asset_resolution_requests == []
 
 

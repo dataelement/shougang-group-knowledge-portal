@@ -1,19 +1,43 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useParams, useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Download, Sparkles, Star } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Sparkles, Star } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
-import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, recordFileDownloadEvent, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewContext, type FilePreviewManifest } from '../api/content';
+import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewContext, type FilePreviewManifest, type PortalDownloadEntryPoint } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { resolveDetailBackTarget } from '../utils/detailPage';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { resolveFilePreview } from '../utils/filePreview';
+import { downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import s from './DetailPage.module.css';
 
 const DocumentPreview = lazy(() => import('../components/DocumentPreview'));
+
+function resolveDownloadEntryPoint(
+  requestedEntryPoint: string,
+  shareToken: string,
+): PortalDownloadEntryPoint {
+  if (shareToken) return 'share';
+  if (requestedEntryPoint === 'recommendation_list' || requestedEntryPoint === 'knowledge_space') {
+    return 'knowledge_list';
+  }
+  if (requestedEntryPoint === 'direct' || !requestedEntryPoint) return 'detail';
+  if (
+    requestedEntryPoint === 'search'
+    || requestedEntryPoint === 'detail'
+    || requestedEntryPoint === 'home_recommendation'
+    || requestedEntryPoint === 'favorite'
+    || requestedEntryPoint === 'expert_qa'
+    || requestedEntryPoint === 'qa_citation'
+    || requestedEntryPoint === 'other'
+  ) {
+    return requestedEntryPoint;
+  }
+  return 'detail';
+}
 
 export default function DetailPage() {
   const { spaceId: spaceIdStr = '', fileId: fileIdStr = '' } = useParams<{ spaceId: string; fileId: string }>();
@@ -30,6 +54,8 @@ export default function DetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [clientFallbackActive, setClientFallbackActive] = useState(false);
+  const [downloadPending, setDownloadPending] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
 
   const fileId = Number(fileIdStr);
   const spaceId = Number(spaceIdStr);
@@ -121,6 +147,8 @@ export default function DetailPage() {
 
   const META_TAGS = ['最新精选', '典型案例'];
   const displayTags = (detail.tag_infos ?? []).filter((t) => !META_TAGS.includes(t.tag_name));
+  const canDownload = Boolean(user && detail.canDownload);
+  const downloadEntryPoint = resolveDownloadEntryPoint(requestedEntryPoint, shareToken);
   const formattedUpdatedAt = formatDisplayDateTime(detail.date) || '—';
   const resolvedPreview = resolveFilePreview(preview);
   let effectivePreview = resolvedPreview;
@@ -149,6 +177,26 @@ export default function DetailPage() {
       setChunks(fallbackChunks);
     } catch {
       setError((current) => current || '文档预览失败，且无法加载正文分段内容');
+    }
+  }
+
+  async function handleDownload() {
+    if (!canDownload || downloadPending) return;
+    setDownloadPending(true);
+    setDownloadError('');
+    try {
+      await downloadWatermarkedFile({
+        spaceId,
+        fileId,
+        entryPoint: downloadEntryPoint,
+        shareToken: shareToken || undefined,
+        title: detail?.title ?? '',
+        ext: detail?.ext ?? '',
+      });
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : '文档下载失败');
+    } finally {
+      setDownloadPending(false);
     }
   }
 
@@ -230,23 +278,21 @@ export default function DetailPage() {
               />
             </Suspense>
           </div>
-          {user ? (
-            <div className={s.downloadBar}>
-              <a
-                className={s.downloadBtn}
-                href={effectivePreview.downloadUrl}
-                download={effectivePreview.downloadUrl ? `${detail.title}.${detail.ext}` : undefined}
-                target={effectivePreview.downloadUrl ? '_blank' : undefined}
-                rel={effectivePreview.downloadUrl ? 'noreferrer' : undefined}
-                aria-disabled={!effectivePreview.downloadUrl}
-                onClick={(event) => {
-                  if (!effectivePreview.downloadUrl) { event.preventDefault(); return; }
-                  void recordFileDownloadEvent(Number(spaceIdStr), Number(fileIdStr));
-                }}
-              >
-                <Download size={16} />
-                下载原文件
-              </a>
+          {canDownload ? (
+            <div className={s.downloadArea}>
+              {downloadError ? <span className={s.downloadError}>{downloadError}</span> : null}
+              <div className={s.downloadBar}>
+                <button
+                  type="button"
+                  className={s.downloadBtn}
+                  disabled={downloadPending}
+                  aria-busy={downloadPending}
+                  onClick={() => void handleDownload()}
+                >
+                  {downloadPending ? <Loader2 size={16} className={s.downloadSpinner} /> : <Download size={16} />}
+                  {downloadPending ? '正在生成 PDF' : '下载 PDF'}
+                </button>
+              </div>
             </div>
           ) : null}
         </div>
@@ -262,7 +308,7 @@ export default function DetailPage() {
                     key={f.id}
                     className={s.relatedCard}
                     onClick={() =>
-                      navigate(`/space/${f.spaceId}/file/${f.id}`, {
+                      navigate(`/space/${f.spaceId}/file/${f.id}?entry_point=detail`, {
                         state: { returnTo: `${location.pathname}${location.search}` },
                       })}
                   >

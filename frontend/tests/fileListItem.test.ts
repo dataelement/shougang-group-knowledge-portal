@@ -19,6 +19,11 @@ const stylesProxy = new Proxy(
 ) => {
   module.exports = stylesProxy;
 };
+(require as NodeJS.Require & { extensions: NodeJS.RequireExtensions }).extensions['.svg'] = (
+  module: NodeJS.Module,
+) => {
+  module.exports = '';
+};
 
 function ensureCompiledCssStub(relativePath: string): void {
   const target = resolve(__dirname, '..', relativePath);
@@ -48,6 +53,8 @@ test('does not render document encoding or file size in the list card metadata',
   ensureCompiledCssStub('src/components/FileListItem.module.css');
   ensureCompiledCssStub('src/components/TagPill.module.css');
   ensureCompiledCssStub('src/components/ui/Tooltip.module.css');
+  ensureCompiledCssStub('src/assets/icon-favorite.svg');
+  ensureCompiledCssStub('src/assets/icon-download.svg');
 
   const { default: FileListItem } = await import('../src/components/FileListItem');
 
@@ -65,7 +72,7 @@ test('download action shows pending spinner while the async download is resolvin
   assert.match(source, /const \[downloadPending, setDownloadPending\] = useState\(false\);/);
   assert.match(source, /disabled=\{downloadPending\}/);
   assert.match(source, /aria-busy=\{downloadPending\}/);
-  assert.match(source, /downloadPending \? <Loader2 size=\{19\} className=\{s\.spinner\} \/> : <Download size=\{19\} \/>/);
+  assert.match(source, /downloadPending \? \([\s\S]*<Loader2 size=\{16\}[\s\S]*s\.spinner[\s\S]*\) : \([\s\S]*iconDownload/);
   assert.match(styles, /\.spinner/);
   assert.match(styles, /@keyframes file-list-item-spin/);
 });

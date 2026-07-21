@@ -313,7 +313,7 @@ function CitationList({ items, hideBackLink }: { items: Citation[]; hideBackLink
       {items.map((c, idx) => {
         const sp = c.sourcePayload ?? {};
         const href = sp.knowledgeId && sp.documentId
-          ? `/space/${sp.knowledgeId}/file/${sp.documentId}${hideBackLink ? '?hideBack=1' : ''}`
+          ? `/space/${sp.knowledgeId}/file/${sp.documentId}?entry_point=qa_citation${hideBackLink ? '&hideBack=1' : ''}`
           : undefined;
         const label = sp.documentName || c.key;
         return (

@@ -11,6 +11,7 @@ from app.services.portal_auth_service import (
 )
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
+from app.services.portal_share_access_store import PortalShareAccessSessionStore
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
@@ -25,6 +26,10 @@ def get_portal_config_service(request: Request) -> PortalConfigService:
 
 def get_portal_home_cache_service(request: Request) -> PortalHomeCacheService:
     return getattr(request.app.state, "portal_home_cache_service", PortalHomeCacheService())
+
+
+def get_portal_share_access_session_store(request: Request) -> PortalShareAccessSessionStore:
+    return request.app.state.portal_share_access_session_store
 
 
 def get_bisheng_runtime_service(request: Request) -> BishengRuntimeService:
