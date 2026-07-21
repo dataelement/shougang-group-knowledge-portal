@@ -1,7 +1,7 @@
 export interface PortalPreviewWatermarkUser {
   account: string;
   name: string;
-  externalId?: string;
+  departmentName?: string;
 }
 
 const BEIJING_TIME_ZONE = 'Asia/Shanghai';
@@ -12,26 +12,20 @@ export function formatPreviewWatermarkTime(value: Date): string {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
   }).formatToParts(value);
   const values = new Map(parts.map((part) => [part.type, part.value]));
-  return `${values.get('year')}-${values.get('month')}-${values.get('day')} ${values.get('hour')}:${values.get('minute')}:${values.get('second')}`;
+  return `${values.get('year')}-${values.get('month')}-${values.get('day')}`;
 }
 
 export function buildPortalPreviewWatermarkLines(
   user: PortalPreviewWatermarkUser,
   viewedAt: Date,
 ): string[] {
-  const account = user.account.trim();
-  const name = user.name.trim() || account || '未知用户';
-  const employeeId = user.externalId?.trim() || account || '—';
+  const name = user.name.trim() || user.account.trim() || '未知用户';
+  const departmentName = user.departmentName?.trim() || '';
   return [
-    `姓名：${name}`,
-    `工号/账号：${employeeId}`,
-    `北京时间：${formatPreviewWatermarkTime(viewedAt)}`,
+    departmentName ? `${departmentName}-${name}` : name,
+    formatPreviewWatermarkTime(viewedAt),
     '首钢集团内部资料',
   ];
 }

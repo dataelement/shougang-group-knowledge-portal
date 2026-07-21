@@ -163,6 +163,7 @@ def test_login_me_logout_roundtrip_sets_httponly_session_cookie():
     user = login_response.json()["data"]["user"]
     assert user["name"] == "王工"
     assert user["role"] == "设备管理部"
+    assert user["department_name"] == "设备管理部"
 
     assert me_response.status_code == 200
     assert me_response.json()["data"]["user"]["account"] == "bisheng-user"

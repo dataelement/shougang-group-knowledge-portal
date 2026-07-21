@@ -12,33 +12,30 @@ function readSource(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
 }
 
-test('portal preview watermark uses external id and fixed Beijing time', () => {
+test('portal preview watermark uses primary department and fixed Beijing date', () => {
   const viewedAt = new Date('2026-07-21T04:05:06.000Z');
 
-  assert.equal(formatPreviewWatermarkTime(viewedAt), '2026-07-21 12:05:06');
+  assert.equal(formatPreviewWatermarkTime(viewedAt), '2026-07-21');
   assert.deepEqual(
     buildPortalPreviewWatermarkLines(
-      { name: '张三', account: 'zhangsan', externalId: 'SG-10086' },
+      { name: '张三', account: 'zhangsan', departmentName: '设备管理部' },
       viewedAt,
     ),
     [
-      '姓名：张三',
-      '工号/账号：SG-10086',
-      '北京时间：2026-07-21 12:05:06',
+      '设备管理部-张三',
+      '2026-07-21',
       '首钢集团内部资料',
     ],
   );
 });
 
-test('portal preview watermark falls back to account without external id', () => {
+test('portal preview watermark falls back to account without department', () => {
   const lines = buildPortalPreviewWatermarkLines(
-    { name: '', account: 'lisi', externalId: '  ' },
+    { name: '', account: 'lisi', departmentName: '  ' },
     new Date('2026-01-01T00:00:00.000Z'),
   );
 
-  assert.equal(lines[0], '姓名：lisi');
-  assert.equal(lines[1], '工号/账号：lisi');
-  assert.equal(lines[2], '北京时间：2026-01-01 08:00:00');
+  assert.deepEqual(lines, ['lisi', '2026-01-01', '首钢集团内部资料']);
 });
 
 test('portal watermark layer is visual-only and detail page blocks anonymous body requests', () => {
@@ -48,6 +45,7 @@ test('portal watermark layer is visual-only and detail page blocks anonymous bod
   const documentPreviewStyleSource = readSource('src/components/DocumentPreview.module.css');
   const pdfPreviewSource = readSource('src/components/PdfPreview.tsx');
   const detailSource = readSource('src/pages/DetailPage.tsx');
+  const authSource = readSource('src/api/auth.ts');
 
   assert.match(componentSource, /createContext/);
   assert.match(componentSource, /export function PreviewWatermarkOverlay/);
@@ -64,6 +62,7 @@ test('portal watermark layer is visual-only and detail page blocks anonymous bod
   assert.match(documentPreviewSource, /<PreviewWatermarkOverlay\s*\/>/);
   assert.match(pdfPreviewSource, /data-preview-watermark-surface/);
   assert.match(pdfPreviewSource, /<PreviewWatermarkOverlay\s*\/>/);
+  assert.match(authSource, /departmentName:\s*dto\.department_name/);
 
   assert.match(detailSource, /const canPreview = Boolean\(user\);/);
   assert.match(detailSource, /canPreview\s*\?\s*fetchFilePreview/);
