@@ -2,7 +2,8 @@ import {
   createContext,
   useContext,
   useEffect,
-  useRef,
+  useId,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -10,7 +11,8 @@ import {
 import type { PortalUser } from '../api/auth';
 import {
   buildPortalPreviewWatermarkLines,
-  calculatePortalPreviewWatermarkGrid,
+  calculatePortalPreviewWatermarkPatternLayout,
+  measurePortalPreviewWatermarkLineWidths,
 } from '../utils/previewWatermark';
 import s from './PreviewWatermark.module.css';
 
@@ -19,7 +21,6 @@ interface PreviewWatermarkProps {
   user: PortalUser;
 }
 
-const WATERMARK_HORIZONTAL_STEP = 240;
 const PreviewWatermarkContext = createContext<string[] | null>(null);
 
 export default function PreviewWatermark({ children, user }: PreviewWatermarkProps) {
@@ -37,45 +38,54 @@ export default function PreviewWatermark({ children, user }: PreviewWatermarkPro
 
 export function PreviewWatermarkOverlay() {
   const lines = useContext(PreviewWatermarkContext);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const [grid, setGrid] = useState(() => calculatePortalPreviewWatermarkGrid(0, 0));
+  const patternId = `portal-preview-watermark-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const fallbackLayout = useMemo(
+    () => calculatePortalPreviewWatermarkPatternLayout(
+      measurePortalPreviewWatermarkLineWidths(lines ?? []),
+    ),
+    [lines],
+  );
+  const [layout, setLayout] = useState(fallbackLayout);
 
   useEffect(() => {
-    const overlay = overlayRef.current;
-    if (!overlay) return undefined;
-
-    const updateGrid = (width: number, height: number) => {
-      const next = calculatePortalPreviewWatermarkGrid(width, height);
-      setGrid((current) => (
-        current.columns === next.columns && current.rows === next.rows ? current : next
-      ));
+    if (!lines) return undefined;
+    let active = true;
+    const updateLayout = () => {
+      const next = calculatePortalPreviewWatermarkPatternLayout(
+        measurePortalPreviewWatermarkLineWidths(lines),
+      );
+      if (active) setLayout(next);
     };
-    const initialRect = overlay.getBoundingClientRect();
-    updateGrid(initialRect.width, initialRect.height);
-
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect ?? overlay.getBoundingClientRect();
-      updateGrid(rect.width, rect.height);
-    });
-    observer.observe(overlay);
-    return () => observer.disconnect();
-  }, []);
+    updateLayout();
+    void document.fonts?.ready.then(updateLayout);
+    return () => { active = false; };
+  }, [lines]);
 
   if (!lines) return null;
 
   return (
-    <div
-      ref={overlayRef}
-      className={s.overlay}
-      aria-hidden="true"
-      style={{ gridTemplateColumns: `repeat(${grid.columns}, ${WATERMARK_HORIZONTAL_STEP}px)` }}
-    >
-      {Array.from({ length: grid.tileCount }, (_, index) => (
-        <div className={s.tile} key={index}>
-          {lines.map((line) => <span className={s.line} key={line}>{line}</span>)}
-        </div>
-      ))}
+    <div className={s.overlay} aria-hidden="true">
+      <svg className={s.patternCanvas} width="100%" height="100%">
+        <defs>
+          <pattern
+            id={patternId}
+            patternUnits="userSpaceOnUse"
+            width={layout.cellWidth}
+            height={layout.patternHeight}
+            overflow="visible"
+          >
+            <g transform={`translate(${layout.anchorX} ${layout.anchorY}) rotate(${layout.rotation})`}>
+              <text className={s.text} x="0" y={layout.fontSize}>{lines[0]}</text>
+              <text className={s.text} x="0" y={layout.fontSize + layout.lineHeight}>{lines[1]}</text>
+            </g>
+            <g transform={`translate(${layout.anchorX + layout.secondRowOffsetX} ${layout.cellHeight + layout.anchorY}) rotate(${layout.rotation})`}>
+              <text className={s.text} x="0" y={layout.fontSize}>{lines[0]}</text>
+              <text className={s.text} x="0" y={layout.fontSize + layout.lineHeight}>{lines[1]}</text>
+            </g>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill={`url(#${patternId})`} />
+      </svg>
     </div>
   );
 }

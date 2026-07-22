@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 
 import {
   buildPortalPreviewWatermarkLines,
-  calculatePortalPreviewWatermarkGrid,
+  calculatePortalPreviewWatermarkPatternLayout,
   formatPreviewWatermarkTime,
 } from '../src/utils/previewWatermark';
 
@@ -46,12 +46,21 @@ test('portal preview watermark falls back to account without department', () => 
   ]);
 });
 
-test('portal preview watermark density follows the document surface size', () => {
-  const compactGrid = calculatePortalPreviewWatermarkGrid(800, 640);
-  const tallGrid = calculatePortalPreviewWatermarkGrid(800, 2400);
+test('portal preview watermark layout uses adaptive rotated bounds and staggered rows', () => {
+  const normal = calculatePortalPreviewWatermarkPatternLayout([240, 220]);
+  const long = calculatePortalPreviewWatermarkPatternLayout([760, 320]);
 
-  assert.deepEqual(compactGrid, { columns: 5, rows: 5, tileCount: 25 });
-  assert.ok(tallGrid.tileCount > compactGrid.tileCount);
+  assert.equal(normal.cellWidth, 384);
+  assert.equal(normal.cellHeight, 267);
+  assert.equal(normal.patternHeight, 534);
+  assert.equal(normal.secondRowOffsetX, 192);
+  assert.equal(normal.rotation, -35);
+  assert.equal(normal.fontSize, 16);
+  assert.equal(normal.opacity, 0.11);
+  assert.ok(long.cellWidth > normal.cellWidth);
+  assert.ok(long.cellHeight > normal.cellHeight);
+  assert.ok(long.cellWidth >= Math.ceil(long.rotatedWidth + 64));
+  assert.ok(long.cellHeight >= Math.ceil(long.rotatedHeight + 48));
 });
 
 test('portal watermark layer is visual-only and detail page blocks anonymous body requests', () => {
@@ -67,17 +76,18 @@ test('portal watermark layer is visual-only and detail page blocks anonymous bod
   assert.match(componentSource, /export function PreviewWatermarkOverlay/);
   assert.match(componentSource, /aria-hidden="true"/);
   assert.match(componentSource, /useState\(\(\) => new Date\(\)\)/);
-  assert.match(componentSource, /ResizeObserver/);
+  assert.match(componentSource, /<pattern/);
+  assert.doesNotMatch(componentSource, /ResizeObserver/);
+  assert.doesNotMatch(componentSource, /Array\.from/);
   assert.doesNotMatch(componentSource, /WATERMARK_TILE_COUNT\s*=\s*24/);
   assert.match(styleSource, /pointer-events:\s*none/);
   assert.match(styleSource, /user-select:\s*none/);
   assert.match(styleSource, /font-family:[^;]*(WenQuanYi Zen Hei|Microsoft YaHei)/);
   assert.match(styleSource, /font-size:\s*16px/);
-  assert.match(styleSource, /rgba\(115,\s*115,\s*115,\s*0\.16\)/);
-  assert.match(styleSource, /transform:\s*rotate\(-35deg\)/);
-  assert.match(styleSource, /grid-auto-rows:\s*160px/);
-  assert.match(styleSource, /padding:\s*48px\s+0\s+0\s+27px/);
-  assert.match(styleSource, /240px/);
+  assert.match(styleSource, /fill:\s*#737373/);
+  assert.match(styleSource, /fill-opacity:\s*0\.11/);
+  assert.doesNotMatch(styleSource, /grid-auto-rows/);
+  assert.doesNotMatch(styleSource, /240px/);
   assert.doesNotMatch(styleSource, /align-content:\s*space-around/);
   assert.match(documentPreviewStyleSource, /\.watermarkSurface\s*\{[^}]*position:\s*relative[^}]*overflow:\s*hidden/s);
   assert.ok(
