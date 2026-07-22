@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, Loader2, LockKeyhole } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import { accessShareDocument, fetchShareDocumentMeta, type ShareDocumentMeta } from '../api/content';
-import { buildShareLoginRedirect, isShareLoginRequiredError } from '../utils/shareDocumentAccess';
+import { isShareLoginRequiredError } from '../utils/shareDocumentAccess';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import s from './ShareDocumentPage.module.css';
 
 export default function ShareDocumentPage() {
@@ -155,7 +156,7 @@ export default function ShareDocumentPage() {
             <button
               type="button"
               className={s.loginButton}
-              onClick={() => navigate(buildShareLoginRedirect(token))}
+              onClick={() => triggerLoginRedirect(`/share/document/${encodeURIComponent(token)}`)}
             >
               登录后访问
             </button>

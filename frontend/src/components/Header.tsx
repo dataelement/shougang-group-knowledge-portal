@@ -14,7 +14,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { isPortalAdmin } from '../utils/adminAccess';
-import { buildGuestLoginPath } from '../utils/guestAccess';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import {
   PORTAL_APPROVAL_EVENT,
   postPortalApprovalMessageToFrame,
@@ -88,7 +88,7 @@ export default function Header() {
 
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
-    navigate(`/login?redirect=${encodeURIComponent(redirect)}`);
+    triggerLoginRedirect(redirect);
   };
 
   const openPortalApprovalAction = (action: PortalApprovalAction) => {
@@ -142,7 +142,7 @@ export default function Header() {
                 onClick={(event) => {
                   if (item.requiresAuth && !user) {
                     event.preventDefault();
-                    navigate(buildGuestLoginPath(item.to));
+                    triggerLoginRedirect(item.to);
                   }
                 }}
               >

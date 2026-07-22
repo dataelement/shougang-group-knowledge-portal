@@ -36,7 +36,7 @@ import {
 } from '../utils/businessDomains';
 import { downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
-import { buildGuestLoginPath } from '../utils/guestAccess';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { createSubmittedSearchParams } from '../utils/searchParams';
 import s from './ListPage.module.css';
 
@@ -502,8 +502,8 @@ export default function ListPage() {
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload && f.canDownload ? handleDownload : undefined}
             // onShare={openShare}
-            onAsk={user ? openDocumentQa : () => navigate(buildGuestLoginPath(`${location.pathname}${location.search}`))}
-            onOpen={user ? setPreviewFile : () => navigate(buildGuestLoginPath(`${location.pathname}${location.search}`))}
+            onAsk={user ? openDocumentQa : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
+            onOpen={user ? setPreviewFile : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
           />
         ))}
 

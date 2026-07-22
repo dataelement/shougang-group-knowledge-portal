@@ -1,9 +1,9 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ChevronRight, MessageSquarePlus } from 'lucide-react';
 import { fetchExpertQuestions } from '../api/expertQa';
 import { useAuth } from '../hooks/useAuth';
-import { buildGuestLoginPath } from '../utils/guestAccess';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import iconExpert from '../assets/icon-expert@2x.png';
 import iconExpertItem from '../assets/icon-expert-item.svg';
 import s from './ExpertQuestions.module.css';
@@ -32,7 +32,6 @@ interface ExpertQuestionsProps {
  */
 export default function ExpertQuestions({ className = '' }: ExpertQuestionsProps) {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [questions, setQuestions] = useState<ExpertQuestionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -40,7 +39,7 @@ export default function ExpertQuestions({ className = '' }: ExpertQuestionsProps
   const guardLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
     if (user) return;
     event.preventDefault();
-    navigate(buildGuestLoginPath(path));
+    triggerLoginRedirect(path);
   };
 
   useEffect(() => {

@@ -6,7 +6,7 @@ import { ApiRequestError } from '../src/api/content';
 test('share login redirect preserves the current share token path', () => {
   assert.equal(
     buildShareLoginRedirect('token/with spaces'),
-    '/login?redirect=%2Fshare%2Fdocument%2Ftoken%252Fwith%2520spaces',
+    '/api/v1/auth/unified/start?redirect=%2Fshare%2Fdocument%2Ftoken%252Fwith%2520spaces',
   );
 });
 

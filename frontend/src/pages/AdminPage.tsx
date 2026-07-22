@@ -5962,6 +5962,13 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
     return { error: '自定义端点需要填写 authorize_url、token_url 和 userinfo_url' };
   }
 
+  if (draft.enabled && !config?.has_client_secret && !draft.client_secret.trim()) {
+    return { error: '首次启用统一认证需要填写 client_secret' };
+  }
+  if (draft.enabled && !config?.has_login_sync_hmac_secret && !draft.login_sync_hmac_secret.trim()) {
+    return { error: '首次启用统一认证需要填写 login_sync_hmac_secret（需与 BiSheng sso_sync.gateway_hmac_secret 一致）' };
+  }
+
   const state_ttl_seconds = Number(draft.state_ttl_seconds.trim());
   if (!Number.isInteger(state_ttl_seconds) || state_ttl_seconds <= 0) {
     return { error: 'state TTL 需为大于 0 的整数秒' };

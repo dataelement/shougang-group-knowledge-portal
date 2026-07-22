@@ -315,13 +315,41 @@ class PortalUnifiedAuthService:
                 provider=provider,
                 label=label,
                 unavailable_reason=err.reason,
+                missing_fields=self.list_missing_unified_auth_fields(runtime_config),
             )
         return PortalUnifiedAuthConfigData(
             enabled=True,
             provider=config.provider,
             label=config.label,
             unavailable_reason="",
+            missing_fields=[],
         )
+
+    def list_missing_unified_auth_fields(self, runtime_config: UnifiedAuthRuntimeConfig) -> list[str]:
+        missing: list[str] = []
+        if not runtime_config.enabled:
+            missing.append("enabled")
+            return missing
+        if not runtime_config.client_id.strip():
+            missing.append("client_id")
+        if not self._secret_value(runtime_config.client_secret):
+            missing.append("client_secret")
+        if not runtime_config.redirect_uri.strip():
+            missing.append("redirect_uri")
+        if not self._secret_value(runtime_config.state_secret):
+            missing.append("state_secret")
+        if not self._secret_value(runtime_config.login_sync_hmac_secret):
+            missing.append("login_sync_hmac_secret")
+        provider = self._normalize_provider(runtime_config.provider)
+        endpoints = self._resolve_endpoints(provider, runtime_config)
+        for name, value in (
+            ("authorize_url", endpoints.authorize_url),
+            ("token_url", endpoints.token_url),
+            ("userinfo_url", endpoints.userinfo_url),
+        ):
+            if not value:
+                missing.append(name)
+        return missing
 
     def build_start(self, redirect: str | None) -> UnifiedAuthStart:
         config = self._resolve_config()

@@ -195,8 +195,25 @@ def test_unified_auth_public_config_disabled_is_secret_safe():
     assert config.enabled is False
     assert config.provider == "group"
     assert config.unavailable_reason == "disabled"
+    assert config.missing_fields == ["enabled"]
     assert "oauth-secret" not in config.model_dump_json()
     assert "hmac-secret" not in config.model_dump_json()
+
+
+def test_unified_auth_public_config_reports_missing_fields():
+    service = make_unified_service(
+        settings=make_settings(
+            unified_auth_client_secret="",
+            unified_auth_login_sync_hmac_secret="",
+        )
+    )
+
+    config = service.get_public_config()
+
+    assert config.enabled is False
+    assert config.unavailable_reason == "missing_config"
+    assert "client_secret" in config.missing_fields
+    assert "login_sync_hmac_secret" in config.missing_fields
 
 
 def test_provider_defaults_and_custom_endpoint_override():
