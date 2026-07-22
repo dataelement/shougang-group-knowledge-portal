@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { useParams, useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, Search } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
@@ -56,7 +56,6 @@ type SpaceOption = Pick<KnowledgeSpace, 'id' | 'name' | 'spaceLevel'>;
 export default function ListPage() {
   const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
   const location = useLocation();
-  const navigate = useNavigate();
   const { params, resultsTopRef, setFilter, setFilters, setParams } = useListControls();
   const { config, error: configError } = usePortalConfig();
   const tagParam = params.get('tag') || '';

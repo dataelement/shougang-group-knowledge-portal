@@ -33,3 +33,13 @@ test('manual /login route still renders password login page', () => {
   assert.match(appSource, /<Route path="\/login" element={<LoginPage \/>}/);
   assert.match(loginPageSource, /loginPortal/);
 });
+
+test('login page only auto-recovers server session when redirect intent is present', () => {
+  assert.match(loginPageSource, /hasRedirectIntent/);
+  assert.match(loginPageSource, /if \(!hasRedirectIntent\) return;/);
+});
+
+test('knowledge spaces page skips login redirect while logout navigation is in progress', () => {
+  const knowledgeSpacesSource = readFileSync('src/pages/KnowledgeSpacesPage.tsx', 'utf8');
+  assert.match(knowledgeSpacesSource, /isPortalLogoutInProgress/);
+});

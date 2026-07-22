@@ -419,7 +419,7 @@ def test_unified_auth_logout_start_clears_local_cookies_without_glo_redirect():
             restore_services(client, previous_auth, previous_unified)
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/"
     set_cookie = response.headers["set-cookie"].lower()
     assert "test_portal_session=" in set_cookie
     assert "access_token_cookie=" in set_cookie
@@ -448,7 +448,7 @@ def test_unified_auth_logout_callback_clears_local_session():
             restore_services(client, previous_auth, previous_unified)
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/"
     assert after_logout.status_code == 401
 
 
@@ -473,7 +473,7 @@ def test_local_auth_logout_start_does_not_redirect_to_glo():
             restore_services(client, previous_auth, previous_unified)
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/"
     assert after_logout.status_code == 401
 
 

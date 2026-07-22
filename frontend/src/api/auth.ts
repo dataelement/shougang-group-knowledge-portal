@@ -147,7 +147,7 @@ export function buildUnifiedAuthStartUrl(redirect: string | null | undefined): s
 }
 
 export function buildPortalLogoutStartUrl(): string {
-  return '/api/v1/auth/unified/logout/start';
+  return `/api/v1/auth/unified/logout/start?redirect=${encodeURIComponent(normalizePortalRedirect('/'))}`;
 }
 
 const UNIFIED_AUTH_ERROR_MESSAGES: Record<string, string> = {

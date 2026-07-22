@@ -1255,7 +1255,7 @@ export default function AdminPage() {
             setUnifiedAuthFormError('');
           }}
           onSubmit={() => {
-            const result = validateUnifiedAuthDraft(unifiedAuthDraft);
+            const result = validateUnifiedAuthDraft(unifiedAuthDraft, unifiedAuthConfig);
             if (!result.payload) {
               setUnifiedAuthFormError(result.error || '统一认证配置无效');
               return;
@@ -5933,7 +5933,10 @@ function validateBishengDraft(draft: BishengDraft): {
   };
 }
 
-function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
+function validateUnifiedAuthDraft(
+  draft: UnifiedAuthDraft,
+  config?: UnifiedAuthRuntimeConfig | null,
+): {
   payload?: Parameters<typeof updateUnifiedAuthRuntimeConfig>[0];
   error?: string;
 } {

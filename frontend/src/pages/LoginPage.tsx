@@ -39,6 +39,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { config } = usePortalConfig();
   const params = new URLSearchParams(location.search);
+  const hasRedirectIntent = params.has('redirect');
   const redirect = normalizePortalRedirect(params.get('redirect'));
   const isGuestRedirect = params.get('guest') === '1';
   const [guestToastVisible, setGuestToastVisible] = useState(isGuestRedirect);
@@ -74,6 +75,8 @@ export default function LoginPage() {
       navigate(redirect, { replace: true });
       return;
     }
+    // Only recover an existing server session when the caller supplied an explicit redirect target.
+    if (!hasRedirectIntent) return;
     let active = true;
     void fetchPortalMe()
       .then((user) => {
@@ -85,7 +88,7 @@ export default function LoginPage() {
     return () => {
       active = false;
     };
-  }, [navigate, redirect, isInIframe, unifiedAuthConflict]);
+  }, [navigate, redirect, hasRedirectIntent, isInIframe, unifiedAuthConflict]);
 
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
