@@ -50,10 +50,10 @@ test('portal preview watermark layout uses adaptive rotated bounds and staggered
   const normal = calculatePortalPreviewWatermarkPatternLayout([240, 220]);
   const long = calculatePortalPreviewWatermarkPatternLayout([760, 320]);
 
-  assert.equal(normal.cellWidth, 384);
-  assert.equal(normal.cellHeight, 267);
-  assert.equal(normal.patternHeight, 534);
-  assert.equal(normal.secondRowOffsetX, 192);
+  assert.equal(normal.cellWidth, 320);
+  assert.equal(normal.cellHeight, 240);
+  assert.equal(normal.patternHeight, 480);
+  assert.equal(normal.secondRowOffsetX, 160);
   assert.equal(normal.rotation, -35);
   assert.equal(normal.fontSize, 16);
   assert.equal(normal.opacity, 0.11);
