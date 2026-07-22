@@ -1480,6 +1480,13 @@
   flex: 0 0 auto;
 }
 
+.departmentTreeOptionDisabled,
+.departmentTreeOptionDisabled:hover {
+  color: var(--neutral-400);
+  background: transparent;
+  cursor: not-allowed;
+}
+
 .documentTypeEditorGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

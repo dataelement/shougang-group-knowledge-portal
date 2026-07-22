@@ -561,3 +561,131 @@ export function unbindDeptSpace(spaceId: number) {
     method: 'DELETE',
   });
 }
+
+/**
+ * 更新科室知识库绑定（更绑）。
+ * 直接调用 BiSheng 服务端接口：PUT /api/v1/knowledge/space/department-binding/{space_id}
+ */
+export async function rebindDeptSpace(spaceId: number, departmentId: number): Promise<Record<string, unknown>> {
+  const response = await fetch(`/workspace/api/v1/knowledge/space/department-binding/${spaceId}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ department_id: departmentId }),
+  });
+  const text = await response.text();
+  if (!text) {
+    if (!response.ok) throw new Error('更绑失败');
+    return {};
+  }
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    if (!response.ok) throw new Error('更绑失败');
+    return {};
+  }
+  const businessMessage = typeof payload.status_message === 'string' ? payload.status_message : '更绑失败';
+  if (!response.ok) {
+    throw new Error(businessMessage);
+  }
+  // 兼容 BiSheng 在 HTTP 200 中返回业务错误码的场景
+  if (typeof payload.status_code === 'number' && payload.status_code !== 200) {
+    throw new Error(businessMessage);
+  }
+  return payload.data !== undefined ? (payload.data as Record<string, unknown>) : payload;
+}
+
+export interface RebindDepartmentOption extends DepartmentOption {
+  disabled?: boolean;
+  count?: number;
+  parent_id?: number | null;
+}
+
+function parseRebindDepartment(raw: unknown): RebindDepartmentOption | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const item = raw as Record<string, unknown>;
+  const id =
+    typeof item.id === 'number' ? item.id :
+    typeof item.department_id === 'number' ? item.department_id :
+    null;
+  const name =
+    typeof item.name === 'string' ? item.name :
+    typeof item.department_name === 'string' ? item.department_name :
+    '';
+  const parent_id =
+    typeof item.parent_id === 'number' ? item.parent_id :
+    item.parent_id === null ? null :
+    undefined;
+  const childrenRaw = Array.isArray(item.children)
+    ? item.children
+    : Array.isArray(item.sub_departments)
+    ? item.sub_departments
+    : [];
+  const children = childrenRaw
+    .map(parseRebindDepartment)
+    .filter((child): child is RebindDepartmentOption => child != null);
+  if (id == null || !name) return null;
+  return { id, name, children, parent_id };
+}
+
+/** 将扁平的 parent_id 列表构建为科室树。 */
+function buildRebindDepartmentTree(
+  items: RebindDepartmentOption[],
+): RebindDepartmentOption[] {
+  const hasParentRelation = items.some(
+    (item) => item.parent_id != null && items.some((p) => p.id === item.parent_id),
+  );
+  if (!hasParentRelation) return items;
+
+  const map = new Map<number, RebindDepartmentOption>();
+  const roots: RebindDepartmentOption[] = [];
+  for (const item of items) {
+    map.set(item.id, { ...item, children: [] });
+  }
+  for (const item of items) {
+    const node = map.get(item.id);
+    if (!node) continue;
+    if (item.parent_id != null && map.has(item.parent_id)) {
+      map.get(item.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  return roots;
+}
+
+/**
+ * 获取更绑时可选择的科室列表。
+ * 直接调用 BiSheng workspace API，返回完整的科室树。
+ */
+export async function fetchRebindDepartments(): Promise<RebindDepartmentOption[]> {
+  const query = new URLSearchParams({
+    keyword: '',
+    page: '1',
+    page_size: '100',
+    approval_request: 'true',
+  });
+  const response = await fetch(
+    `/workspace/api/v1/knowledge/space/create-options/departments?${query.toString()}`,
+    {
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
+  if (!response.ok) {
+    throw new Error('科室候选列表加载失败');
+  }
+  const payload = (await response.json()) as { data?: unknown } | unknown[];
+  let rawList: unknown = Array.isArray(payload) ? payload : (payload as { data?: unknown }).data;
+  // 兼容 { data: { data: [...], total: N } }
+  if (!Array.isArray(rawList) && rawList && typeof rawList === 'object') {
+    const nested = rawList as { data?: unknown; items?: unknown };
+    if (Array.isArray(nested.data)) rawList = nested.data;
+    else if (Array.isArray(nested.items)) rawList = nested.items;
+  }
+  const items = Array.isArray(rawList)
+    ? rawList.map(parseRebindDepartment).filter((item): item is RebindDepartmentOption => item != null)
+    : [];
+  return buildRebindDepartmentTree(items);
+}
