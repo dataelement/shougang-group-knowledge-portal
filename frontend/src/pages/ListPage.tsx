@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { useParams, useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, Search } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
@@ -36,7 +36,7 @@ import {
 } from '../utils/businessDomains';
 import { downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
-import { buildGuestLoginPath } from '../utils/guestAccess';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { createSubmittedSearchParams } from '../utils/searchParams';
 import s from './ListPage.module.css';
 
@@ -56,7 +56,6 @@ type SpaceOption = Pick<KnowledgeSpace, 'id' | 'name' | 'spaceLevel'>;
 export default function ListPage() {
   const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
   const location = useLocation();
-  const navigate = useNavigate();
   const { params, resultsTopRef, setFilter, setFilters, setParams } = useListControls();
   const { config, error: configError } = usePortalConfig();
   const tagParam = params.get('tag') || '';
@@ -502,8 +501,8 @@ export default function ListPage() {
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload && f.canDownload ? handleDownload : undefined}
             // onShare={openShare}
-            onAsk={user ? openDocumentQa : () => navigate(buildGuestLoginPath(`${location.pathname}${location.search}`))}
-            onOpen={user ? setPreviewFile : () => navigate(buildGuestLoginPath(`${location.pathname}${location.search}`))}
+            onAsk={user ? openDocumentQa : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
+            onOpen={user ? setPreviewFile : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
           />
         ))}
 

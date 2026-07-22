@@ -24,9 +24,10 @@ import CourseListPage from './pages/CourseListPage';
 import { usePortalConfig } from './hooks/usePortalConfig';
 import { useAuth } from './hooks/useAuth';
 import Header from './components/Header';
+import UnifiedAuthLoginRedirect from './components/UnifiedAuthLoginRedirect';
 
 import ExpertManagePage from './pages/ExpertManagePage';
-import { buildAdminLoginRedirect, getAdminAccessState } from './utils/adminAccess';
+import { getAdminAccessState } from './utils/adminAccess';
 
 function RouteScrollReset() {
   const location = useLocation();
@@ -86,7 +87,9 @@ function AdminRoute() {
   const accessState = getAdminAccessState(user);
 
   if (accessState === 'login') {
-    return <Navigate to={buildAdminLoginRedirect(location.pathname, location.search)} replace />;
+    return (
+      <UnifiedAuthLoginRedirect returnTo={`${location.pathname}${location.search}`} />
+    );
   }
 
   if (accessState === 'forbidden') {

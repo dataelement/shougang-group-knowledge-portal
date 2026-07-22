@@ -126,12 +126,10 @@ async def confirm_unified_auth_login(
 @router.get("/unified/logout/start")
 async def start_unified_auth_logout(
     request: Request,
-    redirect: str = "/login",
+    redirect: str = "/",
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
 ):
     safe_redirect = normalize_redirect(redirect)
-    if safe_redirect == "/":
-        safe_redirect = "/login"
 
     response = RedirectResponse(safe_redirect)
     await auth_service.logout(request)
@@ -142,12 +140,10 @@ async def start_unified_auth_logout(
 @router.get("/unified/logout/callback")
 async def unified_auth_logout_callback(
     request: Request,
-    redirect: str = "/login",
+    redirect: str = "/",
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
 ):
     safe_redirect = normalize_redirect(redirect)
-    if safe_redirect == "/":
-        safe_redirect = "/login"
     response = RedirectResponse(safe_redirect)
     await auth_service.logout(request)
     auth_service.clear_session_cookie(response)

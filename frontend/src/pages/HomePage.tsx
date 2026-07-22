@@ -48,7 +48,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
-import { buildGuestLoginPath } from '../utils/guestAccess';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { fetchCourses } from '../api/courses';
 import { formatCourseDuration, type Course } from '../types/course';
 import s from './HomePage.module.css';
@@ -516,7 +516,7 @@ export default function HomePage() {
     if (searchTab === 'qa') {
       // 未登录:先去登录(附件/问答均需登录)。
       if (!user) {
-        navigate(buildGuestLoginPath('/apps?tab=qa'));
+        triggerLoginRedirect('/apps?tab=qa');
         return;
       }
       // 无问题也无附件:仅打开问答页,不自动发送。
@@ -581,7 +581,7 @@ export default function HomePage() {
     event.target.value = '';
     if (!files.length) return;
     if (!user) {
-      navigate(buildGuestLoginPath('/apps?tab=qa'));
+      triggerLoginRedirect('/apps?tab=qa');
       return;
     }
     const supported = files.filter(isSupportedAttachment);
@@ -971,7 +971,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       className={s.qaToolBtn}
-                      onClick={() => (user ? qaFileInputRef.current?.click() : navigate(buildGuestLoginPath('/apps?tab=qa')))}
+                      onClick={() => (user ? qaFileInputRef.current?.click() : triggerLoginRedirect('/apps?tab=qa'))}
                       aria-label="上传附件"
                     >
                       <Plus size={16} />
@@ -1123,7 +1123,8 @@ export default function HomePage() {
                     onClick={(event) => {
                       event.stopPropagation();
                       const path = `/apps?tab=qa&templateId=${encodeURIComponent(template.id)}`;
-                      navigate(user ? path : buildGuestLoginPath(path));
+                      if (user) navigate(path);
+                      else triggerLoginRedirect(path);
                     }}
                   >
                     <span className={s.appShortcutIcon}>
@@ -1275,7 +1276,7 @@ export default function HomePage() {
                         onClick={(event) => {
                           if (user) return;
                           event.preventDefault();
-                          navigate(buildGuestLoginPath(moreLink));
+                          triggerLoginRedirect(moreLink);
                         }}
                       >
                         更多 <ChevronRight size={14} />
@@ -1297,7 +1298,7 @@ export default function HomePage() {
                             onClick={() => {
                               const target = buildHomeFilePath(f, recommendationMode);
                               if (!user) {
-                                navigate(buildGuestLoginPath(target));
+                                triggerLoginRedirect(target);
                                 return;
                               }
                               navigate(target, { state: { returnTo: moreLink } });

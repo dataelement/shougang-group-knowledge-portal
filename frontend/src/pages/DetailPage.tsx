@@ -13,6 +13,7 @@ import { formatDisplayDateTime } from '../utils/dateTime';
 import { resolveFilePreview } from '../utils/filePreview';
 import { downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import s from './DetailPage.module.css';
 
 const DocumentPreview = lazy(() => import('../components/DocumentPreview'));
@@ -299,12 +300,13 @@ export default function DetailPage() {
               <div className={s.previewLoginRequired} role="status">
                 <strong>登录后预览</strong>
                 <span>登录后可查看文档正文，文件信息与 AI 概览仍可继续浏览。</span>
-                <Link
+                <button
+                  type="button"
                   className={s.previewLoginLink}
-                  to={`/login?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`}
+                  onClick={() => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
                 >
                   去登录
-                </Link>
+                </button>
               </div>
             )}
           </div>

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { LogIn, X } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import s from './LoginBanner.module.css';
 
 const DELAY_MS = 3 * 60 * 1000;
@@ -9,7 +10,6 @@ const DISMISSED_KEY = 'sg_login_banner_dismissed';
 
 export default function LoginBanner() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
   const [visible, setVisible] = useState(false);
 
@@ -33,7 +33,7 @@ export default function LoginBanner() {
 
   const handleLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
-    navigate(`/login?redirect=${encodeURIComponent(redirect)}`);
+    triggerLoginRedirect(redirect);
   };
 
   const handleClose = () => {

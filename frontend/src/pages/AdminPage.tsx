@@ -1294,7 +1294,7 @@ export default function AdminPage() {
             setUnifiedAuthFormError('');
           }}
           onSubmit={() => {
-            const result = validateUnifiedAuthDraft(unifiedAuthDraft);
+            const result = validateUnifiedAuthDraft(unifiedAuthDraft, unifiedAuthConfig);
             if (!result.payload) {
               setUnifiedAuthFormError(result.error || '统一认证配置无效');
               return;
@@ -6067,7 +6067,10 @@ function validateBishengDraft(draft: BishengDraft): {
   };
 }
 
-function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
+function validateUnifiedAuthDraft(
+  draft: UnifiedAuthDraft,
+  config?: UnifiedAuthRuntimeConfig | null,
+): {
   payload?: Parameters<typeof updateUnifiedAuthRuntimeConfig>[0];
   error?: string;
 } {
@@ -6094,6 +6097,13 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
 
   if (draft.enabled && draft.provider === 'custom' && (!authorize_url || !token_url || !userinfo_url)) {
     return { error: '自定义端点需要填写 authorize_url、token_url 和 userinfo_url' };
+  }
+
+  if (draft.enabled && !config?.has_client_secret && !draft.client_secret.trim()) {
+    return { error: '首次启用统一认证需要填写 client_secret' };
+  }
+  if (draft.enabled && !config?.has_login_sync_hmac_secret && !draft.login_sync_hmac_secret.trim()) {
+    return { error: '首次启用统一认证需要填写 login_sync_hmac_secret（需与 BiSheng sso_sync.gateway_hmac_secret 一致）' };
   }
 
   const state_ttl_seconds = Number(draft.state_ttl_seconds.trim());

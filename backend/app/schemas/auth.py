@@ -31,3 +31,4 @@ class PortalUnifiedAuthConfigData(BaseModel):
     provider: str
     label: str
     unavailable_reason: str = ""
+    missing_fields: list[str] = Field(default_factory=list)
