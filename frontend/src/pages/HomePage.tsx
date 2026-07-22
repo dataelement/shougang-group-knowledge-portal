@@ -318,6 +318,7 @@ export default function HomePage() {
   const [bannerIdx, setBannerIdx] = useState(0);
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
+  const [domainScrollState, setDomainScrollState] = useState({ atStart: true, atEnd: false });
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionRecommendationModes, setSectionRecommendationModes] = useState<Record<string, RecommendationMode>>({});
   const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
@@ -819,6 +820,29 @@ export default function HomePage() {
     { value: formatHomeStat(homeStats?.qaCount), label: '次问答' },
   ];
 
+  // 业务域导航滚动到头/尾时禁用对应箭头
+  useEffect(() => {
+    const el = domainScrollRef.current;
+    if (!el) return;
+    const update = () => {
+      const { scrollLeft, scrollWidth, clientWidth } = el;
+      const maxScroll = Math.max(0, scrollWidth - clientWidth);
+      setDomainScrollState({
+        atStart: scrollLeft <= 1,
+        atEnd: maxScroll <= 1 || scrollLeft >= maxScroll - 1,
+      });
+    };
+    update();
+    const onScroll = () => update();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    const onResize = () => update();
+    window.addEventListener('resize', onResize);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [homeDomains.length]);
+
   return (
     <PageShell>
       {welcomeToast ? (
@@ -1152,9 +1176,10 @@ export default function HomePage() {
           <div className={s.domainCarousel}>
             <button
               type="button"
-              className={`${s.domainArrow} ${s.domainArrowLeft}`}
+              className={`${s.domainArrow} ${s.domainArrowLeft} ${domainScrollState.atStart ? s.domainArrowDisabled : ''}`}
               aria-label="向左滚动业务域"
               onClick={() => scrollDomains(-1)}
+              disabled={domainScrollState.atStart}
             >
               <ChevronLeft size={22} />
             </button>
@@ -1203,9 +1228,10 @@ export default function HomePage() {
             </div>
             <button
               type="button"
-              className={`${s.domainArrow} ${s.domainArrowRight}`}
+              className={`${s.domainArrow} ${s.domainArrowRight} ${domainScrollState.atEnd ? s.domainArrowDisabled : ''}`}
               aria-label="向右滚动业务域"
               onClick={() => scrollDomains(1)}
+              disabled={domainScrollState.atEnd}
             >
               <ChevronRight size={22} />
             </button>
