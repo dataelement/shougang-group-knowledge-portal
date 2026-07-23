@@ -17,7 +17,6 @@ import KnowledgeSpacesPage from './pages/KnowledgeSpacesPage';
 import ApprovalDialogHost from './components/ApprovalDialogHost';
 import FloatingQaButton from './components/FloatingQaButton';
 import LoginBanner from './components/LoginBanner';
-import PortalAuthNoticeHost from './components/PortalAuthNoticeHost';
 import WikiPage from './pages/WikiPage';
 import WikiDetailPage from './pages/WikiDetailPage';
 import CoursePage from './pages/CoursePage';
@@ -157,7 +156,6 @@ export default function App() {
         <Route path="/bootstrap/bisheng" element={<BootstrapBishengPage />} />
       </Routes>
       <LoginBanner />
-      <PortalAuthNoticeHost />
       <ConditionalFloatingQaButton />
       <ApprovalDialogHost />
     </>

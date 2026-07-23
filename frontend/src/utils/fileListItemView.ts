@@ -131,7 +131,7 @@ export function buildFileListItemView(
     confidenceLabel: '',
     actions: [
       ...(!locked && options.canFavorite ? ['favorite' as const] : []),
-      ...(options.canDownload && file.canDownload ? ['download' as const] : []),
+      ...(options.canDownload ? ['download' as const] : []),
       ...(!locked && options.canShare ? ['share' as const] : []),
       ...(!locked && options.canAsk ? ['qa' as const] : []),
     ],

@@ -140,7 +140,7 @@ test('department file without content access hides summary and keeps only existi
   assert.deepEqual(view.actions, ['download']);
 });
 
-test('approval grant does not fabricate download action', () => {
+test('caller can expose download without rechecking the DTO permission flag', () => {
   const view = buildFileListItemView(
     {
       ...baseFile,
@@ -152,5 +152,5 @@ test('approval grant does not fabricate download action', () => {
     { canDownload: true, canAsk: true },
   );
 
-  assert.deepEqual(view.actions, ['qa']);
+  assert.deepEqual(view.actions, ['download', 'qa']);
 });

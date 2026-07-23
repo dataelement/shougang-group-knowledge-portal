@@ -1253,8 +1253,8 @@ export default function HomePage() {
               const moreLink = buildSectionMoreLink(sec, recommendationMode);
               // 需要参与「左右高度补长」的左侧板块
               const isLeftFillPanel = /知识推荐|典型案例/.test(sec.title);
-              // 「知识推荐」「典型案例」「行业情报」摘要开启 hover 全文提示浮窗
-              const enableSummaryTooltip = /知识推荐|典型案例|行业情报/.test(sec.title);
+              // 仅「知识推荐」「典型案例」摘要开启 hover 全文提示
+              const enableSummaryTooltip = /知识推荐|典型案例/.test(sec.title);
               return (
                 <div
                   key={sectionKey}
@@ -1313,7 +1313,6 @@ export default function HomePage() {
                                     <div className={s.itemSummary}>{f.summary}</div>
                                   </TooltipTrigger>
                                   <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
-                                    <span className={s.summaryTooltipLabel}>【摘要】：</span>
                                     {f.summary}
                                   </TooltipContent>
                                 </Tooltip>
@@ -1343,7 +1342,7 @@ export default function HomePage() {
           {/* Right column */}
           <div className={s.sideColumn}>
             {/* 专家问答 */}
-            <ExpertQuestions className={s.qaPanel} count={displayConfig.home.expertQaCount} />
+            <ExpertQuestions className={s.qaPanel} />
 
             {/* 专业课程 · 岗位赋能 */}
             <div className={s.panel}>
@@ -1357,7 +1356,7 @@ export default function HomePage() {
                 </Link>
               </div>
               <div className={s.courseList}>
-                {homeCourses.slice(0, displayConfig.home.courseCount).map((course) => {
+                {homeCourses.map((course) => {
                   const displayTag = course.tags.find((tag) => tag.displayType === 'domain') ?? course.tags[0];
                   return (
                     <button

@@ -10,10 +10,6 @@ test('admin config api exposes unified auth runtime config helpers', () => {
   assert.match(adminApiSource, /fetchUnifiedAuthRuntimeConfig/);
   assert.match(adminApiSource, /updateUnifiedAuthRuntimeConfig/);
   assert.match(adminApiSource, /\/api\/v1\/admin\/config\/unified-auth/);
-  assert.match(adminApiSource, /glo_url: string/);
-  assert.match(adminApiSource, /glo_entity_id: string/);
-  assert.match(adminApiSource, /glo_redirect_to_url: string/);
-  assert.match(adminApiSource, /glo_redirect_to_login: boolean/);
 });
 
 test('admin page contains unified auth config navigation and editor wiring', () => {
@@ -25,11 +21,9 @@ test('admin page contains unified auth config navigation and editor wiring', () 
   assert.match(adminPageSource, /login_sync_hmac_secret/);
   assert.match(adminPageSource, /client_id/);
   assert.match(adminPageSource, /redirect_uri/);
-  assert.match(adminPageSource, /glo_entity_id/);
-  assert.match(adminPageSource, /glo_redirect_to_url/);
-  assert.match(adminPageSource, /redirctToUrl/);
-  assert.match(adminPageSource, /GLO 单点登出/);
-  assert.match(adminPageSource, /buildDefaultGloRedirectToUrl/);
+  assert.doesNotMatch(adminPageSource, /glo_entity_id/);
+  assert.doesNotMatch(adminPageSource, /glo_redirect_to_url/);
+  assert.doesNotMatch(adminPageSource, /redirctToUrl/);
   assert.match(adminPageSource, /response_type=code/);
   assert.match(adminPageSource, /state 由后端动态生成/);
 });

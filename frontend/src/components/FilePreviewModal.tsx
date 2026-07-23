@@ -2,8 +2,6 @@ import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { FileItem, FilePreviewContext } from '../api/content';
-import { buildKnowledgeFileDeepLinkPath } from '../utils/bishengEmbed';
-import { buildDownloadFileName } from '../utils/fileDownload';
 import { resolvePreviewModalFrameUrl } from '../utils/filePreview';
 import s from './FilePreviewModal.module.css';
 
@@ -39,22 +37,14 @@ export default function FilePreviewModal({ file, context, onClose }: Props) {
       if (event.source !== frameRef.current?.contentWindow) return;
       if (event.data?.type === 'OPEN_KNOWLEDGE_READ') {
         const { spaceId, fileId, openChat } = event.data;
-        const messageFileName = typeof event.data.fileName === 'string'
-          ? event.data.fileName.trim()
-          : '';
-        const fileName = messageFileName || (file ? buildDownloadFileName(file) : '');
         onClose();
-        navigate(buildKnowledgeFileDeepLinkPath({
-          spaceId,
-          fileId,
-          fileName,
-          openChat: Boolean(openChat),
-        }));
+        const openChatParam = openChat ? '&openChat=1' : '';
+        navigate(`/knowledge-spaces?spaceId=${spaceId}&fileId=${fileId}${openChatParam}`);
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [file, navigate, onClose]);
+  }, [navigate, onClose]);
 
   if (!file) return null;
 

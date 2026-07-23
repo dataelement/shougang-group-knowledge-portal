@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyEmbedOriginOverride,
-  buildKnowledgeFileDeepLinkPath,
   mergeKnowledgeDeepLinkParams,
   resolveKnowledgeEmbedUrl,
   resolvePortalDialogsEmbedUrl,
@@ -118,22 +117,4 @@ test('knowledge embed URL ignores incomplete portal deep-link params', () => {
   const base = 'http://110.16.193.170:3002/workspace/knowledge-portal?portal_embed=1';
   assert.equal(mergeKnowledgeDeepLinkParams(base, new URLSearchParams('fileId=345'), portalLocation), base);
   assert.equal(mergeKnowledgeDeepLinkParams(base, new URLSearchParams('folderId=200'), portalLocation), base);
-});
-
-test('portal file deep link carries the encoded real file name', () => {
-  const fileName = '“秋妃”桃长短梢修剪对比试验.pdf';
-  const path = buildKnowledgeFileDeepLinkPath({
-    spaceId: 112,
-    fileId: 316,
-    fileName,
-    openChat: true,
-  });
-  const url = new URL(path, portalLocation.origin);
-
-  assert.equal(url.pathname, '/knowledge-spaces');
-  assert.equal(url.searchParams.get('spaceId'), '112');
-  assert.equal(url.searchParams.get('fileId'), '316');
-  assert.equal(url.searchParams.get('fileName'), fileName);
-  assert.equal(url.searchParams.get('openChat'), '1');
-  assert.ok(!path.includes(fileName));
 });

@@ -157,7 +157,6 @@ const UNIFIED_AUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_userinfo_failed: '未能获取统一认证用户信息，请重试或使用账号密码登录。',
   identity_missing: '统一认证返回的用户标识不足，请联系管理员。',
   invalid_account: '账号无效，请联系管理员开通账号。',
-  user_unregistered: '您未在本系统注册，请联系管理员。',
   permission_denied: '账号已认证但暂未开通知库权限，请联系管理员。',
   oauth_unavailable: '统一认证暂不可用，请使用账号密码登录。',
   multi_login_conflict: '该用户已在其它设备登录，是否继续登录？',

@@ -7,7 +7,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import urlencode
 
 import httpx
 from fastapi.responses import Response
@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 GROUP_OAUTH_BASE_URL = "https://amdev.shougang.com.cn/idp/oauth2"
 STOCK_OAUTH_BASE_URL = "https://10.68.27.111/idp/oauth2"
-GROUP_GLO_URL = "https://amdev.shougang.com.cn/idp/profile/OAUTH2/Redirect/GLO"
-STOCK_GLO_URL = "https://10.68.27.111/idp/profile/OAUTH2/Redirect/GLO"
 STATE_COOKIE_NAME = "sg_unified_auth_state"
 PENDING_LOGIN_COOKIE_NAME = "sg_unified_auth_pending"
 LOGIN_SYNC_PATH = "/api/v1/internal/sso/login-sync"
@@ -37,7 +35,6 @@ SAFE_ERROR_MESSAGES = {
     "oauth_userinfo_failed": "未能获取统一认证用户信息",
     "identity_missing": "统一认证返回用户标识不足",
     "invalid_account": "账号无效，请联系管理员开通账号",
-    "user_unregistered": "用户未在本系统注册",
     "permission_denied": "账号已认证但暂未开通知库权限",
     "oauth_unavailable": "统一认证暂不可用",
     "multi_login_conflict": "该用户已在其它设备登录，是否继续登录",
@@ -90,10 +87,6 @@ class UnifiedAuthInternalConfig:
     http_timeout_seconds: float
     login_sync_hmac_secret: str
     login_sync_signature_header: str
-    glo_url: str
-    glo_entity_id: str
-    glo_redirect_to_url: str
-    glo_redirect_to_login: bool
 
 
 @dataclass(frozen=True)
@@ -101,12 +94,6 @@ class UnifiedAuthStart:
     authorize_url: str
     state: str
     max_age: int
-    trace_id: str
-
-
-@dataclass(frozen=True)
-class UnifiedAuthLogoutStart:
-    logout_url: str
     trace_id: str
 
 
@@ -418,55 +405,6 @@ class PortalUnifiedAuthService:
             trace_id=trace_id,
         )
 
-    def build_logout_start(self, final_redirect: str | None = "/") -> UnifiedAuthLogoutStart:
-        config = self._resolve_config()
-        safe_redirect = normalize_redirect(final_redirect)
-        trace_id = self._nonce_factory(16)
-        glo_url = config.glo_url.strip() or self._default_glo_url(config.provider)
-        glo_entity_id = config.glo_entity_id.strip() or config.client_id.strip()
-        glo_redirect_to_url = self._resolve_glo_redirect_to_url(config, safe_redirect)
-        required = {
-            "glo_url": glo_url,
-            "glo_entity_id": glo_entity_id,
-            "glo_redirect_to_url": glo_redirect_to_url,
-        }
-        if any(not value for value in required.values()):
-            log_unified_auth_trace(
-                trace_id,
-                "logout",
-                "glo_config_missing",
-                {
-                    "provider": config.provider,
-                    "glo_url": glo_url,
-                    "glo_entity_id": glo_entity_id,
-                    "glo_redirect_to_url": glo_redirect_to_url,
-                    "glo_redirect_to_login": config.glo_redirect_to_login,
-                },
-            )
-            raise UnifiedAuthUnavailable("missing_glo_config")
-
-        params = {
-            "redirctToUrl": glo_redirect_to_url,
-            "redirectToLogin": "true" if config.glo_redirect_to_login else "false",
-            "entityId": glo_entity_id,
-        }
-        separator = "&" if "?" in glo_url else "?"
-        logout_url = f"{glo_url}{separator}{urlencode(params)}"
-        log_unified_auth_trace(
-            trace_id,
-            "logout",
-            "glo_redirect_built",
-            {
-                "provider": config.provider,
-                "label": config.label,
-                "glo_url": glo_url,
-                "params": params,
-                "logout_url": logout_url,
-                "final_redirect": safe_redirect,
-            },
-        )
-        return UnifiedAuthLogoutStart(logout_url=logout_url, trace_id=trace_id)
-
     async def complete_callback(self, *, code: str | None, state: str | None, cookie_state: str | None) -> UnifiedAuthResult:
         if not code or not state:
             log_unified_auth_failure(
@@ -644,16 +582,8 @@ class PortalUnifiedAuthService:
 
     def build_failure_redirect_url(self, auth_error: str, redirect: str | None = "/") -> str:
         safe_error = auth_error if auth_error in SAFE_ERROR_MESSAGES else "oauth_unavailable"
-        if safe_error == "user_unregistered":
-            return self.build_guest_notice_redirect_url(safe_error, redirect)
         params = urlencode({"auth_error": safe_error, "redirect": normalize_redirect(redirect)})
         return f"/login?{params}"
-
-    def build_guest_notice_redirect_url(self, notice: str, redirect: str | None = "/") -> str:
-        safe_redirect = normalize_redirect(redirect)
-        params = urlencode({"portal_auth_notice": notice})
-        separator = "&" if "?" in safe_redirect else "?"
-        return f"{safe_redirect}{separator}{params}"
 
     def set_state_cookie(self, response: Response, state: str, max_age: int) -> None:
         response.set_cookie(
@@ -803,10 +733,6 @@ class PortalUnifiedAuthService:
             http_timeout_seconds=self._settings.unified_auth_http_timeout_seconds,
             login_sync_hmac_secret=login_sync_secret,
             login_sync_signature_header=login_sync_header,
-            glo_url=self._settings.unified_auth_glo_url,
-            glo_entity_id=self._settings.unified_auth_glo_entity_id,
-            glo_redirect_to_url=self._settings.unified_auth_glo_redirect_to_url,
-            glo_redirect_to_login=self._settings.unified_auth_glo_redirect_to_login,
         )
 
     def _resolve_config(self) -> UnifiedAuthInternalConfig:
@@ -851,34 +777,6 @@ class PortalUnifiedAuthService:
             login_sync_hmac_secret=login_sync_hmac_secret,
             login_sync_signature_header=(runtime_config.login_sync_signature_header or "X-Signature").strip()
             or "X-Signature",
-            glo_url=runtime_config.glo_url.strip() or self._default_glo_url(provider),
-            glo_entity_id=runtime_config.glo_entity_id.strip() or required["client_id"],
-            glo_redirect_to_url=runtime_config.glo_redirect_to_url.strip(),
-            glo_redirect_to_login=bool(runtime_config.glo_redirect_to_login),
-        )
-
-    def _resolve_glo_redirect_to_url(self, config: UnifiedAuthInternalConfig, final_redirect: str) -> str:
-        explicit = config.glo_redirect_to_url.strip()
-        safe_redirect = normalize_redirect(final_redirect)
-        if explicit:
-            if "redirect=" in explicit:
-                return explicit
-            separator = "&" if "?" in explicit else "?"
-            return f"{explicit}{separator}redirect={quote(safe_redirect, safe='/')}"
-
-        redirect_uri = config.redirect_uri.rstrip("/")
-        callback_suffix = "/api/v1/auth/unified/callback"
-        if redirect_uri.endswith(callback_suffix):
-            base = redirect_uri[: -len(callback_suffix)].rstrip("/")
-        else:
-            parsed = urlparse(redirect_uri)
-            if not parsed.scheme or not parsed.netloc:
-                return ""
-            base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-
-        return (
-            f"{base}/api/v1/auth/unified/logout/callback"
-            f"?redirect={quote(safe_redirect, safe='/')}"
         )
 
     def _resolve_endpoints(self, provider: str, runtime_config: UnifiedAuthRuntimeConfig) -> UnifiedAuthEndpoints:
@@ -891,14 +789,6 @@ class PortalUnifiedAuthService:
             token_url=token_url,
             userinfo_url=userinfo_url,
         )
-
-    @staticmethod
-    def _default_glo_url(provider: str) -> str:
-        if provider == "group":
-            return GROUP_GLO_URL
-        if provider == "stock":
-            return STOCK_GLO_URL
-        return ""
 
     @staticmethod
     def _default_endpoints(provider: str) -> UnifiedAuthEndpoints:
@@ -1284,9 +1174,9 @@ class PortalUnifiedAuthService:
         status_code = payload.get("status_code")
         status_message = _first_str(payload, "status_message", "detail", "message").lower()
         if str(status_code) == str(BISHENG_SSO_USER_NOT_FOUND_CODE):
-            return "user_unregistered"
+            return "invalid_account"
         if "account is invalid" in status_message or "does not exist in bisheng" in status_message:
-            return "user_unregistered"
+            return "invalid_account"
         return "permission_denied"
 
     def _make_http_client(self, timeout_seconds: float, *, verify_tls: bool = True):

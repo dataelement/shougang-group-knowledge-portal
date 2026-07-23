@@ -499,7 +499,7 @@ export default function ListPage() {
             onFavorite={canFavorite ? handleToggleFavorite : undefined}
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
-            onDownload={canDownload && f.canDownload ? handleDownload : undefined}
+            onDownload={canDownload && (!f.isDepartmentFile || f.canDownload) ? handleDownload : undefined}
             // onShare={openShare}
             onAsk={user ? openDocumentQa : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
             onOpen={user ? setPreviewFile : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}

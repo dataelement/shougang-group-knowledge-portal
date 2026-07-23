@@ -174,10 +174,6 @@ export interface UnifiedAuthRuntimeConfig {
   state_ttl_seconds: number;
   http_timeout_seconds: number;
   login_sync_signature_header: string;
-  glo_url: string;
-  glo_entity_id: string;
-  glo_redirect_to_url: string;
-  glo_redirect_to_login: boolean;
   has_client_secret: boolean;
   has_state_secret: boolean;
   has_login_sync_hmac_secret: boolean;
@@ -223,8 +219,6 @@ export interface DisplayHomeConfig {
   domain_count: number;
   spaces_count: number;
   apps_count: number;
-  expert_qa_count: number;
-  course_count: number;
 }
 
 export interface DisplayListConfig {
@@ -465,10 +459,6 @@ export function updateUnifiedAuthRuntimeConfig(payload: {
   http_timeout_seconds: number;
   login_sync_hmac_secret: string;
   login_sync_signature_header: string;
-  glo_url: string;
-  glo_entity_id: string;
-  glo_redirect_to_url: string;
-  glo_redirect_to_login: boolean;
 }) {
   return request<UnifiedAuthRuntimeConfig>('/api/v1/admin/config/unified-auth', {
     method: 'POST',
