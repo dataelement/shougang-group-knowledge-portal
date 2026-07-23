@@ -1148,11 +1148,28 @@
   line-height: 1.2;
 }
 
+/* 首页知识推荐/行业情报 摘要 hover 浮窗（按蓝湖设计稿） */
 .summaryTooltip {
-  max-width: 480px;
+  max-width: 640px;
+  padding: 12px 16px;
+  color: #273142;
+  font-family: PingFangSC, 'PingFang SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  text-align: justify;
   white-space: normal;
-  word-break: break-all;
-  line-height: 1.6;
+  word-break: break-word;
+  background: linear-gradient(180deg, #EEEFFF 0%, #E8F3FF 100%);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  border-image: linear-gradient(180deg, rgba(77, 119, 243, 1), rgba(122, 188, 255, 1)) 1 1;
+  box-shadow: 0px 2px 20px 0px rgba(101, 108, 130, 0.3);
+}
+
+.summaryTooltipLabel {
+  font-weight: 600;
+  color: #273142;
 }
 
 .itemTime {
