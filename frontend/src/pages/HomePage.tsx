@@ -1331,7 +1331,6 @@ export default function HomePage() {
                                     <div className={s.itemSummary}>{f.summary}</div>
                                   </TooltipTrigger>
                                   <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
-                                    <span className={s.summaryTooltipLabel}>【摘要】：</span>
                                     {f.summary}
                                   </TooltipContent>
                                 </Tooltip>
