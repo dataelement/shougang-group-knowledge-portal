@@ -1196,11 +1196,6 @@
   border-bottom: 10px solid #EEEFFF;
 }
 
-.summaryTooltipLabel {
-  font-weight: 600;
-  color: #273142;
-}
-
 .itemTime {
   flex: 0 0 auto;
   font-size: 14px;
