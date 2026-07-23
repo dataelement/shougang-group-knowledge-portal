@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.services.portal_auth_service import PortalAuthService
 from app.services.portal_unified_auth_service import (
+    GROUP_GLO_URL,
     GROUP_OAUTH_BASE_URL,
     LOGIN_SYNC_PATH,
     STOCK_OAUTH_BASE_URL,
@@ -398,7 +399,7 @@ def test_callback_multi_login_conflict_sets_pending_cookie_and_confirm_forces_lo
     assert login_sync_bodies[1]["force_login"] is True
 
 
-def test_unified_auth_logout_start_clears_local_cookies_without_glo_redirect():
+def test_unified_auth_logout_start_redirects_to_glo_and_clears_local_cookies():
     auth_service = make_auth_service()
     http_client = RecordingUnifiedHttpClient()
     unified_service = make_unified_service(auth_service=auth_service, http_client=http_client)
@@ -419,11 +420,54 @@ def test_unified_auth_logout_start_clears_local_cookies_without_glo_redirect():
             restore_services(client, previous_auth, previous_unified)
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/"
+    location = response.headers["location"]
+    assert location.startswith(f"{GROUP_GLO_URL}?")
+    query = parse_qs(urlparse(location).query)
+    assert query["entityId"] == ["oauth-client"]
+    assert query["redirectToLogin"] == ["true"]
+    assert query["redirctToUrl"] == [
+        "https://portal.example.com/api/v1/auth/unified/logout/callback?redirect=/",
+    ]
     set_cookie = response.headers["set-cookie"].lower()
     assert "test_portal_session=" in set_cookie
     assert "access_token_cookie=" in set_cookie
     assert "sg_portal_auth_source=" in set_cookie
+    assert after_logout.status_code == 401
+
+
+def test_unified_auth_logout_start_falls_back_to_home_when_glo_config_missing():
+    auth_service = make_auth_service()
+    http_client = RecordingUnifiedHttpClient()
+    unified_service = make_unified_service(
+        auth_service=auth_service,
+        http_client=http_client,
+        settings=make_settings(
+            unified_auth_provider="custom",
+            unified_auth_authorize_url="https://iam.example.com/authorize",
+            unified_auth_token_url="https://iam.example.com/getToken",
+            unified_auth_userinfo_url="https://iam.example.com/getUserInfo",
+            unified_auth_glo_url="",
+        ),
+    )
+    with TestClient(app) as client:
+        previous_auth, previous_unified = install_services(client, unified_service, auth_service)
+        try:
+            start = client.get("/api/v1/auth/unified/start?redirect=/admin", follow_redirects=False)
+            state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+            callback = client.get(
+                f"/api/v1/auth/unified/callback?code=oauth-code&state={state}",
+                follow_redirects=False,
+            )
+            assert callback.status_code == 307
+
+            response = client.get("/api/v1/auth/unified/logout/start", follow_redirects=False)
+            after_logout = client.get("/api/v1/auth/me")
+        finally:
+            restore_services(client, previous_auth, previous_unified)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/"
+    assert GROUP_GLO_URL not in response.headers["location"]
     assert after_logout.status_code == 401
 
 
@@ -474,6 +518,7 @@ def test_local_auth_logout_start_does_not_redirect_to_glo():
 
     assert response.status_code == 307
     assert response.headers["location"] == "/"
+    assert GROUP_GLO_URL not in response.headers["location"]
     assert after_logout.status_code == 401
 
 
@@ -723,7 +768,7 @@ def test_callback_maps_missing_identity_and_login_sync_failure_to_safe_errors():
             restore_services(client, previous_auth, previous_unified)
 
     assert missing_identity.headers["location"] == "/login?auth_error=identity_missing&redirect=%2Fadmin"
-    assert invalid_account.headers["location"] == "/login?auth_error=invalid_account&redirect=%2Fadmin"
+    assert invalid_account.headers["location"] == "/admin?portal_auth_notice=user_unregistered"
     assert permission_denied.headers["location"] == "/login?auth_error=permission_denied&redirect=%2Fadmin"
 
 

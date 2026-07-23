@@ -127,11 +127,18 @@ async def confirm_unified_auth_login(
 async def start_unified_auth_logout(
     request: Request,
     redirect: str = "/",
+    service: PortalUnifiedAuthService = Depends(get_portal_unified_auth_service),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
 ):
     safe_redirect = normalize_redirect(redirect)
+    target = safe_redirect
+    if auth_service.is_unified_auth_request(request):
+        try:
+            target = service.build_logout_start(safe_redirect).logout_url
+        except UnifiedAuthUnavailable:
+            target = safe_redirect
 
-    response = RedirectResponse(safe_redirect)
+    response = RedirectResponse(target)
     await auth_service.logout(request)
     auth_service.clear_session_cookie(response)
     return response
