@@ -208,7 +208,17 @@
   background: #eff6ff;
 }
 
+.chatWatermarkSurface {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  isolation: isolate;
+}
+
 .contentArea {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 24px 32px 18px;

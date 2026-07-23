@@ -45,6 +45,8 @@ export interface FileListItemView {
   hiddenTagCount: number;
   confidenceLabel: string;
   actions: FileListItemAction[];
+  locked: boolean;
+  lockHint: string;
 }
 
 function formatCardDate(value: string): string {
@@ -106,6 +108,10 @@ export function buildFileListItemView(
   const summaryText = file.summary.trim();
   const sourcePath = file.sourcePath?.trim();
   const folderPath = file.folderPath?.trim();
+  const locked = Boolean(
+    file.isDepartmentFile
+    && file.contentAccess !== 'allowed',
+  );
 
   // Display directory path only (no filename). folderPath is already directory-only;
   // fall back to stripping the last segment from sourcePath, then to the space name.
@@ -118,16 +124,18 @@ export function buildFileListItemView(
     documentTypeLabel,
     dateLabel: formatCardDate(file.date),
     sourcePath: displayPath,
-    summaryText,
+    summaryText: locked ? '' : summaryText,
     tagGroups,
     visibleTags: displayTags.slice(0, visibleTagCount),
     hiddenTagCount: Math.max(0, displayTags.length - visibleTagCount),
     confidenceLabel: '',
     actions: [
-      ...(options.canFavorite ? ['favorite' as const] : []),
-      ...(options.canDownload ? ['download' as const] : []),
-      ...(options.canShare ? ['share' as const] : []),
-      ...(options.canAsk ? ['qa' as const] : []),
+      ...(!locked && options.canFavorite ? ['favorite' as const] : []),
+      ...(options.canDownload && file.canDownload ? ['download' as const] : []),
+      ...(!locked && options.canShare ? ['share' as const] : []),
+      ...(!locked && options.canAsk ? ['qa' as const] : []),
     ],
+    locked,
+    lockHint: locked ? '查看详情需申请权限' : '',
   };
 }

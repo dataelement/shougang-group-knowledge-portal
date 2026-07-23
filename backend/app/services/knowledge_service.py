@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -43,6 +43,8 @@ from app.schemas.knowledge import (
     CursorKnowledgeFileData,
     RelatedKnowledgeFileData,
     DocumentFileChatRequest,
+    DepartmentFileViewAccessData,
+    DepartmentFileViewApplyData,
     ShareDocumentAccessInternalData,
     ShareDocumentAccessRequest,
     ShareDocumentData,
@@ -115,6 +117,7 @@ FILE_ENCODING_KEYS = (
 )
 UPDATED_AT_ASC_SORT = "updated_at_asc"
 UPDATED_AT_DESC_SORTS = {"updated_at", "updated_at_desc"}
+PortalDiscoveryScope = Literal["legacy", "public", "public_and_department"]
 
 
 @dataclass
@@ -199,7 +202,14 @@ class KnowledgeService:
         return spaces
 
     async def _allowed_detail_space_ids(self, extra_space_ids: Optional[list[int]] = None) -> set[int]:
-        return {space.id for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)}
+        if extra_space_ids is not None:
+            return {int(space_id) for space_id in extra_space_ids}
+        return {
+            space.id
+            for space in (
+                await self.list_visible_spaces(discovery_scope="public")
+            ).data
+        }
 
     async def get_space_name_map(self, extra_space_ids: Optional[list[int]] = None) -> dict[int, str]:
         return {space.id: space.name for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)}
@@ -232,11 +242,13 @@ class KnowledgeService:
         self,
         extra_space_ids: Optional[list[int]] = None,
         *,
+        discovery_scope: PortalDiscoveryScope = "legacy",
         include_latest: bool = True,
         include_other: bool = True,
     ) -> AsyncIterator[tuple[str, list[KnowledgeFileItem]]]:
         async for tag, items, _ in self.iter_home_content_with_modes(
             extra_space_ids=extra_space_ids,
+            discovery_scope=discovery_scope,
             include_latest=include_latest,
             include_other=include_other,
         ):
@@ -246,6 +258,7 @@ class KnowledgeService:
         self,
         extra_space_ids: Optional[list[int]] = None,
         *,
+        discovery_scope: PortalDiscoveryScope = "legacy",
         resolve_user_visible_spaces: bool = False,
         latest_recommendation: str = LATEST_SELECTED_RECOMMENDATION,
         recommendation_limit: int | None = None,
@@ -290,6 +303,13 @@ class KnowledgeService:
         )
 
         async def resolve_home_space_ids() -> list[int]:
+            if discovery_scope != "legacy":
+                if resolve_user_visible_spaces and extra_space_ids is None:
+                    visible_spaces = await self.list_visible_spaces(
+                        discovery_scope=discovery_scope
+                    )
+                    return [space.id for space in visible_spaces.data]
+                return list(extra_space_ids or [])
             if resolve_user_visible_spaces and extra_space_ids is None:
                 visible_spaces = await self.list_visible_spaces()
                 return [space.id for space in visible_spaces.data]
@@ -309,7 +329,13 @@ class KnowledgeService:
             is_public_tag_section = self._is_typical_case_section(section)
             mode = latest_recommendation if is_latest else None
             uses_public_latest = is_latest and mode == LATEST_SELECTED_RECOMMENDATION
-            uses_public_scope = uses_public_latest or is_public_tag_section
+            uses_public_scope = (
+                is_public_tag_section
+                or (
+                    uses_public_latest
+                    and discovery_scope != "public_and_department"
+                )
+            )
             section_limit = (
                 recommendation_limit
                 if is_latest and recommendation_limit is not None
@@ -319,10 +345,16 @@ class KnowledgeService:
                 if uses_public_scope:
                     space_ids = None
                 elif space_ids_task is None:
-                    return section.tag, [], mode
+                    if discovery_scope == "legacy":
+                        return section.tag, [], mode
+                    space_ids = None
                 else:
                     space_ids = await space_ids_task
-                if not uses_public_scope and not space_ids:
+                if (
+                    discovery_scope == "legacy"
+                    and not uses_public_scope
+                    and not space_ids
+                ):
                     return section.tag, [], mode
                 result = await self.search_files(
                     q=None,
@@ -343,6 +375,11 @@ class KnowledgeService:
                     cursor=None,
                     limit=section_limit,
                     extra_space_ids=None if uses_public_scope else extra_space_ids,
+                    discovery_scope=(
+                        "public"
+                        if uses_public_scope
+                        else discovery_scope
+                    ),
                 )
                 return section.tag, result.data, mode
             except Exception:
@@ -369,6 +406,7 @@ class KnowledgeService:
                             cursor=None,
                             limit=config.display.home.section_page_size,
                             extra_space_ids=None,
+                            discovery_scope=discovery_scope,
                         )
                         return section.tag, fallback.data, LATEST_SELECTED_RECOMMENDATION
                     except Exception:
@@ -452,7 +490,51 @@ class KnowledgeService:
         items.sort(key=lambda item: item.rank)
         return items[:5]
 
-    async def list_visible_spaces(self) -> KnowledgeSpaceListData:
+    async def list_visible_spaces(
+        self,
+        discovery_scope: PortalDiscoveryScope = "legacy",
+    ) -> KnowledgeSpaceListData:
+        if discovery_scope != "legacy":
+            response = await self._bisheng.get_json(
+                "/api/v1/knowledge/shougang-portal/spaces",
+                params={"discovery_scope": discovery_scope},
+            )
+            data = self._extract_success_data(response)
+            raw_spaces = data.get("spaces") if isinstance(data, dict) else []
+            if not isinstance(raw_spaces, list):
+                raw_spaces = []
+            spaces = [
+                KnowledgeSpaceItem(
+                    id=int(item.get("id") or 0),
+                    name=str(item.get("name") or ""),
+                    space_level=str(item.get("space_level") or ""),
+                    auth_type=(
+                        "public"
+                        if str(item.get("space_level") or "").lower() == "public"
+                        else ""
+                    ),
+                    sources=[str(item.get("space_level") or "")],
+                )
+                for item in raw_spaces
+                if isinstance(item, dict) and int(item.get("id") or 0) > 0
+            ]
+            if discovery_scope == "public_and_department":
+                # 公共库和有效部门库由门户专用接口权威派生；个人库、团队库继续
+                # 使用当前用户原有可见范围，避免新增部门发现能力时收窄旧权限。
+                grouped_spaces = await self._fetch_grouped_spaces()
+                existing_ids = {space.id for space in spaces}
+                spaces.extend(
+                    space
+                    for space in grouped_spaces or []
+                    if space.id not in existing_ids
+                    and (space.space_level or "").strip().lower()
+                    not in {"public", "department"}
+                )
+            return KnowledgeSpaceListData(
+                data=self._sort_spaces(spaces),
+                total=len(spaces),
+            )
+
         grouped_spaces = await self._fetch_grouped_spaces()
         if grouped_spaces is not None:
             data = self._sort_spaces(grouped_spaces)
@@ -511,6 +593,37 @@ class KnowledgeService:
             source_file_id=int(data.get("source_file_id") or req.source_file_id),
             title=str(data.get("title") or ""))
 
+    async def get_department_file_view_access(
+        self,
+        *,
+        space_id: int,
+        file_id: int,
+    ) -> DepartmentFileViewAccessData:
+        response = await self._bisheng.get_json(
+            "/api/v1/approval/department-file-view/status",
+            params={"space_id": space_id, "file_id": file_id},
+        )
+        data = self._extract_success_data(response)
+        return DepartmentFileViewAccessData.model_validate(data)
+
+    async def apply_department_file_view(
+        self,
+        *,
+        space_id: int,
+        file_id: int,
+        reason: str,
+    ) -> DepartmentFileViewApplyData:
+        response = await self._bisheng.post_json(
+            "/api/v1/approval/department-file-view/apply",
+            json={
+                "space_id": space_id,
+                "file_id": file_id,
+                "reason": reason,
+            },
+        )
+        data = self._extract_success_data(response)
+        return DepartmentFileViewApplyData.model_validate(data)
+
     async def remove_favorite(self, req: FavoriteRemoveRequest) -> FavoriteRemoveData:
         response = await self._bisheng.post_json(
             "/api/v1/knowledge/shougang-portal/favorites/remove", json=req.model_dump())
@@ -555,8 +668,20 @@ class KnowledgeService:
             expire_seconds=int(data.get("expire_seconds") or 0),
         )
 
-    async def get_share_link_meta(self, share_token: str) -> ShareDocumentMeta:
-        response = await self._bisheng.get_json(f"/api/v1/knowledge/shougang-portal/share-links/{share_token}")
+    async def get_share_link_meta(
+        self,
+        share_token: str,
+        *,
+        anonymous_portal: bool = False,
+    ) -> ShareDocumentMeta:
+        response = await self._bisheng.get_json(
+            f"/api/v1/knowledge/shougang-portal/share-links/{share_token}",
+            headers=(
+                {"X-Portal-Anonymous": "true"}
+                if anonymous_portal
+                else None
+            ),
+        )
         data = self._extract_success_data(response)
         return ShareDocumentMeta.model_validate(data)
 
@@ -585,7 +710,7 @@ class KnowledgeService:
         model_id = self._resolve_document_chat_model_id(req.model)
         await self._ensure_document_chat_model_enabled(str(model_id))
         return self._bisheng.stream_post(
-            f"/api/v1/knowledge/space/{space_id}/chat/file/{file_id}",
+            f"/api/v1/knowledge/shougang-portal/files/{space_id}/{file_id}/chat",
             json={
                 "query": req.query,
                 "modelId": model_id,
@@ -755,6 +880,7 @@ class KnowledgeService:
         recommendation: Optional[str] = None,
         public_only: bool = False,
         fallback_to_public_spaces: bool = False,
+        discovery_scope: PortalDiscoveryScope = "legacy",
     ) -> CursorKnowledgeFileData:
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         normalized_tag = (tag or "").strip()
@@ -776,7 +902,10 @@ class KnowledgeService:
         if not keyword and not has_filter:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
 
-        if self.is_public_latest_selected_request(keyword, recommendation):
+        if (
+            self.is_public_latest_selected_request(keyword, recommendation)
+            and discovery_scope != "public_and_department"
+        ):
             return await self._search_shougang_portal_files(
                 q=None,
                 tag=effective_tag,
@@ -791,9 +920,14 @@ class KnowledgeService:
                 cursor=cursor,
                 limit=limit,
                 public_only=True,
+                discovery_scope="public",
             )
 
-        if keyword and self.is_latest_selected_scoped_request(recommendation):
+        if (
+            keyword
+            and self.is_latest_selected_scoped_request(recommendation)
+            and discovery_scope != "public_and_department"
+        ):
             return await self._search_shougang_portal_files(
                 q=keyword,
                 tag=effective_tag,
@@ -808,6 +942,7 @@ class KnowledgeService:
                 cursor=cursor,
                 limit=limit,
                 public_only=True,
+                discovery_scope="public",
             )
 
         if public_only and not keyword:
@@ -824,17 +959,38 @@ class KnowledgeService:
                 cursor=cursor,
                 limit=limit,
                 public_only=True,
+                discovery_scope="public",
             )
 
-        space_ids = await self.resolve_requested_space_ids(
-            requested_space_ids,
-            space_level,
-            extra_space_ids,
-            fallback_to_public_spaces=fallback_to_public_spaces,
-        )
-        if not space_ids:
-            return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
-        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
+        if discovery_scope == "legacy":
+            space_ids = await self.resolve_requested_space_ids(
+                requested_space_ids,
+                space_level,
+                extra_space_ids,
+                fallback_to_public_spaces=fallback_to_public_spaces,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+            upstream_space_level = self._effective_upstream_space_level(
+                space_level,
+                extra_space_ids,
+            )
+        else:
+            if self.is_latest_selected_scoped_request(recommendation):
+                # 最新精选由 BiSheng 权威派生公共库 + 有效部门库，不混入
+                # 原有个人库/团队库。
+                space_ids = []
+            else:
+                space_ids = list(
+                    dict.fromkeys(
+                        requested_space_ids
+                        or extra_space_ids
+                        or []
+                    )
+                )
+            upstream_space_level = (
+                "public" if discovery_scope == "public" else space_level
+            )
 
         if (
             normalized_base_tag
@@ -855,6 +1011,7 @@ class KnowledgeService:
                 document_type=document_type,
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=normalized_business_domain_code,
+                discovery_scope=discovery_scope,
             )
 
         if keyword:
@@ -872,6 +1029,7 @@ class KnowledgeService:
                 cursor=cursor,
                 limit=limit,
                 public_only=public_only,
+                discovery_scope=discovery_scope,
             )
 
         return await self._browse_shougang_portal_files(
@@ -886,6 +1044,7 @@ class KnowledgeService:
             sort=sort,
             cursor=cursor,
             limit=limit,
+            discovery_scope=discovery_scope,
         )
 
     async def search_keyword_files(
@@ -902,19 +1061,35 @@ class KnowledgeService:
         business_domain_code: Optional[str],
         sort: str,
         extra_space_ids: Optional[list[int]],
+        discovery_scope: PortalDiscoveryScope = "legacy",
     ) -> CursorKnowledgeFileData:
         keyword = q.strip()
         if not keyword:
             return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
-        space_ids = await self.resolve_requested_space_ids(
-            requested_space_ids,
-            space_level,
-            extra_space_ids,
-            fallback_to_public_spaces=False,
-        )
-        if not space_ids:
-            return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
-        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
+        if discovery_scope == "legacy":
+            space_ids = await self.resolve_requested_space_ids(
+                requested_space_ids,
+                space_level,
+                extra_space_ids,
+                fallback_to_public_spaces=False,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+            upstream_space_level = self._effective_upstream_space_level(
+                space_level,
+                extra_space_ids,
+            )
+        else:
+            space_ids = list(
+                dict.fromkeys(
+                    requested_space_ids
+                    or extra_space_ids
+                    or []
+                )
+            )
+            upstream_space_level = (
+                "public" if discovery_scope == "public" else space_level
+            )
         return await self._search_shougang_portal_files(
             q=keyword,
             tag=(base_tag or tag or "").strip() or None,
@@ -926,6 +1101,7 @@ class KnowledgeService:
             business_domain_code=self._normalize_business_domain_code(business_domain_code),
             recommendation=None,
             sort=sort,
+            discovery_scope=discovery_scope,
         )
 
     async def browse_files(
@@ -945,6 +1121,7 @@ class KnowledgeService:
         limit: int,
         extra_space_ids: Optional[list[int]],
         public_only: bool = False,
+        discovery_scope: PortalDiscoveryScope = "legacy",
     ) -> CursorKnowledgeFileData:
         normalized_tag = (tag or "").strip()
         normalized_base_tag = (base_tag or "").strip()
@@ -963,16 +1140,35 @@ class KnowledgeService:
                 cursor=cursor,
                 limit=limit,
                 public_only=True,
+                discovery_scope="public",
             )
-        space_ids = await self.resolve_requested_space_ids(
-            requested_space_ids,
-            space_level,
-            extra_space_ids,
-            fallback_to_public_spaces=False,
-        )
-        if not space_ids:
-            return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
-        upstream_space_level = self._effective_upstream_space_level(space_level, extra_space_ids)
+        if discovery_scope == "legacy":
+            space_ids = await self.resolve_requested_space_ids(
+                requested_space_ids,
+                space_level,
+                extra_space_ids,
+                fallback_to_public_spaces=False,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+            upstream_space_level = self._effective_upstream_space_level(
+                space_level,
+                extra_space_ids,
+            )
+        else:
+            if self.is_latest_selected_scoped_request(recommendation):
+                space_ids = []
+            else:
+                space_ids = list(
+                    dict.fromkeys(
+                        requested_space_ids
+                        or extra_space_ids
+                        or []
+                    )
+                )
+            upstream_space_level = (
+                "public" if discovery_scope == "public" else space_level
+            )
         if (
             normalized_base_tag
             and normalized_tag
@@ -991,6 +1187,7 @@ class KnowledgeService:
                 document_type=document_type,
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=normalized_business_domain_code,
+                discovery_scope=discovery_scope,
             )
         return await self._browse_shougang_portal_files(
             tag=normalized_base_tag or normalized_tag or None,
@@ -1004,6 +1201,7 @@ class KnowledgeService:
             sort=sort,
             cursor=cursor,
             limit=limit,
+            discovery_scope=discovery_scope,
         )
 
     async def _search_shougang_portal_files_with_filter_tag(
@@ -1020,6 +1218,7 @@ class KnowledgeService:
         document_type: Optional[str] = None,
         file_subcategory_code: Optional[str] = None,
         business_domain_code: Optional[str] = None,
+        discovery_scope: PortalDiscoveryScope = "legacy",
     ) -> CursorKnowledgeFileData:
         page_limit = min(max(int(limit or 20), 1), self._page_size_limit)
         upstream_cursor, filtered_offset = self._parse_filtered_tag_cursor(cursor)
@@ -1039,6 +1238,7 @@ class KnowledgeService:
                 sort=sort,
                 cursor=upstream_cursor,
                 limit=fetch_limit,
+                discovery_scope=discovery_scope,
             )
             filtered_items = [
                 item for item in result.data
@@ -1181,23 +1381,21 @@ class KnowledgeService:
         parent_id: int | None,
         cursor: str | None = None,
         page_size: int = 10,
+        discovery_scope: PortalDiscoveryScope = "public_and_department",
     ) -> QaKnowledgeTreeNodeData:
         resolved_page_size = min(max(page_size, 1), self._page_size_limit)
         params: dict[str, Any] = {
             "page_size": resolved_page_size,
-            "file_status": [SUCCESS_STATUS],
-            # QA 树只用 folder counts 与节点基础字段,跳过上游文件富化以省开销。
-            # 注:httpx 将 Python False 序列化为查询串 "enrich_files=false"(bool 特判为小写),
-            # 上游 FastAPI 的 bool 解析读回 False;httpx 大版本升级需复核此序列化契约。
-            "enrich_files": False,
-            # QA 树只需直接子文件数,走上游轻量计数(零 openfga、不递归)。
-            "folder_count_mode": "shallow",
+            "discovery_scope": discovery_scope,
         }
         if parent_id is not None:
             params["parent_id"] = parent_id
         if cursor:
             params["cursor"] = cursor
-        response = await self._bisheng.get_json(f"/api/v1/knowledge/space/{space_id}/children", params=params)
+        response = await self._bisheng.get_json(
+            f"/api/v1/knowledge/shougang-portal/qa/spaces/{space_id}/children",
+            params=params,
+        )
         # 上游权限/不存在等业务错误经 HTTP 200 + body status_code 返回;
         # 显式检测并抛 BishengBusinessError,交由路由层翻译为 403。
         data = self._extract_success_data(response)
@@ -1221,13 +1419,16 @@ class KnowledgeService:
         self,
         space_id: int,
         folder_ids: list[int],
+        discovery_scope: PortalDiscoveryScope = "public_and_department",
     ) -> QaKnowledgeFolderStatsData:
         unique_folder_ids = list(dict.fromkeys(folder_ids))
         response = await self._bisheng.post_json(
-            f"/api/v1/knowledge/space/{space_id}/folder-stats",
+            (
+                f"/api/v1/knowledge/shougang-portal/qa/spaces/{space_id}"
+                f"/folder-stats?discovery_scope={discovery_scope}"
+            ),
             json={
                 "folder_ids": unique_folder_ids,
-                "file_status": [SUCCESS_STATUS],
             },
         )
         data = self._extract_success_data(response)
@@ -1240,6 +1441,7 @@ class KnowledgeService:
                     folder_id=self._int_value(item, "folder_id", "folderId"),
                     resolved_file_count=self._int_value(
                         item,
+                        "resolved_file_count",
                         "visible_success_file_num",
                         "visibleSuccessFileNum",
                         "success_file_num",
@@ -1257,6 +1459,7 @@ class KnowledgeService:
         space_ids: list[int],
         page: int = 1,
         page_size: int = 20,
+        discovery_scope: PortalDiscoveryScope = "public_and_department",
     ) -> PagedKnowledgeFileData:
         normalized_q = q.strip()
         if not normalized_q or not space_ids:
@@ -1265,6 +1468,7 @@ class KnowledgeService:
             "/api/v1/knowledge/shougang-portal/qa/files/search",
             json={
                 "q": normalized_q,
+                "discovery_scope": discovery_scope,
                 "space_ids": space_ids,
                 "page": page,
                 "page_size": min(max(page_size, 1), 100),
@@ -1318,8 +1522,10 @@ class KnowledgeService:
         cursor: Optional[str] = None,
         limit: int | None = None,
         public_only: bool = False,
+        discovery_scope: PortalDiscoveryScope = "legacy",
     ) -> CursorKnowledgeFileData:
         request_body = {
+            "discovery_scope": discovery_scope,
             "q": q,
             "tag": tag,
             "space_ids": space_ids,
@@ -1374,8 +1580,10 @@ class KnowledgeService:
         cursor: Optional[str],
         limit: int,
         public_only: bool = False,
+        discovery_scope: PortalDiscoveryScope = "legacy",
     ) -> CursorKnowledgeFileData:
         request_body = {
+            "discovery_scope": discovery_scope,
             "tag": tag,
             "space_ids": space_ids,
             "space_level": space_level,
@@ -1414,27 +1622,55 @@ class KnowledgeService:
 
     @staticmethod
     def _map_shougang_portal_response_items(raw_items: list) -> list[KnowledgeFileItem]:
-        return [
-            KnowledgeFileItem(
+        items: list[KnowledgeFileItem] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            content_access = str(item.get("content_access") or "allowed")
+            is_department_file = bool(item.get("is_department_file", False))
+            content_allowed = (
+                content_access == "allowed"
+                or not is_department_file
+            )
+            items.append(
+                KnowledgeFileItem(
                 id=int(item.get("id") or 0),
                 space_id=int(item.get("space_id") or item.get("knowledge_id") or 0),
                 space_level=str(item.get("space_level") or item.get("spaceLevel") or ""),
                 title=str(item.get("title") or item.get("file_name") or ""),
-                summary=str(item.get("summary") or item.get("abstract") or ""),
+                summary=(
+                    str(item.get("summary") or item.get("abstract") or "")
+                    if content_allowed
+                    else ""
+                ),
                 source=str(item.get("source") or ""),
                 updated_at=str(item.get("updated_at") or item.get("update_time") or ""),
                 tag_infos=KnowledgeService._extract_file_tag_infos(item),
                 file_ext=str(item.get("file_ext") or ""),
-                file_size=str(item.get("file_size") or ""),
-                file_encoding=str(item.get("file_encoding") or ""),
+                file_size=str(item.get("file_size") or "") if content_allowed else "",
+                file_encoding=(
+                    str(item.get("file_encoding") or "")
+                    if content_allowed
+                    else ""
+                ),
                 file_subcategory_code=KnowledgeService._extract_file_subcategory_code(item),
                 folder_path=str(item.get("folder_path") or ""),
-                source_path=str(item.get("source_path") or ""),
+                source_path=(
+                    str(item.get("source_path") or "")
+                    if content_allowed
+                    else ""
+                ),
                 can_download=bool(item.get("can_download", False)),
+                content_access=content_access,
+                access_source=(
+                    str(item.get("access_source"))
+                    if item.get("access_source") is not None
+                    else None
+                ),
+                is_department_file=is_department_file,
             )
-            for item in raw_items
-            if isinstance(item, dict)
-        ]
+            )
+        return items
 
     async def get_file_detail(
         self,
@@ -1476,6 +1712,9 @@ class KnowledgeService:
             folder_path=item.folder_path,
             source_path=item.source_path,
             can_download=item.can_download,
+            content_access=item.content_access,
+            access_source=item.access_source,
+            is_department_file=item.is_department_file,
             space=KnowledgeFileSpace(id=space_id, name=source),
         )
 
@@ -1622,7 +1861,7 @@ class KnowledgeService:
         if detail is None:
             return None
         preview_resp = await self._bisheng.get_json(
-            f"/api/v1/knowledge/space/{space_id}/files/{file_id}/preview",
+            f"/api/v1/knowledge/shougang-portal/files/{space_id}/{file_id}/preview",
             headers=PORTAL_BFF_TELEMETRY_HEADERS,
         )
         data = preview_resp.get("data") or {}
@@ -1837,10 +2076,8 @@ class KnowledgeService:
         total = 0
         while True:
             response = await self._bisheng.get_json(
-                "/api/v1/knowledge/chunk",
+                f"/api/v1/knowledge/shougang-portal/files/{space_id}/{file_id}/chunks",
                 params={
-                    "knowledge_id": space_id,
-                    "file_ids": [file_id],
                     "page": page,
                     "limit": self._page_size_limit,
                 },
@@ -2107,8 +2344,8 @@ class KnowledgeService:
             name=file_name or str(node_id),
             path=self._str_value(item, "source_path", "folder_path", "file_level_path", "path"),
             file_ext=self._get_file_ext(file_name) if is_file else "",
-            selectable=True,
-            disabled_reason="",
+            selectable=bool(item.get("selectable", True)),
+            disabled_reason=str(item.get("disabled_reason") or ""),
             has_children=has_children,
             resolved_file_count=1 if is_file else resolved_file_count,
         )

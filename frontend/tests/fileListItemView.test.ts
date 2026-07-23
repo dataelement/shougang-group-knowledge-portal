@@ -24,6 +24,7 @@ const baseFile: FileItem = {
   ext: 'pdf',
   sizeLabel: '949.33KB',
   fileEncoding: 'GF-ZD-SC-202604-01201',
+  canDownload: true,
 };
 
 test('builds rich list card fields from existing file data', () => {
@@ -113,6 +114,43 @@ test('orders list card actions as favorite download share qa', () => {
 
 test('adds qa action only when enabled by the caller', () => {
   const view = buildFileListItemView(baseFile, { canAsk: true });
+
+  assert.deepEqual(view.actions, ['qa']);
+});
+
+test('department file without content access hides summary and keeps only existing download', () => {
+  const view = buildFileListItemView(
+    {
+      ...baseFile,
+      isDepartmentFile: true,
+      contentAccess: 'approval_required',
+      canDownload: true,
+    },
+    {
+      canFavorite: true,
+      canDownload: true,
+      canShare: true,
+      canAsk: true,
+    },
+  );
+
+  assert.equal(view.locked, true);
+  assert.equal(view.lockHint, '查看详情需申请权限');
+  assert.equal(view.summaryText, '');
+  assert.deepEqual(view.actions, ['download']);
+});
+
+test('approval grant does not fabricate download action', () => {
+  const view = buildFileListItemView(
+    {
+      ...baseFile,
+      isDepartmentFile: true,
+      contentAccess: 'allowed',
+      accessSource: 'approval_grant',
+      canDownload: false,
+    },
+    { canDownload: true, canAsk: true },
+  );
 
   assert.deepEqual(view.actions, ['qa']);
 });

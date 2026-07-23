@@ -109,3 +109,11 @@ test('tree picker auto-loads more children on scroll via IntersectionObserver', 
   assert.match(pickerSource, /nextCursor/);
   assert.match(pickerSource, /hasMore/);
 });
+
+test('department files remain visible but disabled until approved', () => {
+  assert.match(pickerSource, /file\.isDepartmentFile/);
+  assert.match(pickerSource, /file\.contentAccess === 'allowed'/);
+  assert.match(pickerSource, /申请后可用于问答/);
+  assert.match(pickerSource, /disabled=\{!selectable\}/);
+  assert.match(pickerSource, /if \(child\.selectable\)/);
+});

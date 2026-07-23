@@ -10,10 +10,10 @@ const WATERMARK_FONT_SIZE = 16;
 const WATERMARK_LINE_HEIGHT = 20;
 const WATERMARK_ROTATION = -35;
 const WATERMARK_OPACITY = 0.11;
-const WATERMARK_MIN_CELL_WIDTH = 320;
-const WATERMARK_MIN_CELL_HEIGHT = 240;
-const WATERMARK_HORIZONTAL_CLEARANCE = 64;
-const WATERMARK_VERTICAL_CLEARANCE = 48;
+const WATERMARK_MIN_CELL_WIDTH = 240;
+const WATERMARK_MIN_CELL_HEIGHT = 180;
+const WATERMARK_HORIZONTAL_CLEARANCE = 48;
+const WATERMARK_VERTICAL_CLEARANCE = 36;
 
 export const PORTAL_PREVIEW_WATERMARK_FONT_FAMILY = [
   'WenQuanYi Zen Hei',
@@ -23,7 +23,7 @@ export const PORTAL_PREVIEW_WATERMARK_FONT_FAMILY = [
   'sans-serif',
 ].map((font) => (font === 'sans-serif' ? font : `"${font}"`)).join(', ');
 
-export interface PortalPreviewWatermarkPatternLayout {
+export interface PortalPreviewWatermarkLayout {
   fontSize: number;
   lineHeight: number;
   rotation: number;
@@ -34,10 +34,15 @@ export interface PortalPreviewWatermarkPatternLayout {
   rotatedHeight: number;
   cellWidth: number;
   cellHeight: number;
-  patternHeight: number;
-  secondRowOffsetX: number;
   anchorX: number;
   anchorY: number;
+}
+
+export interface PortalPreviewWatermarkPosition {
+  x: number;
+  y: number;
+  rowIndex: number;
+  columnIndex: number;
 }
 
 function estimatePortalPreviewWatermarkLineWidth(line: string): number {
@@ -60,9 +65,9 @@ export function measurePortalPreviewWatermarkLineWidths(lines: readonly string[]
   }
 }
 
-export function calculatePortalPreviewWatermarkPatternLayout(
+export function calculatePortalPreviewWatermarkLayout(
   lineWidths: readonly number[],
-): PortalPreviewWatermarkPatternLayout {
+): PortalPreviewWatermarkLayout {
   const textWidth = Math.max(0, ...lineWidths.filter(Number.isFinite));
   const blockHeight = WATERMARK_LINE_HEIGHT * 2;
   const angle = Math.abs(WATERMARK_ROTATION) * Math.PI / 180;
@@ -87,11 +92,46 @@ export function calculatePortalPreviewWatermarkPatternLayout(
     rotatedHeight,
     cellWidth,
     cellHeight,
-    patternHeight: cellHeight * 2,
-    secondRowOffsetX: cellWidth / 2,
     anchorX: WATERMARK_HORIZONTAL_CLEARANCE / 2,
     anchorY: WATERMARK_VERTICAL_CLEARANCE / 2 + textWidth * Math.sin(angle),
   };
+}
+
+export function calculatePortalPreviewWatermarkPositions(
+  surfaceWidth: number,
+  surfaceHeight: number,
+  layout: PortalPreviewWatermarkLayout,
+): PortalPreviewWatermarkPosition[] {
+  if (
+    !Number.isFinite(surfaceWidth)
+    || !Number.isFinite(surfaceHeight)
+    || surfaceWidth <= 0
+    || surfaceHeight <= 0
+  ) {
+    return [];
+  }
+
+  const positions: PortalPreviewWatermarkPosition[] = [];
+  let rowIndex = 0;
+  for (let rowTop = 0; rowTop < surfaceHeight; rowTop += layout.cellHeight) {
+    const rowOffsetX = rowIndex % 2 === 0 ? 0 : layout.cellWidth / 2;
+    let columnIndex = 0;
+    for (
+      let cellLeft = rowOffsetX;
+      cellLeft + layout.anchorX < surfaceWidth;
+      cellLeft += layout.cellWidth
+    ) {
+      positions.push({
+        x: cellLeft + layout.anchorX,
+        y: rowTop + layout.anchorY,
+        rowIndex,
+        columnIndex,
+      });
+      columnIndex += 1;
+    }
+    rowIndex += 1;
+  }
+  return positions;
 }
 
 export function formatPreviewWatermarkTime(value: Date): string {
@@ -102,7 +142,7 @@ export function formatPreviewWatermarkTime(value: Date): string {
     day: '2-digit',
   }).formatToParts(value);
   const values = new Map(parts.map((part) => [part.type, part.value]));
-  return `${values.get('year')}-${values.get('month')}-${values.get('day')}`;
+  return `${values.get('year')}/${values.get('month')}/${values.get('day')}`;
 }
 
 export function buildPortalPreviewWatermarkLines(

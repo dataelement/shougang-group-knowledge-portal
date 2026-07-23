@@ -27,6 +27,9 @@ class KnowledgeFileItem(BaseModel):
     # per-space effective download permission so the portal can hide the download
     # entry for view-only users.
     can_download: bool = False
+    content_access: Literal["allowed", "approval_required", "unavailable"] = "allowed"
+    access_source: str | None = None
+    is_department_file: bool = False
 
 
 class KnowledgeFileSpace(BaseModel):
@@ -88,6 +91,49 @@ class KnowledgeSpaceItem(BaseModel):
 class KnowledgeSpaceListData(BaseModel):
     data: list[KnowledgeSpaceItem] = Field(default_factory=list)
     total: int = 0
+
+
+DepartmentFileViewStatus = Literal[
+    "allowed",
+    "approval_required",
+    "pending",
+    "rejected",
+    "withdrawn",
+    "scenario_disabled",
+    "approver_unavailable",
+    "invalid_binding",
+]
+
+
+class DepartmentFileViewAccessData(BaseModel):
+    space_id: int
+    file_id: int
+    status: DepartmentFileViewStatus
+    content_access: Literal["allowed", "approval_required", "unavailable"]
+    access_source: str | None = None
+    can_download: bool = False
+    instance_id: int | None = None
+    latest_instance_status: str | None = None
+    safe_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DepartmentFileViewRequestBody(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+
+class DepartmentFileViewApplyData(BaseModel):
+    status: str
+    space_id: int
+    file_id: int
+    instance_id: int | None = None
+    latest_instance_status: str | None = None
+    task_ids: list[int] = Field(default_factory=list)
+    can_download: bool = False
 
 
 class QaKnowledgeTreeNode(BaseModel):
