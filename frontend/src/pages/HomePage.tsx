@@ -1325,18 +1325,22 @@ export default function HomePage() {
                             <img src={resolveSectionItemIcon(sec.title)} alt="" className={s.itemIcon} />
                             <div className={s.itemBody}>
                               <div className={s.itemTitle}>{f.title}</div>
-                              {enableSummaryTooltip && f.summary ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className={s.itemSummary}>{f.summary}</div>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
-                                    {f.summary}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                <div className={s.itemSummary}>{f.summary ?? ''}</div>
-                              )}
+                              {(() => {
+                                const displaySummary = cleanSummaryText(f.summary);
+                                if (enableSummaryTooltip && displaySummary) {
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className={s.itemSummary}>{displaySummary}</div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
+                                        {displaySummary}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
+                                }
+                                return <div className={s.itemSummary}>{displaySummary}</div>;
+                              })()}
                             </div>
                             {f.date ? (
                               <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
