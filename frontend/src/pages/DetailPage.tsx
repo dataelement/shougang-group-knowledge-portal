@@ -2,10 +2,25 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useParams, useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Download, Loader2, Sparkles, Star } from 'lucide-react';
 import PageShell from '../components/PageShell';
+import DepartmentFileAccessGate from '../components/DepartmentFileAccessGate';
 import PreviewWatermark from '../components/PreviewWatermark';
 import SectionHeader from '../components/SectionHeader';
 import TagPill from '../components/TagPill';
-import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewContext, type FilePreviewManifest, type PortalDownloadEntryPoint } from '../api/content';
+import {
+  applyDepartmentFileView,
+  fetchDepartmentFileViewAccess,
+  fetchFileChunks,
+  fetchFileDetail,
+  fetchFilePreview,
+  fetchRelatedFiles,
+  type DepartmentFileViewAccess,
+  type FileChunkItem,
+  type FileDetail,
+  type FileItem,
+  type FilePreviewContext,
+  type FilePreviewManifest,
+  type PortalDownloadEntryPoint,
+} from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { buildKnowledgeFileDeepLinkPath } from '../utils/bishengEmbed';
@@ -15,6 +30,7 @@ import { buildDownloadFileName, downloadWatermarkedFile } from '../utils/fileDow
 import { resolveFilePreview } from '../utils/filePreview';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
+import { PORTAL_APPROVAL_EVENT } from '../utils/portalApprovalBridge';
 import s from './DetailPage.module.css';
 
 const DocumentPreview = lazy(() => import('../components/DocumentPreview'));
@@ -59,6 +75,10 @@ export default function DetailPage() {
   const [clientFallbackActive, setClientFallbackActive] = useState(false);
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+  const [viewAccess, setViewAccess] = useState<DepartmentFileViewAccess | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState('');
+  const [accessRevision, setAccessRevision] = useState(0);
 
   const fileId = Number(fileIdStr);
   const spaceId = Number(spaceIdStr);
@@ -94,10 +114,23 @@ export default function DetailPage() {
     setLoading(true);
     setError('');
     setClientFallbackActive(false);
+    setDetail(null);
     setPreview(null);
     setChunks([]);
+    setRelated([]);
+    setViewAccess(null);
+    setApplyError('');
     void (async () => {
       try {
+        if (canPreview) {
+          const accessResult = await fetchDepartmentFileViewAccess(
+            spaceId,
+            fileId,
+          );
+          if (!active) return;
+          setViewAccess(accessResult);
+          if (accessResult.status !== 'allowed') return;
+        }
         const [detailResult, previewResult, relatedResult] = await Promise.all([
           fetchFileDetail(spaceId, fileId, shareToken || undefined),
           canPreview ? fetchFilePreview(spaceId, fileId, shareToken || undefined, {
@@ -127,7 +160,7 @@ export default function DetailPage() {
     return () => {
       active = false;
     };
-  }, [canPreview, fileId, previewEntryPoint, previewUserKey, recommendationScene, relatedFilesCount, shareToken, spaceId]);
+  }, [accessRevision, canPreview, fileId, previewEntryPoint, previewUserKey, recommendationScene, relatedFilesCount, shareToken, spaceId]);
 
   const wrap = (children: ReactNode) =>
     embed ? <div className={s.embedRoot}>{children}</div> : <PageShell>{children}</PageShell>;
@@ -138,6 +171,65 @@ export default function DetailPage() {
         <p style={{ padding: '48px 0', textAlign: 'center', color: 'var(--neutral-400)' }}>
           正在加载文档详情...
         </p>
+      </div>,
+    );
+  }
+
+  if (viewAccess && viewAccess.status !== 'allowed') {
+    const gateTitle = String(
+      viewAccess.safeMetadata.file_name || `文件 ${fileId}`,
+    );
+    return wrap(
+      <div className={s.container}>
+        <DepartmentFileAccessGate
+          access={viewAccess}
+          applying={applying}
+          error={applyError}
+          onApply={async (reason) => {
+            setApplying(true);
+            setApplyError('');
+            try {
+              await applyDepartmentFileView(spaceId, fileId, reason);
+              setAccessRevision((current) => current + 1);
+            } catch (err) {
+              setApplyError(
+                err instanceof Error ? err.message : '查看申请提交失败',
+              );
+            } finally {
+              setApplying(false);
+            }
+          }}
+          onOpenRequests={() => {
+            window.dispatchEvent(
+              new CustomEvent(PORTAL_APPROVAL_EVENT, {
+                detail: {
+                  action: 'requests',
+                  instanceId: viewAccess.instanceId,
+                },
+              }),
+            );
+          }}
+          onDownload={viewAccess.canDownload ? async () => {
+            setDownloadError('');
+            try {
+              await downloadWatermarkedFile({
+                spaceId,
+                fileId,
+                entryPoint: resolveDownloadEntryPoint(
+                  requestedEntryPoint,
+                  shareToken,
+                ),
+                shareToken: shareToken || undefined,
+                title: gateTitle,
+                ext: String(viewAccess.safeMetadata.file_ext || ''),
+              });
+            } catch (err) {
+              setApplyError(
+                err instanceof Error ? err.message : '文档下载失败',
+              );
+            }
+          } : undefined}
+        />
       </div>,
     );
   }

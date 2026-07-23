@@ -214,7 +214,12 @@ export default function QAKnowledgeTreePicker({
             children.map((child) => {
               const count = child.spaceId === spaceId ? countByFolderId.get(child.id) : undefined;
               return child.type === 'folder' && count !== undefined
-                ? { ...child, resolvedFileCount: count }
+                ? {
+                  ...child,
+                  resolvedFileCount: count,
+                  selectable: count > 0,
+                  disabledReason: count > 0 ? '' : '申请后可用于问答',
+                }
                 : child;
             }),
           ]),
@@ -342,7 +347,9 @@ export default function QAKnowledgeTreePicker({
       const children = childrenByKey[nodeChildrenKey(parent.spaceId, parent.id)] ?? [];
       for (const child of children) {
         if (child.type === 'file') {
-          refs.push({ knowledgeSpaceId: child.spaceId, fileId: child.id });
+          if (child.selectable) {
+            refs.push({ knowledgeSpaceId: child.spaceId, fileId: child.id });
+          }
         } else {
           visit(child);
         }
@@ -569,12 +576,22 @@ export default function QAKnowledgeTreePicker({
                 <div className={s.searchFileList}>
                   {group.files.map((file) => {
                     const selected = isFileSelected(file.spaceId, file.id);
+                    const selectable = !file.isDepartmentFile
+                      || file.contentAccess === 'allowed';
                     return (
                       <button
                         key={`${file.spaceId}-${file.id}`}
                         type="button"
                         className={`${s.searchFileRow} ${selected ? s.searchFileRowActive : ''}`}
-                        onClick={() => toggleFileRef({ spaceId: file.spaceId, id: file.id })}
+                        disabled={!selectable}
+                        title={selectable ? '' : '申请后可用于问答'}
+                        onClick={() => {
+                          if (!selectable) {
+                            notify('申请后可用于问答');
+                            return;
+                          }
+                          toggleFileRef({ spaceId: file.spaceId, id: file.id });
+                        }}
                       >
                         <span className={`${s.checkBox} ${selected ? s.checkBoxActive : ''}`}>
                           {selected ? <Check size={13} /> : null}
@@ -582,6 +599,7 @@ export default function QAKnowledgeTreePicker({
                         <FileText size={15} className={s.nodeIcon} />
                         <span className={s.searchMeta}>
                           <strong>{file.title}</strong>
+                          {!selectable ? <span>申请后可用于问答</span> : null}
                           {file.fileEncoding ? <span>文件编码：{file.fileEncoding}</span> : null}
                           <span>所在目录：{file.folderPath || file.sourcePath || '根目录'}</span>
                         </span>

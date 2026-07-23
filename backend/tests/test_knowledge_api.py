@@ -178,6 +178,25 @@ class FakeBishengClient:
                     "total": 1,
                 },
             }
+        if path == "/api/v1/knowledge/shougang-portal/spaces":
+            assert params.get("discovery_scope") in {
+                "public",
+                "public_and_department",
+            }
+            spaces = [
+                {"id": 12, "name": "轧线技术案例库", "space_level": "public"},
+                {"id": 18, "name": "冷轧技术手册", "space_level": "public"},
+                {"id": 25, "name": "设备维修规范", "space_level": "public"},
+            ]
+            if params["discovery_scope"] == "public_and_department":
+                spaces.append(
+                    {
+                        "id": 7103,
+                        "name": "设备管理部内部知识空间",
+                        "space_level": "department",
+                    }
+                )
+            return {"status_code": 200, "data": {"spaces": spaces}}
         if path == "/api/v1/knowledge/space/12/search":
             keyword = params.get("keyword")
             if keyword == "振动纹":
@@ -269,7 +288,7 @@ class FakeBishengClient:
                     "update_time": "2026-04-13T10:30:00",
                 }
             }
-        if path == "/api/v1/knowledge/space/12/files/1580/preview":
+        if path == "/api/v1/knowledge/shougang-portal/files/12/1580/preview":
             assert headers == {"X-Portal-Telemetry-Source": "shougang_portal_bff"}
             return {
                 "data": {
@@ -277,8 +296,8 @@ class FakeBishengClient:
                     "preview_url": "https://example.com/preview/1580.pdf",
                 }
             }
-        if path == "/api/v1/knowledge/chunk":
-            assert params == {"knowledge_id": 12, "file_ids": [1580], "page": 1, "limit": 100}
+        if path == "/api/v1/knowledge/shougang-portal/files/12/1580/chunks":
+            assert params == {"page": 1, "limit": 100}
             return {
                 "data": {
                     "data": [
@@ -491,7 +510,9 @@ class FakeBishengClient:
             return {"status_code": 200, "data": {"accepted": True}}
         self.post_calls.append((path, json))
         if path == "/api/v1/knowledge/shougang-portal/files/browse":
-            if json == {
+            discovery_scope = json.get("discovery_scope")
+            payload = {key: value for key, value in json.items() if key != "discovery_scope"}
+            if payload == {
                 "tag": None,
                 "space_ids": [12],
                 "space_level": "public",
@@ -500,6 +521,7 @@ class FakeBishengClient:
                 "cursor": None,
                 "limit": 10,
             }:
+                assert discovery_scope in {"public", "public_and_department", "legacy"}
                 return {
                     "data": {
                         "data": [
@@ -535,13 +557,18 @@ class FakeBishengClient:
                     }
                 }
         if path == "/api/v1/knowledge/shougang-portal/files/search":
-            assert json == {
+            discovery_scope = json.get("discovery_scope")
+            payload = {key: value for key, value in json.items() if key != "discovery_scope"}
+            assert discovery_scope in {"public", "public_and_department", "legacy"}
+            assert payload == {
                 "q": "振动纹",
                 "tag": None,
-                "space_ids": [12, 18, 25],
+                "space_ids": [],
                 "space_level": "public",
                 "file_ext": "pdf",
                 "sort": "relevance",
+                "cursor": None,
+                "limit": 20,
                 "rerank_model_id": "",
             }
             return {
@@ -630,7 +657,7 @@ class FakeBishengClient:
         raise AssertionError(f"Unexpected post path: {path}")
 
     async def stream_post(self, path: str, json=None, headers=None):
-        if path == "/api/v1/knowledge/space/12/chat/file/1580":
+        if path == "/api/v1/knowledge/shougang-portal/files/12/1580/chat":
             assert headers == {"X-Portal-Telemetry-Source": "shougang_portal_bff"}
         self.chat_payload = {"path": path, "json": json}
         for chunk in self.stream_chunks:
@@ -839,7 +866,7 @@ def test_anonymous_user_can_read_detail_but_not_preview_content(tmp_path: Path):
     assert fake_bisheng.preview_upstream_calls == []
 
 
-def test_list_visible_spaces_uses_grouped_bisheng_endpoint(tmp_path: Path):
+def test_logged_in_space_route_uses_portal_public_and_department_scope(tmp_path: Path):
     class GroupedOnlyBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):
             if path in {
@@ -849,52 +876,22 @@ def test_list_visible_spaces_uses_grouped_bisheng_endpoint(tmp_path: Path):
                 "/api/v1/knowledge/space/managed",
             }:
                 raise AssertionError("visible spaces should use grouped endpoint")
-            if path == "/api/v1/knowledge/space/grouped":
+            if path == "/api/v1/knowledge/shougang-portal/spaces":
+                assert params == {"discovery_scope": "public_and_department"}
                 return {
                     "status_code": 200,
                     "data": {
-                        "personal_spaces": [
+                        "spaces": [
                             {
-                                "id": 7101,
-                                "name": "冷轧设备故障复盘库",
-                                "description": "沉淀冷轧产线设备异常。",
-                                "auth_type": "private",
-                                "space_level": "personal",
-                                "file_num": 38,
-                                "follower_num": 6,
-                                "is_pinned": True,
-                                "update_time": "2026-04-26T09:20:00",
-                            }
-                        ],
-                        "team_spaces": [
-                            {
-                                "id": 7102,
-                                "name": "质量异议处置工作组",
-                                "user_role": "admin",
-                                "space_level": "team",
-                                "file_num": 25,
-                                "update_time": "2026-04-24T17:00:00",
-                            }
-                        ],
-                        "department_spaces": [
+                                "id": 7105,
+                                "name": "公开制度库",
+                                "space_level": "public",
+                            },
                             {
                                 "id": 7103,
                                 "name": "设备管理部内部知识空间",
                                 "space_level": "department",
-                                "department_name": "设备管理部",
-                                "file_num": 57,
-                                "update_time": "2026-04-22T11:10:00",
-                            }
-                        ],
-                        "public_spaces": [
-                            {
-                                "id": 7105,
-                                "name": "公开制度库",
-                                "auth_type": "public",
-                                "space_level": "public",
-                                "file_num": 12,
-                                "update_time": "2026-04-20T09:20:00",
-                            }
+                            },
                         ],
                     },
                 }
@@ -915,11 +912,10 @@ def test_list_visible_spaces_uses_grouped_bisheng_endpoint(tmp_path: Path):
     assert response.status_code == 200
     body = response.json()["data"]
     assert body["total"] == 4
-    assert body["data"][0]["id"] == 7101
-    team_space = next(item for item in body["data"] if item["id"] == 7102)
-    assert team_space["file_count"] == 25
-    assert team_space["space_level"] == "team"
-    assert team_space["sources"] == ["team"]
+    assert {item["id"] for item in body["data"]} == {7101, 7102, 7103, 7105}
+    assert next(
+        item for item in body["data"] if item["id"] == 7103
+    )["space_level"] == "department"
     department_space = next(item for item in body["data"] if item["id"] == 7103)
     assert department_space["space_level"] == "department"
     public_space = next(item for item in body["data"] if item["id"] == 7105)
@@ -1567,7 +1563,7 @@ def test_get_doc_file_preview_uses_bisheng_preview_resource(tmp_path: Path):
                         "file_ext": "doc",
                     }},
                 }
-            if path == "/api/v1/knowledge/space/12/files/1591/preview":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1591/preview":
                 return {
                     "data": {
                         "original_url": "https://example.com/original/1591.doc",
@@ -1620,7 +1616,7 @@ def test_get_doc_file_preview_returns_unsupported_when_no_preview_source(tmp_pat
                         "file_ext": "doc",
                     }},
                 }
-            if path == "/api/v1/knowledge/space/12/files/1591/preview":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1591/preview":
                 return {"data": {"original_url": "", "preview_url": ""}}
             return await super().get_json(path, params=params, headers=headers)
 
@@ -1663,7 +1659,7 @@ def test_get_ppt_file_preview_uses_generated_pdf(tmp_path: Path):
                         "file_ext": "ppt",
                     }},
                 }
-            if path == "/api/v1/knowledge/space/12/files/1592/preview":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1592/preview":
                 return {
                     "data": {
                         "original_url": "https://example.com/original/1592.ppt",
@@ -1795,7 +1791,7 @@ def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_asse
             self.asset_resolution_requests = []
 
         async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/space/12/files/1580/preview":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1580/preview":
                 return {
                     "data": {
                         "original_url": "/bisheng/original/1580.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=demo",
@@ -1829,7 +1825,7 @@ def test_get_file_preview_returns_frontend_proxy_url_for_relative_presigned_asse
 def test_get_file_preview_uses_preview_task_when_direct_urls_missing(tmp_path: Path):
     class PreviewTaskBishengClient(FakeBishengClient):
         async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/space/12/files/1580/preview":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1580/preview":
                 return {"data": {"original_url": "", "preview_url": ""}}
             if path == "/api/v1/knowledge/preview/status":
                 assert params == {"task_id": "task-1580"}
@@ -1941,7 +1937,7 @@ def test_get_file_preview_content_returns_chinese_message_when_source_missing(tm
         async def get_json(self, path: str, params=None, headers=None):
             if path == "/api/v1/knowledge/shougang-portal/files/12/1580":
                 return {"status_code": 200, "data": {"data": None}}
-            if path == "/api/v1/knowledge/space/12/files/1580/preview":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1580/preview":
                 return {"data": {"original_url": "", "preview_url": ""}}
             return await super().get_json(path, params=params, headers=headers)
 
@@ -1973,7 +1969,7 @@ def test_get_file_preview_content_uses_preview_asset_fetcher_for_original_urls(t
             )
 
         async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/space/12/files/1580/preview":
+            if path == "/api/v1/knowledge/shougang-portal/files/12/1580/preview":
                 return {
                     "data": {
                         "original_url": "https://example.com/original/1580.md?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=demo",
@@ -3138,7 +3134,7 @@ def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path)
     assert response.status_code == 200
     assert b'"content":"ok"' in response.content
     assert fake_bisheng.chat_payload == {
-        "path": "/api/v1/knowledge/space/12/chat/file/1580",
+        "path": "/api/v1/knowledge/shougang-portal/files/12/1580/chat",
         "json": {
             "query": "这个文档的核心内容是什么？",
             "modelId": 1,
@@ -3290,6 +3286,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_keyword_search(tmp
                     "cursor": None,
                     "limit": 10,
                     "rerank_model_id": "",
+                    "discovery_scope": "public",
                 }
                 return {
                     "data": {
@@ -3344,6 +3341,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_keyword_search(tmp
                 "cursor": None,
                 "limit": 10,
                 "rerank_model_id": "",
+                "discovery_scope": "public",
             },
         )
     ]
@@ -3366,6 +3364,7 @@ def test_search_files_passes_keyword_with_latest_selected_recommendation(tmp_pat
                     "recommendation": "latest_selected",
                     "public_only": True,
                     "rerank_model_id": "",
+                    "discovery_scope": "public",
                 }
                 return {
                     "data": {
@@ -3420,14 +3419,14 @@ def test_logged_in_latest_selected_keyword_does_not_resolve_visible_spaces(tmp_p
                     "q": "技术研究报告",
                     "tag": None,
                     "space_ids": [],
-                    "space_level": "public",
+                    "space_level": None,
                     "file_ext": None,
                     "sort": "relevance",
                     "cursor": None,
                     "limit": 20,
                     "recommendation": "latest_selected",
-                    "public_only": True,
                     "rerank_model_id": "",
+                    "discovery_scope": "public_and_department",
                 }
                 return {
                     "data": {
@@ -3455,7 +3454,7 @@ def test_logged_in_latest_selected_keyword_does_not_resolve_visible_spaces(tmp_p
 
     assert response.status_code == 200
     assert response.json()["data"]["data"][0]["space_id"] == 12
-    assert fake_bisheng.post_calls[0][1]["public_only"] is True
+    assert fake_bisheng.post_calls[0][1]["discovery_scope"] == "public_and_department"
 
 
 def test_search_files_passes_keyword_with_public_only_and_cursor(tmp_path: Path):
@@ -3469,8 +3468,8 @@ def test_search_files_passes_keyword_with_public_only_and_cursor(tmp_path: Path)
                 assert json["sort"] == "relevance"
                 assert json["cursor"] == "cursor-1"
                 assert json["limit"] == 5
-                assert isinstance(json["space_ids"], list)
-                assert len(json["space_ids"]) >= 1
+                assert json["space_ids"] == []
+                assert json["discovery_scope"] == "public"
                 return {
                     "data": {
                         "data": [
@@ -3526,6 +3525,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tm
                     "file_ext": None,
                     "sort": "updated_at_desc",
                     "limit": 2,
+                    "discovery_scope": "public",
                 }
                 if json == {**base_request, "cursor": None}:
                     return {
@@ -3618,6 +3618,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tm
                 "sort": "updated_at_desc",
                 "cursor": None,
                 "limit": 2,
+                "discovery_scope": "public",
             },
         ),
         (
@@ -3630,6 +3631,7 @@ def test_search_files_uses_shougang_portal_batch_endpoint_for_plain_tag_query(tm
                 "sort": "updated_at_desc",
                 "cursor": "cursor:next",
                 "limit": 2,
+                "discovery_scope": "public",
             },
         ),
     ]
@@ -3653,6 +3655,7 @@ def test_search_files_applies_base_tag_and_filter_tag_via_shougang_portal_search
                     "sort": "updated_at_desc",
                     "cursor": None,
                     "limit": 100,
+                    "discovery_scope": "public",
                 }
                 return {
                     "data": {
@@ -3753,6 +3756,7 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
                     "recommendation": "latest_selected",
                     "rerank_model_id": "",
                     "public_only": True,
+                    "discovery_scope": "public",
                 }
                 return {
                     "data": {
@@ -3805,19 +3809,17 @@ def test_logged_in_latest_selected_does_not_resolve_visible_spaces(tmp_path: Pat
 
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
-            if path == "/api/v1/knowledge/shougang-portal/files/search":
+            if path == "/api/v1/knowledge/shougang-portal/files/browse":
                 assert json == {
-                    "q": None,
                     "tag": None,
                     "space_ids": [],
-                    "space_level": "public",
+                    "space_level": None,
                     "file_ext": None,
                     "sort": "portal_read_count_desc",
                     "cursor": None,
                     "limit": 5,
                     "recommendation": "latest_selected",
-                    "public_only": True,
-                    "rerank_model_id": "",
+                    "discovery_scope": "public_and_department",
                 }
                 return {
                     "data": {
@@ -3869,6 +3871,7 @@ def test_logged_in_public_tag_list_does_not_resolve_visible_spaces(tmp_path: Pat
                     "cursor": None,
                     "limit": 20,
                     "public_only": True,
+                    "discovery_scope": "public",
                 }
                 return {
                     "status_code": 200,
@@ -3895,10 +3898,21 @@ def test_logged_in_public_tag_list_does_not_resolve_visible_spaces(tmp_path: Pat
     assert response.json()["data"]["data"][0]["space_id"] == 12
 
 
+class EmptyPortalBrowseBishengClient(FakeBishengClient):
+    async def post_json(self, path: str, json=None, headers=None):
+        if path == "/api/v1/knowledge/shougang-portal/files/browse":
+            self.post_calls.append((path, json))
+            return {
+                "status_code": 200,
+                "data": {"data": [], "has_more": False, "next_cursor": None},
+            }
+        return await super().post_json(path, json=json, headers=headers)
+
+
 def test_search_files_does_not_fallback_to_public_spaces_when_flag_is_present(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
-    fake_bisheng = FakeBishengClient()
+    fake_bisheng = EmptyPortalBrowseBishengClient()
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
@@ -3909,13 +3923,17 @@ def test_search_files_does_not_fallback_to_public_spaces_when_flag_is_present(tm
     assert body["has_more"] is False
     assert body["next_cursor"] is None
     assert body["data"] == []
-    assert fake_bisheng.post_calls == []
+    assert fake_bisheng.post_calls[0][0] == (
+        "/api/v1/knowledge/shougang-portal/files/browse"
+    )
+    assert fake_bisheng.post_calls[0][1]["space_ids"] == [7103]
+    assert fake_bisheng.post_calls[0][1]["discovery_scope"] == "public"
 
 
 def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain_flag(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
-    fake_bisheng = FakeBishengClient()
+    fake_bisheng = EmptyPortalBrowseBishengClient()
     with TestClient(app) as client:
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
@@ -3926,7 +3944,11 @@ def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain
     assert body["has_more"] is False
     assert body["next_cursor"] is None
     assert body["data"] == []
-    assert fake_bisheng.post_calls == []
+    assert fake_bisheng.post_calls[0][0] == (
+        "/api/v1/knowledge/shougang-portal/files/browse"
+    )
+    assert fake_bisheng.post_calls[0][1]["space_ids"] == [7103]
+    assert fake_bisheng.post_calls[0][1]["discovery_scope"] == "public"
 
 
 def test_search_files_passes_document_type_subcategory_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):
@@ -3945,6 +3967,7 @@ def test_search_files_passes_document_type_subcategory_and_business_domain_code_
                     "document_type": "PRO",
                     "file_subcategory_code": "PRO-A",
                     "business_domain_code": "PM",
+                    "discovery_scope": "public",
                 }
                 return {
                     "data": {
@@ -4002,7 +4025,10 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                     "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
+                    "cursor": None,
+                    "limit": 20,
                     "rerank_model_id": "",
+                    "discovery_scope": "public",
                 }
                 return {
                     "data": {
@@ -4049,7 +4075,10 @@ def test_keyword_search_uses_shougang_portal_endpoint_for_single_enabled_space(t
                 "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
+                "cursor": None,
+                "limit": 20,
                 "rerank_model_id": "",
+                "discovery_scope": "public",
             },
         )
     ]
@@ -4072,7 +4101,10 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
                     "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
+                    "cursor": None,
+                    "limit": 20,
                     "rerank_model_id": "5",
+                    "discovery_scope": "public",
                 }
                 return {
                     "data": {
@@ -4105,7 +4137,10 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
                 "space_level": "public",
                 "file_ext": None,
                 "sort": "relevance",
+                "cursor": None,
+                "limit": 20,
                 "rerank_model_id": "5",
+                "discovery_scope": "public",
             },
         )
     ]
@@ -4262,6 +4297,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
                     "recommendation": "latest_selected",
                     "rerank_model_id": "",
                     "public_only": True,
+                    "discovery_scope": "public",
                 }:
                     return {
                         "data": {
@@ -4294,6 +4330,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
                     "cursor": None,
                     "limit": 6,
                     "public_only": True,
+                    "discovery_scope": "public",
                 }:
                     return {
                         "data": {
@@ -4360,6 +4397,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
             "recommendation": "latest_selected",
             "rerank_model_id": "",
             "public_only": True,
+            "discovery_scope": "public",
         },
     ) in fake_bisheng.post_calls
     assert (
@@ -4373,6 +4411,7 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
             "cursor": None,
             "limit": 6,
             "public_only": True,
+            "discovery_scope": "public",
         },
     ) in fake_bisheng.post_calls
     # tags are no longer aggregated for the home stream
@@ -4381,18 +4420,14 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
 
 def test_get_home_content_uses_public_latest_and_visible_spaces_for_other_sections(tmp_path: Path):
     class LoggedHomeBishengClient(FakeBishengClient):
-        async def get_json(self, path: str, params=None, headers=None):
-            if path == "/api/v1/knowledge/space/grouped":
-                raise AssertionError("public home sections must not resolve the user's visible spaces")
-            return await super().get_json(path, params=params, headers=headers)
-
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
-            if path == "/api/v1/knowledge/shougang-portal/files/search":
+            if path == "/api/v1/knowledge/shougang-portal/files/browse":
                 if json.get("recommendation") == "latest_selected":
                     assert json["space_ids"] == []
-                    assert json["space_level"] == "public"
-                    assert json["public_only"] is True
+                    assert json["space_level"] is None
+                    assert "public_only" not in json
+                    assert json["discovery_scope"] == "public_and_department"
                     assert json["tag"] is None
                     assert json["sort"] == "portal_read_count_desc"
                     return {
@@ -4415,12 +4450,11 @@ def test_get_home_content_uses_public_latest_and_visible_spaces_for_other_sectio
                             "next_cursor": None,
                         }
                     }
-                raise AssertionError(f"Unexpected portal file search request: {json}")
-            if path == "/api/v1/knowledge/shougang-portal/files/browse":
                 if json.get("tag") == "行业情报":
                     assert json["space_ids"] == []
                     assert json["space_level"] == "public"
                     assert json["public_only"] is True
+                    assert json["discovery_scope"] == "public"
                     assert json.get("recommendation") is None
                     assert json["sort"] == "updated_at_desc"
                     return {
@@ -4499,6 +4533,7 @@ def test_search_files_lists_space_filtered_files_without_keyword(tmp_path: Path)
                 "sort": "relevance",
                 "cursor": None,
                 "limit": 10,
+                "discovery_scope": "public",
             },
         )
     ]
@@ -4519,11 +4554,14 @@ def test_search_files_passes_space_level_to_shougang_portal_search(tmp_path: Pat
             {
                 "q": "振动纹",
                 "tag": None,
-                "space_ids": [12, 18, 25],
+                "space_ids": [],
                 "space_level": "public",
                 "file_ext": "pdf",
                 "sort": "relevance",
+                "cursor": None,
+                "limit": 20,
                 "rerank_model_id": "",
+                "discovery_scope": "public",
             },
         )
     ]
@@ -4547,6 +4585,7 @@ def test_search_and_tags_skip_unauthorized_spaces_instead_of_500(tmp_path: Path)
                 "sort": "relevance",
                 "cursor": None,
                 "limit": 20,
+                "discovery_scope": "public",
             }:
                 return {
                     "data": {
@@ -4812,11 +4851,12 @@ def test_keyword_search_route_uses_dedicated_top_50_contract(tmp_path: Path):
                 assert json == {
                     "q": "振动纹",
                     "tag": None,
-                    "space_ids": [12, 18, 25],
+                    "space_ids": [],
                     "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
                     "rerank_model_id": "",
+                    "discovery_scope": "public",
                 }
                 return {"status_code": 200, "data": {"data": [], "has_more": False, "next_cursor": None}}
             return await super().post_json(path, json=json, headers=headers)
@@ -4865,6 +4905,7 @@ def test_browse_route_uses_configured_page_size_and_forwards_filters(tmp_path: P
                     "document_type": "RPT",
                     "file_subcategory_code": "RPT-A",
                     "business_domain_code": "PM",
+                    "discovery_scope": "public",
                 }
                 return {"status_code": 200, "data": {"data": [], "has_more": True, "next_cursor": "cursor-2"}}
             return await super().post_json(path, json=json, headers=headers)
@@ -4981,8 +5022,9 @@ def test_guest_file_routes_force_public_space_scope(
     assert len(fake_bisheng.post_calls) == 1
     path, payload = fake_bisheng.post_calls[0]
     assert path == upstream_path
-    assert payload["space_ids"] == [12, 18, 25]
+    assert payload["space_ids"] == []
     assert payload["space_level"] == "public"
+    assert payload["discovery_scope"] == "public"
 
 
 def test_browse_route_falls_back_to_ten_for_invalid_configured_page_size(tmp_path: Path):
@@ -5015,8 +5057,22 @@ def test_logged_in_browse_route_includes_personal_visible_spaces(tmp_path: Path)
     class LoggedBrowseClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             if path == "/api/v1/knowledge/shougang-portal/files/browse":
-                assert json["space_ids"] == [12, 18, 25, 7101, 7102, 7103]
-                return {"status_code": 200, "data": {"data": [], "has_more": False, "next_cursor": None}}
+                assert set(json["space_ids"]) == {
+                    12,
+                    18,
+                    25,
+                    7101,
+                    7102,
+                    7103,
+                }
+                return {
+                    "status_code": 200,
+                    "data": {
+                        "data": [],
+                        "has_more": False,
+                        "next_cursor": None,
+                    },
+                }
             return await super().post_json(path, json=json, headers=headers)
 
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")

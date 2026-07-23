@@ -24,6 +24,10 @@ import {
   X,
 } from 'lucide-react';
 import Header from '../components/Header';
+import {
+  PreviewWatermarkOverlay,
+  PreviewWatermarkProvider,
+} from '../components/PreviewWatermark';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
 import {
   ApiRequestError,
@@ -1051,7 +1055,10 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   );
 
   const qaContent = (
-    <div className={`${s.contentArea} ${isSmartAppsMode ? s.smartAppContentArea : ''}`}>
+    <PreviewWatermarkProvider user={user}>
+      <div className={s.chatWatermarkSurface} data-chat-watermark-surface>
+        {(!isSmartAppsMode || hasConversation) ? <PreviewWatermarkOverlay /> : null}
+        <div className={`${s.contentArea} ${isSmartAppsMode ? s.smartAppContentArea : ''}`}>
       {!hasConversation ? (
         <div className={`${s.templatePanel} ${isSmartAppsMode ? s.smartAppTemplatePanel : ''}`}>
           <div className={`${s.templateTabs} ${isSmartAppsMode ? s.smartAppTemplateTabs : ''}`} role="tablist" aria-label="写作模板分类">
@@ -1208,7 +1215,9 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
           <div ref={msgEndRef} />
         </div>
       )}
-    </div>
+        </div>
+      </div>
+    </PreviewWatermarkProvider>
   );
 
   const renderModelMenu = () => (

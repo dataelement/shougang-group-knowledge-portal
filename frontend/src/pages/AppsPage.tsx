@@ -19,6 +19,10 @@ import {
   Star,
 } from 'lucide-react';
 import PageShell from '../components/PageShell';
+import {
+  PreviewWatermarkOverlay,
+  PreviewWatermarkProvider,
+} from '../components/PreviewWatermark';
 import appsSearchIcon from '../assets/apps-search.png';
 import appsNewIcon from '../assets/apps-new.svg';
 import appsHistoryIcon from '../assets/apps-history.svg';
@@ -44,6 +48,7 @@ import {
   type AgentWorkflowConversation,
 } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
+import { useAuth } from '../hooks/useAuth';
 import { applyEmbedOriginOverride, resolvePortalWorkflowChatEmbedUrl } from '../utils/bishengEmbed';
 import { SmartQaWorkspace, type Session } from './QAPage';
 import s from './AppsPage.module.css';
@@ -329,6 +334,7 @@ function SmartAppsSidebar({
 export default function AppsPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { config, loading: configLoading, error: configError } = usePortalConfig();
   const [activeTab, setActiveTab] = useState<AppsMainTab>(() => resolveAppsTab(location.search));
   const [activeAgentFilter, setActiveAgentFilter] = useState<AgentFilter>('all');
@@ -613,37 +619,40 @@ export default function AppsPage() {
             </button>
             <span className={s.urlApplicationTitle}>{selectedUrlApplication.name}</span>
           </div>
-          <div className={s.urlApplicationFrameWrap}>
-            {urlIframeLoading ? (
-              <div className={s.iframeStatus}><Loader2 className={s.spinner} size={18} /><span>正在加载 URL 应用...</span></div>
-            ) : null}
-            {urlIframeLoadFailed ? (
-              <div className={s.urlApplicationError}>
-                <AlertCircle size={24} />
-                <strong>该应用无法嵌入</strong>
-                <span>目标页面加载失败、超时，或禁止被 iframe 嵌入。</span>
-                <button type="button" className={s.urlApplicationBack} onClick={() => setSelectedUrlApplicationId('')}>返回智能应用</button>
-              </div>
-            ) : null}
-            <iframe
-              className={s.urlApplicationFrame}
-              src={selectedUrlApplication.url}
-              title={selectedUrlApplication.name}
-              sandbox="allow-downloads allow-forms allow-same-origin allow-scripts"
-              allow="clipboard-read; clipboard-write"
-              onLoad={() => {
-                if (urlIframeLoadTimerRef.current !== null) {
-                  window.clearTimeout(urlIframeLoadTimerRef.current);
-                  urlIframeLoadTimerRef.current = null;
-                }
-                setUrlIframeLoading(false);
-              }}
-              onError={() => {
-                setUrlIframeLoading(false);
-                setUrlIframeLoadFailed(true);
-              }}
-            />
-          </div>
+          <PreviewWatermarkProvider user={user}>
+            <div className={s.urlApplicationFrameWrap} data-chat-watermark-surface>
+              {urlIframeLoading ? (
+                <div className={s.iframeStatus}><Loader2 className={s.spinner} size={18} /><span>正在加载 URL 应用...</span></div>
+              ) : null}
+              {urlIframeLoadFailed ? (
+                <div className={s.urlApplicationError}>
+                  <AlertCircle size={24} />
+                  <strong>该应用无法嵌入</strong>
+                  <span>目标页面加载失败、超时，或禁止被 iframe 嵌入。</span>
+                  <button type="button" className={s.urlApplicationBack} onClick={() => setSelectedUrlApplicationId('')}>返回智能应用</button>
+                </div>
+              ) : null}
+              <iframe
+                className={s.urlApplicationFrame}
+                src={selectedUrlApplication.url}
+                title={selectedUrlApplication.name}
+                sandbox="allow-downloads allow-forms allow-same-origin allow-scripts"
+                allow="clipboard-read; clipboard-write"
+                onLoad={() => {
+                  if (urlIframeLoadTimerRef.current !== null) {
+                    window.clearTimeout(urlIframeLoadTimerRef.current);
+                    urlIframeLoadTimerRef.current = null;
+                  }
+                  setUrlIframeLoading(false);
+                }}
+                onError={() => {
+                  setUrlIframeLoading(false);
+                  setUrlIframeLoadFailed(true);
+                }}
+              />
+              <PreviewWatermarkOverlay />
+            </div>
+          </PreviewWatermarkProvider>
         </div>
       </PageShell>
     );

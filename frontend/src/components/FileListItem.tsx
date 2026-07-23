@@ -8,6 +8,7 @@ import {
   FileText,
   FolderTree,
   Loader2,
+  LockKeyhole,
   Network,
   PencilLine,
   Share2,
@@ -96,6 +97,12 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
               </div>
             )}
             <div className={s.meta}>
+              {view.locked ? (
+                <span className={s.metaItem} title={view.lockHint}>
+                  <LockKeyhole size={15} />
+                  {view.lockHint}
+                </span>
+              ) : null}
               <span className={s.metaItem}>
                 <FileText size={15} />
                 {view.documentTypeLabel}

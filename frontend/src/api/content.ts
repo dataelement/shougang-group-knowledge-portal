@@ -27,10 +27,46 @@ export interface FileItem {
   sourcePath?: string;
   /** 当前用户是否有该文件的下载权限，无权限时列表不展示下载按钮。 */
   canDownload?: boolean;
+  /** 部门文件内容门禁状态；列表可见不代表正文可读。 */
+  contentAccess?: 'allowed' | 'approval_required' | 'unavailable';
+  accessSource?: string | null;
+  isDepartmentFile?: boolean;
 }
 
 export interface FileDetail extends FileItem {
   space: { id: number; name: string };
+}
+
+export type DepartmentFileViewStatus =
+  | 'allowed'
+  | 'approval_required'
+  | 'pending'
+  | 'rejected'
+  | 'withdrawn'
+  | 'scenario_disabled'
+  | 'approver_unavailable'
+  | 'invalid_binding';
+
+export interface DepartmentFileViewAccess {
+  spaceId: number;
+  fileId: number;
+  status: DepartmentFileViewStatus;
+  contentAccess: 'allowed' | 'approval_required' | 'unavailable';
+  accessSource: string | null;
+  canDownload: boolean;
+  instanceId: number | null;
+  latestInstanceStatus: string | null;
+  safeMetadata: Record<string, unknown>;
+}
+
+export interface DepartmentFileViewApplyResult {
+  status: string;
+  spaceId: number;
+  fileId: number;
+  instanceId: number | null;
+  latestInstanceStatus: string | null;
+  taskIds: number[];
+  canDownload: boolean;
 }
 
 export interface KnowledgeSpace {
@@ -282,6 +318,31 @@ interface KnowledgeFileItemDto {
   file_subcategory_code?: string;
   folder_path?: string;
   source_path?: string;
+  can_download?: boolean;
+  content_access?: 'allowed' | 'approval_required' | 'unavailable';
+  access_source?: string | null;
+  is_department_file?: boolean;
+}
+
+interface DepartmentFileViewAccessDto {
+  space_id: number;
+  file_id: number;
+  status: DepartmentFileViewStatus;
+  content_access: 'allowed' | 'approval_required' | 'unavailable';
+  access_source?: string | null;
+  can_download?: boolean;
+  instance_id?: number | null;
+  latest_instance_status?: string | null;
+  safe_metadata?: Record<string, unknown>;
+}
+
+interface DepartmentFileViewApplyDto {
+  status: string;
+  space_id: number;
+  file_id: number;
+  instance_id?: number | null;
+  latest_instance_status?: string | null;
+  task_ids?: number[];
   can_download?: boolean;
 }
 
@@ -609,6 +670,9 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     folderPath: dto.folder_path ?? '',
     sourcePath: dto.source_path ?? '',
     canDownload: dto.can_download ?? false,
+    contentAccess: dto.content_access ?? 'allowed',
+    accessSource: dto.access_source ?? null,
+    isDepartmentFile: dto.is_department_file ?? false,
   };
 }
 
@@ -1206,6 +1270,55 @@ export async function fetchFileDetail(spaceId: number, fileId: number, shareToke
     appendShareToken(`/api/v1/knowledge/space/${spaceId}/files/${fileId}`, shareToken),
   );
   return data ? mapKnowledgeFileDetail(data) : null;
+}
+
+export async function fetchDepartmentFileViewAccess(
+  spaceId: number,
+  fileId: number,
+): Promise<DepartmentFileViewAccess> {
+  const data = await request<DepartmentFileViewAccessDto>(
+    `/api/v1/knowledge/space/${spaceId}/files/${fileId}/view-access`,
+  );
+  return {
+    spaceId: data.space_id,
+    fileId: data.file_id,
+    status: data.status,
+    contentAccess: data.content_access,
+    accessSource: data.access_source ?? null,
+    canDownload: Boolean(data.can_download),
+    instanceId: data.instance_id ?? null,
+    latestInstanceStatus: data.latest_instance_status ?? null,
+    safeMetadata: data.safe_metadata ?? {},
+  };
+}
+
+export async function applyDepartmentFileView(
+  spaceId: number,
+  fileId: number,
+  reason: string,
+): Promise<DepartmentFileViewApplyResult> {
+  const normalizedReason = reason.trim();
+  if (!normalizedReason) throw new Error('请填写申请原因');
+  if (normalizedReason.length > 2000) {
+    throw new Error('申请原因不能超过2000个字符');
+  }
+  const data = await request<DepartmentFileViewApplyDto>(
+    `/api/v1/knowledge/space/${spaceId}/files/${fileId}/view-requests`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: normalizedReason }),
+    },
+  );
+  return {
+    status: data.status,
+    spaceId: data.space_id,
+    fileId: data.file_id,
+    instanceId: data.instance_id ?? null,
+    latestInstanceStatus: data.latest_instance_status ?? null,
+    taskIds: data.task_ids ?? [],
+    canDownload: Boolean(data.can_download),
+  };
 }
 
 function normalizePdfDownloadFileName(value: string): string {

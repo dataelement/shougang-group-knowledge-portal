@@ -1,0 +1,136 @@
+.gate {
+  width: min(680px, calc(100% - 32px));
+  margin: 64px auto;
+  padding: 36px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 16px;
+  background: var(--neutral-0, #fff);
+  text-align: center;
+}
+
+.icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--primary-600, #b42318);
+  background: var(--primary-50, #fff1f0);
+}
+
+.gate h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.description {
+  margin: 10px 0 24px;
+  color: var(--neutral-500);
+}
+
+.metadata {
+  margin: 0;
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: var(--neutral-50, #f7f7f8);
+  text-align: left;
+}
+
+.metadata div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.metadata dt {
+  color: var(--neutral-500);
+}
+
+.metadata dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.form {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.form label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.form textarea {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--neutral-250, #d9d9dc);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.counter {
+  margin-top: 5px;
+  color: var(--neutral-400);
+  font-size: 12px;
+  text-align: right;
+}
+
+.error {
+  margin: 8px 0;
+  color: #b42318;
+}
+
+.primary,
+.secondary {
+  min-height: 40px;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary {
+  width: 100%;
+  margin-top: 10px;
+  border: 0;
+  color: #fff;
+  background: var(--primary-600, #b42318);
+}
+
+.primary:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  border: 1px solid var(--neutral-250, #d9d9dc);
+  background: #fff;
+}
+
+.spin {
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

@@ -19,8 +19,29 @@ class QaScopeBishengClient(FakeBishengClient):
 
     async def get_json(self, path: str, params=None, headers=None):
         self.get_calls.append((path, params or {}))
-        if path == "/api/v1/knowledge/space/7101/children":
-            assert params.get("file_status") == [2]
+        if path == "/api/v1/knowledge/shougang-portal/spaces":
+            assert params == {"discovery_scope": "public_and_department"}
+            return {
+                "data": {
+                    "spaces": [
+                        {
+                            "id": 7101,
+                            "name": "公开问答库",
+                            "space_level": "public",
+                        },
+                        {
+                            "id": 7103,
+                            "name": "部门问答库",
+                            "space_level": "department",
+                        },
+                    ]
+                }
+            }
+        if path == "/api/v1/knowledge/shougang-portal/qa/spaces/7101/children":
+            assert params.get("discovery_scope") in {
+                "public",
+                "public_and_department",
+            }
             if params.get("cursor") == "CUR7101P2":
                 return {"data": {"data": [
                     {"id": 9002, "knowledge_id": 7101, "file_name": "第二页.pdf",
@@ -55,6 +76,30 @@ class QaScopeBishengClient(FakeBishengClient):
                  "file_type": 1, "status": 2, "file_level_path": "", "file_ext": "pdf",
                  "summary": "开发流程", "file_encoding": "DEV-PROC-001", "tags": []},
             ], "page_size": 10, "has_more": True, "next_cursor": "CUR7101P2"}}
+        if path == "/api/v1/knowledge/shougang-portal/qa/spaces/7103/children":
+            assert params.get("discovery_scope") == "public_and_department"
+            return {
+                "data": {
+                    "data": [
+                        {
+                            "id": 9301,
+                            "knowledge_id": 7103,
+                            "file_name": "部门检修方案.pdf",
+                            "file_type": 1,
+                            "status": 2,
+                            "folder_path": "部门问答库/检修",
+                            "file_ext": "pdf",
+                            "selectable": False,
+                            "disabled_reason": "申请后可用于问答",
+                            "content_access": "approval_required",
+                            "is_department_file": True,
+                        }
+                    ],
+                    "page_size": 10,
+                    "has_more": False,
+                    "next_cursor": None,
+                }
+            }
         if path == "/api/v1/knowledge/space/7101/search":
             assert params.get("file_status") == [2]
             if params.get("parent_id") == 3001:
@@ -123,8 +168,11 @@ class QaScopeBishengClient(FakeBishengClient):
         return await super().get_json(path, params=params, headers=headers)
 
     async def post_json(self, path: str, json=None, headers=None):
-        if path == "/api/v1/knowledge/space/7101/folder-stats":
-            assert json == {"folder_ids": [3001], "file_status": [2]}
+        if path == (
+            "/api/v1/knowledge/shougang-portal/qa/spaces/7101/"
+            "folder-stats?discovery_scope=public_and_department"
+        ):
+            assert json == {"folder_ids": [3001]}
             self.post_calls.append((path, json))
             return {
                 "data": {
@@ -141,7 +189,8 @@ class QaScopeBishengClient(FakeBishengClient):
             }
         if path == "/api/v1/knowledge/shougang-portal/qa/files/search":
             assert json["q"] == "流程"
-            assert set(json["space_ids"]) == {12, 18, 25, 7101, 7102, 7103}
+            assert json["discovery_scope"] == "public_and_department"
+            assert set(json["space_ids"]) == {7101, 7102, 7103}
             assert json["page"] == 1
             assert json["page_size"] == 20
             self.post_calls.append((path, json))
@@ -198,7 +247,7 @@ def test_qa_tree_spaces_and_children_use_current_user_visible_scope(tmp_path: Pa
 
     assert spaces_response.status_code == 200
     spaces = spaces_response.json()["data"]["data"]
-    assert {item["id"] for item in spaces} >= {12, 18, 25, 7101, 7102, 7103}
+    assert {item["id"] for item in spaces} == {7101, 7102, 7103}
 
     assert children_response.status_code == 200
     nodes = children_response.json()["data"]["data"]
@@ -213,7 +262,11 @@ def test_qa_tree_spaces_and_children_use_current_user_visible_scope(tmp_path: Pa
     assert nested_response.status_code == 200
     nested = nested_response.json()["data"]["data"]
     assert nested[0]["id"] == 91001
-    assert all(path.endswith("/children") for path, _ in fake_bisheng.get_calls if "/space/7101/" in path)
+    assert all(
+        path.endswith("/children")
+        for path, _ in fake_bisheng.get_calls
+        if "/qa/spaces/7101/" in path
+    )
     assert fake_bisheng.chat_payload is None
 
 
@@ -227,6 +280,19 @@ def test_qa_file_search_uses_all_current_user_visible_spaces(tmp_path: Path):
     assert body["data"][0]["space_id"] == 7101
     assert body["data"][0]["folder_path"] == "冷轧设备故障复盘库/团队规范"
     assert fake_bisheng.post_calls[-1][0] == "/api/v1/knowledge/shougang-portal/qa/files/search"
+
+
+def test_qa_department_file_is_visible_but_not_selectable(tmp_path: Path):
+    for client, _, _ in _make_auth_client(tmp_path):
+        response = client.get(
+            "/api/v1/knowledge/qa/tree/spaces/7103/children"
+        )
+
+    assert response.status_code == 200
+    node = response.json()["data"]["data"][0]
+    assert node["id"] == 9301
+    assert node["selectable"] is False
+    assert node["disabled_reason"] == "申请后可用于问答"
 
 
 def test_qa_tree_anonymous_scope_is_limited_to_public_bisheng_spaces(tmp_path: Path):
@@ -290,11 +356,11 @@ def test_chat_scope_forwards_cross_space_file_refs(tmp_path: Path):
                 "scene": "qa",
                 "text": "跨库文件问答",
                 "use_knowledge_base": {
-                    "knowledge_space_ids": [7102, 7101],
+                    "knowledge_space_ids": [7103, 7101],
                     "knowledge_scope": {
                         "mode": "files",
                         "folder_refs": [{"knowledge_space_id": 7101, "folder_id": 3001}],
-                        "file_refs": [{"knowledge_space_id": 7102, "file_id": 9201}],
+                            "file_refs": [{"knowledge_space_id": 7103, "file_id": 9301}],
                     },
                 },
             },
@@ -302,10 +368,12 @@ def test_chat_scope_forwards_cross_space_file_refs(tmp_path: Path):
 
     assert response.status_code == 200
     forwarded = fake_bisheng.chat_payload["json"]["use_knowledge_base"]
-    assert forwarded["knowledge_space_ids"] == [7101, 7102]
+    assert forwarded["knowledge_space_ids"] == [7101, 7103]
     assert forwarded["knowledge_scope"]["mode"] == "files"
     assert forwarded["knowledge_scope"]["folder_refs"] == [{"knowledge_space_id": 7101, "folder_id": 3001}]
-    assert forwarded["knowledge_scope"]["file_refs"] == [{"knowledge_space_id": 7102, "file_id": 9201}]
+    assert forwarded["knowledge_scope"]["file_refs"] == [
+        {"knowledge_space_id": 7103, "file_id": 9301}
+    ]
 
 
 def test_chat_scope_rejects_obvious_file_limit_overflow(tmp_path: Path):
@@ -339,7 +407,9 @@ class QaForbiddenBishengClient(QaScopeBishengClient):
 
     async def get_json(self, path: str, params=None, headers=None):
         self.get_calls.append((path, params or {}))
-        if path == "/api/v1/knowledge/space/7199/children":
+        if path == (
+            "/api/v1/knowledge/shougang-portal/qa/spaces/7199/children"
+        ):
             return {"status_code": 18040, "status_message": "Permission denied"}
         return await super().get_json(path, params=params, headers=headers)
 
@@ -369,7 +439,9 @@ def test_qa_tree_children_translates_upstream_permission_error_to_403(tmp_path: 
     assert resp.json()["detail"] == "包含无权限或不存在的知识库"
     # 证明走的是"信任上游"路径:上游 /children 确实被调用(而非旧预检拦截)
     assert any(
-        path == "/api/v1/knowledge/space/7199/children" for path, _ in user_bisheng.get_calls
+        path
+        == "/api/v1/knowledge/shougang-portal/qa/spaces/7199/children"
+        for path, _ in user_bisheng.get_calls
     )
 
 
@@ -384,9 +456,17 @@ def test_qa_tree_children_passes_enrich_files_false_and_fixes_paging(tmp_path: P
     assert body["next_cursor"] == "CUR7101P2"
     assert body["page_size"] == 10
     # 向上游传了 enrich_files=False(省富化)
-    children_calls = [p for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children"]
+    children_calls = [
+        p
+        for p in fake_bisheng.get_calls
+        if p[0]
+        == "/api/v1/knowledge/shougang-portal/qa/spaces/7101/children"
+    ]
     assert children_calls, "未调用上游 children"
-    assert children_calls[0][1].get("enrich_files") is False
+    assert (
+        children_calls[0][1].get("discovery_scope")
+        == "public_and_department"
+    )
 
 
 def test_qa_tree_children_uses_cursor_pagination_and_shallow_counts(tmp_path: Path):
@@ -400,13 +480,18 @@ def test_qa_tree_children_uses_cursor_pagination_and_shallow_counts(tmp_path: Pa
     assert body["page_size"] == 10
     assert "total" not in body and "page" not in body
     # 上游收到 shallow 模式 + page_size
-    call = next(p for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children")
-    assert call[1].get("folder_count_mode") == "shallow"
+    call = next(
+        p
+        for p in fake_bisheng.get_calls
+        if p[0]
+        == "/api/v1/knowledge/shougang-portal/qa/spaces/7101/children"
+    )
     assert call[1].get("page_size") == 10
     # 第二页透传 cursor
     assert second.json()["data"]["data"][0]["id"] == 9002
     assert any(p[1].get("cursor") == "CUR7101P2"
-               for p in fake_bisheng.get_calls if p[0] == "/api/v1/knowledge/space/7101/children")
+               for p in fake_bisheng.get_calls
+               if p[0] == "/api/v1/knowledge/shougang-portal/qa/spaces/7101/children")
 
 
 def test_qa_tree_children_has_children_decoupled_from_count(tmp_path: Path):
@@ -430,6 +515,9 @@ def test_qa_tree_folder_stats_returns_deep_visible_success_count(tmp_path: Path)
         {"folder_id": 3001, "resolved_file_count": 10}
     ]
     assert fake_bisheng.post_calls[-1] == (
-        "/api/v1/knowledge/space/7101/folder-stats",
-        {"folder_ids": [3001], "file_status": [2]},
+        (
+            "/api/v1/knowledge/shougang-portal/qa/spaces/7101/"
+            "folder-stats?discovery_scope=public_and_department"
+        ),
+        {"folder_ids": [3001]},
     )
