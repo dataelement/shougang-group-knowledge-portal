@@ -17,6 +17,7 @@
  */
 
 import type { TranslationStatistics } from '../types/expertQa';
+import { applyExpertListOptions } from '../utils/expertManagement';
 import { normalizeUserFacingErrorMessage, normalizeUserFacingMessage } from '../utils/userFacingErrors';
 import type { DomainConfig, PortalConfig } from './adminConfig';
 
@@ -239,6 +240,7 @@ export interface ExpertProfileResponse {
   answer_count: number;
   adoption_count: number;
   vote_count: number;
+  expert_score?: number;
   created_at: string;
   updated_at: string;
 }
@@ -249,6 +251,41 @@ export interface PagedExpertResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+export type ExpertSortField =
+  | 'expert_name'
+  | 'department'
+  | 'job_family'
+  | 'job_category'
+  | 'position'
+  | 'major'
+  | 'expert_score'
+  | 'created_at';
+
+export type ExpertSortOrder = 'asc' | 'desc';
+
+export interface ExpertListOptions {
+  departmentId?: string;
+  jobFamily?: string;
+  jobCategory?: string;
+  position?: string;
+  major?: string;
+  sortBy?: ExpertSortField;
+  sortOrder?: ExpertSortOrder;
+}
+
+export interface ExpertDepartmentFilterOption {
+  id: string;
+  name: string;
+}
+
+export interface ExpertFilterOptions {
+  departments: ExpertDepartmentFilterOption[];
+  job_families: string[];
+  job_categories: string[];
+  positions: string[];
+  majors: string[];
 }
 
 /** POST/PUT /experts 请求体 */
@@ -587,19 +624,124 @@ interface QaKnowledgeFilesDto {
 // §3  专家管理 API
 // ═══════════════════════════════════════════════════════════════
 
-/** 获取专家档案列表（支持分页与姓名过滤） */
+export function buildExpertProfilesPath(
+  page = 1,
+  limit = 10,
+  name: string | undefined = undefined,
+  options: ExpertListOptions = {},
+): string {
+  return `${BASE}/experts${qs({
+    page,
+    limit,
+    keyword: name,
+    department_id: options.departmentId,
+    job_family: options.jobFamily,
+    job_category: options.jobCategory,
+    position: options.position,
+    major: options.major,
+    sort_by: options.sortBy,
+    sort_order: options.sortOrder,
+  })}`;
+}
+
+/** 获取专家档案列表（支持分页、搜索、筛选与排序） */
 export async function fetchExpertProfiles(
   page = 1,
   limit = 10,
   name: string | undefined = undefined,
   signal?: AbortSignal,
+  options: ExpertListOptions = {},
 ): Promise<PagedExpertResponse> {
+  const requiresClientCompatibility = Boolean(
+    options.departmentId
+    || options.jobFamily
+    || options.jobCategory
+    || options.position
+    || options.major
+    || options.sortBy,
+  );
+
+  if (requiresClientCompatibility) {
+    const compatibilityLimit = 500;
+    const raw = await req<{ experts: ExpertProfileResponse[]; total: number } | ExpertProfileResponse[]>(
+      buildExpertProfilesPath(1, compatibilityLimit, name, options),
+      undefined,
+      DEFAULT_TIMEOUT,
+      signal,
+    );
+    const candidates = Array.isArray(raw) ? raw : (raw.experts ?? []);
+    const matched = applyExpertListOptions(candidates, options);
+    const offset = (page - 1) * limit;
+    return {
+      experts: matched.slice(offset, offset + limit),
+      total: matched.length,
+      page,
+      limit,
+    };
+  }
+
   const raw = await req<{ experts: ExpertProfileResponse[]; total: number } | ExpertProfileResponse[]>
-  (`${BASE}/experts${qs({ page, limit, keyword:name})}`, undefined, DEFAULT_TIMEOUT, signal);
+  (buildExpertProfilesPath(page, limit, name, options), undefined, DEFAULT_TIMEOUT, signal);
   if (Array.isArray(raw)) {
     return { experts: raw, total: raw.length, page, limit };
   }
   return { experts: raw.experts ?? [], total: raw.total ?? 0, page, limit };
+}
+
+/** 获取专家职业字段筛选项。 */
+export async function fetchExpertFilterOptions(
+  signal?: AbortSignal,
+): Promise<ExpertFilterOptions> {
+  try {
+    const raw = await req<Partial<ExpertFilterOptions>>(
+      `${BASE}/experts/filter-options`,
+      undefined,
+      DEFAULT_TIMEOUT,
+      signal,
+    );
+    return {
+      departments: (raw.departments ?? []).map((department) => ({
+        id: String(department.id),
+        name: department.name,
+      })),
+      job_families: raw.job_families ?? [],
+      job_categories: raw.job_categories ?? [],
+      positions: raw.positions ?? [],
+      majors: raw.majors ?? [],
+    };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+
+    // Older Shougang environments do not expose the dedicated options route.
+    // The expert list already supports up to 500 records, which is enough to
+    // derive the same dropdown values without disabling combined filtering.
+    const result = await fetchExpertProfiles(
+      1,
+      500,
+      undefined,
+      signal,
+      { sortBy: 'expert_score', sortOrder: 'desc' },
+    );
+    const uniqueValues = (values: Array<string | null>) => (
+      [...new Set(values.map((value) => value?.trim()).filter(Boolean) as string[])]
+        .sort((left, right) => left.localeCompare(right, 'zh-CN'))
+    );
+    const departmentMap = new Map<string, string>();
+    for (const expert of result.experts) {
+      const id = String(expert.department_id ?? '').trim();
+      const name = expert.depart_ment?.trim() ?? '';
+      if (id && name && !departmentMap.has(id)) departmentMap.set(id, name);
+    }
+    return {
+      departments: [...departmentMap]
+        .map(([id, name]) => ({ id, name }))
+        .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
+      job_families: uniqueValues(result.experts.map((expert) => expert.job_family)),
+      job_categories: uniqueValues(result.experts.map((expert) => expert.job_category)),
+      positions: uniqueValues(result.experts.map((expert) => expert.position)),
+      majors: uniqueValues(result.experts.map((expert) => expert.major)),
+    };
+  }
 }
 
 /** 获取用户列表（GET /user/list） */

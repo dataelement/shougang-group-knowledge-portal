@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import type { ClipboardEvent, KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -27,7 +27,6 @@ import {
   createExpertQuestion,
   handleCheckQuestion,
   fetchConfigData,
-  fetchExpertProfiles,
   fetchSimilarExpertQuestions,
   fetchExpertQuestionDetail,
   updateExpertQuestion,
@@ -45,24 +44,11 @@ import {
   toQuestionDescriptionEditorHtml,
   toQuestionDescriptionPlainText,
 } from '../utils/questionRichText';
-
-// 颜色缓存，避免每次渲染重新计算
-const colorCache = new Map<string, string>();
-const COLOR_PALETTE = ['#4F86C6', '#58A55C', '#D4713A', '#9B6BBE', '#C0565B', '#4AACAB'];
-
-function stringToColor(str: string): string {
-  if (colorCache.has(str)) return colorCache.get(str)!;
-  let hash = 0;
-  for (let i = 0; i < str.length; i++)
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  const color = COLOR_PALETTE[Math.abs(hash) % COLOR_PALETTE.length];
-  colorCache.set(str, color);
-  return color;
-}
-
-function getInitial(name: string): string {
-  return name ? name.charAt(0).toUpperCase() : '?';
-}
+import ExpertInvitePicker from '../components/ExpertInvitePicker';
+import {
+  getExpertAvatarColor,
+  getExpertInitial,
+} from '../utils/expertInvite';
 
 // 工具栏配置
 const TOOLBAR_BUTTONS = [
@@ -78,7 +64,6 @@ const TOOLBAR_BUTTONS = [
   { key: 'related', icon: Link2, title: '关联文档' },
 ] as const;
 
-const EXPERT_PAGE_SIZE = 20;
 const MAX_IMAGE_COUNT = 3;
 const ATTACHMENT_LIST_SEPARATOR = ';';
 const LINK_LIST_SPLIT_PATTERN = /[;；,，\n\r]+/;
@@ -203,26 +188,6 @@ function serializeKnowledgeAttachmentsID(
 }
 
 
-// 规范化 fetchExpertProfiles 的返回值，防御接口格式变化
-interface ExpertProfilesResult {
-  experts: ExpertProfileResponse[];
-  total: number;
-}
-
-function normalizeExpertResult(res: unknown): ExpertProfilesResult {
-  if (res && typeof res === 'object') {
-    const r = res as Record<string, unknown>;
-    const experts = Array.isArray(r['experts'])
-      ? (r['experts'] as ExpertProfileResponse[])
-      : Array.isArray(res)
-      ? (res as ExpertProfileResponse[])
-      : [];
-    const total = typeof r['total'] === 'number' ? r['total'] : experts.length;
-    return { experts, total };
-  }
-  return { experts: [], total: 0 };
-}
-
 //主页面
 export default function ExpertQAAskPage() {
   const navigate = useNavigate();
@@ -234,7 +199,6 @@ export default function ExpertQAAskPage() {
   const [body, setBody] = useState('');
   const [selectedDomain, setSelectedDomain] = useState<string>('');
   const [domainList, setDomainList] = useState<DomainConfig[]>([]);
-  const [expertList, setExpertList] = useState<ExpertProfileResponse[]>([]);
   const [invited, setInvited] = useState<ExpertProfileResponse[]>([]);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [domainError, setDomainError] = useState(false);
@@ -242,18 +206,9 @@ export default function ExpertQAAskPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
-  const [pickerSearch, setPickerSearch] = useState('');
   const [similarQuestions, setSimilarQuestions] = useState<SimilarQuestionItem[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-
-  // 专家选择器分页状态
-  const [expertPage, setExpertPage] = useState(1);
-  const [expertTotal, setExpertTotal] = useState(0);
-  const [expertLoading, setExpertLoading] = useState(false);
-  const pickerListRef = useRef<HTMLDivElement>(null);
-  // 用于点击外部关闭专家弹窗
-  const pickerPanelRef = useRef<HTMLDivElement>(null);
 
   // 图片/附件状态
   const [imageUrls, setImageUrls] = useState<string[]>([]);
@@ -263,75 +218,7 @@ export default function ExpertQAAskPage() {
   const richTextEditorRef = useRef<HTMLDivElement>(null);
   const savedSelectionRef = useRef<Range | null>(null);
 
-  // 是否还有更多专家（仅在非搜索态有意义；搜索态由服务端决定）
-  const hasMoreExperts = expertList.length < expertTotal;
-
-  // 修复：搜索改为服务端搜索，loadExperts 不再做前端过滤
-  const loadExperts = useCallback(
-    async (page: number, search: string, append = false) => {
-      setExpertLoading(true);
-      try {
-        // search 参数透传给接口，由服务端过滤
-        const raw = await fetchExpertProfiles(page, EXPERT_PAGE_SIZE, search.trim() || undefined);
-        const { experts, total } = normalizeExpertResult(raw);
-        setExpertList((prev) => (append ? [...prev, ...experts] : experts));
-        setExpertTotal(total);
-        setExpertPage(page);
-      } catch {
-        if (!append) setExpertList([]);
-      } finally {
-        setExpertLoading(false);
-      }
-    },
-    [],
-  );
-
-  // 修复：补全依赖数组 —— 加入 loadExperts 与 pickerSearch
-  useEffect(() => {
-    if (showPicker) {
-      setExpertList([]);
-      setExpertPage(1);
-      loadExperts(1, pickerSearch);
-    }
-  }, [showPicker, loadExperts, pickerSearch]);
-
-  // 搜索防抖（依赖已完整）
-  useEffect(() => {
-    if (!showPicker) return;
-    const timer = setTimeout(() => {
-      setExpertList([]);
-      setExpertPage(1);
-      loadExperts(1, pickerSearch);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [pickerSearch, showPicker, loadExperts]);
-
-  // 修复：点击弹窗外部关闭专家选择器
-  useEffect(() => {
-    if (!showPicker) return;
-    function handleOutsideClick(e: MouseEvent) {
-      if (
-        pickerPanelRef.current &&
-        !pickerPanelRef.current.contains(e.target as Node)
-      ) {
-        setShowPicker(false);
-      }
-    }
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [showPicker]);
-
-  // 滚动加载更多
-  const handlePickerScroll = useCallback(() => {
-    const el = pickerListRef.current;
-    if (!el || expertLoading || !hasMoreExperts) return;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
-      loadExperts(expertPage + 1, pickerSearch, true);
-    }
-  }, [expertLoading, hasMoreExperts, expertPage, pickerSearch, loadExperts]);
-
   function openPicker() {
-    setPickerSearch('');
     setShowPicker(true);
   }
 
@@ -840,9 +727,9 @@ export default function ExpertQAAskPage() {
                   <span key={expert.id} className={s.expChipSel}>
                     <span
                       className={s.expChipAv}
-                      style={{ backgroundColor: stringToColor(expert.expert_name) }}
+                      style={{ backgroundColor: getExpertAvatarColor(expert.expert_name) }}
                     >
-                      {getInitial(expert.expert_name)}
+                      {getExpertInitial(expert.expert_name)}
                     </span>
                     {expert.expert_name}
               
@@ -856,78 +743,13 @@ export default function ExpertQAAskPage() {
                 </button>
               </div>
 
-              {/* 专家选择弹窗（添加 ref 用于点击外部关闭）*/}
+              {/* 专家选择器 */}
               {showPicker && (
-                <div className={s.pickerPanel} ref={pickerPanelRef}>
-                  <div className={s.pickerSearch}>
-                    <Search size={14} className={s.pickerSearchIco} />
-                    <input
-                      autoFocus
-                      type="text"
-                      className={s.pickerSearchInput}
-                      placeholder="搜索姓名或部门"
-                      value={pickerSearch}
-                      onChange={(e) => setPickerSearch(e.target.value)}
-                    />
-                  </div>
-                  <div
-                    ref={pickerListRef}
-                    className={s.pickerList}
-                    onScroll={handlePickerScroll}
-                  >
-                    {expertList.length === 0 && !expertLoading ? (
-                      <div className={s.pickerEmpty}>未找到匹配的专家</div>
-                    ) : (
-                      expertList.map((expert) => {
-                        const isSelected = invited.some((e) => e.id === expert.id);
-                        const maxReached = !isSelected && invited.length >= 3;
-                        return (
-                          <button
-                            key={expert.id}
-                            type="button"
-                            disabled={maxReached}
-                            className={`${s.pickerRow} ${isSelected ? s.pickerRowSel : ''}`}
-                            onClick={() => toggleInvite(expert)}
-                          >
-                            <span
-                              className={s.expChipAv}
-                              style={{ backgroundColor: stringToColor(expert.expert_name) }}
-                            >
-                              {getInitial(expert.expert_name)}
-                            </span>
-                            
-                            <span className={s.pickerInfo}>
-                              <span className={s.pickerName}>{expert.expert_name}</span>
-                              {expert.depart_ment && (
-                                <span className={s.pickerDept}>{expert.depart_ment} · {expert.position || '?'}  （{expert.job_family?.replace(/族$/, '') || '?'} - {expert.job_category?.replace(/类$/, '') || '?'}) </span>
-                              )}
-                            </span>
-                            <span className={s.expertInfo}>
-                              <span className={s.expertMajor}>{expert.major}</span>
-                            </span>
-                            {isSelected && <span className={s.pickerCheck}>✓</span>}
-                          </button>
-                        );
-                      })
-                    )}
-                    {expertLoading && (
-                      <div className={s.pickerLoading}>加载中…</div>
-                    )}
-                    {!expertLoading && hasMoreExperts && (
-                      <div className={s.pickerScrollHint}>下滑加载更多</div>
-                    )}
-                  </div>
-                  <div className={s.pickerFoot}>
-                    <span className={s.pickerCount}>已选 {invited.length} / 3</span>
-                    <button
-                      type="button"
-                      className={s.btnSecondary}
-                      onClick={() => setShowPicker(false)}
-                    >
-                      关闭
-                    </button>
-                  </div>
-                </div>
+                <ExpertInvitePicker
+                  invited={invited}
+                  onToggle={toggleInvite}
+                  onClose={() => setShowPicker(false)}
+                />
               )}
               <div className={s.hint}>
                 未邀请专家时，问题将向所选业务域的全部认证专家公开

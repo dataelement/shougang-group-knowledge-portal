@@ -5,12 +5,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { UIEvent } from 'react';
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  UIEvent,
+} from 'react';
 import { Link } from 'react-router-dom';
 import {
   ChevronRight,
   Pencil,
+  RotateCcw,
   Search,
+  SlidersHorizontal,
   Trash2,
   TriangleAlert,
   X,
@@ -19,13 +26,22 @@ import PageShell from '../components/PageShell';
 import {
   createExpert,
   deleteExpert,
+  fetchExpertFilterOptions,
   fetchExpertProfiles,
   fetchUserList,
   updateExpert,
 } from '../api/expertQa';
-import type { ExpertProfileResponse, ExpertUpsertPayload, UserListItem } from '../api/expertQa';
+import type {
+  ExpertFilterOptions,
+  ExpertProfileResponse,
+  ExpertSortField,
+  ExpertSortOrder,
+  ExpertUpsertPayload,
+  UserListItem,
+} from '../api/expertQa';
 import s from './ExpertManagePage.module.css';
 import { getAdminAccessState } from '../utils/adminAccess';
+import { getNextExpertSort } from '../utils/expertManagement';
 import { useAuth } from '../hooks/useAuth';
 import expertBanner from '../assets/expert-manage-banner@2x.png';
 import verifiedIcon from '../assets/icon-verified-expert.svg';
@@ -64,6 +80,154 @@ function getUserDepartment(user: UserListItem): string {
 }
 
 const USER_PAGE_SIZE = 10;
+const EXPERT_PAGE_SIZE = 10;
+
+interface ExpertFilters {
+  departmentId: string;
+  jobFamily: string;
+  jobCategory: string;
+  position: string;
+  major: string;
+}
+
+const EMPTY_FILTERS: ExpertFilters = {
+  departmentId: '',
+  jobFamily: '',
+  jobCategory: '',
+  position: '',
+  major: '',
+};
+
+const EMPTY_FILTER_OPTIONS: ExpertFilterOptions = {
+  departments: [],
+  job_families: [],
+  job_categories: [],
+  positions: [],
+  majors: [],
+};
+
+const SORT_ICON_BASE = '/assets/channel';
+
+const EXPERT_COLUMN_CONFIG = {
+  name: { minWidth: 140, initialWidth: 170 },
+  department: { minWidth: 140, initialWidth: 150 },
+  jobFamily: { minWidth: 72, initialWidth: 100 },
+  jobCategory: { minWidth: 72, initialWidth: 100 },
+  position: { minWidth: 72, initialWidth: 96 },
+  major: { minWidth: 72, initialWidth: 104 },
+  answerCount: { minWidth: 64, initialWidth: 70 },
+  adoptionCount: { minWidth: 64, initialWidth: 70 },
+  voteCount: { minWidth: 72, initialWidth: 80 },
+  createdAt: { minWidth: 100, initialWidth: 104 },
+  actions: { minWidth: 88, initialWidth: 92 },
+} as const;
+
+type ExpertColumnKey = keyof typeof EXPERT_COLUMN_CONFIG;
+
+function useResizableExpertColumns() {
+  const [columnWidths, setColumnWidths] = useState<Record<ExpertColumnKey, number>>(
+    () => Object.fromEntries(
+      Object.entries(EXPERT_COLUMN_CONFIG).map(([key, config]) => [
+        key,
+        config.initialWidth,
+      ]),
+    ) as Record<ExpertColumnKey, number>,
+  );
+  const draggingRef = useRef<{
+    key: ExpertColumnKey;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const resizingInteractionUntilRef = useRef(0);
+
+  const resizeBy = useCallback((columnKey: ExpertColumnKey, delta: number) => {
+    setColumnWidths((current) => {
+      const minWidth = EXPERT_COLUMN_CONFIG[columnKey].minWidth;
+      const maxWidth = Math.max(400, window.innerWidth - 80);
+      return {
+        ...current,
+        [columnKey]: Math.min(
+          maxWidth,
+          Math.max(minWidth, current[columnKey] + delta),
+        ),
+      };
+    });
+  }, []);
+
+  const handleResizeStart = useCallback((
+    columnKey: ExpertColumnKey,
+    event: ReactMouseEvent<HTMLSpanElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    cleanupRef.current?.();
+
+    draggingRef.current = {
+      key: columnKey,
+      startX: event.clientX,
+      startWidth: columnWidths[columnKey],
+    };
+    resizingInteractionUntilRef.current = Date.now() + 300;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dragging = draggingRef.current;
+      if (!dragging) return;
+      resizingInteractionUntilRef.current = Date.now() + 300;
+      const minWidth = EXPERT_COLUMN_CONFIG[dragging.key].minWidth;
+      const maxWidth = Math.max(400, window.innerWidth - 80);
+      const nextWidth = Math.min(
+        maxWidth,
+        Math.max(minWidth, dragging.startWidth + moveEvent.clientX - dragging.startX),
+      );
+      const key = dragging.key;
+      setColumnWidths((current) => ({ ...current, [key]: nextWidth }));
+    };
+
+    const cleanup = () => {
+      draggingRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      if (cleanupRef.current === cleanup) cleanupRef.current = null;
+    };
+
+    const handleMouseUp = () => {
+      resizingInteractionUntilRef.current = Date.now() + 300;
+      cleanup();
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    cleanupRef.current = cleanup;
+  }, [columnWidths]);
+
+  useEffect(() => () => cleanupRef.current?.(), []);
+
+  const isResizingInteraction = useCallback(
+    () => (
+      draggingRef.current !== null
+      || Date.now() < resizingInteractionUntilRef.current
+    ),
+    [],
+  );
+
+  const totalWidth = useMemo(
+    () => Object.values(columnWidths).reduce((sum, width) => sum + width, 0),
+    [columnWidths],
+  );
+
+  return {
+    columnWidths,
+    handleResizeStart,
+    isResizingInteraction,
+    resizeBy,
+    totalWidth,
+  };
+}
 
 // ─── 空表单 ──────────────────────────────────────────────────
 const EMPTY_FORM: ExpertUpsertPayload = {
@@ -564,6 +728,256 @@ function ConfirmDeleteModal({ expert, onClose, onConfirm }: ConfirmDeleteProps) 
   );
 }
 
+interface SortableHeaderProps {
+  label: string;
+  field: ExpertSortField;
+  activeField: ExpertSortField;
+  order: ExpertSortOrder;
+  onSort: (field: ExpertSortField) => void;
+  columnKey: ExpertColumnKey;
+  width: number;
+  onResizeStart: (
+    columnKey: ExpertColumnKey,
+    event: ReactMouseEvent<HTMLSpanElement>,
+  ) => void;
+  onResizeBy: (columnKey: ExpertColumnKey, delta: number) => void;
+  isResizingInteraction: () => boolean;
+  title?: string;
+}
+
+interface ResizeHandleProps {
+  columnKey: ExpertColumnKey;
+  columnLabel: string;
+  width: number;
+  onResizeStart: (
+    columnKey: ExpertColumnKey,
+    event: ReactMouseEvent<HTMLSpanElement>,
+  ) => void;
+  onResizeBy: (columnKey: ExpertColumnKey, delta: number) => void;
+  style?: CSSProperties;
+}
+
+function ResizeHandle({
+  columnKey,
+  columnLabel,
+  width,
+  onResizeStart,
+  onResizeBy,
+  style,
+}: ResizeHandleProps) {
+  function stopClick(event: ReactMouseEvent<HTMLSpanElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLSpanElement>) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.shiftKey ? 32 : 12;
+    onResizeBy(columnKey, event.key === 'ArrowRight' ? step : -step);
+  }
+
+  return (
+    <span
+      className={s.resizeHandle}
+      role="separator"
+      aria-label={`调整${columnLabel}列宽`}
+      aria-orientation="vertical"
+      aria-valuenow={Math.round(width)}
+      tabIndex={0}
+      style={style}
+      onClick={stopClick}
+      onDoubleClick={stopClick}
+      onMouseDown={(event) => onResizeStart(columnKey, event)}
+      onKeyDown={handleKeyDown}
+    >
+      <span className={s.resizeHandleLine} aria-hidden />
+    </span>
+  );
+}
+
+function getSortIconSrc(active: boolean, order: ExpertSortOrder) {
+  const direction = active && order === 'desc' ? 'down' : 'up';
+  return `${SORT_ICON_BASE}/sort-amount-${direction}${active ? '-blue' : ''}.svg`;
+}
+
+function SortableHeader({
+  label,
+  field,
+  activeField,
+  order,
+  onSort,
+  columnKey,
+  width,
+  onResizeStart,
+  onResizeBy,
+  isResizingInteraction,
+  title,
+}: SortableHeaderProps) {
+  const active = activeField === field;
+
+  return (
+    <th
+      className={`${s.tableHeader} ${s.sortableHeader} ${active ? s.sortableHeaderActive : ''}`}
+      aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
+      title={title}
+      style={{ width, minWidth: width, maxWidth: width }}
+    >
+      <button
+        type="button"
+        className={`${s.sortButton} ${active ? s.sortButtonActive : ''}`}
+        onClick={(event) => {
+          if (isResizingInteraction()) {
+            event.preventDefault();
+            return;
+          }
+          onSort(field);
+        }}
+        aria-label={`${label}，点击按${active && order === 'asc' ? '降序' : '升序'}排列`}
+      >
+        <span>{label}</span>
+        <img
+          className={`${s.sortIcon} ${active ? s.sortIconVisible : ''}`}
+          src={getSortIconSrc(active, order)}
+          alt=""
+          aria-hidden
+        />
+      </button>
+      <ResizeHandle
+        columnKey={columnKey}
+        columnLabel={label}
+        width={width}
+        onResizeStart={onResizeStart}
+        onResizeBy={onResizeBy}
+      />
+    </th>
+  );
+}
+
+interface ResizableHeaderProps {
+  label: string;
+  columnKey: ExpertColumnKey;
+  width: number;
+  onResizeStart: ResizeHandleProps['onResizeStart'];
+  onResizeBy: ResizeHandleProps['onResizeBy'];
+}
+
+function ResizableHeader({
+  label,
+  columnKey,
+  width,
+  onResizeStart,
+  onResizeBy,
+}: ResizableHeaderProps) {
+  return (
+    <th
+      className={s.tableHeader}
+      style={{ width, minWidth: width, maxWidth: width }}
+    >
+      <span className={s.plainHeaderLabel}>{label}</span>
+      <ResizeHandle
+        columnKey={columnKey}
+        columnLabel={label}
+        width={width}
+        onResizeStart={onResizeStart}
+        onResizeBy={onResizeBy}
+      />
+    </th>
+  );
+}
+
+interface ContributionHeaderProps {
+  widths: Pick<
+    Record<ExpertColumnKey, number>,
+    'answerCount' | 'adoptionCount' | 'voteCount'
+  >;
+  activeField: ExpertSortField;
+  order: ExpertSortOrder;
+  onSort: (field: ExpertSortField) => void;
+  onResizeStart: ResizeHandleProps['onResizeStart'];
+  onResizeBy: ResizeHandleProps['onResizeBy'];
+  isResizingInteraction: () => boolean;
+}
+
+function ContributionHeader({
+  widths,
+  activeField,
+  order,
+  onSort,
+  onResizeStart,
+  onResizeBy,
+  isResizingInteraction,
+}: ContributionHeaderProps) {
+  const active = activeField === 'expert_score';
+  const totalWidth = widths.answerCount + widths.adoptionCount + widths.voteCount;
+  const title = '排序规则：回答数 × 1 + 采纳数 × 5 + 获赞数 × 2';
+
+  return (
+    <th
+      className={`${s.tableHeader} ${s.sortableHeader} ${s.contributionHeader} ${active ? s.sortableHeaderActive : ''}`}
+      colSpan={3}
+      aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
+      title={title}
+      style={{ width: totalWidth, minWidth: totalWidth, maxWidth: totalWidth }}
+    >
+      <button
+        type="button"
+        className={`${s.contributionSortButton} ${active ? s.sortButtonActive : ''}`}
+        style={{
+          gridTemplateColumns: `${widths.answerCount}px ${widths.adoptionCount}px ${widths.voteCount}px`,
+        }}
+        onClick={(event) => {
+          if (isResizingInteraction()) {
+            event.preventDefault();
+            return;
+          }
+          onSort('expert_score');
+        }}
+        aria-label={`回答数、采纳数、获赞数整体排序，点击按${active && order === 'asc' ? '降序' : '升序'}排列`}
+      >
+        <span>回答数</span>
+        <span>采纳数</span>
+        <span className={s.contributionLastLabel}>
+          获赞数
+          <img
+            className={`${s.sortIcon} ${active ? s.sortIconVisible : ''}`}
+            src={getSortIconSrc(active, order)}
+            alt=""
+            aria-hidden
+          />
+        </span>
+      </button>
+      <ResizeHandle
+        columnKey="answerCount"
+        columnLabel="回答数"
+        width={widths.answerCount}
+        onResizeStart={onResizeStart}
+        onResizeBy={onResizeBy}
+        style={{ left: widths.answerCount - 4, right: 'auto' }}
+      />
+      <ResizeHandle
+        columnKey="adoptionCount"
+        columnLabel="采纳数"
+        width={widths.adoptionCount}
+        onResizeStart={onResizeStart}
+        onResizeBy={onResizeBy}
+        style={{
+          left: widths.answerCount + widths.adoptionCount - 4,
+          right: 'auto',
+        }}
+      />
+      <ResizeHandle
+        columnKey="voteCount"
+        columnLabel="获赞数"
+        width={widths.voteCount}
+        onResizeStart={onResizeStart}
+        onResizeBy={onResizeBy}
+      />
+    </th>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 主页面
 // ═══════════════════════════════════════════════════════════════
@@ -572,13 +986,32 @@ export default function ExpertManagePage() {
   const [experts, setExperts] = useState<ExpertProfileResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize,setPageSize] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
-  // 过滤
+  const isAdmin = getAdminAccessState(user) === 'allowed';
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [filters, setFilters] = useState<ExpertFilters>(EMPTY_FILTERS);
+  const [filterOptions, setFilterOptions] = useState<ExpertFilterOptions>(
+    EMPTY_FILTER_OPTIONS,
+  );
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(false);
+  const [sort, setSort] = useState<{
+    field: ExpertSortField;
+    order: ExpertSortOrder;
+  }>({
+    field: 'expert_score',
+    order: 'desc',
+  });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const {
+    columnWidths,
+    handleResizeStart,
+    isResizingInteraction,
+    resizeBy,
+    totalWidth: tableWidth,
+  } = useResizableExpertColumns();
   // 弹窗状态
   type ModalState =
     | { type: 'none' }
@@ -588,36 +1021,66 @@ export default function ExpertManagePage() {
 
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setFilterOptionsLoading(true);
+    fetchExpertFilterOptions(controller.signal)
+      .then(setFilterOptions)
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setFilterOptions(EMPTY_FILTER_OPTIONS);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFilterOptionsLoading(false);
+      });
+    return () => controller.abort();
+  }, [refreshKey]);
+
   // ─── 数据加载 ────────────────────────────────────────────────
-  const load = useCallback(
-    async (p: number) => {
-      let active = true;
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadExperts() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetchExpertProfiles(p, pageSize, search.trim() || undefined);
-        if (!active) return;
+        const res = await fetchExpertProfiles(
+          page,
+          EXPERT_PAGE_SIZE,
+          search || undefined,
+          controller.signal,
+          {
+            ...filters,
+            sortBy: sort.field,
+            sortOrder: sort.order,
+          },
+        );
         setExperts(res.experts);
         setTotal(res.total);
       } catch (err) {
-        if (!active) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         setError(err instanceof Error ? err.message : '专家数据加载失败');
       } finally {
-        if (active) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
-      return () => { active = false; };
-    },
-    [pageSize, search],
-  );
+    }
 
-  useEffect(() => {
-    console.log(user)
-    setIsAdmin(getAdminAccessState(user) === 'allowed');
-    load(page);
-  }, [page, load]);
+    void loadExperts();
+    return () => controller.abort();
+  }, [filters, page, refreshKey, search, sort.field, sort.order]);
 
   // ─── 分页计算 ────────────────────────────────────────────────
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = Math.max(1, Math.ceil(total / EXPERT_PAGE_SIZE));
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const hasQueryConditions = Boolean(search || activeFilterCount);
 
   function buildPages(): (number | '...')[] {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -630,24 +1093,50 @@ export default function ExpertManagePage() {
   }
 
   // ─── CRUD 回调 ───────────────────────────────────────────────
-  function handleCreateSuccess(expert: ExpertProfileResponse) {
-    setExperts((prev) => [expert, ...prev]);
-    setTotal((t) => t + 1);
+  function handleCreateSuccess() {
     setPage(1);
     setModal({ type: 'none' });
+    setRefreshKey((key) => key + 1);
   }
 
-  function handleEditSuccess(updated: ExpertProfileResponse) {
-    setExperts((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+  function handleEditSuccess() {
     setModal({ type: 'none' });
+    setRefreshKey((key) => key + 1);
   }
 
   async function handleDeleteConfirm(expert: ExpertProfileResponse) {
     await deleteExpert(expert.id);
-    setExperts((prev) => prev.filter((e) => e.id !== expert.id));
-    setTotal((t) => Math.max(0, t - 1));
     setModal({ type: 'none' });
+    if (experts.length === 1 && page > 1) {
+      setPage((current) => current - 1);
+    } else {
+      setRefreshKey((key) => key + 1);
+    }
   }
+
+  function handleFilterChange(key: keyof ExpertFilters, value: string) {
+    setFilters((current) => ({ ...current, [key]: value }));
+    setPage(1);
+  }
+
+  function handleResetFilters() {
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
+  }
+
+  function handleSort(field: ExpertSortField) {
+    setSort((current) => getNextExpertSort(current, field));
+    setPage(1);
+  }
+
+  const resizeProps = {
+    onResizeStart: handleResizeStart,
+    onResizeBy: resizeBy,
+  };
+  const sortableResizeProps = {
+    ...resizeProps,
+    isResizingInteraction,
+  };
 
   return (
     <PageShell>
@@ -658,7 +1147,7 @@ export default function ExpertManagePage() {
       >
         <div className={s.heroInner}>
           <h1 className={s.heroTitle}>专家库管理</h1>
-          <p className={s.heroSub}>管理认证专家信息、查看答题贡献与积分数据</p>
+          <p className={s.heroSub}>管理认证专家信息、查看答题贡献数据</p>
           {isAdmin && (
             <button
               type="button"
@@ -686,51 +1175,240 @@ export default function ExpertManagePage() {
         <div className={s.tableCard}>
           {/* 卡片头部：标题 + 搜索 */}
           <div className={s.cardHead}>
-            <span className={s.cardTitle}>专家列表</span>
+            <div className={s.cardTitleGroup}>
+              <span className={s.cardTitle}>专家列表</span>
+              <span className={s.resultCount}>{total} 名专家</span>
+            </div>
             <div className={s.searchWrap}>
               <Search size={14} className={s.searchIco} />
               <input
                 className={s.searchInput}
                 placeholder="搜索专家姓名或简介"
-                value={search}
-                onChange={(e) => {
-                  setPageSize(500);
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
               />
+              {searchInput ? (
+                <button
+                  type="button"
+                  className={s.searchClear}
+                  onClick={() => setSearchInput('')}
+                  aria-label="清空搜索"
+                >
+                  <X size={13} />
+                </button>
+              ) : null}
             </div>
           </div>
 
+          <div className={s.filterBar}>
+            <div className={s.filterBarTitle}>
+              <SlidersHorizontal size={14} />
+              <span>筛选</span>
+              {activeFilterCount ? (
+                <span className={s.filterBadge}>{activeFilterCount}</span>
+              ) : null}
+            </div>
+            <label className={s.filterField}>
+              <span>部门</span>
+              <select
+                className={s.filterSelect}
+                value={filters.departmentId}
+                onChange={(event) => handleFilterChange('departmentId', event.target.value)}
+                disabled={filterOptionsLoading}
+              >
+                <option value="">全部部门</option>
+                {filterOptions.departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={s.filterField}>
+              <span>职位族</span>
+              <select
+                className={s.filterSelect}
+                value={filters.jobFamily}
+                onChange={(event) => handleFilterChange('jobFamily', event.target.value)}
+                disabled={filterOptionsLoading}
+              >
+                <option value="">全部职位族</option>
+                {filterOptions.job_families.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <label className={s.filterField}>
+              <span>职位类</span>
+              <select
+                className={s.filterSelect}
+                value={filters.jobCategory}
+                onChange={(event) => handleFilterChange('jobCategory', event.target.value)}
+                disabled={filterOptionsLoading}
+              >
+                <option value="">全部职位类</option>
+                {filterOptions.job_categories.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <label className={s.filterField}>
+              <span>职务</span>
+              <select
+                className={s.filterSelect}
+                value={filters.position}
+                onChange={(event) => handleFilterChange('position', event.target.value)}
+                disabled={filterOptionsLoading}
+              >
+                <option value="">全部职务</option>
+                {filterOptions.positions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <label className={s.filterField}>
+              <span>岗位</span>
+              <select
+                className={s.filterSelect}
+                value={filters.major}
+                onChange={(event) => handleFilterChange('major', event.target.value)}
+                disabled={filterOptionsLoading}
+              >
+                <option value="">全部岗位</option>
+                {filterOptions.majors.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className={s.resetFilters}
+              onClick={handleResetFilters}
+              disabled={!activeFilterCount}
+            >
+              <RotateCcw size={13} />
+              重置筛选
+            </button>
+          </div>
+
           <div className={s.tableWrap}>
-            <table>
+            <table className={s.expertTable} style={{ minWidth: tableWidth }}>
+              <colgroup>
+                <col style={{ width: columnWidths.name }} />
+                <col style={{ width: columnWidths.department }} />
+                <col style={{ width: columnWidths.jobFamily }} />
+                <col style={{ width: columnWidths.jobCategory }} />
+                <col style={{ width: columnWidths.position }} />
+                <col style={{ width: columnWidths.major }} />
+                <col style={{ width: columnWidths.answerCount }} />
+                <col style={{ width: columnWidths.adoptionCount }} />
+                <col style={{ width: columnWidths.voteCount }} />
+                <col style={{ width: columnWidths.createdAt }} />
+                <col style={{ width: columnWidths.actions }} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>名字</th>
-                  <th>部门</th>
-                  <th>职位族</th>
-                  <th>职位类</th>
-                  <th>职务</th>
-                  <th>岗位</th>
-                  <th>回答数</th>
-                  <th>采纳数</th>
-                  <th>获赞数</th>
-                  <th>加入时间</th>
-                  <th>操作</th>
+                  <SortableHeader
+                    label="名字"
+                    field="expert_name"
+                    columnKey="name"
+                    width={columnWidths.name}
+                    activeField={sort.field}
+                    order={sort.order}
+                    onSort={handleSort}
+                    {...sortableResizeProps}
+                  />
+                  <SortableHeader
+                    label="部门"
+                    field="department"
+                    columnKey="department"
+                    width={columnWidths.department}
+                    activeField={sort.field}
+                    order={sort.order}
+                    onSort={handleSort}
+                    {...sortableResizeProps}
+                  />
+                  <SortableHeader
+                    label="职位族"
+                    field="job_family"
+                    columnKey="jobFamily"
+                    width={columnWidths.jobFamily}
+                    activeField={sort.field}
+                    order={sort.order}
+                    onSort={handleSort}
+                    {...sortableResizeProps}
+                  />
+                  <SortableHeader
+                    label="职位类"
+                    field="job_category"
+                    columnKey="jobCategory"
+                    width={columnWidths.jobCategory}
+                    activeField={sort.field}
+                    order={sort.order}
+                    onSort={handleSort}
+                    {...sortableResizeProps}
+                  />
+                  <SortableHeader
+                    label="职务"
+                    field="position"
+                    columnKey="position"
+                    width={columnWidths.position}
+                    activeField={sort.field}
+                    order={sort.order}
+                    onSort={handleSort}
+                    {...sortableResizeProps}
+                  />
+                  <SortableHeader
+                    label="岗位"
+                    field="major"
+                    columnKey="major"
+                    width={columnWidths.major}
+                    activeField={sort.field}
+                    order={sort.order}
+                    onSort={handleSort}
+                    {...sortableResizeProps}
+                  />
+                  <ContributionHeader
+                    widths={{
+                      answerCount: columnWidths.answerCount,
+                      adoptionCount: columnWidths.adoptionCount,
+                      voteCount: columnWidths.voteCount,
+                    }}
+                    activeField={sort.field}
+                    order={sort.order}
+                    onSort={handleSort}
+                    {...sortableResizeProps}
+                  />
+                  <SortableHeader
+                    label="加入时间"
+                    field="created_at"
+                    columnKey="createdAt"
+                    width={columnWidths.createdAt}
+                    activeField={sort.field}
+                    order={sort.order}
+                    onSort={handleSort}
+                    {...sortableResizeProps}
+                  />
+                  <ResizableHeader
+                    label="操作"
+                    columnKey="actions"
+                    width={columnWidths.actions}
+                    {...resizeProps}
+                  />
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={11}>
                       <div className={s.stateRow}>专家数据加载中…</div>
                     </td>
                   </tr>
                 ) : experts.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={11}>
                       <div className={s.stateRow}>
-                        {search ? '没有符合条件的专家' : '暂无专家数据'}
+                        {hasQueryConditions ? '没有符合条件的专家' : '暂无专家数据'}
                       </div>
                     </td>
                   </tr>
@@ -776,15 +1454,14 @@ export default function ExpertManagePage() {
                         <span className={s.cellText}>{expert.major || '—'}</span>
                       </td>
 
-                      {/* 统计 */}
                       <td>
-                        <span className={s.cellText}>{expert.answer_count ?? 0}</span>
+                        <span className={s.contributionValue}>{expert.answer_count ?? 0}</span>
                       </td>
                       <td>
-                        <span className={s.cellText}>{expert.adoption_count ?? 0}</span>
+                        <span className={s.contributionValue}>{expert.adoption_count ?? 0}</span>
                       </td>
                       <td>
-                        <span className={s.cellText}>{expert.vote_count ?? 0}</span>
+                        <span className={s.contributionValue}>{expert.vote_count ?? 0}</span>
                       </td>
 
                       {/* 时间 */}
@@ -793,26 +1470,27 @@ export default function ExpertManagePage() {
                       </td>
 
                       {/* 操作 */}
-                      <td>
+                      <td className={s.actionCell}>
                         <div className={s.actionBtns}>
                           {isAdmin && (
                             <>
                               <button
                                 type="button"
-                                className={s.btnEdit}
+                                className={`${s.actionIconBtn} ${s.btnEdit}`}
                                 onClick={() => setModal({ type: 'edit', expert })}
+                                aria-label={`编辑专家 ${expert.expert_name}`}
+                                title="编辑"
                               >
-                                <Pencil size={14} />
-                                编辑
+                                <Pencil size={16} aria-hidden />
                               </button>
-                              <span className={s.actionSep} aria-hidden />
                               <button
                                 type="button"
-                                className={s.btnDelete}
+                                className={`${s.actionIconBtn} ${s.btnDelete}`}
                                 onClick={() => setModal({ type: 'delete', expert })}
+                                aria-label={`删除专家 ${expert.expert_name}`}
+                                title="删除"
                               >
-                                <Trash2 size={14} />
-                                删除
+                                <Trash2 size={16} aria-hidden />
                               </button>
                             </>
                           )}
