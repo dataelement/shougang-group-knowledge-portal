@@ -6,6 +6,8 @@ export const DISPLAY_CONFIG = {
     domainCount: 10,
     spacesCount: 6,
     appsCount: 6,
+    expertQaCount: 8,
+    courseCount: 6,
   },
   list: {
     pageSize: 10,

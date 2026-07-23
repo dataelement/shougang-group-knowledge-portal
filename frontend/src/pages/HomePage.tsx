@@ -1364,7 +1364,7 @@ export default function HomePage() {
           {/* Right column */}
           <div className={s.sideColumn}>
             {/* 专家问答 */}
-            <ExpertQuestions className={s.qaPanel} />
+            <ExpertQuestions className={s.qaPanel} count={displayConfig.home.expertQaCount} />
 
             {/* 专业课程 · 岗位赋能 */}
             <div className={s.panel}>
@@ -1378,7 +1378,7 @@ export default function HomePage() {
                 </Link>
               </div>
               <div className={s.courseList}>
-                {homeCourses.map((course) => {
+                {homeCourses.slice(0, displayConfig.home.courseCount).map((course) => {
                   const displayTag = course.tags.find((tag) => tag.displayType === 'domain') ?? course.tags[0];
                   return (
                     <button

@@ -505,6 +505,8 @@ class DisplayHomeConfig(BaseModel):
     domain_count: int = 6
     spaces_count: int = 6
     apps_count: int = 6
+    expert_qa_count: int = 8
+    course_count: int = 6
 
 
 class DisplayListConfig(BaseModel):

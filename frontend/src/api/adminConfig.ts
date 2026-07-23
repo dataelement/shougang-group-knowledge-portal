@@ -223,6 +223,8 @@ export interface DisplayHomeConfig {
   domain_count: number;
   spaces_count: number;
   apps_count: number;
+  expert_qa_count: number;
+  course_count: number;
 }
 
 export interface DisplayListConfig {
