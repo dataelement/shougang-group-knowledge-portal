@@ -1271,8 +1271,8 @@ export default function HomePage() {
               const moreLink = buildSectionMoreLink(sec, recommendationMode);
               // 需要参与「左右高度补长」的左侧板块
               const isLeftFillPanel = /知识推荐|典型案例/.test(sec.title);
-              // 仅「知识推荐」「典型案例」摘要开启 hover 全文提示
-              const enableSummaryTooltip = /知识推荐|典型案例/.test(sec.title);
+              // 「知识推荐」「典型案例」「行业情报」摘要开启 hover 全文提示浮窗
+              const enableSummaryTooltip = /知识推荐|典型案例|行业情报/.test(sec.title);
               return (
                 <div
                   key={sectionKey}
@@ -1325,22 +1325,19 @@ export default function HomePage() {
                             <img src={resolveSectionItemIcon(sec.title)} alt="" className={s.itemIcon} />
                             <div className={s.itemBody}>
                               <div className={s.itemTitle}>{f.title}</div>
-                              {(() => {
-                                const displaySummary = cleanSummaryText(f.summary);
-                                if (enableSummaryTooltip && displaySummary) {
-                                  return (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div className={s.itemSummary}>{displaySummary}</div>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
-                                        {displaySummary}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  );
-                                }
-                                return <div className={s.itemSummary}>{displaySummary}</div>;
-                              })()}
+                              {enableSummaryTooltip && f.summary ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className={s.itemSummary}>{f.summary}</div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
+                                    <span className={s.summaryTooltipLabel}>【摘要】：</span>
+                                    {f.summary}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <div className={s.itemSummary}>{f.summary ?? ''}</div>
+                              )}
                             </div>
                             {f.date ? (
                               <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
