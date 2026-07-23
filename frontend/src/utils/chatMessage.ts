@@ -120,7 +120,7 @@ function injectCitationLinks(
       seenOrdinals.add(ordinal);
       const sp = citation.sourcePayload ?? {};
       const href = sp.knowledgeId && sp.documentId
-        ? `/space/${sp.knowledgeId}/file/${sp.documentId}${hideBackLink ? '?hideBack=1' : ''}`
+        ? `/space/${sp.knowledgeId}/file/${sp.documentId}?entry_point=qa_citation${hideBackLink ? '&hideBack=1' : ''}`
         : '#';
       const title = escapeHtml(sp.documentName || key);
       const safeKey = escapeHtml(key);

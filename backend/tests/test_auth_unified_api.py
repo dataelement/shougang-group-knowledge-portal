@@ -195,8 +195,25 @@ def test_unified_auth_public_config_disabled_is_secret_safe():
     assert config.enabled is False
     assert config.provider == "group"
     assert config.unavailable_reason == "disabled"
+    assert config.missing_fields == ["enabled"]
     assert "oauth-secret" not in config.model_dump_json()
     assert "hmac-secret" not in config.model_dump_json()
+
+
+def test_unified_auth_public_config_reports_missing_fields():
+    service = make_unified_service(
+        settings=make_settings(
+            unified_auth_client_secret="",
+            unified_auth_login_sync_hmac_secret="",
+        )
+    )
+
+    config = service.get_public_config()
+
+    assert config.enabled is False
+    assert config.unavailable_reason == "missing_config"
+    assert "client_secret" in config.missing_fields
+    assert "login_sync_hmac_secret" in config.missing_fields
 
 
 def test_provider_defaults_and_custom_endpoint_override():
@@ -402,7 +419,7 @@ def test_unified_auth_logout_start_clears_local_cookies_without_glo_redirect():
             restore_services(client, previous_auth, previous_unified)
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/"
     set_cookie = response.headers["set-cookie"].lower()
     assert "test_portal_session=" in set_cookie
     assert "access_token_cookie=" in set_cookie
@@ -431,7 +448,7 @@ def test_unified_auth_logout_callback_clears_local_session():
             restore_services(client, previous_auth, previous_unified)
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/"
     assert after_logout.status_code == 401
 
 
@@ -456,7 +473,7 @@ def test_local_auth_logout_start_does_not_redirect_to_glo():
             restore_services(client, previous_auth, previous_unified)
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/"
     assert after_logout.status_code == 401
 
 

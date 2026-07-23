@@ -250,6 +250,11 @@ class ShareDocumentAccessData(BaseModel):
     allow_download: bool = False
 
 
+class ShareDocumentAccessInternalData(ShareDocumentAccessData):
+    download_grant: str = ""
+    download_grant_expires_at: int | None = None
+
+
 class DocumentFileChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
     model: str = ""
@@ -258,6 +263,9 @@ class DocumentFileChatRequest(BaseModel):
 class FilePreviewData(BaseModel):
     original_url: str
     preview_url: str
+    # PDF rendition of a Word preview (LibreOffice-rendered by bisheng). Empty when
+    # conversion failed or the file predates it — callers fall back to preview_url.
+    pdf_preview_url: str = ""
 
 
 class PortalHotSearchItem(BaseModel):
@@ -275,6 +283,17 @@ PortalPreviewEntryPoint = Literal[
     "favorite",
     "other",
 ]
+PortalDownloadEntryPoint = Literal[
+    "search",
+    "knowledge_list",
+    "detail",
+    "home_recommendation",
+    "favorite",
+    "share",
+    "expert_qa",
+    "qa_citation",
+    "other",
+]
 PortalRecommendationScene = Literal["personalized_v1", "latest_selected"]
 
 
@@ -289,7 +308,7 @@ class PortalSearchTelemetryRequest(BaseModel):
 
 
 FilePreviewMode = Literal["pdf", "docx", "spreadsheet", "markdown", "html", "text", "image", "unsupported", "chunks"]
-FilePreviewSourceKind = Literal["preview_url", "original_url", "preview_task", "none"]
+FilePreviewSourceKind = Literal["pdf_preview_url", "preview_url", "original_url", "preview_task", "none"]
 
 
 class FilePreviewManifest(BaseModel):

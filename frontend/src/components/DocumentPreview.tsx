@@ -7,6 +7,7 @@ import type { FileChunkItem } from '../api/content';
 import type { ResolvedFilePreview } from '../utils/filePreview';
 import s from './DocumentPreview.module.css';
 import PdfPreview from './PdfPreview';
+import { PreviewWatermarkOverlay } from './PreviewWatermark';
 
 interface Props {
   chunks: FileChunkItem[];
@@ -110,13 +111,17 @@ function ChunkFallbackPreview({ chunks, reason }: { chunks: FileChunkItem[]; rea
   if (!chunks.length) return <FallbackState reason={reason || '当前文件没有可展示的正文分段内容。'} />;
   return (
     <div className={s.scrollSurface}>
-      <div className={s.textContent}>
+      <div
+        className={`${s.textContent} ${s.watermarkSurface}`}
+        data-preview-watermark-surface
+      >
         {chunks.map((chunk) => (
           <section key={chunk.chunkIndex} className={s.textBlock}>
             <h3 className={s.textTitle}>第 {chunk.chunkIndex + 1} 段</h3>
             <pre className={s.textBody}>{chunk.text}</pre>
           </section>
         ))}
+        <PreviewWatermarkOverlay />
       </div>
     </div>
   );
@@ -159,12 +164,18 @@ function ImagePreview({ title, viewerUrl, onPreviewFailure }: { title: string; v
   if (!imageUrl) return <FallbackState reason="图片预览资源不可用。" />;
   return (
     <div className={s.imageSurface}>
-      <img
-        className={s.image}
-        src={imageUrl}
-        alt={`${title} 预览`}
-        onError={onPreviewFailure}
-      />
+      <div
+        className={`${s.imageWatermarkSurface} ${s.watermarkSurface}`}
+        data-preview-watermark-surface
+      >
+        <img
+          className={s.image}
+          src={imageUrl}
+          alt={`${title} 预览`}
+          onError={onPreviewFailure}
+        />
+        <PreviewWatermarkOverlay />
+      </div>
     </div>
   );
 }
@@ -203,7 +214,15 @@ function HtmlPreview({
   }, [onPreviewFailure, sourceUrl]);
 
   if (loading) return <LoadingState label="正在加载 HTML 预览..." />;
-  return <div className={s.richContent} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      className={`${s.richContent} ${s.watermarkSurface}`}
+      data-preview-watermark-surface
+    >
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+      <PreviewWatermarkOverlay />
+    </div>
+  );
 }
 
 function MarkdownPreview({
@@ -241,7 +260,15 @@ function MarkdownPreview({
   }, [onPreviewFailure, sourceUrl]);
 
   if (loading) return <LoadingState label="正在加载 Markdown 预览..." />;
-  return <div className={s.richContent} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      className={`${s.richContent} ${s.watermarkSurface}`}
+      data-preview-watermark-surface
+    >
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+      <PreviewWatermarkOverlay />
+    </div>
+  );
 }
 
 function TextPreview({
@@ -280,8 +307,12 @@ function TextPreview({
   if (loading) return <LoadingState label="正在加载文本预览..." />;
   return (
     <div className={s.scrollSurface}>
-      <div className={s.textContent}>
+      <div
+        className={`${s.textContent} ${s.watermarkSurface}`}
+        data-preview-watermark-surface
+      >
         <pre className={s.textBody}>{content}</pre>
+        <PreviewWatermarkOverlay />
       </div>
     </div>
   );
@@ -322,7 +353,15 @@ function DocxPreview({
   }, [onPreviewFailure, sourceUrl]);
 
   if (loading) return <LoadingState label="正在加载 DOCX 预览..." />;
-  return <div className={s.richContent} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      className={`${s.richContent} ${s.watermarkSurface}`}
+      data-preview-watermark-surface
+    >
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+      <PreviewWatermarkOverlay />
+    </div>
+  );
 }
 
 function SpreadsheetPreview({
@@ -399,7 +438,13 @@ function SpreadsheetPreview({
           ))}
         </div>
       )}
-      <div className={s.sheetContent} dangerouslySetInnerHTML={{ __html: html }} />
+      <div
+        className={`${s.sheetWatermarkSurface} ${s.watermarkSurface}`}
+        data-preview-watermark-surface
+      >
+        <div className={s.sheetContent} dangerouslySetInnerHTML={{ __html: html }} />
+        <PreviewWatermarkOverlay />
+      </div>
     </div>
   );
 }

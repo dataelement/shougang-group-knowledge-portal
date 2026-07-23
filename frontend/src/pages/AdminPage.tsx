@@ -15,6 +15,8 @@ import {
   type DeptBinding,
   type DepartmentOption,
   type DisplayConfig,
+  type RebindDepartmentOption,
+  fetchRebindDepartments,
   type DocumentTypeConfig,
   type DomainConfig,
   type UnifiedAuthRuntimeConfig,
@@ -29,6 +31,7 @@ import {
   fetchUnifiedAuthRuntimeConfig,
   fetchQaModelOptions,
   fetchSpaceOptions,
+  rebindDeptSpace,
   unbindDeptSpace,
   type IntegrationsConfig,
   type PortalConfig,
@@ -370,6 +373,11 @@ export default function AdminPage() {
   const [bindingDraft, setBindingDraft] = useState<BindingDraft>(createBindingDraft());
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false);
   const [bindingUnbindTarget, setBindingUnbindTarget] = useState<DeptBinding | null>(null);
+  const [bindingRebindTarget, setBindingRebindTarget] = useState<DeptBinding | null>(null);
+  const [bindingRebindDraft, setBindingRebindDraft] = useState<BindingDraft>(createBindingDraft());
+  const [rebindDepartments, setRebindDepartments] = useState<RebindDepartmentOption[]>([]);
+  const [rebindDisabledIds, setRebindDisabledIds] = useState<Set<number>>(new Set());
+  const [rebindDepartmentsLoading, setRebindDepartmentsLoading] = useState(false);
 
   async function loadConfig() {
     setLoading(true);
@@ -483,6 +491,33 @@ export default function AdminPage() {
       onSuccess?.();
     });
   };
+
+  const handleRebindSpace = () => {
+    if (!bindingRebindTarget || bindingRebindDraft.departmentId == null) return;
+    void runSave(async () => {
+      await rebindDeptSpace(bindingRebindTarget.space_id, bindingRebindDraft.departmentId!);
+      await refetchBindings();
+      setBindingRebindTarget(null);
+      setBindingRebindDraft(createBindingDraft());
+      setRebindDepartments([]);
+      setRebindDisabledIds(new Set());
+    });
+  };
+
+  async function loadRebindDepartments() {
+    setRebindDepartmentsLoading(true);
+    try {
+      const departments = await fetchRebindDepartments();
+      setRebindDepartments(departments);
+      // 已绑定的科室（含当前知识库原科室）置灰不可选
+      const disabledIds = new Set(deptBindings.map((binding) => binding.department_id));
+      setRebindDisabledIds(disabledIds);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '科室候选列表加载失败');
+    } finally {
+      setRebindDepartmentsLoading(false);
+    }
+  }
 
   function openCreateDomainDialog() {
     setDomainEditorOpen(true);
@@ -1016,7 +1051,11 @@ export default function AdminPage() {
               bindings={groupBindingsByDepartment(deptBindings)}
               saving={saving}
               onAdd={openBindingDialog}
-              onUnbind={(binding) => setBindingUnbindTarget(binding)}
+              onRebind={(binding) => {
+                setBindingRebindTarget(binding);
+                setBindingRebindDraft({ spaceId: binding.space_id, departmentId: binding.department_id });
+                void loadRebindDepartments();
+              }}
             />
           )}
           {config && active === 'recommend' && (
@@ -1255,7 +1294,7 @@ export default function AdminPage() {
             setUnifiedAuthFormError('');
           }}
           onSubmit={() => {
-            const result = validateUnifiedAuthDraft(unifiedAuthDraft);
+            const result = validateUnifiedAuthDraft(unifiedAuthDraft, unifiedAuthConfig);
             if (!result.payload) {
               setUnifiedAuthFormError(result.error || '统一认证配置无效');
               return;
@@ -1300,6 +1339,26 @@ export default function AdminPage() {
             const target = bindingUnbindTarget;
             handleUnbindSpace(target.space_id, () => setBindingUnbindTarget(null));
           }}
+        />
+      ) : null}
+      {bindingRebindTarget ? (
+        <DeptRebindDialog
+          open
+          binding={bindingRebindTarget}
+          departments={rebindDepartments}
+          disabledIds={rebindDisabledIds}
+          departmentsLoading={rebindDepartmentsLoading}
+          draft={bindingRebindDraft}
+          saving={saving}
+          error={error}
+          onClose={() => {
+            setBindingRebindTarget(null);
+            setBindingRebindDraft(createBindingDraft());
+            setRebindDepartments([]);
+            setRebindDisabledIds(new Set());
+          }}
+          onChange={(patch) => setBindingRebindDraft((current) => ({ ...current, ...patch }))}
+          onSubmit={handleRebindSpace}
         />
       ) : null}
       {config && qaDialogMode ? (
@@ -2271,12 +2330,12 @@ function DeptBindingTable({
   bindings,
   saving,
   onAdd,
-  onUnbind,
+  onRebind,
 }: {
   bindings: DeptBinding[];
   saving: boolean;
   onAdd: () => void;
-  onUnbind: (binding: DeptBinding) => void;
+  onRebind: (binding: DeptBinding) => void;
 }) {
   return (
     <>
@@ -2304,7 +2363,7 @@ function DeptBindingTable({
               <td>{binding.create_time ? formatDisplayDateTime(binding.create_time) : '-'}</td>
               <td>
                 <div className={s.actionGroup}>
-                  <button className={s.inlineDangerBtn} onClick={() => onUnbind(binding)} disabled={saving}>解绑</button>
+                  <button className={s.inlineBtn} onClick={() => onRebind(binding)} disabled={saving}>更绑</button>
                 </div>
               </td>
             </tr>
@@ -2502,12 +2561,14 @@ function TreeBindingDepartmentSelect({
   value,
   departments,
   disabled,
+  disabledIds,
   onChange,
 }: {
   id: string;
   value: number | null;
   departments: DepartmentOption[];
   disabled?: boolean;
+  disabledIds?: Set<number>;
   onChange: (value: number) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -2537,6 +2598,7 @@ function TreeBindingDepartmentSelect({
   };
 
   const selectDepartment = (departmentId: number) => {
+    if (disabledIds?.has(departmentId)) return;
     onChange(departmentId);
     closeMenu(true);
   };
@@ -2564,6 +2626,7 @@ function TreeBindingDepartmentSelect({
     const hasChildren = department.children.length > 0;
     const expanded = Boolean(query.trim()) || expandedIds.has(department.id);
     const selected = department.id === value;
+    const isDisabled = disabledIds?.has(department.id) ?? false;
     return (
       <div
         key={department.id}
@@ -2571,6 +2634,7 @@ function TreeBindingDepartmentSelect({
         aria-level={depth + 1}
         aria-expanded={hasChildren ? expanded : undefined}
         aria-selected={selected}
+        aria-disabled={isDisabled}
       >
         <div className={s.departmentTreeRow} style={{ paddingLeft: `${10 + depth * 18}px` }}>
           {hasChildren ? (
@@ -2585,8 +2649,9 @@ function TreeBindingDepartmentSelect({
           ) : <span className={s.departmentTreeTogglePlaceholder} aria-hidden="true" />}
           <button
             type="button"
-            className={`${s.departmentTreeOption} ${selected ? s.departmentTreeOptionSelected : ''}`}
-            title={department.name}
+            disabled={isDisabled}
+            className={`${s.departmentTreeOption} ${selected ? s.departmentTreeOptionSelected : ''} ${isDisabled ? s.departmentTreeOptionDisabled : ''}`}
+            title={isDisabled ? `${department.name}（已绑定）` : department.name}
             onClick={() => selectDepartment(department.id)}
           >
             <span>{department.name}</span>
@@ -2935,6 +3000,75 @@ function DeptUnbindConfirmDialog({
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
           <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认解绑</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeptRebindDialog({
+  open,
+  binding,
+  departments,
+  disabledIds,
+  departmentsLoading,
+  draft,
+  saving,
+  error,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  binding: DeptBinding;
+  departments: DepartmentOption[];
+  disabledIds: Set<number>;
+  departmentsLoading: boolean;
+  draft: BindingDraft;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onChange: (patch: Partial<BindingDraft>) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={`${s.modalCard} ${s.bindingModal}`} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>更绑科室知识库</h3>
+            <p className={s.modalNote}>选择新的科室后，该知识库将归属到所选科室。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={`${s.formGrid} ${s.bindingFormGrid}`}>
+          <div className={s.formField}>
+            <span className={s.fieldLabel}>团队/科室知识库</span>
+            <input className={s.formInput} value={binding.space_name} readOnly />
+            <span className={s.fieldHint}>更绑仅修改归属科室，不改变知识库</span>
+          </div>
+          <div className={s.formField}>
+            <label className={s.fieldLabel} htmlFor="dept-rebind-department">新科室</label>
+            <TreeBindingDepartmentSelect
+              id="dept-rebind-department"
+              value={draft.departmentId}
+              departments={departments}
+              disabled={saving || departmentsLoading}
+              disabledIds={disabledIds}
+              onChange={(departmentId) => onChange({ departmentId })}
+            />
+            {departmentsLoading ? <span className={s.fieldHint}>正在加载科室列表...</span> : null}
+            <span className={s.fieldHint}>原科室：{binding.department_name}；已绑定科室置灰且不可选</span>
+          </div>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving || departmentsLoading || draft.departmentId == null || draft.departmentId === binding.department_id}>
+            {saving ? '保存中…' : '保存'}
+          </button>
         </div>
       </div>
     </div>
@@ -5933,7 +6067,10 @@ function validateBishengDraft(draft: BishengDraft): {
   };
 }
 
-function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
+function validateUnifiedAuthDraft(
+  draft: UnifiedAuthDraft,
+  config?: UnifiedAuthRuntimeConfig | null,
+): {
   payload?: Parameters<typeof updateUnifiedAuthRuntimeConfig>[0];
   error?: string;
 } {
@@ -5960,6 +6097,13 @@ function validateUnifiedAuthDraft(draft: UnifiedAuthDraft): {
 
   if (draft.enabled && draft.provider === 'custom' && (!authorize_url || !token_url || !userinfo_url)) {
     return { error: '自定义端点需要填写 authorize_url、token_url 和 userinfo_url' };
+  }
+
+  if (draft.enabled && !config?.has_client_secret && !draft.client_secret.trim()) {
+    return { error: '首次启用统一认证需要填写 client_secret' };
+  }
+  if (draft.enabled && !config?.has_login_sync_hmac_secret && !draft.login_sync_hmac_secret.trim()) {
+    return { error: '首次启用统一认证需要填写 login_sync_hmac_secret（需与 BiSheng sso_sync.gateway_hmac_secret 一致）' };
   }
 
   const state_ttl_seconds = Number(draft.state_ttl_seconds.trim());

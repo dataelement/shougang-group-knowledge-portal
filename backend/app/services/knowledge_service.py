@@ -2,7 +2,6 @@ import asyncio
 import base64
 import json
 import logging
-import secrets
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -44,7 +43,7 @@ from app.schemas.knowledge import (
     CursorKnowledgeFileData,
     RelatedKnowledgeFileData,
     DocumentFileChatRequest,
-    ShareDocumentAccessData,
+    ShareDocumentAccessInternalData,
     ShareDocumentAccessRequest,
     ShareDocumentData,
     ShareDocumentMeta,
@@ -65,19 +64,20 @@ MARKDOWN_EXTENSIONS = {"markdown", "md"}
 HTML_EXTENSIONS = {"htm", "html"}
 TEXT_EXTENSIONS = {"txt"}
 LEGACY_WORD_EXTENSIONS = {"doc"}
-UNSUPPORTED_PREVIEW_EXTENSIONS = {"ppt", "pptx"}
+# Presentations are converted to PDF by bisheng and served via preview_url, so they
+# preview as PDFs rather than being unsupported.
+PPT_EXTENSIONS = {"ppt", "pptx", "dps"}
+UNSUPPORTED_PREVIEW_EXTENSIONS: set[str] = set()
 PREVIEW_TASK_CACHE_TTL_SECONDS = 900.0
 PREVIEW_TASK_POLL_ATTEMPTS = 6
 PREVIEW_TASK_POLL_DELAY_SECONDS = 0.4
 PREVIEW_TASK_FAILURE_STATUSES = {"cancelled", "canceled", "error", "failed", "failure", "timeout"}
 FRONTEND_PROXY_ASSET_PATH_PREFIXES = ("/bisheng/", "/skm-bisheng/", "/workspace/bisheng/", "/workspace/skm-bisheng/", "/tmp-dir")
-SHARE_ACCESS_COOKIE_NAME = "portal_share_access"
 LATEST_SELECTED_RECOMMENDATION = "latest_selected"
 PERSONALIZED_RECOMMENDATION = "personalized_v1"
 TYPICAL_CASE_SECTION_KEY = "typical_case"
 LOCAL_OFFSET_CURSOR_PREFIX = "offset:"
 FILTERED_TAG_CURSOR_PREFIX = "tagfilter:"
-SHARE_ACCESS_TTL_SECONDS = 3600
 SPACE_LIST_ENDPOINTS = (
     ("mine", "/api/v1/knowledge/space/mine"),
     ("joined", "/api/v1/knowledge/space/joined"),
@@ -135,18 +135,7 @@ class ResolvedPreviewSource:
     url: str
 
 
-@dataclass
-class ShareAccessSession:
-    session_id: str
-    share_token: str
-    space_id: int
-    file_id: int
-    allow_download: bool
-    expires_at: float
-
-
 PREVIEW_TASK_CACHE: dict[tuple[int, int], CachedPreviewTaskResult] = {}
-SHARE_ACCESS_SESSIONS: dict[str, ShareAccessSession] = {}
 
 
 class BishengBusinessError(Exception):
@@ -575,13 +564,17 @@ class KnowledgeService:
         self,
         share_token: str,
         req: ShareDocumentAccessRequest,
-    ) -> ShareDocumentAccessData:
+        *,
+        issue_download_grant: bool = False,
+    ) -> ShareDocumentAccessInternalData:
+        payload = req.model_dump()
+        payload["issue_download_grant"] = issue_download_grant
         response = await self._bisheng.post_json(
             f"/api/v1/knowledge/shougang-portal/share-links/{share_token}/verify",
-            json=req.model_dump(),
+            json=payload,
         )
         data = self._extract_success_data(response)
-        return ShareDocumentAccessData.model_validate(data)
+        return ShareDocumentAccessInternalData.model_validate(data)
 
     async def prepare_document_file_chat(
         self,
@@ -610,50 +603,6 @@ class KnowledgeService:
         if not isinstance(raw_models, list):
             raw_models = []
         self._config_service.ensure_qa_model_enabled(model_id, raw_models)
-
-    @staticmethod
-    def create_share_access_session(access: ShareDocumentAccessData) -> ShareAccessSession:
-        KnowledgeService.cleanup_expired_share_access_sessions()
-        session = ShareAccessSession(
-            session_id=secrets.token_urlsafe(32),
-            share_token=access.share_token,
-            space_id=access.space_id,
-            file_id=access.file_id,
-            allow_download=access.allow_download,
-            expires_at=time.time() + SHARE_ACCESS_TTL_SECONDS,
-        )
-        SHARE_ACCESS_SESSIONS[session.session_id] = session
-        return session
-
-    @staticmethod
-    def cleanup_expired_share_access_sessions() -> None:
-        now = time.time()
-        expired = [
-            session_id
-            for session_id, session in SHARE_ACCESS_SESSIONS.items()
-            if session.expires_at <= now
-        ]
-        for session_id in expired:
-            SHARE_ACCESS_SESSIONS.pop(session_id, None)
-
-    @staticmethod
-    def get_share_access_session(
-        session_id: str,
-        share_token: str,
-        space_id: int,
-        file_id: int,
-    ) -> ShareAccessSession | None:
-        KnowledgeService.cleanup_expired_share_access_sessions()
-        session = SHARE_ACCESS_SESSIONS.get(session_id)
-        if session is None:
-            return None
-        if (
-            session.share_token != share_token
-            or session.space_id != space_id
-            or session.file_id != file_id
-        ):
-            return None
-        return session
 
     async def get_space_tags(
         self,
@@ -1524,7 +1473,31 @@ class KnowledgeService:
             file_size=item.file_size,
             file_encoding=item.file_encoding,
             file_subcategory_code=item.file_subcategory_code,
+            folder_path=item.folder_path,
+            source_path=item.source_path,
+            can_download=item.can_download,
             space=KnowledgeFileSpace(id=space_id, name=source),
+        )
+
+    async def open_portal_pdf_download_stream(
+        self,
+        *,
+        space_id: int,
+        file_id: int,
+        entry_point: str,
+        share_access_grant: str = "",
+        timeout_seconds: float,
+    ) -> httpx.Response:
+        headers = (
+            {"X-Portal-Share-Access-Grant": share_access_grant}
+            if share_access_grant
+            else None
+        )
+        return await self._bisheng.open_authenticated_download_stream(
+            f"/api/v1/knowledge/shougang-portal/files/{space_id}/{file_id}/download",
+            params={"entry_point": entry_point or "other"},
+            headers=headers,
+            timeout_seconds=timeout_seconds,
         )
 
     async def get_file_preview(
@@ -1659,6 +1632,7 @@ class KnowledgeService:
             **data,
             "original_url": str(data.get("original_url") or "").strip(),
             "preview_url": str(data.get("preview_url") or "").strip(),
+            "pdf_preview_url": str(data.get("pdf_preview_url") or "").strip(),
         }
         return FilePreviewData.model_validate(normalized)
 
@@ -1669,6 +1643,8 @@ class KnowledgeService:
         space_id: int,
         file_id: int,
     ) -> str:
+        if source_kind == "pdf_preview_url":
+            return raw_preview.pdf_preview_url if raw_preview else ""
         if source_kind == "preview_url":
             return raw_preview.preview_url if raw_preview else ""
         if source_kind == "original_url":
@@ -1680,11 +1656,22 @@ class KnowledgeService:
     def _get_preview_source_priority(self, file_ext: str) -> tuple[FilePreviewSourceKind, ...]:
         if file_ext == "pdf" or file_ext in IMAGE_EXTENSIONS:
             return ("preview_url", "original_url", "preview_task")
+        # Word files: prefer bisheng's LibreOffice-rendered PDF — it lays the page out
+        # like Word does, unlike rendering the docx in the browser (which drops e-seals
+        # and shape positioning). Empty pdf_preview_url falls straight through to the
+        # previous behaviour, so files without a PDF are unaffected.
         if file_ext in LEGACY_WORD_EXTENSIONS:
-            return ("preview_url", "original_url", "preview_task")
+            return ("pdf_preview_url", "preview_url", "original_url", "preview_task")
+        if file_ext == "docx":
+            return ("pdf_preview_url", "original_url", "preview_url", "preview_task")
+        # Presentations: bisheng converts them to PDF and serves it via preview_url
+        # (pdf_preview_url is currently produced only for Word, kept first for
+        # forward-compatibility). The original .ppt/.pptx is not browser-previewable,
+        # so it is not in the priority list.
+        if file_ext in PPT_EXTENSIONS:
+            return ("pdf_preview_url", "preview_url", "preview_task")
         if (
-            file_ext == "docx"
-            or file_ext in SPREADSHEET_EXTENSIONS
+            file_ext in SPREADSHEET_EXTENSIONS
             or file_ext in MARKDOWN_EXTENSIONS
             or file_ext in HTML_EXTENSIONS
             or file_ext in TEXT_EXTENSIONS

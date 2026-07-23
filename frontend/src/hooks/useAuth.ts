@@ -8,6 +8,31 @@ export type { PortalUser };
 
 const STORAGE_KEY = 'sg_portal_user';
 const PORTAL_USER_CHANGED_EVENT = 'sg_portal_user_changed';
+export const PORTAL_LOGOUT_IN_PROGRESS_KEY = 'sg_portal_logging_out';
+
+export function markPortalLogoutInProgress(): void {
+  try {
+    sessionStorage.setItem(PORTAL_LOGOUT_IN_PROGRESS_KEY, '1');
+  } catch {
+    // ignore session storage errors
+  }
+}
+
+export function isPortalLogoutInProgress(): boolean {
+  try {
+    return sessionStorage.getItem(PORTAL_LOGOUT_IN_PROGRESS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function clearPortalLogoutInProgress(): void {
+  try {
+    sessionStorage.removeItem(PORTAL_LOGOUT_IN_PROGRESS_KEY);
+  } catch {
+    // ignore session storage errors
+  }
+}
 
 function readStoredUser(): PortalUser | null {
   if (typeof window === 'undefined') return null;
@@ -109,6 +134,7 @@ function ensureAuthSynced(): Promise<void> {
     })
     .finally(() => {
       mePromise = null;
+      clearPortalLogoutInProgress();
     });
   return mePromise;
 }
@@ -125,6 +151,7 @@ export function useAuth() {
   }, []);
 
   const logout = useCallback(() => {
+    markPortalLogoutInProgress();
     clearPortalUser();
     window.location.assign(buildPortalLogoutStartUrl());
   }, []);

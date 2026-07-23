@@ -518,12 +518,14 @@ class PortalAuthService:
             raise PortalAuthError("BiSheng 登录态缺少用户信息，请重新登录", status_code=401)
         name = self._first_str(data, "nick_name", "nickname", "name", "real_name", "user_name") or account
         role = self._first_str(data, "role_name", "role", "position", "department_name", "department")
+        department_name = self._first_str(data, "department_name", "department")
         external_id = self._first_str(data, "external_id", "employee_id", "staff_id")
         return PortalUserView(
             account=account,
             name=name,
             initial=name[:1].upper(),
             role=role or "内部员工",
+            department_name=department_name,
             external_id=external_id,
             user_id=self._first_positive_int(data, "user_id", "id"),
             # BiSheng's current /user/info contract exposes the effective tenant

@@ -570,8 +570,7 @@ function parseAttachments(
   relatedDocs?: string | null 
 ): DetailAttachment[] {
   const names = splitStoredList(value);
-  // 👇 将 attachments(value) 也传入，用于提取文件名和后缀
-  const hrefs = parseRelatedDocs(relatedDocs, value); 
+  const hrefs = parseRelatedDocs(relatedDocs);
 
   return names.map((raw, index) => {
     const [maybeLabel] = raw.split(ASSET_PART_SEPARATOR).map((part) => part.trim());
@@ -584,32 +583,28 @@ function parseAttachments(
   });
 }
 /**
- * 将 related_docs 和 attachments 解析为完整的下载链接数组
+ * 只把合法的“知识库 ID-文件 ID”转换为门户详情链接，其他附件保持原行为。
  */
-function parseRelatedDocs(relatedDocs?: string | null, attachments?: string | null): string[] {
+function parseRelatedDocs(relatedDocs?: string | null): string[] {
   if (!relatedDocs || typeof relatedDocs !== 'string') return [];
 
-  const API_BASE_PATH = '/workspace/knowledge/file';
   const pairs = relatedDocs.replace(/;/g, '；').split('；').map(str => str.trim());
-  const fileNames = attachments ? attachments.replace(/;/g, '；').split('；').map(str => str.trim()) : [];
 
-  return pairs.reduce<string[]>((acc, pair, index) => {
-    if (!pair || !pair.includes('-')) return acc;
+  return pairs.map((pair) => {
+    if (!pair || !pair.includes('-')) return '';
     const [docId, fileId] = pair.split('-');
-    
-    if (docId && fileId) {
-      // 获取对应的文件名，如果没有则默认为 'file'
-      const fileName = fileNames[index] || 'file'; 
-      
-      const ext = fileName.includes('.') ? fileName.split('.').pop() : '';
-      
-      const encodedName = encodeURIComponent(fileName);
-      
-      // 拼接目标格式的 URL
-      acc.push(`${API_BASE_PATH}/${fileId}?name=${encodedName}&type=${ext}&spaceId=${docId}`);
+    const spaceIdValue = Number(docId);
+    const fileIdValue = Number(fileId);
+    if (
+      Number.isInteger(spaceIdValue)
+      && spaceIdValue > 0
+      && Number.isInteger(fileIdValue)
+      && fileIdValue > 0
+    ) {
+      return `/space/${docId}/file/${fileId}?entry_point=expert_qa`;
     }
-    return acc;
-  }, []);
+    return '';
+  });
 }
 
 function getAttachmentLabel(

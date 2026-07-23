@@ -936,6 +936,15 @@
   right: 6px;
 }
 
+.domainArrowDisabled,
+.domainArrowDisabled:hover {
+  color: var(--neutral-400, #9ca3af);
+  border-color: rgba(199, 211, 229, 0.5);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 /* 业务域每屏列数分档:大屏多几个、小屏少几个 */
 @media (min-width: 1700px) {
   .domainGrid { --cols: 8; }
@@ -959,7 +968,7 @@
   grid-template-columns: minmax(0, 810fr) minmax(0, 440fr);
   gap: 24px;
   margin-top: 24px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .leftColumn {
@@ -973,6 +982,17 @@
   flex-direction: column;
   gap: 24px;
   min-width: 0;
+}
+
+/* 左侧「知识推荐」「典型案例」等需要与右侧对齐时均分额外高度 */
+.leftFillPanel {
+  flex: 1 1 auto;
+}
+
+/* 右侧三大块在左侧较高时均分额外高度 */
+.sideColumn > .qaPanel,
+.sideColumn > .panel {
+  flex: 1 1 auto;
 }
 
 .primarySectionPanel {
@@ -1126,6 +1146,13 @@
   font-size: 14px;
   color: #6B717A;
   line-height: 1.2;
+}
+
+.summaryTooltip {
+  max-width: 480px;
+  white-space: normal;
+  word-break: break-all;
+  line-height: 1.6;
 }
 
 .itemTime {

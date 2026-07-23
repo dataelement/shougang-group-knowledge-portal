@@ -25,7 +25,10 @@ test('unified auth helpers normalize unsafe redirects before start URL build', (
     '/api/v1/auth/unified/start?redirect=%2Fadmin%3Ftab%3Dusers',
   );
   assert.equal(buildUnifiedAuthStartUrl('https://evil.example.com'), '/api/v1/auth/unified/start?redirect=%2F');
-  assert.equal(buildPortalLogoutStartUrl(), '/api/v1/auth/unified/logout/start');
+  assert.equal(
+    buildPortalLogoutStartUrl(),
+    '/api/v1/auth/unified/logout/start?redirect=%2F',
+  );
 });
 
 test('unified auth error helper exposes safe Chinese messages only', () => {

@@ -11,6 +11,7 @@ import {
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/Tooltip';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
   streamHomeContent,
@@ -47,7 +48,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
-import { buildGuestLoginPath } from '../utils/guestAccess';
+import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { fetchCourses } from '../api/courses';
 import { formatCourseDuration, type Course } from '../types/course';
 import s from './HomePage.module.css';
@@ -317,6 +318,7 @@ export default function HomePage() {
   const [bannerIdx, setBannerIdx] = useState(0);
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
+  const [domainScrollState, setDomainScrollState] = useState({ atStart: true, atEnd: false });
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionRecommendationModes, setSectionRecommendationModes] = useState<Record<string, RecommendationMode>>({});
   const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
@@ -514,7 +516,7 @@ export default function HomePage() {
     if (searchTab === 'qa') {
       // 未登录:先去登录(附件/问答均需登录)。
       if (!user) {
-        navigate(buildGuestLoginPath('/apps?tab=qa'));
+        triggerLoginRedirect('/apps?tab=qa');
         return;
       }
       // 无问题也无附件:仅打开问答页,不自动发送。
@@ -579,7 +581,7 @@ export default function HomePage() {
     event.target.value = '';
     if (!files.length) return;
     if (!user) {
-      navigate(buildGuestLoginPath('/apps?tab=qa'));
+      triggerLoginRedirect('/apps?tab=qa');
       return;
     }
     const supported = files.filter(isSupportedAttachment);
@@ -818,6 +820,29 @@ export default function HomePage() {
     { value: formatHomeStat(homeStats?.qaCount), label: '次问答' },
   ];
 
+  // 业务域导航滚动到头/尾时禁用对应箭头
+  useEffect(() => {
+    const el = domainScrollRef.current;
+    if (!el) return;
+    const update = () => {
+      const { scrollLeft, scrollWidth, clientWidth } = el;
+      const maxScroll = Math.max(0, scrollWidth - clientWidth);
+      setDomainScrollState({
+        atStart: scrollLeft <= 1,
+        atEnd: maxScroll <= 1 || scrollLeft >= maxScroll - 1,
+      });
+    };
+    update();
+    const onScroll = () => update();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    const onResize = () => update();
+    window.addEventListener('resize', onResize);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [homeDomains.length]);
+
   return (
     <PageShell>
       {welcomeToast ? (
@@ -883,13 +908,13 @@ export default function HomePage() {
                   setShowHotTagMenu(false);
                 }}
               >
-                智能问答
+                小智知道
               </button>
             </div>
             <div className={s.searchBox}>
               <textarea
                 className={s.searchInput}
-                placeholder={searchTab === 'qa' ? '输入问题,智能问答为你解答' : '输入关键词搜索知识文档'}
+                placeholder={searchTab === 'qa' ? '输入问题，钢小智为您解答，挑选知识库，回答精准可溯源。' : '输入关键词搜索知识文档'}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKey}
@@ -946,7 +971,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       className={s.qaToolBtn}
-                      onClick={() => (user ? qaFileInputRef.current?.click() : navigate(buildGuestLoginPath('/apps?tab=qa')))}
+                      onClick={() => (user ? qaFileInputRef.current?.click() : triggerLoginRedirect('/apps?tab=qa'))}
                       aria-label="上传附件"
                     >
                       <Plus size={16} />
@@ -1098,7 +1123,8 @@ export default function HomePage() {
                     onClick={(event) => {
                       event.stopPropagation();
                       const path = `/apps?tab=qa&templateId=${encodeURIComponent(template.id)}`;
-                      navigate(user ? path : buildGuestLoginPath(path));
+                      if (user) navigate(path);
+                      else triggerLoginRedirect(path);
                     }}
                   >
                     <span className={s.appShortcutIcon}>
@@ -1140,7 +1166,8 @@ export default function HomePage() {
       </section>
 
       {/* Main content */}
-      <div className={s.container}>
+      <TooltipProvider delayDuration={100}>
+        <div className={s.container}>
         {/* Domain navigation */}
         <div className={`${s.section} ${s.domainSection}`}>
           <div className={s.domainHeader}>
@@ -1150,9 +1177,10 @@ export default function HomePage() {
           <div className={s.domainCarousel}>
             <button
               type="button"
-              className={`${s.domainArrow} ${s.domainArrowLeft}`}
+              className={`${s.domainArrow} ${s.domainArrowLeft} ${domainScrollState.atStart ? s.domainArrowDisabled : ''}`}
               aria-label="向左滚动业务域"
               onClick={() => scrollDomains(-1)}
+              disabled={domainScrollState.atStart}
             >
               <ChevronLeft size={22} />
             </button>
@@ -1201,9 +1229,10 @@ export default function HomePage() {
             </div>
             <button
               type="button"
-              className={`${s.domainArrow} ${s.domainArrowRight}`}
+              className={`${s.domainArrow} ${s.domainArrowRight} ${domainScrollState.atEnd ? s.domainArrowDisabled : ''}`}
               aria-label="向右滚动业务域"
               onClick={() => scrollDomains(1)}
+              disabled={domainScrollState.atEnd}
             >
               <ChevronRight size={22} />
             </button>
@@ -1222,10 +1251,14 @@ export default function HomePage() {
               const recommendationMode = sectionRecommendationModes[sectionKey];
               const recommendationModePending = isLatestSelectedSection(sec) && !recommendationMode;
               const moreLink = buildSectionMoreLink(sec, recommendationMode);
+              // 需要参与「左右高度补长」的左侧板块
+              const isLeftFillPanel = /知识推荐|典型案例/.test(sec.title);
+              // 仅「知识推荐」「典型案例」摘要开启 hover 全文提示
+              const enableSummaryTooltip = /知识推荐|典型案例/.test(sec.title);
               return (
                 <div
                   key={sectionKey}
-                  className={`${s.panel} ${index === 0 ? s.primarySectionPanel : s.tallSectionPanel}`}
+                  className={`${s.panel} ${index === 0 ? s.primarySectionPanel : s.tallSectionPanel} ${isLeftFillPanel ? s.leftFillPanel : ''}`}
                 >
                   <div className={`${s.panelHeader} ${resolveSectionHeaderClass(sec.title)}`}>
                     <div className={s.panelHeaderLeft}>
@@ -1243,7 +1276,7 @@ export default function HomePage() {
                         onClick={(event) => {
                           if (user) return;
                           event.preventDefault();
-                          navigate(buildGuestLoginPath(moreLink));
+                          triggerLoginRedirect(moreLink);
                         }}
                       >
                         更多 <ChevronRight size={14} />
@@ -1265,7 +1298,7 @@ export default function HomePage() {
                             onClick={() => {
                               const target = buildHomeFilePath(f, recommendationMode);
                               if (!user) {
-                                navigate(buildGuestLoginPath(target));
+                                triggerLoginRedirect(target);
                                 return;
                               }
                               navigate(target, { state: { returnTo: moreLink } });
@@ -1274,7 +1307,18 @@ export default function HomePage() {
                             <img src={resolveSectionItemIcon(sec.title)} alt="" className={s.itemIcon} />
                             <div className={s.itemBody}>
                               <div className={s.itemTitle}>{f.title}</div>
-                              <div className={s.itemSummary}>{f.summary ?? ''}</div>
+                              {enableSummaryTooltip && f.summary ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className={s.itemSummary}>{f.summary}</div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
+                                    {f.summary}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <div className={s.itemSummary}>{f.summary ?? ''}</div>
+                              )}
                             </div>
                             {f.date ? (
                               <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
@@ -1384,7 +1428,8 @@ export default function HomePage() {
         {error || loadError ? <div className={s.bottomPad}>{error || loadError}</div> : null}
 
         <div className={s.bottomPad} />
-      </div>
+        </div>
+      </TooltipProvider>
     </PageShell>
   );
 }

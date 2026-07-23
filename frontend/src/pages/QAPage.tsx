@@ -313,7 +313,7 @@ function CitationList({ items, hideBackLink }: { items: Citation[]; hideBackLink
       {items.map((c, idx) => {
         const sp = c.sourcePayload ?? {};
         const href = sp.knowledgeId && sp.documentId
-          ? `/space/${sp.knowledgeId}/file/${sp.documentId}${hideBackLink ? '?hideBack=1' : ''}`
+          ? `/space/${sp.knowledgeId}/file/${sp.documentId}?entry_point=qa_citation${hideBackLink ? '&hideBack=1' : ''}`
           : undefined;
         const label = sp.documentName || c.key;
         return (
@@ -1236,7 +1236,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
             ref={inputRef}
             data-autogrow="smart"
             aria-label="输入智能问答问题，Enter 发送，Shift+Enter 换行"
-            placeholder="开始提问..."
+            placeholder="输入问题，钢小智为您解答，挑选知识库，回答精准可溯源。"
             value={input}
             rows={1}
             onChange={(e) => {

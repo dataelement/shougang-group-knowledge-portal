@@ -231,6 +231,10 @@ export interface ExpertProfileResponse {
   expert_name: string;
   introduction: string | null;
   depart_ment: string | null;
+  department_id?: number | string | null;
+  position: string | null;
+  job_family: string | null;
+  job_category: string | null;
   major: string | null;
   answer_count: number;
   adoption_count: number;
@@ -253,7 +257,11 @@ export interface ExpertUpsertPayload {
   expert_name: string;
   introduction?: string;
   depart_ment?: string;
+  department_id?: number | string | null;
   major?: string;
+  position?: string;
+  job_family?: string;
+  job_category?: string;
 }
 
 // ─── 用户相关 ────────────────────────────────────────────────

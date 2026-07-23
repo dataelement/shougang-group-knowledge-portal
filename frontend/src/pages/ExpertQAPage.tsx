@@ -696,7 +696,7 @@ export default function ExpertQAPage() {
                         {expert.expert_name}{' '}
                         <span className={s.expBadge} />
                       </div>
-                      <div className={s.expDept}>{expert.depart_ment}</div>
+                      <div className={s.expDept}>{expert.depart_ment} · {expert.major || '?'}</div>
                     </div>
                     <div className={s.expCt}>回答 {expert.answer_count || 0}</div>
                   </div>

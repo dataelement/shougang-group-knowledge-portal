@@ -6,6 +6,7 @@ export interface PortalUser {
   name: string;
   initial?: string;
   role?: string;
+  departmentName?: string;
   externalId?: string;
   loginAt?: number;
 }
@@ -29,6 +30,7 @@ interface PortalUserDto {
   name: string;
   initial?: string;
   role?: string;
+  department_name?: string;
   external_id?: string;
   login_at?: number;
 }
@@ -52,6 +54,7 @@ function mapPortalUser(dto: PortalUserDto): PortalUser {
     name: dto.name,
     initial: dto.initial,
     role: dto.role,
+    departmentName: dto.department_name,
     externalId: dto.external_id,
     loginAt: dto.login_at,
   };
@@ -144,7 +147,7 @@ export function buildUnifiedAuthStartUrl(redirect: string | null | undefined): s
 }
 
 export function buildPortalLogoutStartUrl(): string {
-  return '/api/v1/auth/unified/logout/start';
+  return `/api/v1/auth/unified/logout/start?redirect=${encodeURIComponent(normalizePortalRedirect('/'))}`;
 }
 
 const UNIFIED_AUTH_ERROR_MESSAGES: Record<string, string> = {

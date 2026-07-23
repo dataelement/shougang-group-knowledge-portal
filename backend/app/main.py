@@ -24,6 +24,7 @@ from app.services.portal_auth_service import (
 from app.services.portal_admin_config_store import RemotePortalAdminConfigStore
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
+from app.services.portal_share_access_store import build_portal_share_access_session_store
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 from app.settings import get_settings
@@ -103,6 +104,10 @@ async def lifespan(app: FastAPI):
         store=app.state.portal_admin_config_store,
     )
     app.state.portal_home_cache_service = PortalHomeCacheService(redis_client)
+    app.state.portal_share_access_session_store = build_portal_share_access_session_store(
+        redis_client,
+        app_env=settings.app_env,
+    )
     try:
         yield
     finally:

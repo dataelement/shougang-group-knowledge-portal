@@ -14,7 +14,9 @@ test('search results hide download action for anonymous visitors', () => {
 
   assert.match(source, /const \{ user \} = useAuth\(\);/);
   assert.match(source, /const canDownload = Boolean\(user\);/);
-  assert.match(source, /onDownload=\{canDownload \? handleDownload : undefined\}/);
+  assert.match(source, /onDownload=\{canDownload && f\.canDownload \? handleDownload : undefined\}/);
+  assert.match(source, /downloadWatermarkedFile\(\{[\s\S]*entryPoint: 'search'/);
+  assert.doesNotMatch(source, /recordFileDownloadEvent/);
 });
 
 test('knowledge list hides download action for anonymous visitors', () => {
@@ -23,16 +25,20 @@ test('knowledge list hides download action for anonymous visitors', () => {
   assert.match(source, /import \{ useAuth \} from '\.\.\/hooks\/useAuth';/);
   assert.match(source, /const \{ user \} = useAuth\(\);/);
   assert.match(source, /const canDownload = Boolean\(user\);/);
-  assert.match(source, /onDownload=\{canDownload \? handleDownload : undefined\}/);
+  assert.match(source, /onDownload=\{canDownload && f\.canDownload \? handleDownload : undefined\}/);
+  assert.match(source, /downloadWatermarkedFile\(\{[\s\S]*entryPoint: 'knowledge_list'/);
+  assert.doesNotMatch(source, /recordFileDownloadEvent/);
 });
 
-test('document detail hides original-file download link for anonymous visitors', () => {
+test('document detail exposes a pending PDF button only with login and file permission', () => {
   const source = readSource('src/pages/DetailPage.tsx');
-  const downloadLinkIndex = source.indexOf('下载原文件');
-  const gateIndex = source.lastIndexOf('{user ? (', downloadLinkIndex);
 
   assert.match(source, /import \{ useAuth \} from '\.\.\/hooks\/useAuth';/);
   assert.match(source, /const \{ user \} = useAuth\(\);/);
-  assert.notEqual(downloadLinkIndex, -1);
-  assert.notEqual(gateIndex, -1);
+  assert.match(source, /const canDownload = Boolean\(user && detail\.canDownload\);/);
+  assert.match(source, /\{canDownload \? \(/);
+  assert.match(source, /disabled=\{downloadPending\}/);
+  assert.match(source, /downloadPending \? '正在生成 PDF' : '下载 PDF'/);
+  assert.match(source, /downloadWatermarkedFile\(/);
+  assert.doesNotMatch(source, /下载原文件|recordFileDownloadEvent|effectivePreview\.downloadUrl/);
 });

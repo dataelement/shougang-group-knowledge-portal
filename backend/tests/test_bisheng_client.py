@@ -41,6 +41,21 @@ class RequestSequenceClient:
         return None
 
 
+class TrackingStream(httpx.AsyncByteStream):
+    def __init__(self, chunks: list[bytes]):
+        self.chunks = chunks
+        self.iterated = False
+        self.closed = False
+
+    async def __aiter__(self):
+        self.iterated = True
+        for chunk in self.chunks:
+            yield chunk
+
+    async def aclose(self):
+        self.closed = True
+
+
 def test_get_preview_asset_uses_plain_client_for_presigned_urls():
     client = BishengClient("https://bisheng.example.com", 5, api_token="secret")
     original_client = client._client
@@ -164,6 +179,135 @@ def test_open_preview_asset_stream_forwards_range_without_buffering():
     assert body == b"%PDF"
     assert len(requests) == 1
     assert requests[0].headers["range"] == "bytes=0-3"
+
+
+def test_open_download_stream_uses_private_headers_params_and_dedicated_timeout_without_buffering():
+    requests: list[httpx.Request] = []
+    stream = TrackingStream([b"%PDF", b"-body"])
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            request=request,
+            headers={"content-type": "application/pdf"},
+            stream=stream,
+        )
+
+    async def run_scenario():
+        client = BishengClient("https://bisheng.example.com", 30, api_token="user-token")
+        await client._client.aclose()
+        client._client = httpx.AsyncClient(
+            base_url="https://bisheng.example.com",
+            headers={"Authorization": "Bearer user-token"},
+            cookies={"access_token_cookie": "user-token"},
+            timeout=30,
+            transport=httpx.MockTransport(handle_request),
+        )
+        try:
+            response = await client.open_authenticated_download_stream(
+                "/api/v1/knowledge/shougang-portal/files/12/1580/download",
+                params={"entry_point": "search"},
+                headers={"X-Portal-Share-Access-Grant": "opaque-grant"},
+                timeout_seconds=70,
+            )
+            assert response.is_stream_consumed is False
+            assert stream.iterated is False
+            body = await response.aread()
+            await response.aclose()
+            return body
+        finally:
+            await client.aclose()
+
+    body = asyncio.run(run_scenario())
+
+    assert body == b"%PDF-body"
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.url.params["entry_point"] == "search"
+    assert request.headers["authorization"] == "Bearer user-token"
+    assert request.headers["cookie"] == "access_token_cookie=user-token"
+    assert request.headers["x-portal-share-access-grant"] == "opaque-grant"
+    assert set(request.extensions["timeout"].values()) == {70.0}
+    assert stream.closed is True
+
+
+def test_open_download_stream_closes_401_and_refreshes_only_once():
+    refresh_calls: list[str] = []
+    first_stream = TrackingStream([b"unauthorized"])
+    second_stream = TrackingStream([b"%PDF"])
+    requests: list[httpx.Request] = []
+
+    async def refresh_token(failed_token: str) -> str:
+        refresh_calls.append(failed_token)
+        return "fresh-token"
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(401, request=request, stream=first_stream)
+        return httpx.Response(200, request=request, stream=second_stream)
+
+    async def run_scenario():
+        client = BishengClient(
+            "https://bisheng.example.com",
+            30,
+            api_token="stale-token",
+            auth_refresh_handler=refresh_token,
+        )
+        await client._client.aclose()
+        client._client = httpx.AsyncClient(
+            base_url="https://bisheng.example.com",
+            headers={"Authorization": "Bearer stale-token"},
+            cookies={"access_token_cookie": "stale-token"},
+            transport=httpx.MockTransport(handle_request),
+        )
+        try:
+            response = await client.open_authenticated_download_stream(
+                "/download",
+                timeout_seconds=70,
+            )
+            assert response.status_code == 200
+            await response.aclose()
+        finally:
+            await client.aclose()
+
+    asyncio.run(run_scenario())
+
+    assert refresh_calls == ["stale-token"]
+    assert len(requests) == 2
+    assert first_stream.closed is True
+    assert requests[1].headers["authorization"] == "Bearer fresh-token"
+
+
+def test_open_download_stream_leaves_unretried_error_open_for_bff_mapping():
+    body = '{"detail":"请先登录"}'.encode()
+    stream = TrackingStream([body])
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, request=request, stream=stream)
+
+    async def run_scenario():
+        client = BishengClient("https://bisheng.example.com", 30)
+        await client._client.aclose()
+        client._client = httpx.AsyncClient(
+            base_url="https://bisheng.example.com",
+            transport=httpx.MockTransport(handle_request),
+        )
+        try:
+            response = await client.open_authenticated_download_stream(
+                "/download",
+                timeout_seconds=70,
+            )
+            assert response.status_code == 401
+            assert response.is_closed is False
+            assert await response.aread() == body
+            await response.aclose()
+        finally:
+            await client.aclose()
+
+    asyncio.run(run_scenario())
+    assert stream.closed is True
 
 
 def test_get_json_reauthenticates_and_retries_once_after_http_401():
