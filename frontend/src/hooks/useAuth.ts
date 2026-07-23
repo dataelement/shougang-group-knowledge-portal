@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
-import { buildPortalLogoutStartUrl, fetchPortalMe, type PortalUser } from '../api/auth';
+import { buildPortalLogoutStartUrl, fetchPortalMe, loadPortalAuthSource, logoutPortal, type PortalUser } from '../api/auth';
 import { ApiRequestError, invalidatePortalContentConfigCache } from '../api/content';
 import { invalidatePortalConfigStore } from './usePortalConfig';
 
@@ -9,26 +9,45 @@ export type { PortalUser };
 const STORAGE_KEY = 'sg_portal_user';
 const PORTAL_USER_CHANGED_EVENT = 'sg_portal_user_changed';
 export const PORTAL_LOGOUT_IN_PROGRESS_KEY = 'sg_portal_logging_out';
+const PORTAL_AUTH_RECOVERY_SUPPRESS_UNTIL_KEY = 'sg_portal_auth_recovery_suppress_until';
+const AUTH_RECOVERY_SUPPRESS_MS = 5 * 60 * 1000;
 
 export function markPortalLogoutInProgress(): void {
   try {
     sessionStorage.setItem(PORTAL_LOGOUT_IN_PROGRESS_KEY, '1');
+    sessionStorage.setItem(
+      PORTAL_AUTH_RECOVERY_SUPPRESS_UNTIL_KEY,
+      String(Date.now() + AUTH_RECOVERY_SUPPRESS_MS),
+    );
   } catch {
     // ignore session storage errors
   }
 }
 
 export function isPortalLogoutInProgress(): boolean {
+  return shouldSuppressAuthRecovery();
+}
+
+export function shouldSuppressAuthRecovery(): boolean {
   try {
-    return sessionStorage.getItem(PORTAL_LOGOUT_IN_PROGRESS_KEY) === '1';
+    if (sessionStorage.getItem(PORTAL_LOGOUT_IN_PROGRESS_KEY) === '1') {
+      return true;
+    }
+    const until = Number(sessionStorage.getItem(PORTAL_AUTH_RECOVERY_SUPPRESS_UNTIL_KEY) || '0');
+    return until > Date.now();
   } catch {
     return false;
   }
 }
 
 export function clearPortalLogoutInProgress(): void {
+  clearAuthRecoverySuppress();
+}
+
+export function clearAuthRecoverySuppress(): void {
   try {
     sessionStorage.removeItem(PORTAL_LOGOUT_IN_PROGRESS_KEY);
+    sessionStorage.removeItem(PORTAL_AUTH_RECOVERY_SUPPRESS_UNTIL_KEY);
   } catch {
     // ignore session storage errors
   }
@@ -122,6 +141,14 @@ export function clearPortalUser() {
 let mePromise: Promise<void> | null = null;
 
 function ensureAuthSynced(): Promise<void> {
+  if (typeof window !== 'undefined') {
+    if (shouldSuppressAuthRecovery()) {
+      return Promise.resolve();
+    }
+    if (window.location.pathname === '/login') {
+      return Promise.resolve();
+    }
+  }
   if (mePromise) return mePromise;
   mePromise = fetchPortalMe()
     .then((next) => {
@@ -134,7 +161,6 @@ function ensureAuthSynced(): Promise<void> {
     })
     .finally(() => {
       mePromise = null;
-      clearPortalLogoutInProgress();
     });
   return mePromise;
 }
@@ -152,8 +178,15 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     markPortalLogoutInProgress();
+    const authSource = loadPortalAuthSource();
     clearPortalUser();
-    window.location.assign(buildPortalLogoutStartUrl());
+    if (authSource === 'unified_auth') {
+      window.location.assign(buildPortalLogoutStartUrl());
+      return;
+    }
+    void logoutPortal().finally(() => {
+      window.location.assign('/login?logged_out=1');
+    });
   }, []);
 
   return { user, login, logout };

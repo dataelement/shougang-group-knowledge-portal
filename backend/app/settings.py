@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     bisheng_password: Optional[SecretStr] = None
     bisheng_default_model: Optional[str] = None
     bisheng_page_size_limit: int = 100
-    redis_url: Optional[str] = "redis://192.168.106.171:6379/13"
+    redis_url: Optional[str] = None
     portal_session_cookie_name: str = "sg_portal_session"
     portal_session_ttl_seconds: int = 7 * 24 * 60 * 60
     portal_session_cookie_secure: bool = False
@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     unified_auth_glo_entity_id: str = ""
     unified_auth_glo_redirect_to_url: str = ""
     unified_auth_glo_redirect_to_login: bool = True
+    rest_auth_enabled: bool = False
+    rest_auth_base_url: str = ""
+    rest_auth_app_id: str = ""
+    rest_auth_authenticate_url: str = ""
+    rest_auth_token_valid_url: str = ""
+    rest_auth_user_attributes_url: str = ""
+    rest_auth_token_id_param: str = "tokenId"
+    rest_auth_http_timeout_seconds: float = 10.0
+    rest_auth_token_check_interval_seconds: int = 300
+    rest_auth_verify_tls: bool = True
+    rest_auth_bisheng_lookup_required: bool = False
+    rest_auth_login_sync_hmac_secret: Optional[SecretStr] = None
+    rest_auth_login_sync_signature_header: str = "X-Signature"
     bisheng_runtime_config_path: Path = Field(
         default=Path(__file__).resolve().parent / "config" / "data" / "bisheng_runtime.json"
     )

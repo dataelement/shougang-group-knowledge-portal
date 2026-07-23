@@ -160,6 +160,109 @@ def test_upsert_document_creates_remote_aggregate_from_defaults():
     assert store.save_count == 1
 
 
+def test_upsert_document_persists_rest_auth_runtime_config():
+    store = MemoryRemotePortalAdminConfigStore()
+    payload = {
+        "enabled": True,
+        "rest_base_url": "https://iam.example.com",
+        "rest_app_id": "portal-rest",
+        "authenticate_url": "",
+        "token_valid_url": "",
+        "user_attributes_url": "",
+        "rest_token_id_param": "tokenId",
+        "http_timeout_seconds": 10.0,
+        "token_check_interval_seconds": 300,
+        "verify_tls": True,
+        "bisheng_lookup_required": False,
+        "login_sync_hmac_secret": "sync-secret",
+        "login_sync_signature_header": "X-Signature",
+    }
+
+    store.upsert_document("rest_auth_runtime_config", payload)
+
+    assert store.remote is not None
+    assert store.remote.unified_auth.enabled is True
+    assert store.remote.unified_auth.provider == "custom"
+    assert store.remote.unified_auth.client_id == "portal-rest"
+    assert store.remote.unified_auth.login_sync_hmac_secret == "sync-secret"
+    assert store.remote.unified_auth.state_ttl_seconds == 300
+    assert store.remote.unified_auth.state_secret.startswith("sg-rest-meta:")
+    saved = store.get_document("rest_auth_runtime_config")
+    assert saved is not None
+    assert saved["enabled"] is True
+    assert saved["rest_base_url"] == "https://iam.example.com"
+    assert saved["rest_app_id"] == "portal-rest"
+    assert store.save_count == 1
+
+
+def test_get_rest_auth_runtime_document_migrates_nested_rest_auth_object():
+    store = RawMemoryRemotePortalAdminConfigStore(
+        remote_data={
+            "portal": {
+                **DEFAULT_PORTAL_CONFIG,
+                "document_types": [],
+            },
+            "bisheng": {"base_url": "http://existing.example.com"},
+            "unified_auth": {
+                "rest_auth": {
+                    "enabled": True,
+                    "rest_base_url": "https://nested.example.com",
+                    "rest_app_id": "nested-app",
+                },
+            },
+        }
+    )
+
+    payload = store.get_document("rest_auth_runtime_config")
+
+    assert payload is not None
+    assert payload["enabled"] is True
+    assert payload["rest_base_url"] == "https://nested.example.com"
+    assert payload["rest_app_id"] == "nested-app"
+
+
+def test_get_rest_auth_runtime_document_backfills_missing_rest_section():
+    store = MemoryRemotePortalAdminConfigStore(
+        remote=PortalAdminAggregateConfig(
+            portal=DEFAULT_PORTAL_CONFIG,
+            bisheng=PortalBishengPersistentConfig(base_url="http://existing.example.com"),
+        ),
+    )
+
+    payload = store.get_document("rest_auth_runtime_config")
+
+    assert payload is not None
+    assert payload["enabled"] is False
+
+
+def test_get_rest_auth_runtime_document_migrates_legacy_portal_integrations():
+    store = RawMemoryRemotePortalAdminConfigStore(
+        remote_data={
+            "portal": {
+                **DEFAULT_PORTAL_CONFIG,
+                "integrations": {
+                    "bisheng_admin_entry_url": "",
+                    "bisheng_knowledge_entry_url": "",
+                    "rest_auth_runtime": {
+                        "enabled": True,
+                        "rest_base_url": "https://legacy.example.com",
+                        "rest_app_id": "legacy-app",
+                    },
+                },
+            },
+            "bisheng": {"base_url": "http://existing.example.com"},
+            "unified_auth": {},
+        }
+    )
+
+    payload = store.get_document("rest_auth_runtime_config")
+
+    assert payload is not None
+    assert payload["enabled"] is True
+    assert payload["rest_base_url"] == "https://legacy.example.com"
+    assert payload["rest_app_id"] == "legacy-app"
+
+
 def test_non_remote_documents_are_process_memory_only():
     store = MemoryRemotePortalAdminConfigStore()
 

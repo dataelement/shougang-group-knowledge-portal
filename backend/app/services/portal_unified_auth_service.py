@@ -41,6 +41,8 @@ SAFE_ERROR_MESSAGES = {
     "permission_denied": "账号已认证但暂未开通知库权限",
     "oauth_unavailable": "统一认证暂不可用",
     "multi_login_conflict": "该用户已在其它设备登录，是否继续登录",
+    "token_expired": "统一认证已过期，请重新登录",
+    "rest_unavailable": "统一认证 REST 暂不可用",
 }
 
 
@@ -272,6 +274,13 @@ def map_unified_userinfo(userinfo_payload: dict[str, Any], token_payload: dict[s
         user_attrs=user_attrs,
         primary_dept_external_id=primary_dept_external_id,
     )
+
+
+def map_rest_user_attributes(payload: dict[str, Any]) -> MappedUnifiedUser:
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    attrs = data.get("attributes") if isinstance(data.get("attributes"), dict) else {}
+    merged = {**data, **attrs}
+    return map_unified_userinfo({"data": merged}, {})
 
 
 def _select_userinfo_object(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1278,6 +1287,44 @@ class PortalUnifiedAuthService:
             )
             raise UnifiedAuthFailure("permission_denied", redirect)
         return token
+
+    async def login_sync_mapped_user(
+        self,
+        mapped_user: MappedUnifiedUser,
+        redirect: str,
+        trace_id: str,
+        *,
+        login_sync_hmac_secret: str,
+        login_sync_signature_header: str = "X-Signature",
+        http_timeout_seconds: float = 10.0,
+        force_login: bool = False,
+    ) -> str:
+        config = UnifiedAuthInternalConfig(
+            enabled=True,
+            provider="rest",
+            label="REST",
+            client_id="",
+            client_secret="",
+            redirect_uri="",
+            endpoints=UnifiedAuthEndpoints("", "", ""),
+            token_param_style="query",
+            state_secret="",
+            state_ttl_seconds=300,
+            http_timeout_seconds=http_timeout_seconds,
+            login_sync_hmac_secret=login_sync_hmac_secret,
+            login_sync_signature_header=login_sync_signature_header or "X-Signature",
+            glo_url="",
+            glo_entity_id="",
+            glo_redirect_to_url="",
+            glo_redirect_to_login=True,
+        )
+        return await self._login_sync(
+            config,
+            mapped_user,
+            redirect,
+            trace_id,
+            force_login=force_login,
+        )
 
     @staticmethod
     def _map_login_sync_failure(payload: dict[str, Any]) -> str:

@@ -27,7 +27,7 @@ test('unified auth helpers normalize unsafe redirects before start URL build', (
   assert.equal(buildUnifiedAuthStartUrl('https://evil.example.com'), '/api/v1/auth/unified/start?redirect=%2F');
   assert.equal(
     buildPortalLogoutStartUrl(),
-    '/api/v1/auth/unified/logout/start?redirect=%2F',
+    '/api/v1/auth/unified/logout/start?redirect=%2Flogin%3Flogged_out%3D1',
   );
 });
 

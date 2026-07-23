@@ -238,6 +238,7 @@ class PortalAuthService:
         captcha_key: str = "",
         captcha: str = "",
         force_login: bool = False,
+        auth_source: str = "",
     ) -> PortalSession:
         base_url, timeout_seconds = self._runtime_service.get_connection_settings()
         access_token = await self._login_to_bisheng(
@@ -263,6 +264,7 @@ class PortalAuthService:
             base_url=base_url,
             timeout_seconds=timeout_seconds,
             expires_at=expires_at,
+            auth_source=auth_source.strip(),
         )
         if not remember:
             session.expires_at = min(session.expires_at, time.time() + self._ttl_seconds)
@@ -345,22 +347,18 @@ class PortalAuthService:
             )
 
     def clear_session_cookie(self, response: Response) -> None:
-        response.delete_cookie(
-            key=self._cookie_name,
-            httponly=True,
-            secure=self._cookie_secure,
-            samesite="lax",
-            path="/",
-        )
-        response.delete_cookie(
-            key=self._bisheng_cookie_name,
-            httponly=True,
-            secure=self._cookie_secure,
-            samesite="lax",
-            path="/",
-        )
-        response.delete_cookie(
-            key=self._auth_source_cookie_name,
+        for key in (
+            self._cookie_name,
+            self._bisheng_cookie_name,
+            self._auth_source_cookie_name,
+        ):
+            self._expire_cookie(response, key)
+
+    def _expire_cookie(self, response: Response, key: str) -> None:
+        response.set_cookie(
+            key=key,
+            value="",
+            max_age=0,
             httponly=True,
             secure=self._cookie_secure,
             samesite="lax",
@@ -470,6 +468,14 @@ class PortalAuthService:
             )
             if login_response.get("status_code") == PortalMultiLoginConflictError.code:
                 raise PortalMultiLoginConflictError()
+            if login_response.get("status_code") not in (None, 200):
+                logger.warning(
+                    "BiSheng login rejected: account=%s base_url=%s status_code=%s status_message=%s",
+                    account,
+                    base_url,
+                    login_response.get("status_code"),
+                    login_response.get("status_message"),
+                )
             login_data = _unwrap_bisheng_payload(login_response)
             access_token = str(login_data.get("access_token") or "").strip()
             if not access_token:
@@ -478,11 +484,24 @@ class PortalAuthService:
         except PortalAuthError:
             raise
         except ValueError as err:
+            logger.warning(
+                "BiSheng login business error: account=%s base_url=%s error=%s",
+                account,
+                base_url,
+                err,
+            )
             raise PortalAuthError(
                 normalize_user_facing_message(err, fallback="登录失败，请重试"),
                 status_code=401,
             ) from err
         except httpx.HTTPStatusError as err:
+            logger.warning(
+                "BiSheng login HTTP error: account=%s base_url=%s status_code=%s error=%s",
+                account,
+                base_url,
+                err.response.status_code,
+                err,
+            )
             raise PortalAuthError(
                 normalize_user_facing_message(
                     "",
@@ -492,6 +511,13 @@ class PortalAuthService:
                 status_code=502,
             ) from err
         except httpx.HTTPError as err:
+            logger.warning(
+                "BiSheng login transport error: account=%s base_url=%s error_type=%s error=%s",
+                account,
+                base_url,
+                type(err).__name__,
+                err,
+            )
             raise PortalAuthError(
                 normalize_user_facing_message(err, fallback="连接 BiSheng 失败，请稍后重试", status_code=502),
                 status_code=502,

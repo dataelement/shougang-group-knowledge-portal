@@ -39,28 +39,30 @@ class UnifiedAuthRuntimeService:
 
     def update_config(self, payload: UnifiedAuthRuntimeConfigUpdate) -> UnifiedAuthRuntimeConfigView:
         current = self.get_config()
-        updated = UnifiedAuthRuntimeConfig(
-            enabled=payload.enabled,
-            provider=payload.provider,
-            client_id=payload.client_id,
-            client_secret=self._next_secret(payload.client_secret, current.client_secret),
-            redirect_uri=payload.redirect_uri,
-            authorize_url=payload.authorize_url,
-            token_url=payload.token_url,
-            userinfo_url=payload.userinfo_url,
-            token_param_style=payload.token_param_style,
-            state_secret=self._next_state_secret(payload.state_secret, current.state_secret),
-            state_ttl_seconds=payload.state_ttl_seconds,
-            http_timeout_seconds=payload.http_timeout_seconds,
-            login_sync_hmac_secret=self._next_secret(
-                payload.login_sync_hmac_secret,
-                current.login_sync_hmac_secret,
-            ),
-            login_sync_signature_header=payload.login_sync_signature_header or "X-Signature",
-            glo_url=payload.glo_url,
-            glo_entity_id=payload.glo_entity_id,
-            glo_redirect_to_url=payload.glo_redirect_to_url,
-            glo_redirect_to_login=payload.glo_redirect_to_login,
+        updated = current.model_copy(
+            update={
+                "enabled": payload.enabled,
+                "provider": payload.provider,
+                "client_id": payload.client_id,
+                "client_secret": self._next_secret(payload.client_secret, current.client_secret),
+                "redirect_uri": payload.redirect_uri,
+                "authorize_url": payload.authorize_url,
+                "token_url": payload.token_url,
+                "userinfo_url": payload.userinfo_url,
+                "token_param_style": payload.token_param_style,
+                "state_secret": self._next_state_secret(payload.state_secret, current.state_secret),
+                "state_ttl_seconds": payload.state_ttl_seconds,
+                "http_timeout_seconds": payload.http_timeout_seconds,
+                "login_sync_hmac_secret": self._next_secret(
+                    payload.login_sync_hmac_secret,
+                    current.login_sync_hmac_secret,
+                ),
+                "login_sync_signature_header": payload.login_sync_signature_header or "X-Signature",
+                "glo_url": payload.glo_url,
+                "glo_entity_id": payload.glo_entity_id,
+                "glo_redirect_to_url": payload.glo_redirect_to_url,
+                "glo_redirect_to_login": payload.glo_redirect_to_login,
+            }
         )
         self._write_config(updated)
         return self._to_public_view(updated)

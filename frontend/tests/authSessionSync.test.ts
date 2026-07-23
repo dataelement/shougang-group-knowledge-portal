@@ -35,3 +35,11 @@ test('auth server check is single-flight so concurrent mounts issue one /auth/me
   assert.match(useAuthSource, /function ensureAuthSynced[\s\S]*if \(mePromise\) return mePromise;/);
   assert.match(useAuthSource, /void ensureAuthSynced\(\)/);
 });
+
+test('auth server check skips login page and post-logout navigation', () => {
+  assert.match(useAuthSource, /shouldSuppressAuthRecovery\(\)/);
+  assert.match(useAuthSource, /PORTAL_AUTH_RECOVERY_SUPPRESS_UNTIL_KEY/);
+  assert.match(useAuthSource, /window\.location\.pathname === '\/login'/);
+  assert.match(useAuthSource, /authSource === 'unified_auth'/);
+  assert.match(useAuthSource, /logged_out=1/);
+});

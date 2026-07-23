@@ -37,6 +37,8 @@ test('manual /login route still renders password login page', () => {
 test('login page only auto-recovers server session when redirect intent is present', () => {
   assert.match(loginPageSource, /hasRedirectIntent/);
   assert.match(loginPageSource, /if \(!hasRedirectIntent\) return;/);
+  assert.match(loginPageSource, /logged_out/);
+  assert.match(loginPageSource, /shouldSuppressAuthRecovery/);
 });
 
 test('knowledge spaces page skips login redirect while logout navigation is in progress', () => {

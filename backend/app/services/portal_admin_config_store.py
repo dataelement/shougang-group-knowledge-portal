@@ -6,6 +6,13 @@ import httpx
 
 from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.portal_admin_config import PortalAdminAggregateConfig
+from app.schemas.rest_auth_runtime import (
+    RestAuthRuntimeConfig,
+    merge_rest_auth_into_unified_auth,
+    rest_auth_document_from_unified_auth,
+    rest_auth_payload_has_content,
+    unified_auth_has_rest_content,
+)
 from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.config_store import ConfigStoreWriteResult
@@ -13,6 +20,7 @@ from app.services.config_store import ConfigStoreWriteResult
 
 REMOTE_CONFIG_PATH = "/api/v1/shougang-portal/config"
 REMOTE_CONFIG_INTERNAL_PATH = "/api/v1/shougang-portal/config/internal"
+REST_AUTH_RUNTIME_TABLE = "rest_auth_runtime_config"
 
 
 class PortalAdminConfigValidationError(ValueError):
@@ -47,6 +55,8 @@ class RemotePortalAdminConfigStore:
         return self._last_version
 
     def get_document(self, table_name: str, legacy_key: str | None = None) -> dict[str, Any] | None:
+        if table_name == REST_AUTH_RUNTIME_TABLE:
+            return self._get_rest_auth_runtime_document()
         if table_name not in self._REMOTE_TABLES:
             return self._get_memory_document(table_name)
 
@@ -60,6 +70,8 @@ class RemotePortalAdminConfigStore:
         table_name: str,
         payload: dict[str, Any],
     ) -> ConfigStoreWriteResult:
+        if table_name == REST_AUTH_RUNTIME_TABLE:
+            return self._upsert_rest_auth_runtime_document(payload)
         if table_name not in self._REMOTE_TABLES:
             self._set_memory_document(table_name, payload)
             return ConfigStoreWriteResult(document=deepcopy(payload))
@@ -74,6 +86,34 @@ class RemotePortalAdminConfigStore:
         saved_aggregate = self._save_remote_aggregate(next_aggregate) or next_aggregate
         return ConfigStoreWriteResult(
             document=self._section_from_aggregate(saved_aggregate, table_name),
+            version=saved_aggregate.version,
+        )
+
+    def _get_rest_auth_runtime_document(self) -> dict[str, Any] | None:
+        aggregate = self._load_remote_aggregate()
+        if aggregate is None:
+            return None
+        return rest_auth_document_from_unified_auth(
+            aggregate.unified_auth.model_dump(mode="json")
+        )
+
+    def _upsert_rest_auth_runtime_document(self, payload: dict[str, Any]) -> ConfigStoreWriteResult:
+        runtime_config = RestAuthRuntimeConfig.model_validate(payload)
+        aggregate = self._load_remote_aggregate() or self._build_default_aggregate()
+        unified_dump = merge_rest_auth_into_unified_auth(
+            aggregate.unified_auth.model_dump(mode="json"),
+            runtime_config.model_dump(mode="json"),
+        )
+        unified_auth = UnifiedAuthRuntimeConfig.model_validate(unified_dump)
+        next_aggregate = aggregate.model_copy(update={"unified_auth": unified_auth})
+        saved_aggregate = self._save_remote_aggregate(next_aggregate) or next_aggregate
+        saved_document = rest_auth_document_from_unified_auth(
+            saved_aggregate.unified_auth.model_dump(mode="json")
+        )
+        if not rest_auth_payload_has_content(saved_document):
+            saved_document = runtime_config.model_dump(mode="json")
+        return ConfigStoreWriteResult(
+            document=saved_document,
             version=saved_aggregate.version,
         )
 
@@ -119,10 +159,45 @@ class RemotePortalAdminConfigStore:
         next_data = deepcopy(data)
         portal = next_data.get("portal")
         if isinstance(portal, dict):
-            portal["document_types"] = self._fill_empty_document_type_children(
-                portal.get("document_types")
+            document_types = portal.get("document_types")
+            if document_types is None:
+                document_types = []
+            portal["document_types"] = self._fill_empty_document_type_children(document_types)
+
+        unified_auth = next_data.get("unified_auth")
+        if not isinstance(unified_auth, dict):
+            unified_auth = {}
+            next_data["unified_auth"] = unified_auth
+
+        legacy_rest_auth = self._extract_legacy_rest_auth_payload(next_data)
+        if legacy_rest_auth and not unified_auth_has_rest_content(unified_auth):
+            unified_auth.update(
+                merge_rest_auth_into_unified_auth(unified_auth, legacy_rest_auth)
             )
+        unified_auth.pop("rest_auth", None)
+
         return next_data
+
+    @staticmethod
+    def _extract_legacy_rest_auth_payload(data: dict[str, Any]) -> dict[str, Any] | None:
+        unified_auth = data.get("unified_auth")
+        if isinstance(unified_auth, dict):
+            nested = unified_auth.get("rest_auth")
+            if isinstance(nested, dict) and rest_auth_payload_has_content(nested):
+                return nested
+
+        top_level = data.get("rest_auth")
+        if isinstance(top_level, dict) and rest_auth_payload_has_content(top_level):
+            return top_level
+
+        portal = data.get("portal")
+        if isinstance(portal, dict):
+            integrations = portal.get("integrations")
+            if isinstance(integrations, dict):
+                nested = integrations.get("rest_auth_runtime")
+                if isinstance(nested, dict) and rest_auth_payload_has_content(nested):
+                    return nested
+        return None
 
     @staticmethod
     def _fill_empty_document_type_children(document_types: Any) -> Any:
@@ -198,5 +273,19 @@ class RemotePortalAdminConfigStore:
                     elif isinstance(detail, str) and detail.strip():
                         message = detail.strip()
                 raise PortalAdminConfigValidationError(message)
+            if response.status_code >= 400:
+                message = f"BiSheng 配置保存失败（HTTP {response.status_code}）"
+                try:
+                    payload = response.json()
+                except (TypeError, ValueError):
+                    payload = None
+                if isinstance(payload, dict):
+                    status_message = payload.get("status_message")
+                    detail = payload.get("detail")
+                    if status_message:
+                        message = str(status_message)
+                    elif isinstance(detail, str) and detail.strip():
+                        message = detail.strip()
+                raise RuntimeError(message)
             response.raise_for_status()
             return response.json()

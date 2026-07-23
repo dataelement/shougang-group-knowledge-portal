@@ -1,9 +1,9 @@
 import { ApiRequestError } from '../api/content';
-import { buildPortalLoginStartUrl } from './loginRedirect';
+import { buildLocalLoginPath } from './loginRedirect';
 
 export function buildShareLoginRedirect(token: string): string {
   const sharePath = `/share/document/${encodeURIComponent(token)}`;
-  return buildPortalLoginStartUrl(sharePath);
+  return buildLocalLoginPath(sharePath);
 }
 
 export function isShareLoginRequiredError(error: unknown): boolean {

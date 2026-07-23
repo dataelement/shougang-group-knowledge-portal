@@ -1,7 +1,9 @@
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
 
+from app.schemas.rest_auth_runtime import _validate_optional_http_url as _validate_rest_url
 
-PROVIDER_OPTIONS = {"group", "stock", "custom"}
+
+PROVIDER_OPTIONS = {"group", "stock", "custom", "rest"}
 TOKEN_PARAM_STYLE_OPTIONS = {"query", "form"}
 
 
@@ -39,13 +41,26 @@ class UnifiedAuthRuntimeConfig(BaseModel):
     glo_entity_id: str = ""
     glo_redirect_to_url: str = ""
     glo_redirect_to_login: bool = True
+    rest_enabled: bool = False
+    rest_base_url: str = ""
+    rest_app_id: str = ""
+    rest_authenticate_url: str = ""
+    rest_token_valid_url: str = ""
+    rest_user_attributes_url: str = ""
+    rest_token_id_param: str = "tokenId"
+    rest_http_timeout_seconds: float = 10.0
+    rest_token_check_interval_seconds: int = 300
+    rest_verify_tls: bool = True
+    rest_bisheng_lookup_required: bool = False
+    rest_login_sync_hmac_secret: str = ""
+    rest_login_sync_signature_header: str = ""
 
     @field_validator("provider", mode="before")
     @classmethod
     def validate_provider(cls, value: str | None) -> str:
         provider = _normalize_text(value).lower() or "group"
         if provider not in PROVIDER_OPTIONS:
-            raise ValueError("provider must be group, stock or custom")
+            raise ValueError("provider must be group, stock, custom or rest")
         return provider
 
     @field_validator("token_param_style", mode="before")
@@ -66,8 +81,23 @@ class UnifiedAuthRuntimeConfig(BaseModel):
         mode="before",
     )
     @classmethod
-    def validate_urls(cls, value: str | None) -> str:
+    def validate_oauth_urls(cls, value: str | None) -> str:
         return _validate_optional_http_url(value)
+
+    @field_validator(
+        "rest_authenticate_url",
+        "rest_token_valid_url",
+        "rest_user_attributes_url",
+        mode="before",
+    )
+    @classmethod
+    def validate_rest_urls(cls, value: str | None) -> str:
+        return _validate_rest_url(value)
+
+    @field_validator("rest_base_url", mode="before")
+    @classmethod
+    def validate_rest_base_url(cls, value: str | None) -> str:
+        return _validate_rest_url(value)
 
     @field_validator(
         "client_id",
@@ -76,6 +106,10 @@ class UnifiedAuthRuntimeConfig(BaseModel):
         "login_sync_hmac_secret",
         "login_sync_signature_header",
         "glo_entity_id",
+        "rest_app_id",
+        "rest_token_id_param",
+        "rest_login_sync_hmac_secret",
+        "rest_login_sync_signature_header",
         mode="before",
     )
     @classmethod
@@ -89,11 +123,18 @@ class UnifiedAuthRuntimeConfig(BaseModel):
             raise ValueError("state_ttl_seconds must be positive")
         return value
 
-    @field_validator("http_timeout_seconds")
+    @field_validator("http_timeout_seconds", "rest_http_timeout_seconds")
     @classmethod
     def validate_timeout(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("http_timeout_seconds must be positive")
+        return value
+
+    @field_validator("rest_token_check_interval_seconds")
+    @classmethod
+    def validate_rest_check_interval(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("rest_token_check_interval_seconds must be positive")
         return value
 
 
@@ -161,7 +202,7 @@ class UnifiedAuthRuntimeConfigUpdate(BaseModel):
     )
     @classmethod
     def validate_urls(cls, value: str | None) -> str:
-        return UnifiedAuthRuntimeConfig.validate_urls(value)
+        return UnifiedAuthRuntimeConfig.validate_oauth_urls(value)
 
     @field_validator("client_id", "login_sync_signature_header", "glo_entity_id", mode="before")
     @classmethod

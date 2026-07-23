@@ -39,7 +39,7 @@ test('admin route access distinguishes anonymous, forbidden, and allowed users',
 test('admin login redirect preserves the requested admin URL', () => {
   assert.equal(
     buildAdminLoginRedirect('/admin', '?tab=site'),
-    '/api/v1/auth/unified/start?redirect=%2Fadmin%3Ftab%3Dsite',
+    '/login?redirect=%2Fadmin%3Ftab%3Dsite',
   );
 });
 

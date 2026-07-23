@@ -8,12 +8,14 @@ from app.api.dependencies import (
     get_bisheng_client,
     get_bisheng_runtime_service,
     get_portal_config_service,
+    get_rest_auth_runtime_service,
     get_unified_auth_runtime_service,
     require_admin_session,
 )
 from app.clients.bisheng import BishengClient
 from app.schemas.bisheng_runtime import BishengRuntimeConfigUpdate
 from app.schemas.common import response_error, response_ok
+from app.schemas.rest_auth_runtime import RestAuthRuntimeConfigUpdate
 from app.schemas.unified_auth_runtime import UnifiedAuthRuntimeConfigUpdate
 from app.schemas.portal_config import (
     AgentConfig,
@@ -35,6 +37,7 @@ from app.services.portal_admin_config_store import PortalAdminConfigValidationEr
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_config_service import PortalConfigService
+from app.services.rest_auth_runtime_service import RestAuthRuntimeService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
 logger = logging.getLogger(__name__)
@@ -613,6 +616,29 @@ async def update_unified_auth_runtime_config(
 ):
     try:
         config = service.update_config(payload)
+    except ValueError as err:
+        return response_error(normalize_user_facing_message(err, status_code=400), status_code=400)
+    return response_ok(config)
+
+
+@router.get("/rest-auth")
+async def get_rest_auth_runtime_config(
+    service: RestAuthRuntimeService = Depends(get_rest_auth_runtime_service),
+):
+    return response_ok(service.get_public_config())
+
+
+@router.post("/rest-auth")
+async def update_rest_auth_runtime_config(
+    payload: RestAuthRuntimeConfigUpdate,
+    service: RestAuthRuntimeService = Depends(get_rest_auth_runtime_service),
+):
+    try:
+        config = service.update_config(payload)
+    except PortalAdminConfigValidationError as err:
+        return response_error(normalize_user_facing_message(err, status_code=422), status_code=422)
+    except RuntimeError as err:
+        return response_error(normalize_user_facing_message(err, status_code=502), status_code=502)
     except ValueError as err:
         return response_error(normalize_user_facing_message(err, status_code=400), status_code=400)
     return response_ok(config)

@@ -25,7 +25,10 @@ from app.services.portal_admin_config_store import RemotePortalAdminConfigStore
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
 from app.services.portal_share_access_store import build_portal_share_access_session_store
+from app.services.portal_bisheng_user_lookup import PortalBishengUserLookup
+from app.services.portal_rest_auth_service import PortalRestAuthService
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
+from app.services.rest_auth_runtime_service import RestAuthRuntimeService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 from app.settings import get_settings
 
@@ -48,7 +51,13 @@ async def lifespan(app: FastAPI):
             await redis_client.ping()
         except Exception as err:
             await redis_client.aclose()
-            raise RuntimeError("Redis 不可用，无法启动门户认证服务") from err
+            redis_client = None
+            if settings.app_env.lower() == "production":
+                raise RuntimeError("Redis 不可用，无法启动门户认证服务") from err
+            logger.warning(
+                "Redis 不可用，开发环境已降级为进程内会话存储：%s",
+                settings.redis_url,
+            )
     app.state.bisheng_runtime_service = BishengRuntimeService(
         config_path=settings.bisheng_runtime_config_path,
         default_base_url=str(settings.bisheng_base_url),
@@ -92,12 +101,28 @@ async def lifespan(app: FastAPI):
         settings=settings,
         store=app.state.portal_admin_config_store,
     )
+    app.state.rest_auth_runtime_service = RestAuthRuntimeService(
+        settings=settings,
+        store=app.state.portal_admin_config_store,
+        unified_auth_runtime_service=app.state.unified_auth_runtime_service,
+    )
+    app.state.portal_bisheng_user_lookup = PortalBishengUserLookup(
+        runtime_service=app.state.bisheng_runtime_service,
+    )
     app.state.portal_unified_auth_service = PortalUnifiedAuthService(
         settings=settings,
         runtime_service=app.state.bisheng_runtime_service,
         auth_service=app.state.portal_auth_service,
         cookie_secure=settings.portal_session_cookie_secure,
         config_service=app.state.unified_auth_runtime_service,
+    )
+    app.state.portal_rest_auth_service = PortalRestAuthService(
+        settings=settings,
+        auth_service=app.state.portal_auth_service,
+        unified_auth_service=app.state.portal_unified_auth_service,
+        config_service=app.state.rest_auth_runtime_service,
+        user_lookup=app.state.portal_bisheng_user_lookup,
+        cookie_secure=settings.portal_session_cookie_secure,
     )
     app.state.portal_config_service = PortalConfigService(
         config_path=settings.portal_config_path,

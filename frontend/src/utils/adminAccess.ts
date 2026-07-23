@@ -1,5 +1,5 @@
 import type { PortalUser } from '../api/auth';
-import { buildPortalLoginStartUrl } from './loginRedirect';
+import { buildLocalLoginPath } from './loginRedirect';
 
 export type AdminAccessState = 'login' | 'forbidden' | 'allowed';
 
@@ -24,5 +24,5 @@ export function getAdminAccessState(user: AdminAccessUser | null | undefined): A
 }
 
 export function buildAdminLoginRedirect(pathname: string, search = ''): string {
-  return buildPortalLoginStartUrl(`${pathname}${search}`);
+  return buildLocalLoginPath(`${pathname}${search}`);
 }

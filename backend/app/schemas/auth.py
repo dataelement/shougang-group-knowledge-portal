@@ -24,11 +24,30 @@ class PortalUserView(BaseModel):
 
 class PortalAuthData(BaseModel):
     user: PortalUserView
+    auth_source: str = ""
+
+
+class PortalRestExchangeRequest(BaseModel):
+    token_id: str = Field(min_length=1)
+    redirect: str = "/"
+    remember: bool = True
+
+
+class PortalRestLoginRequest(BaseModel):
+    account: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+    remember: bool = True
+    redirect: str = "/"
+    force_login: bool = False
+    captcha_key: str = ""
+    captcha: str = ""
 
 
 class PortalUnifiedAuthConfigData(BaseModel):
     enabled: bool
-    provider: str
-    label: str
+    auth_mode: str = "none"
+    provider: str = ""
+    label: str = "统一身份认证"
+    rest_token_id_param: str = "tokenId"
     unavailable_reason: str = ""
     missing_fields: list[str] = Field(default_factory=list)

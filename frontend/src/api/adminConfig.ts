@@ -183,6 +183,23 @@ export interface UnifiedAuthRuntimeConfig {
   has_login_sync_hmac_secret: boolean;
 }
 
+export interface RestAuthRuntimeConfig {
+  enabled: boolean;
+  rest_base_url: string;
+  rest_app_id: string;
+  authenticate_url: string;
+  token_valid_url: string;
+  user_attributes_url: string;
+  rest_token_id_param: string;
+  http_timeout_seconds: number;
+  token_check_interval_seconds: number;
+  verify_tls: boolean;
+  login_sync_signature_header: string;
+  bisheng_lookup_required: boolean;
+  has_login_sync_hmac_secret: boolean;
+  missing_fields: string[];
+}
+
 export interface SpaceOption {
   id: number;
   name: string;
@@ -471,6 +488,31 @@ export function updateUnifiedAuthRuntimeConfig(payload: {
   glo_redirect_to_login: boolean;
 }) {
   return request<UnifiedAuthRuntimeConfig>('/api/v1/admin/config/unified-auth', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchRestAuthRuntimeConfig() {
+  return request<RestAuthRuntimeConfig>('/api/v1/admin/config/rest-auth');
+}
+
+export function updateRestAuthRuntimeConfig(payload: {
+  enabled: boolean;
+  rest_base_url: string;
+  rest_app_id: string;
+  authenticate_url: string;
+  token_valid_url: string;
+  user_attributes_url: string;
+  rest_token_id_param: string;
+  http_timeout_seconds: number;
+  token_check_interval_seconds: number;
+  verify_tls: boolean;
+  login_sync_hmac_secret: string;
+  login_sync_signature_header: string;
+  bisheng_lookup_required: boolean;
+}) {
+  return request<RestAuthRuntimeConfig>('/api/v1/admin/config/rest-auth', {
     method: 'POST',
     body: JSON.stringify(payload),
   });

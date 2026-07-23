@@ -1,4 +1,4 @@
-import { buildUnifiedAuthStartUrl, fetchUnifiedAuthConfig, normalizePortalRedirect } from '../api/auth';
+import { buildUnifiedAuthStartUrl, normalizePortalRedirect } from '../api/auth';
 
 export type LoginRedirectOptions = {
   guest?: boolean;
@@ -27,15 +27,6 @@ export async function redirectToLogin(
   returnTo: string | null | undefined,
   options: LoginRedirectOptions = {},
 ): Promise<void> {
-  try {
-    const config = await fetchUnifiedAuthConfig();
-    if (config.enabled) {
-      startPortalLogin(returnTo);
-      return;
-    }
-  } catch {
-    // Fall back to the local login page when unified auth config is unavailable.
-  }
   window.location.assign(buildLocalLoginPath(returnTo, options));
 }
 

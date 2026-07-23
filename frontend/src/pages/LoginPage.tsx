@@ -23,16 +23,22 @@ import {
   loginPortal,
   MULTI_LOGIN_CONFLICT_CODE,
   normalizePortalRedirect,
+  restExchange,
+  restLogin,
+  USER_UNREGISTERED_CODE,
   type PortalUnifiedAuthConfig,
 } from '../api/auth';
 import { ApiRequestError } from '../api/content';
 import { fetchBishengBootstrapStatus } from '../api/bootstrap';
-import { loadPortalUser, savePortalUser } from '../hooks/useAuth';
+import { logoutPortal } from '../api/auth';
+import { loadPortalUser, savePortalUser, clearPortalUser, shouldSuppressAuthRecovery, clearAuthRecoverySuppress } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { GUEST_NOTICE_TEXT } from '../utils/guestAccess';
+import { PORTAL_AUTH_NOTICE_PARAM, PORTAL_AUTH_NOTICE_USER_UNREGISTERED } from '../utils/portalAuthNotice';
 import s from './LoginPage.module.css';
 
 const WELCOME_FLAG = 'sg_just_logged_in';
+const POST_LOGIN_HOME = '/';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -67,13 +73,29 @@ export default function LoginPage() {
     }
   }, [isInIframe]);
 
+  const isLoggedOut = params.get('logged_out') === '1';
+
   useEffect(() => {
     if (isInIframe) return;
     if (unifiedAuthConflict) return;
+    if (isLoggedOut || shouldSuppressAuthRecovery()) return;
+
     const storedUser = loadPortalUser();
     if (storedUser) {
-      navigate(redirect, { replace: true });
-      return;
+      let active = true;
+      void fetchPortalMe()
+        .then((user) => {
+          if (!active) return;
+          savePortalUser(user);
+          navigate(POST_LOGIN_HOME, { replace: true });
+        })
+        .catch(() => {
+          if (!active) return;
+          clearPortalUser();
+        });
+      return () => {
+        active = false;
+      };
     }
     // Only recover an existing server session when the caller supplied an explicit redirect target.
     if (!hasRedirectIntent) return;
@@ -82,13 +104,13 @@ export default function LoginPage() {
       .then((user) => {
         if (!active) return;
         savePortalUser(user);
-        navigate(redirect, { replace: true });
+        navigate(POST_LOGIN_HOME, { replace: true });
       })
       .catch(() => undefined);
     return () => {
       active = false;
     };
-  }, [navigate, redirect, hasRedirectIntent, isInIframe, unifiedAuthConflict]);
+  }, [navigate, redirect, hasRedirectIntent, isInIframe, unifiedAuthConflict, isLoggedOut]);
 
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
@@ -102,6 +124,7 @@ export default function LoginPage() {
   const [unifiedAuthConfig, setUnifiedAuthConfig] = useState<PortalUnifiedAuthConfig | null>(null);
   const [unifiedAuthLoading, setUnifiedAuthLoading] = useState(true);
   const [unifiedAuthStarting, setUnifiedAuthStarting] = useState(false);
+  const [restExchanging, setRestExchanging] = useState(false);
   const [multiLoginMode, setMultiLoginMode] = useState<'password' | 'unified' | null>(
     unifiedAuthConflict ? 'unified' : null,
   );
@@ -147,6 +170,70 @@ export default function LoginPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (isInIframe || unifiedAuthConflict || restExchanging) return;
+    if (isLoggedOut || shouldSuppressAuthRecovery()) return;
+    if (!unifiedAuthConfig || unifiedAuthConfig.authMode !== 'rest') return;
+    const tokenParam = unifiedAuthConfig.restTokenIdParam || 'tokenId';
+    const tokenId = params.get(tokenParam)?.trim();
+    if (!tokenId) return;
+
+    let active = true;
+    setRestExchanging(true);
+    setFormError('');
+    void restExchange({ token_id: tokenId, redirect })
+      .then((user) => {
+        if (!active) return;
+        const nextParams = new URLSearchParams(location.search);
+        nextParams.delete(tokenParam);
+        const nextSearch = nextParams.toString();
+        navigate(
+          { pathname: '/login', search: nextSearch ? `?${nextSearch}` : '' },
+          { replace: true },
+        );
+        clearAuthRecoverySuppress();
+        savePortalUser(user);
+        markWelcome(true);
+        navigate(POST_LOGIN_HOME, { replace: true });
+      })
+      .catch(async (err) => {
+        if (!active) return;
+        const nextParams = new URLSearchParams(location.search);
+        nextParams.delete(tokenParam);
+        const nextSearch = nextParams.toString();
+        navigate(
+          { pathname: '/login', search: nextSearch ? `?${nextSearch}` : '' },
+          { replace: true },
+        );
+        if (err instanceof ApiRequestError && err.reason === USER_UNREGISTERED_CODE) {
+          await logoutPortal().catch(() => undefined);
+          const noticeParams = new URLSearchParams();
+          noticeParams.set(PORTAL_AUTH_NOTICE_PARAM, PORTAL_AUTH_NOTICE_USER_UNREGISTERED);
+          noticeParams.set('redirect', redirect);
+          navigate(`/login?${noticeParams.toString()}`, { replace: true });
+          return;
+        }
+        const message = err instanceof Error ? err.message : '统一认证登录失败，请重试。';
+        setFormError(message || '统一认证登录失败，请重试。');
+      })
+      .finally(() => {
+        if (active) setRestExchanging(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    isInIframe,
+    location.search,
+    navigate,
+    params,
+    redirect,
+    restExchanging,
+    unifiedAuthConfig,
+    unifiedAuthConflict,
+    isLoggedOut,
+  ]);
+
   function clearErrors() {
     setAccountError('');
     setPasswordError('');
@@ -162,9 +249,10 @@ export default function LoginPage() {
   }
 
   function completeLogin(user: Awaited<ReturnType<typeof loginPortal>>, shouldRemember = remember) {
+    clearAuthRecoverySuppress();
     savePortalUser(user);
     markWelcome(shouldRemember);
-    navigate(redirect, { replace: true });
+    navigate(POST_LOGIN_HOME, { replace: true });
   }
 
   function validateCredentials(): { account: string; password: string } | null {
@@ -190,14 +278,31 @@ export default function LoginPage() {
 
     setSubmitting(true);
     try {
-      const user = await loginPortal({
-        account: credentials.account,
-        password: credentials.password,
-        remember,
-        forceLogin,
-      });
+      const useRestLogin = unifiedAuthConfig?.authMode === 'rest';
+      const user = useRestLogin
+        ? await restLogin({
+            account: credentials.account,
+            password: credentials.password,
+            remember,
+            redirect,
+            forceLogin,
+          })
+        : await loginPortal({
+            account: credentials.account,
+            password: credentials.password,
+            remember,
+            forceLogin,
+          });
       completeLogin(user);
     } catch (err) {
+      if (err instanceof ApiRequestError && err.reason === USER_UNREGISTERED_CODE) {
+        await logoutPortal().catch(() => undefined);
+        const noticeParams = new URLSearchParams();
+        noticeParams.set(PORTAL_AUTH_NOTICE_PARAM, PORTAL_AUTH_NOTICE_USER_UNREGISTERED);
+        noticeParams.set('redirect', redirect);
+        navigate(`/login?${noticeParams.toString()}`, { replace: true });
+        return;
+      }
       if (err instanceof ApiRequestError && err.code === MULTI_LOGIN_CONFLICT_CODE && !forceLogin) {
         setMultiLoginMode('password');
         setFormError('');
@@ -250,12 +355,28 @@ export default function LoginPage() {
     }
   }
 
-  const unifiedAuthAvailable = unifiedAuthConfig?.enabled === true;
+  const unifiedAuthAvailable = unifiedAuthConfig?.enabled === true && unifiedAuthConfig.authMode === 'oauth';
+  const showOAuthLoginSection = !unifiedAuthLoading && unifiedAuthAvailable;
   const unifiedAuthLabel = unifiedAuthConfig?.label?.trim() || '统一身份认证';
   const unifiedAuthDisabled = unifiedAuthLoading || !unifiedAuthAvailable || unifiedAuthStarting;
-  const multiLoginBusy = submitting || confirmingMultiLogin;
+  const multiLoginBusy = submitting || confirmingMultiLogin || restExchanging;
 
   if (isInIframe) return null;
+
+  if (restExchanging) {
+    return (
+      <div className={s.page}>
+        <main className={s.shell}>
+          <section className={s.formSide}>
+            <div className={s.formInner}>
+              <h2 className={s.formTitle}>统一认证登录中</h2>
+              <p>正在验证登录票据，请稍候…</p>
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={s.page}>
@@ -434,19 +555,23 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className={s.divider}>其他登录方式</div>
-            <div className={s.ssoRow}>
-              <button
-                type="button"
-                className={s.ssoBtn}
-                disabled={unifiedAuthDisabled}
-                title={unifiedAuthAvailable ? unifiedAuthLabel : '统一身份认证暂不可用'}
-                onClick={handleUnifiedAuthLogin}
-              >
-                <Building2 size={16} />
-                <span>{unifiedAuthStarting ? '跳转中' : `${unifiedAuthLabel}登录`}</span>
-              </button>
-            </div>
+            {showOAuthLoginSection ? (
+              <>
+                <div className={s.divider}>其他登录方式</div>
+                <div className={s.ssoRow}>
+                  <button
+                    type="button"
+                    className={s.ssoBtn}
+                    disabled={unifiedAuthDisabled}
+                    title={unifiedAuthLabel}
+                    onClick={handleUnifiedAuthLogin}
+                  >
+                    <Building2 size={16} />
+                    <span>{unifiedAuthStarting ? '跳转中' : `${unifiedAuthLabel}登录`}</span>
+                  </button>
+                </div>
+              </>
+            ) : null}
           </div>
         </section>
       </main>

@@ -4,32 +4,23 @@ import test from 'node:test';
 
 const adminApiSource = readFileSync('src/api/adminConfig.ts', 'utf8');
 const adminPageSource = readFileSync('src/pages/AdminPage.tsx', 'utf8');
+const restAuthSectionSource = readFileSync('src/pages/admin/RestAuthAdminSection.tsx', 'utf8');
 
-test('admin config api exposes unified auth runtime config helpers', () => {
+test('admin config api still exposes unified auth runtime helpers for backend compatibility', () => {
   assert.match(adminApiSource, /interface UnifiedAuthRuntimeConfig/);
   assert.match(adminApiSource, /fetchUnifiedAuthRuntimeConfig/);
   assert.match(adminApiSource, /updateUnifiedAuthRuntimeConfig/);
   assert.match(adminApiSource, /\/api\/v1\/admin\/config\/unified-auth/);
-  assert.match(adminApiSource, /glo_url: string/);
-  assert.match(adminApiSource, /glo_entity_id: string/);
-  assert.match(adminApiSource, /glo_redirect_to_url: string/);
-  assert.match(adminApiSource, /glo_redirect_to_login: boolean/);
 });
 
-test('admin page contains unified auth config navigation and editor wiring', () => {
+test('admin unified auth page only exposes REST configuration UI', () => {
   assert.match(adminPageSource, /统一认证/);
-  assert.match(adminPageSource, /UnifiedAuthConfigTable/);
-  assert.match(adminPageSource, /UnifiedAuthEditorDialog/);
-  assert.match(adminPageSource, /fetchUnifiedAuthRuntimeConfig/);
-  assert.match(adminPageSource, /updateUnifiedAuthRuntimeConfig/);
-  assert.match(adminPageSource, /login_sync_hmac_secret/);
-  assert.match(adminPageSource, /client_id/);
-  assert.match(adminPageSource, /redirect_uri/);
-  assert.match(adminPageSource, /glo_entity_id/);
-  assert.match(adminPageSource, /glo_redirect_to_url/);
-  assert.match(adminPageSource, /redirctToUrl/);
-  assert.match(adminPageSource, /GLO 单点登出/);
-  assert.match(adminPageSource, /buildDefaultGloRedirectToUrl/);
-  assert.match(adminPageSource, /response_type=code/);
-  assert.match(adminPageSource, /state 由后端动态生成/);
+  assert.match(adminPageSource, /RestAuthAdminSection/);
+  assert.match(adminPageSource, /fetchRestAuthRuntimeConfig/);
+  assert.doesNotMatch(adminPageSource, /UnifiedAuthConfigTable/);
+  assert.doesNotMatch(adminPageSource, /UnifiedAuthEditorDialog/);
+  assert.doesNotMatch(adminPageSource, /fetchUnifiedAuthRuntimeConfig/);
+  assert.doesNotMatch(adminPageSource, /OAuth 配置/);
+  assert.match(restAuthSectionSource, /统一认证 REST 配置/);
+  assert.match(restAuthSectionSource, /rest_base_url/);
 });

@@ -12,7 +12,9 @@ from app.services.portal_auth_service import (
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
 from app.services.portal_share_access_store import PortalShareAccessSessionStore
+from app.services.portal_rest_auth_service import PortalRestAuthService
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
+from app.services.rest_auth_runtime_service import RestAuthRuntimeService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
 
@@ -46,6 +48,14 @@ def get_portal_unified_auth_service(request: Request) -> PortalUnifiedAuthServic
 
 def get_unified_auth_runtime_service(request: Request) -> UnifiedAuthRuntimeService:
     return request.app.state.unified_auth_runtime_service
+
+
+def get_rest_auth_runtime_service(request: Request) -> RestAuthRuntimeService:
+    return request.app.state.rest_auth_runtime_service
+
+
+def get_portal_rest_auth_service(request: Request) -> PortalRestAuthService:
+    return request.app.state.portal_rest_auth_service
 
 
 async def get_bisheng_client(request: Request) -> BishengClient:
