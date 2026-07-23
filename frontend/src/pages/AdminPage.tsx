@@ -5653,6 +5653,8 @@ function getDisplayItems(display: DisplayConfig): DisplayItem[] {
   return [
     { group: '首页', key: 'home.section_page_size', label: '知识推荐/典型案例条数', value: display.home.section_page_size },
     { group: '首页', key: 'home.hot_tags_count', label: '热门标签条数', value: display.home.hot_tags_count },
+    { group: '首页', key: 'home.expert_qa_count', label: '专家问答展示条数', value: display.home.expert_qa_count },
+    { group: '首页', key: 'home.course_count', label: '专业课程展示条数', value: display.home.course_count },
    /* { group: '首页', key: 'home.qa_hot_count', label: '技术问答热门问题条数', value: display.home.qa_hot_count },
     { group: '首页', key: 'home.domain_count', label: '业务域导航条数', value: display.home.domain_count },
     { group: '首页', key: 'home.spaces_count', label: '知识广场条数', value: display.home.spaces_count },
