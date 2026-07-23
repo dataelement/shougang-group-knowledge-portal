@@ -13,7 +13,7 @@ test('portal exposes a provider-only current-user watermark with a single opacit
   assert.match(previewWatermarkSource, /export function PreviewWatermarkProvider/);
   assert.match(previewWatermarkSource, /user\s*\?\s*buildPortalPreviewWatermarkLines/);
   assert.match(previewWatermarkSource, /fillOpacity=\{layout\.opacity\}/);
-  assert.match(previewWatermarkUtils, /WATERMARK_OPACITY\s*=\s*0\.11/);
+  assert.match(previewWatermarkUtils, /WATERMARK_OPACITY\s*=\s*0\.31/);
   assert.doesNotMatch(previewWatermarkStyles, /fill-opacity/);
   assert.match(previewWatermarkStyles, /pointer-events:\s*none/);
   assert.match(previewWatermarkSource, /aria-hidden="true"/);
