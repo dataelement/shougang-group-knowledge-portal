@@ -22,7 +22,6 @@ type ExpertQuestionItem = {
 
 interface ExpertQuestionsProps {
   className?: string;
-  count?: number;
 }
 
 /**
@@ -31,13 +30,11 @@ interface ExpertQuestionsProps {
  * @param props.className - Optional class name inherited from the host page layout.
  * @returns Expert question list panel with loading, error, and empty-slot states.
  */
-export default function ExpertQuestions({ className = '', count }: ExpertQuestionsProps) {
+export default function ExpertQuestions({ className = '' }: ExpertQuestionsProps) {
   const { user } = useAuth();
   const [questions, setQuestions] = useState<ExpertQuestionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  // Configurable display count (admin 展示配置); fall back to the built-in default.
-  const limit = count && count > 0 ? count : EXPERT_QUESTION_LIMIT;
 
   const guardLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
     if (user) return;
@@ -53,19 +50,22 @@ export default function ExpertQuestions({ className = '', count }: ExpertQuestio
 
       fetchExpertQuestions({
         page: 1,
-        pageSize: limit,
+        pageSize: EXPERT_QUESTION_LIMIT,
         sort: EXPERT_QUESTION_SORT,
       })
         .then((response) => {
           if (!active) return;
+          console.log('Raw API response for home expert questions:', response);
           const questionItems = response.questions
-            .slice(0, limit)
+            .slice(0, EXPERT_QUESTION_LIMIT)
             .map((question) => ({
               id: question.id,
               title: question.title || '',
             }))
             .filter((question) => question.title.trim());
           setQuestions(questionItems);
+          console.log('Loaded home expert questions:', questionItems);
+
         })
         .catch((err: unknown) => {
           if (!active) return;
@@ -82,7 +82,7 @@ export default function ExpertQuestions({ className = '', count }: ExpertQuestio
       active = false;
       window.clearTimeout(timer);
     };
-  }, [limit]);
+  }, []);
 
 
 

@@ -56,8 +56,6 @@ export interface RuntimeDisplayConfig {
     domainCount: number;
     spacesCount: number;
     appsCount: number;
-    expertQaCount: number;
-    courseCount: number;
   };
   list: {
     pageSize: number;
@@ -83,8 +81,6 @@ export function toRuntimeDisplayConfig(display?: DisplayConfig): RuntimeDisplayC
       domainCount: display.home.domain_count,
       spacesCount: display.home.spaces_count,
       appsCount: display.home.apps_count,
-      expertQaCount: display.home.expert_qa_count ?? 8,
-      courseCount: display.home.course_count ?? 6,
     },
     list: {
       pageSize: display.list.page_size,

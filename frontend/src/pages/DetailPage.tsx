@@ -23,11 +23,10 @@ import {
 } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
-import { buildKnowledgeFileDeepLinkPath } from '../utils/bishengEmbed';
 import { resolveDetailBackTarget } from '../utils/detailPage';
 import { formatDisplayDateTime } from '../utils/dateTime';
-import { buildDownloadFileName, downloadWatermarkedFile } from '../utils/fileDownload';
 import { resolveFilePreview } from '../utils/filePreview';
+import { downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { PORTAL_APPROVAL_EVENT } from '../utils/portalApprovalBridge';
@@ -246,10 +245,9 @@ export default function DetailPage() {
 
   const META_TAGS = ['最新精选', '典型案例'];
   const displayTags = (detail.tag_infos ?? []).filter((t) => !META_TAGS.includes(t.tag_name));
-  const canDownload = Boolean(user && detail.canDownload);
+  const canDownload = Boolean(user && (!detail.isDepartmentFile || detail.canDownload));
   const downloadEntryPoint = resolveDownloadEntryPoint(requestedEntryPoint, shareToken);
   const formattedUpdatedAt = formatDisplayDateTime(detail.date) || '—';
-  const knowledgeFileName = buildDownloadFileName(detail);
   const resolvedPreview = resolveFilePreview(preview);
   let effectivePreview = resolvedPreview;
   if (clientFallbackActive) {
@@ -340,22 +338,11 @@ export default function DetailPage() {
               onClick={() => {
                 if (window.parent !== window) {
                   window.parent.postMessage(
-                    {
-                      type: 'OPEN_KNOWLEDGE_READ',
-                      spaceId,
-                      fileId,
-                      fileName: knowledgeFileName,
-                      openChat: true,
-                    },
+                    { type: 'OPEN_KNOWLEDGE_READ', spaceId, fileId, openChat: true },
                     window.location.origin,
                   );
                 } else {
-                  navigate(buildKnowledgeFileDeepLinkPath({
-                    spaceId,
-                    fileId,
-                    fileName: knowledgeFileName,
-                    openChat: true,
-                  }));
+                  navigate(`/knowledge-spaces?spaceId=${spaceId}&fileId=${fileId}&openChat=1`);
                 }
               }}
             >

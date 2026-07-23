@@ -424,12 +424,6 @@ class PortalAuthService:
             except PortalSessionStoreError:
                 logger.exception("门户会话删除失败")
 
-    def get_auth_source(self, request: Request) -> str:
-        return request.cookies.get(self._auth_source_cookie_name, "").strip()
-
-    def is_unified_auth_request(self, request: Request) -> bool:
-        return self.get_auth_source(request) == "unified_auth"
-
     def create_bisheng_client(self, session: PortalSession) -> BishengClient:
         return self._client_factory(session.base_url, session.timeout_seconds, session.access_token)
 

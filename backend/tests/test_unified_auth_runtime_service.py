@@ -211,9 +211,8 @@ def test_admin_unified_auth_config_get_post_does_not_echo_secrets(tmp_path: Path
     assert body["has_client_secret"] is True
     assert body["has_state_secret"] is True
     assert body["has_login_sync_hmac_secret"] is True
-    assert body["glo_entity_id"] == ""
-    assert body["glo_redirect_to_url"] == ""
-    assert body["glo_redirect_to_login"] is True
+    assert "glo_entity_id" not in body
+    assert "glo_redirect_to_url" not in body
     assert "admin-secret" not in response.text
     assert "admin-login-sync-secret" not in response.text
     assert get_response.status_code == 200

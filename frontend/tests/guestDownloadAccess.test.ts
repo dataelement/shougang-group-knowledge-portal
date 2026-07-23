@@ -9,33 +9,33 @@ function readSource(path: string): string {
     .replace(/^\s*\/\/.*$/gm, '');
 }
 
-test('search results hide download action for anonymous visitors', () => {
+test('search results let logged-in users download public files without rechecking file permission', () => {
   const source = readSource('src/pages/SearchPage.tsx');
 
   assert.match(source, /const \{ user \} = useAuth\(\);/);
   assert.match(source, /const canDownload = Boolean\(user\);/);
-  assert.match(source, /onDownload=\{canDownload && f\.canDownload \? handleDownload : undefined\}/);
+  assert.match(source, /onDownload=\{canDownload && \(!f\.isDepartmentFile \|\| f\.canDownload\) \? handleDownload : undefined\}/);
   assert.match(source, /downloadWatermarkedFile\(\{[\s\S]*entryPoint: 'search'/);
   assert.doesNotMatch(source, /recordFileDownloadEvent/);
 });
 
-test('knowledge list hides download action for anonymous visitors', () => {
+test('knowledge list lets logged-in users download public files without rechecking file permission', () => {
   const source = readSource('src/pages/ListPage.tsx');
 
   assert.match(source, /import \{ useAuth \} from '\.\.\/hooks\/useAuth';/);
   assert.match(source, /const \{ user \} = useAuth\(\);/);
   assert.match(source, /const canDownload = Boolean\(user\);/);
-  assert.match(source, /onDownload=\{canDownload && f\.canDownload \? handleDownload : undefined\}/);
+  assert.match(source, /onDownload=\{canDownload && \(!f\.isDepartmentFile \|\| f\.canDownload\) \? handleDownload : undefined\}/);
   assert.match(source, /downloadWatermarkedFile\(\{[\s\S]*entryPoint: 'knowledge_list'/);
   assert.doesNotMatch(source, /recordFileDownloadEvent/);
 });
 
-test('document detail exposes a pending PDF button only with login and file permission', () => {
+test('document detail only rechecks file permission for department files', () => {
   const source = readSource('src/pages/DetailPage.tsx');
 
   assert.match(source, /import \{ useAuth \} from '\.\.\/hooks\/useAuth';/);
   assert.match(source, /const \{ user \} = useAuth\(\);/);
-  assert.match(source, /const canDownload = Boolean\(user && detail\.canDownload\);/);
+  assert.match(source, /const canDownload = Boolean\(user && \(!detail\.isDepartmentFile \|\| detail\.canDownload\)\);/);
   assert.match(source, /\{canDownload \? \(/);
   assert.match(source, /disabled=\{downloadPending\}/);
   assert.match(source, /downloadPending \? '正在生成 PDF' : '下载 PDF'/);

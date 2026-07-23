@@ -131,22 +131,3 @@ test('detail preview failure does not fetch chunks when backend disables chunk f
   assert.match(source, /mode: 'unsupported' as const/);
   assert.match(source, /if \(!resolvedPreview\.supportsChunksFallback\) return;/);
 });
-
-test('detail knowledge deep link passes the real file name through both open paths', () => {
-  const source = readSource('src/pages/DetailPage.tsx');
-
-  assert.match(source, /const knowledgeFileName = buildDownloadFileName\(detail\);/);
-  assert.match(source, /fileName: knowledgeFileName,\s*openChat: true,/);
-  assert.match(
-    source,
-    /navigate\(buildKnowledgeFileDeepLinkPath\(\{\s*spaceId,\s*fileId,\s*fileName: knowledgeFileName,\s*openChat: true,\s*\}\)\);/,
-  );
-});
-
-test('preview modal keeps the real file name when forwarding the knowledge deep link', () => {
-  const source = readSource('src/components/FilePreviewModal.tsx');
-
-  assert.match(source, /const messageFileName = typeof event\.data\.fileName === 'string'/);
-  assert.match(source, /const fileName = messageFileName \|\| \(file \? buildDownloadFileName\(file\) : ''\);/);
-  assert.match(source, /navigate\(buildKnowledgeFileDeepLinkPath\(\{/);
-});

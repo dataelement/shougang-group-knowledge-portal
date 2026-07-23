@@ -56,7 +56,7 @@ test('portal preview watermark layout uses adaptive rotated bounds and staggered
   assert.equal(compact.cellHeight, 180);
   assert.equal(normal.rotation, -35);
   assert.equal(normal.fontSize, 16);
-  assert.equal(normal.opacity, 0.31);
+  assert.equal(normal.opacity, 0.11);
   assert.ok(normal.cellWidth > compact.cellWidth);
   assert.ok(normal.cellHeight > compact.cellHeight);
   assert.ok(long.cellWidth > normal.cellWidth);

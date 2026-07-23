@@ -3773,6 +3773,7 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
                                 "file_size": "949.33KB",
                                 "file_encoding": "GF-ZD-SC-202604-01201",
                                 "file_subcategory_code": "RPT",
+                                "can_download": True,
                             }
                         ],
                         "has_more": True,
@@ -3797,6 +3798,7 @@ def test_search_files_passes_latest_selected_recommendation_without_tag(tmp_path
     assert body["next_cursor"] == "cursor-1"
     assert body["data"][0]["space_id"] == 12
     assert body["data"][0]["file_subcategory_code"] == "RPT"
+    assert body["data"][0]["can_download"] is True
     assert fake_bisheng.post_calls[0][1]["tag"] is None
 
 
@@ -3823,7 +3825,7 @@ def test_logged_in_latest_selected_does_not_resolve_visible_spaces(tmp_path: Pat
                 }
                 return {
                     "data": {
-                        "data": [self._portal_file_1580()],
+                        "data": [{**self._portal_file_1580(), "can_download": True}],
                         "has_more": False,
                         "next_cursor": None,
                     }
@@ -3846,6 +3848,7 @@ def test_logged_in_latest_selected_does_not_resolve_visible_spaces(tmp_path: Pat
 
     assert response.status_code == 200
     assert response.json()["data"]["data"][0]["space_id"] == 12
+    assert response.json()["data"]["data"][0]["can_download"] is True
 
 
 def test_logged_in_public_tag_list_does_not_resolve_visible_spaces(tmp_path: Path):
@@ -3875,7 +3878,11 @@ def test_logged_in_public_tag_list_does_not_resolve_visible_spaces(tmp_path: Pat
                 }
                 return {
                     "status_code": 200,
-                    "data": {"data": [self._portal_file_1580()], "has_more": False, "next_cursor": None},
+                    "data": {
+                        "data": [{**self._portal_file_1580(), "can_download": True}],
+                        "has_more": False,
+                        "next_cursor": None,
+                    },
                 }
             return await super().post_json(path, json=json, headers=headers)
 
@@ -3896,6 +3903,7 @@ def test_logged_in_public_tag_list_does_not_resolve_visible_spaces(tmp_path: Pat
 
     assert response.status_code == 200
     assert response.json()["data"]["data"][0]["space_id"] == 12
+    assert response.json()["data"]["data"][0]["can_download"] is True
 
 
 class EmptyPortalBrowseBishengClient(FakeBishengClient):
