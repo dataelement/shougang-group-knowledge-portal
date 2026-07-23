@@ -11,6 +11,13 @@ const DEEP_LINK_OPEN_CHAT_PARAM = 'openChat';
 
 export type EmbedLocation = Pick<Location, 'protocol' | 'hostname' | 'origin'>;
 
+export interface KnowledgeFileDeepLink {
+  spaceId: number | string;
+  fileId: number | string;
+  fileName?: string;
+  openChat?: boolean;
+}
+
 export type PortalWorkflowChatEmbedResult =
   | { ok: true; url: string }
   | { ok: false; reason: 'missing_bisheng_base_url' | 'missing_workflow_id' | 'invalid_bisheng_base_url'; message: string };
@@ -100,6 +107,22 @@ export function mergeKnowledgeDeepLinkParams(
   } catch {
     return rawUrl;
   }
+}
+
+export function buildKnowledgeFileDeepLinkPath({
+  spaceId,
+  fileId,
+  fileName,
+  openChat = false,
+}: KnowledgeFileDeepLink): string {
+  const params = new URLSearchParams({
+    spaceId: String(spaceId),
+    fileId: String(fileId),
+  });
+  const normalizedFileName = fileName?.trim();
+  if (normalizedFileName) params.set(DEEP_LINK_FILE_NAME_PARAM, normalizedFileName);
+  if (openChat) params.set(DEEP_LINK_OPEN_CHAT_PARAM, '1');
+  return `/knowledge-spaces?${params.toString()}`;
 }
 
 /**

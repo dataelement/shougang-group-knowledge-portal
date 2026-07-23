@@ -7,8 +7,10 @@ import TagPill from '../components/TagPill';
 import { fetchFileChunks, fetchFileDetail, fetchFilePreview, fetchRelatedFiles, recordFileDownloadEvent, type FileChunkItem, type FileDetail, type FileItem, type FilePreviewContext, type FilePreviewManifest } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
+import { buildKnowledgeFileDeepLinkPath } from '../utils/bishengEmbed';
 import { resolveDetailBackTarget } from '../utils/detailPage';
 import { formatDisplayDateTime } from '../utils/dateTime';
+import { buildDownloadFileName } from '../utils/fileDownload';
 import { resolveFilePreview } from '../utils/filePreview';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import s from './DetailPage.module.css';
@@ -122,6 +124,7 @@ export default function DetailPage() {
   const META_TAGS = ['最新精选', '典型案例'];
   const displayTags = (detail.tag_infos ?? []).filter((t) => !META_TAGS.includes(t.tag_name));
   const formattedUpdatedAt = formatDisplayDateTime(detail.date) || '—';
+  const knowledgeFileName = buildDownloadFileName(detail);
   const resolvedPreview = resolveFilePreview(preview);
   let effectivePreview = resolvedPreview;
   if (clientFallbackActive) {
@@ -177,11 +180,22 @@ export default function DetailPage() {
               onClick={() => {
                 if (window.parent !== window) {
                   window.parent.postMessage(
-                    { type: 'OPEN_KNOWLEDGE_READ', spaceId, fileId, openChat: true },
+                    {
+                      type: 'OPEN_KNOWLEDGE_READ',
+                      spaceId,
+                      fileId,
+                      fileName: knowledgeFileName,
+                      openChat: true,
+                    },
                     window.location.origin,
                   );
                 } else {
-                  navigate(`/knowledge-spaces?spaceId=${spaceId}&fileId=${fileId}&openChat=1`);
+                  navigate(buildKnowledgeFileDeepLinkPath({
+                    spaceId,
+                    fileId,
+                    fileName: knowledgeFileName,
+                    openChat: true,
+                  }));
                 }
               }}
             >
@@ -235,7 +249,7 @@ export default function DetailPage() {
               <a
                 className={s.downloadBtn}
                 href={effectivePreview.downloadUrl}
-                download={effectivePreview.downloadUrl ? `${detail.title}.${detail.ext}` : undefined}
+                download={effectivePreview.downloadUrl ? knowledgeFileName : undefined}
                 target={effectivePreview.downloadUrl ? '_blank' : undefined}
                 rel={effectivePreview.downloadUrl ? 'noreferrer' : undefined}
                 aria-disabled={!effectivePreview.downloadUrl}
