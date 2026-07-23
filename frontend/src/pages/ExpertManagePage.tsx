@@ -911,14 +911,12 @@ function ContributionHeader({
 }: ContributionHeaderProps) {
   const active = activeField === 'expert_score';
   const totalWidth = widths.answerCount + widths.adoptionCount + widths.voteCount;
-  const title = '排序规则：回答数 × 1 + 采纳数 × 5 + 获赞数 × 2';
 
   return (
     <th
       className={`${s.tableHeader} ${s.sortableHeader} ${s.contributionHeader} ${active ? s.sortableHeaderActive : ''}`}
       colSpan={3}
       aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
-      title={title}
       style={{ width: totalWidth, minWidth: totalWidth, maxWidth: totalWidth }}
     >
       <button
