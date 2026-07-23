@@ -300,6 +300,24 @@ function buildBannerBackground(imageUrl: string): string {
   return `${BANNER_OVERLAY_GRADIENT}, url("${imageUrl}")`;
 }
 
+/**
+ * Strip a redundant leading "【摘要】：" prefix from summary text.
+ * Some upstream data double-prefixes the label (e.g. "【摘要】：【文档类型】：...
+ * 【摘要】：actual body")—drop only the leading marker so the visible label
+ * remains attached to the real body.
+ */
+function cleanSummaryText(summary: string | null | undefined): string {
+  if (!summary) return '';
+  const trimmed = summary.trim();
+  const leadingLabel = /^【摘要】\s*[：:]\s*/;
+  const match = trimmed.match(leadingLabel);
+  if (!match) return trimmed;
+  const rest = trimmed.slice(match[0].length);
+  // Only strip when another 【摘要】 marker remains, so we never accidentally
+  // hide the label for entries that only have one.
+  return /【摘要】\s*[：:]/.test(rest) ? rest : trimmed;
+}
+
 function formatCount(value: number): string {
   if (value >= 10000) {
     const wan = value / 10000;
@@ -1307,18 +1325,22 @@ export default function HomePage() {
                             <img src={resolveSectionItemIcon(sec.title)} alt="" className={s.itemIcon} />
                             <div className={s.itemBody}>
                               <div className={s.itemTitle}>{f.title}</div>
-                              {enableSummaryTooltip && f.summary ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className={s.itemSummary}>{f.summary}</div>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
-                                    {f.summary}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                <div className={s.itemSummary}>{f.summary ?? ''}</div>
-                              )}
+                              {(() => {
+                                const displaySummary = cleanSummaryText(f.summary);
+                                if (enableSummaryTooltip && displaySummary) {
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className={s.itemSummary}>{displaySummary}</div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
+                                        {displaySummary}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
+                                }
+                                return <div className={s.itemSummary}>{displaySummary}</div>;
+                              })()}
                             </div>
                             {f.date ? (
                               <span className={s.itemTime}>{formatDisplayDateTime(f.date)}</span>
