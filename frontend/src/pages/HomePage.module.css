@@ -1148,10 +1148,14 @@
   line-height: 1.2;
 }
 
-/* 首页知识推荐/行业情报 摘要 hover 浮窗（按蓝湖设计稿） */
+/* 首页知识推荐/行业情报 摘要 hover 浮窗（按蓝湖设计稿：640 宽对话框，高度按内容自适应） */
 .summaryTooltip {
+  box-sizing: border-box;
+  position: relative;
+  width: 640px;
+  min-height: 60px;
   max-width: 640px;
-  padding: 12px 16px;
+  padding: 16px 20px;
   color: #273142;
   font-family: PingFangSC, 'PingFang SC', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
@@ -1160,11 +1164,36 @@
   text-align: justify;
   white-space: normal;
   word-break: break-word;
-  background: linear-gradient(180deg, #EEEFFF 0%, #E8F3FF 100%);
-  border: 1px solid transparent;
+  overflow: visible;
   border-radius: 8px;
-  border-image: linear-gradient(180deg, rgba(77, 119, 243, 1), rgba(122, 188, 255, 1)) 1 1;
+  /* 双层背景：内层浅蓝渐变面板 + 外层蓝紫渐变边框（同时支持圆角） */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, #EEEFFF 0%, #E8F3FF 100%) padding-box,
+    linear-gradient(180deg, rgba(77, 119, 243, 1) 0%, rgba(122, 188, 255, 1) 100%) border-box;
   box-shadow: 0px 2px 20px 0px rgba(101, 108, 130, 0.3);
+}
+
+/* 顶部小三角尖角（对话框指针，指向触发元素） */
+.summaryTooltip::before,
+.summaryTooltip::after {
+  content: '';
+  position: absolute;
+  left: 60px;
+  width: 0;
+  height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+}
+.summaryTooltip::before {
+  /* 边框三角（外层深蓝，露出 1px 描边） */
+  top: -10px;
+  border-bottom: 10px solid #4D77F3;
+}
+.summaryTooltip::after {
+  /* 内部填充三角（覆盖在边框三角上方，只留出 1px 边） */
+  top: -9px;
+  border-bottom: 10px solid #EEEFFF;
 }
 
 .summaryTooltipLabel {
