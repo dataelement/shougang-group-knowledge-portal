@@ -38,6 +38,8 @@ import { downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { createSubmittedSearchParams } from '../utils/searchParams';
+import { ActionToast } from '../components/ActionToast';
+import { useActionToast } from '../hooks/useActionToast';
 import s from './ListPage.module.css';
 
 const EMPTY_SPACE_IDS: number[] = [];
@@ -98,6 +100,7 @@ export default function ListPage() {
   const [error, setError] = useState('');
   const [draft, setDraft] = useState(keyword);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const { toast, showError } = useActionToast();
   const { user } = useAuth();
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
   // const { openShare, shareModalProps } = useShareDocument();
@@ -188,9 +191,11 @@ export default function ListPage() {
         ext: file.ext,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '文档下载失败');
+      const message = err instanceof Error ? err.message : '文档下载失败';
+      setError(message);
+      showError(message);
     }
-  }, []);
+  }, [showError]);
 
   const handleToggleFavorite = useCallback(async (file: FileItem) => {
     setError('');
@@ -389,6 +394,7 @@ export default function ListPage() {
 
   return (
     <PageShell>
+      <ActionToast toast={toast} />
       <div className={s.container}>
         <div ref={resultsTopRef} />
         <Link to="/" className={s.backLink}>

@@ -46,6 +46,8 @@ import {
   createSubmittedSearchParams,
   getSearchDisplayKeyword,
 } from '../utils/searchParams';
+import { ActionToast } from '../components/ActionToast';
+import { useActionToast } from '../hooks/useActionToast';
 import searchHeroBg from '../assets/search-hero-bg@2x.png';
 import s from './SearchPage.module.css';
 
@@ -163,6 +165,7 @@ export default function SearchPage() {
   const latestSearchRequestRef = useRef(0);
   const searchPendingRef = useRef(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const { toast, showError } = useActionToast();
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
   // const { openShare, shareModalProps } = useShareDocument();
   const { documentQaModalProps } = useDocumentQa();
@@ -180,9 +183,11 @@ export default function SearchPage() {
         ext: file.ext,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '文档下载失败');
+      const message = err instanceof Error ? err.message : '文档下载失败';
+      setError(message);
+      showError(message);
     }
-  }, []);
+  }, [showError]);
 
   const handleToggleFavorite = useCallback(async (file: FileItem) => {
     setError('');
@@ -648,6 +653,7 @@ export default function SearchPage() {
         background: `#EAF0F7 url(${searchHeroBg}) top center / 100% auto no-repeat`,
       }}
     >
+      <ActionToast toast={toast} />
       <div className={s.container}>
         <div className={s.searchHero}>
           <div ref={resultsTopRef} />

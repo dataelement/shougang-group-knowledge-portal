@@ -12,6 +12,12 @@
 .vscode/
 .trae/
 
+# Personal vibe prefs — never commit (team rules stay in .cursor/rules/*.mdc)
+.cursor/rules/*.local.mdc
+.cursor/rules/personal/**
+!.cursor/rules/personal/README.md
+.cursor/skills/personal/
+
 # Root-level local captures
 screenshots/
 
@@ -34,3 +40,4 @@ frontend/node_modules/
 frontend/dist/
 frontend/.test-dist*/
 frontend/*.local
+.cursor/

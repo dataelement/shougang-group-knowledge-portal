@@ -30,3 +30,18 @@ test('user-facing error normalizer keeps existing Chinese business messages', ()
     '当前账号没有分享该文档的权限',
   );
 });
+
+test('user-facing error normalizer maps HTTP 429 to rate-limit Chinese copy', () => {
+  assert.equal(
+    normalizeUserFacingMessage('HTTP 429', '操作失败，请稍后重试。', 429),
+    '请求过于频繁或已达限额，请稍后重试。',
+  );
+  assert.equal(
+    normalizeUserFacingMessage('请求失败：429'),
+    '请求过于频繁或已达限额，请稍后重试。',
+  );
+  assert.equal(
+    normalizeUserFacingMessage('', '操作失败，请稍后重试。', 429),
+    '请求过于频繁或已达限额，请稍后重试。',
+  );
+});
