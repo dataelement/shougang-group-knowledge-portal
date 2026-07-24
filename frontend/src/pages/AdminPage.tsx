@@ -149,7 +149,7 @@ function isLatestSelectedSectionDraft(draft: Pick<SectionDraft, 'builtinKey'>): 
 }
 
 const NAV_ITEMS = [
-  { key: 'domains', label: '业务域', icon: Building },
+  { key: 'domains', label: '首页导航', icon: Building },
   { key: 'sections', label: '首页分区', icon: Tag },
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
   { key: 'courses', label: '课程管理', icon: GraduationCap },
