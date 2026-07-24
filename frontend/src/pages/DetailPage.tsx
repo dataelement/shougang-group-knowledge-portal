@@ -30,6 +30,8 @@ import { downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { PORTAL_APPROVAL_EVENT } from '../utils/portalApprovalBridge';
+import { ActionToast } from '../components/ActionToast';
+import { useActionToast } from '../hooks/useActionToast';
 import s from './DetailPage.module.css';
 
 const DocumentPreview = lazy(() => import('../components/DocumentPreview'));
@@ -78,6 +80,7 @@ export default function DetailPage() {
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState('');
   const [accessRevision, setAccessRevision] = useState(0);
+  const { toast, showError } = useActionToast();
 
   const fileId = Number(fileIdStr);
   const spaceId = Number(spaceIdStr);
@@ -162,7 +165,17 @@ export default function DetailPage() {
   }, [accessRevision, canPreview, fileId, previewEntryPoint, previewUserKey, recommendationScene, relatedFilesCount, shareToken, spaceId]);
 
   const wrap = (children: ReactNode) =>
-    embed ? <div className={s.embedRoot}>{children}</div> : <PageShell>{children}</PageShell>;
+    embed ? (
+      <div className={s.embedRoot}>
+        <ActionToast toast={toast} />
+        {children}
+      </div>
+    ) : (
+      <PageShell>
+        <ActionToast toast={toast} />
+        {children}
+      </PageShell>
+    );
 
   if (loading) {
     return wrap(
@@ -293,7 +306,9 @@ export default function DetailPage() {
         ext: detail?.ext ?? '',
       });
     } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : '文档下载失败');
+      const message = err instanceof Error ? err.message : '文档下载失败';
+      setDownloadError(message);
+      showError(message);
     } finally {
       setDownloadPending(false);
     }
