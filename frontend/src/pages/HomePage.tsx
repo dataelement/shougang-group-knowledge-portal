@@ -53,6 +53,10 @@ import { fetchCourses } from '../api/courses';
 import { formatCourseDuration, type Course } from '../types/course';
 import s from './HomePage.module.css';
 import navIcon from '../assets/nav-icon@2x.png';
+import navTabDomainActive from '../assets/nav-tab-domain-active.png';
+import navTabDomainInactive from '../assets/nav-tab-domain-inactive.png';
+import navTabCategoryActive from '../assets/nav-tab-category-active.png';
+import navTabCategoryInactive from '../assets/nav-tab-category-inactive.png';
 import iconCourse from '../assets/icon-course@2x.png';
 import iconExpert from '../assets/icon-expert@2x.png';
 import iconAiqa from '../assets/icon-aiqa@2x.png';
@@ -1200,8 +1204,7 @@ export default function HomePage() {
         <div className={s.container}>
         {/* Domain navigation */}
         <div className={`${s.section} ${s.domainSection}`}>
-          <div className={s.domainHeader}>
-            <img src={navIcon} alt="" className={s.domainHeaderIcon} />
+          <div className={`${s.domainHeader} ${showCategoryTab ? s.domainHeaderWithTabs : ''}`}>
             {showCategoryTab ? (
               <div className={s.domainNavTabs} role="tablist">
                 <button
@@ -1211,8 +1214,14 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'domain' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('domain')}
                 >
-                  业务域导航
+                  <img
+                    src={activeNavTab === 'domain' ? navTabDomainActive : navTabDomainInactive}
+                    alt=""
+                    className={s.domainNavTabIcon}
+                  />
+                  <span className={s.domainNavTabText}>业务域导航</span>
                 </button>
+                <span className={s.domainNavTabDivider} aria-hidden />
                 <button
                   type="button"
                   role="tab"
@@ -1220,11 +1229,19 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'category' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('category')}
                 >
-                  分类导航
+                  <img
+                    src={activeNavTab === 'category' ? navTabCategoryActive : navTabCategoryInactive}
+                    alt=""
+                    className={s.domainNavTabIcon}
+                  />
+                  <span className={s.domainNavTabText}>分类导航</span>
                 </button>
               </div>
             ) : (
-              <span className={s.domainHeaderTitle}>业务域导航</span>
+              <>
+                <img src={navIcon} alt="" className={s.domainHeaderIcon} />
+                <span className={s.domainHeaderTitle}>业务域导航</span>
+              </>
             )}
           </div>
           <div className={s.domainCarousel}>

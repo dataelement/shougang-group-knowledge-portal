@@ -786,6 +786,13 @@
   background: transparent;
 }
 
+/* tab 版头部:高度收紧,底部加分隔线 */
+.domainHeaderWithTabs {
+  height: 60px;
+  gap: 0;
+  border-bottom: 1px solid #eceef2;
+}
+
 .domainHeaderIcon {
   width: 32px;
   height: 32px;
@@ -803,39 +810,44 @@
 .domainNavTabs {
   display: flex;
   align-items: center;
-  gap: 24px;
 }
 
 .domainNavTab {
-  position: relative;
-  padding: 0 0 4px;
-  font-size: 24px;
-  font-weight: 800;
-  line-height: 24px;
-  color: #9aa4b2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
   background: transparent;
   border: none;
   cursor: pointer;
+}
+
+.domainNavTabIcon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.domainNavTabText {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 32px;
+  white-space: nowrap;
+  color: #333;
   transition: color 0.15s ease;
 }
 
-.domainNavTab:hover {
-  color: #4b5563;
+.domainNavTabActive .domainNavTabText {
+  color: rgba(54, 98, 227, 1);
 }
 
-.domainNavTabActive {
-  color: #333;
-}
-
-.domainNavTabActive::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -2px;
-  height: 3px;
-  border-radius: 2px;
-  background: #2563eb;
+.domainNavTabDivider {
+  width: 1px;
+  height: 28px;
+  margin: 0 16px;
+  background: #e5e7eb;
+  flex: 0 0 auto;
 }
 
 /* ===== Domain grid ===== */
