@@ -341,7 +341,7 @@ export default function HomePage() {
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
   const [domainScrollState, setDomainScrollState] = useState({ atStart: true, atEnd: false });
-  const [navTab, setNavTab] = useState<'domain' | 'category'>('domain');
+  const [navTab, setNavTab] = useState<'domain' | 'category'>('category');
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionRecommendationModes, setSectionRecommendationModes] = useState<Record<string, RecommendationMode>>({});
   const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
