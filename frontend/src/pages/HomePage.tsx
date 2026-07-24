@@ -1210,21 +1210,6 @@ export default function HomePage() {
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={activeNavTab === 'domain'}
-                  className={`${s.domainNavTab} ${activeNavTab === 'domain' ? s.domainNavTabActive : ''}`}
-                  onClick={() => setNavTab('domain')}
-                >
-                  <img
-                    src={activeNavTab === 'domain' ? navTabDomainActive : navTabDomainInactive}
-                    alt=""
-                    className={s.domainNavTabIcon}
-                  />
-                  <span className={s.domainNavTabText}>业务域导航</span>
-                </button>
-                <span className={s.domainNavTabDivider} aria-hidden />
-                <button
-                  type="button"
-                  role="tab"
                   aria-selected={activeNavTab === 'category'}
                   className={`${s.domainNavTab} ${activeNavTab === 'category' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('category')}
@@ -1235,6 +1220,21 @@ export default function HomePage() {
                     className={s.domainNavTabIcon}
                   />
                   <span className={s.domainNavTabText}>分类导航</span>
+                </button>
+                <span className={s.domainNavTabDivider} aria-hidden />
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeNavTab === 'domain'}
+                  className={`${s.domainNavTab} ${activeNavTab === 'domain' ? s.domainNavTabActive : ''}`}
+                  onClick={() => setNavTab('domain')}
+                >
+                  <img
+                    src={activeNavTab === 'domain' ? navTabDomainActive : navTabDomainInactive}
+                    alt=""
+                    className={s.domainNavTabIcon}
+                  />
+                  <span className={s.domainNavTabText}>业务域导航</span>
                 </button>
               </div>
             ) : (

@@ -786,11 +786,21 @@
   background: transparent;
 }
 
-/* tab 版头部:高度收紧,底部加分隔线 */
+/* tab 版头部:高度收紧,底部分隔线两侧留 padding(用伪元素内缩) */
 .domainHeaderWithTabs {
+  position: relative;
   height: 60px;
   gap: 0;
-  border-bottom: 1px solid #eceef2;
+}
+
+.domainHeaderWithTabs::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 1px;
+  background: #eceef2;
 }
 
 .domainHeaderIcon {
