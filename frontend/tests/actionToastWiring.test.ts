@@ -44,7 +44,11 @@ test('SearchPage surfaces download failures via ActionToast', () => {
   assert.match(source, /<ActionToast toast=\{toast\} \/>/);
   assert.match(
     source,
-    /const message = err instanceof Error \? err\.message : '文档下载失败';\s*setError\(message\);\s*showError\(message\);/,
+    /const message = err instanceof Error \? err\.message : '文档下载失败';\s*showError\(message\);/,
+  );
+  assert.doesNotMatch(
+    source,
+    /文档下载失败';\s*setError\(message\);/,
   );
   assert.match(source, /\}, \[showError\]\);/);
 });
@@ -58,7 +62,11 @@ test('ListPage surfaces download failures via ActionToast', () => {
   assert.match(source, /<ActionToast toast=\{toast\} \/>/);
   assert.match(
     source,
-    /const message = err instanceof Error \? err\.message : '文档下载失败';\s*setError\(message\);\s*showError\(message\);/,
+    /const message = err instanceof Error \? err\.message : '文档下载失败';\s*showError\(message\);/,
+  );
+  assert.doesNotMatch(
+    source,
+    /文档下载失败';\s*setError\(message\);/,
   );
   assert.match(source, /\}, \[showError\]\);/);
 });
