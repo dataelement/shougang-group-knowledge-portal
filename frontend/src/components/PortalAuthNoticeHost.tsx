@@ -21,7 +21,10 @@ export default function PortalAuthNoticeHost() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const notice = params.get(PORTAL_AUTH_NOTICE_PARAM);
-    if (!notice) return;
+    if (!notice) {
+      handledRef.current = null;
+      return;
+    }
 
     const signature = `${location.pathname}${location.search}`;
     if (handledRef.current === signature) return;

@@ -42,14 +42,33 @@ class PortalBishengUserLookup:
             matched = self._match_account(rows, account)
             if matched is not None:
                 logger.info(
-                    "BiSheng 用户 source 查询命中: account=%s source=%s params=%s",
+                    "BiSheng 用户 source 查询命中: account=%s source=%s external_id=%s params=%s",
                     account,
                     matched.get("source"),
+                    matched.get("external_id"),
                     {key: value for key, value in params.items() if key != "page_size"},
                 )
-                return matched
+                return self._normalize_user_record(matched)
         logger.warning("BiSheng 用户 source 查询未命中: account=%s", account)
         return None
+
+    @staticmethod
+    def _normalize_user_record(row: dict[str, Any]) -> dict[str, Any]:
+        user_name = str(
+            row.get("user_name")
+            or row.get("username")
+            or row.get("account")
+            or row.get("login_name")
+            or ""
+        ).strip()
+        external_id = str(row.get("external_id") or row.get("external_code") or "").strip()
+        source = str(row.get("source") or "").strip()
+        return {
+            **row,
+            "user_name": user_name,
+            "external_id": external_id,
+            "source": source,
+        }
 
     @staticmethod
     def _extract_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -67,13 +86,16 @@ class PortalBishengUserLookup:
     def _match_account(rows: list[dict[str, Any]], account: str) -> dict[str, Any] | None:
         target = account.strip().casefold()
         for row in rows:
-            candidate = str(
-                row.get("user_name")
-                or row.get("username")
-                or row.get("account")
-                or row.get("login_name")
-                or ""
-            ).strip()
-            if candidate.casefold() == target:
-                return row
+            candidates = (
+                row.get("user_name"),
+                row.get("username"),
+                row.get("account"),
+                row.get("login_name"),
+                row.get("external_id"),
+                row.get("external_code"),
+            )
+            for candidate in candidates:
+                text = str(candidate or "").strip()
+                if text and text.casefold() == target:
+                    return row
         return None

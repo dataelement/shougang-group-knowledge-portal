@@ -41,6 +41,15 @@ test('login page only auto-recovers server session when redirect intent is prese
   assert.match(loginPageSource, /shouldSuppressAuthRecovery/);
 });
 
+test('login page forwards tokenId urls to iam_start', () => {
+  assert.match(loginPageSource, /buildIamStartPath/);
+  assert.match(loginPageSource, /resolveUrlTokenId/);
+});
+
+test('login page skips session recovery when URL carries tokenId', () => {
+  assert.match(loginPageSource, /resolveUrlTokenId\(location\.search/);
+});
+
 test('knowledge spaces page skips login redirect while logout navigation is in progress', () => {
   const knowledgeSpacesSource = readFileSync('src/pages/KnowledgeSpacesPage.tsx', 'utf8');
   assert.match(knowledgeSpacesSource, /isPortalLogoutInProgress/);
