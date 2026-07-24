@@ -184,7 +184,6 @@ export default function SearchPage() {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : '文档下载失败';
-      setError(message);
       showError(message);
     }
   }, [showError]);
