@@ -1,12 +1,13 @@
 import type { PortalConfig } from '../api/adminConfig';
 
-export type ListPageContextMode = 'domain' | 'space' | 'global';
+export type ListPageContextMode = 'domain' | 'space' | 'global' | 'category';
 
 export interface ListPageContext {
   mode: ListPageContextMode;
   spaceId?: number;
   spaceIds: number[];
   businessDomainCode?: string;
+  categoryCode?: string;
   pageTitle: string;
 }
 
@@ -31,7 +32,21 @@ export function resolveListContext(
   spaceIdParam?: string,
   tagParam?: string,
   titleParam?: string,
+  categoryCode?: string,
 ): ListPageContext {
+  const normalizedCategoryCode = (categoryCode ?? '').trim().toUpperCase();
+  const matchedCategory = normalizedCategoryCode
+    ? (config.category_cards ?? []).find((item) => item.code.trim().toUpperCase() === normalizedCategoryCode)
+    : undefined;
+  if (matchedCategory) {
+    return {
+      mode: 'category',
+      spaceIds: normalizeSpaceIds(matchedCategory.space_ids),
+      categoryCode: matchedCategory.code.trim().toUpperCase(),
+      pageTitle: matchedCategory.name || matchedCategory.code || '分类知识',
+    };
+  }
+
   const matchedDomain = domainName ? config.domains.find((item) => item.name === domainName) : undefined;
 
   if (matchedDomain) {

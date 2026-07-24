@@ -56,7 +56,7 @@ const SPACE_LEVEL_OPTIONS = [
 type SpaceOption = Pick<KnowledgeSpace, 'id' | 'name' | 'spaceLevel'>;
 
 export default function ListPage() {
-  const { spaceId: spaceIdStr, domainName } = useParams<{ spaceId?: string; domainName?: string }>();
+  const { spaceId: spaceIdStr, domainName, categoryCode: categoryCodeParam } = useParams<{ spaceId?: string; domainName?: string; categoryCode?: string }>();
   const location = useLocation();
   const { params, resultsTopRef, setFilter, setFilters, setParams } = useListControls();
   const { config, error: configError } = usePortalConfig();
@@ -108,19 +108,26 @@ export default function ListPage() {
   const canDownload = Boolean(user);
   const canFavorite = Boolean(user);
   const listContext = useMemo(() => (
-    config ? resolveListContext(config, domainName, spaceIdStr, tagParam, titleParam) : undefined
-  ), [config, domainName, spaceIdStr, tagParam, titleParam]);
+    config ? resolveListContext(config, domainName, spaceIdStr, tagParam, titleParam, categoryCodeParam) : undefined
+  ), [config, domainName, spaceIdStr, tagParam, titleParam, categoryCodeParam]);
   const pageTitle = listContext?.pageTitle ?? '知识列表';
   const spaceId = listContext?.spaceId;
   const spaceIds = listContext?.spaceIds ?? EMPTY_SPACE_IDS;
   const businessDomainCode = listContext?.businessDomainCode ?? '';
+  const categoryCode = listContext?.categoryCode ?? '';
   const isDomainList = listContext?.mode === 'domain';
+  const isCategoryList = listContext?.mode === 'category';
   const isGlobalList = listContext?.mode === 'global';
-  const showBusinessDomainFilter = Boolean(isGlobalList && (recommendationParam || tagParam || titleParam));
+  const showBusinessDomainFilter = Boolean((isGlobalList && (recommendationParam || tagParam || titleParam)) || isCategoryList);
   const selectedSpaceFilterId = Number(selectedSpaceFilter);
   const documentTypeGroups = useMemo(
     () => getRuntimeDocumentTypeGroups(config?.document_types),
     [config?.document_types],
+  );
+  // 分类落地页:文件分类筛选只展示当前一级分类下的二级分类。
+  const filterDocumentTypeGroups = useMemo(
+    () => (isCategoryList ? documentTypeGroups.filter((group) => group.code === categoryCode) : documentTypeGroups),
+    [categoryCode, documentTypeGroups, isCategoryList],
   );
   const businessDomainOptions = useMemo(
     () => getBusinessDomainFilterOptions(config?.domains),
@@ -148,7 +155,7 @@ export default function ListPage() {
 
   const spaceOptions = useMemo<SpaceOption[]>(() => {
     const contextSpaceIds = new Set<number>();
-    if (isDomainList) {
+    if (isDomainList || isCategoryList) {
       for (const id of spaceIds) contextSpaceIds.add(id);
     } else if (spaceId) {
       contextSpaceIds.add(spaceId);
@@ -166,7 +173,7 @@ export default function ListPage() {
       byId.set(selectedSpaceFilterId, { id: selectedSpaceFilterId, name: String(selectedSpaceFilterId), spaceLevel: '' });
     }
     return [...byId.values()];
-  }, [isDomainList, selectedSpaceFilterId, spaceId, spaceIds, visibleSpaces]);
+  }, [isCategoryList, isDomainList, selectedSpaceFilterId, spaceId, spaceIds, visibleSpaces]);
 
   const spaceLevelOptions = useMemo(() => {
     const levelSet = new Set(spaceOptions.map((item) => item.spaceLevel).filter(Boolean));
@@ -235,7 +242,7 @@ export default function ListPage() {
     const isRecommendationList = isLatestSelectedRecommendation || isPersonalizedRecommendation;
     const selectedSpaceAllowed = Number.isFinite(selectedSpaceFilterId)
       && selectedSpaceFilterId > 0
-      && (!isDomainList || spaceIds.includes(selectedSpaceFilterId))
+      && ((!isDomainList && !isCategoryList) || spaceIds.includes(selectedSpaceFilterId))
       && (!spaceId || selectedSpaceFilterId === spaceId);
     const requestedSpaceIds = selectedSpaceAllowed ? [selectedSpaceFilterId] : undefined;
     const hasUserFilterTag = Boolean(filterTag);
@@ -256,6 +263,19 @@ export default function ListPage() {
       cursor: isPersonalizedRecommendation ? undefined : cursor || undefined,
       limit: pageLimit,
     };
+    if (isCategoryList) {
+      if (spaceIds.length === 0 || !categoryCode) {
+        return Promise.resolve({ data: [], hasMore: false, nextCursor: null });
+      }
+      return searchFiles({
+        ...baseParams,
+        spaceIds: requestedSpaceIds ?? spaceIds,
+        // 一级分类锁定为该卡片；二级分类由筛选下拉可选
+        documentType: categoryCode,
+        fileSubcategoryCode: fileSubcategoryCode || undefined,
+        businessDomainCode: businessDomainFilter || undefined,
+      });
+    }
     if (isDomainList) {
       if (spaceIds.length === 0 || !businessDomainCode) {
         return Promise.resolve({ data: [], hasMore: false, nextCursor: null });
@@ -279,11 +299,13 @@ export default function ListPage() {
   }, [
     businessDomainCode,
     businessDomainFilter,
+    categoryCode,
     documentType,
     filterTag,
     fileExt,
     fileSubcategoryCode,
     keyword,
+    isCategoryList,
     isDomainList,
     isPersonalizedRecommendation,
     pageLimit,
@@ -303,6 +325,15 @@ export default function ListPage() {
     if (!config || !listContext) return;
     void (async () => {
       try {
+        if (isCategoryList) {
+          if (spaceIds.length === 0) {
+            if (active) setAvailableTags([]);
+            return;
+          }
+          const tags = await fetchAggregatedTags(spaceIds);
+          if (active) setAvailableTags(tags);
+          return;
+        }
         if (isDomainList) {
           if (spaceIds.length === 0 || !businessDomainCode) {
             if (active) setAvailableTags([]);
@@ -326,7 +357,7 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [businessDomainCode, config, isDomainList, listContext, publicOnly, spaceId, spaceIds]);
+  }, [businessDomainCode, config, isCategoryList, isDomainList, listContext, publicOnly, spaceId, spaceIds]);
 
   useEffect(() => {
     let active = true;
@@ -447,17 +478,18 @@ export default function ListPage() {
             <option value="">知识库</option>
             {filteredSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
           </select>
-          {/* Business-domain entry has its own scope: hide the file-format filter there. */}
-          {!isDomainList && (
+          {/* Business-domain / category entries have their own scope: hide the file-format filter there. */}
+          {!isDomainList && !isCategoryList && (
             <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
               <option value="">文件格式</option>
               {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           )}
           <DocumentTypeFilterDropdown
-            groups={documentTypeGroups}
+            groups={filterDocumentTypeGroups}
             documentType={documentType}
             fileSubcategoryCode={fileSubcategoryCode}
+            placeholder={isCategoryList ? '二级分类' : '文件分类'}
             onChange={(next) => {
               setFilters({
                 document_type: next.documentType,
@@ -467,7 +499,7 @@ export default function ListPage() {
           />
           {showBusinessDomainFilter ? (
             <select className={s.filterSelect} value={businessDomainFilter} onChange={(e) => setFilter('business_domain_code', e.target.value)}>
-              <option value="">业务域</option>
+              <option value="">{isCategoryList ? '作用域' : '业务域'}</option>
               {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
             </select>
           ) : null}

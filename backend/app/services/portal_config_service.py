@@ -11,6 +11,7 @@ from app.schemas.portal_config import (
     AgentWorkflowOptionsResponse,
     AppsConfigUpdate,
     BannersConfigUpdate,
+    CategoryCardsConfigUpdate,
     DocumentTypesConfigUpdate,
     DomainsConfigUpdate,
     IntegrationsConfig,
@@ -178,6 +179,11 @@ class PortalConfigService:
     def update_domains(self, payload: DomainsConfigUpdate) -> PortalConfig:
         data = self.get_config().model_dump()
         data["domains"] = payload.model_dump()["domains"]
+        return self._write_config(PortalConfig.model_validate(data))
+
+    def update_category_cards(self, payload: CategoryCardsConfigUpdate) -> PortalConfig:
+        data = self.get_config().model_dump()
+        data["category_cards"] = payload.model_dump()["category_cards"]
         return self._write_config(PortalConfig.model_validate(data))
 
     def read_domain_count_cache(self) -> dict[str, Any]:

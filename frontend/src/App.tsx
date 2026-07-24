@@ -136,6 +136,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/domains" element={<DomainsPage />} />
         <Route path="/domain/:domainName" element={<ListPage />} />
+        <Route path="/category/:categoryCode" element={<ListPage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/space/:spaceId" element={<ListPage />} />
         <Route path="/list" element={<ListPage />} />

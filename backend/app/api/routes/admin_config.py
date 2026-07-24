@@ -21,6 +21,7 @@ from app.schemas.portal_config import (
     AgentConfig,
     AppsConfigUpdate,
     BannersConfigUpdate,
+    CategoryCardsConfigUpdate,
     DisplayConfig,
     DocumentTypesConfigUpdate,
     DomainConfig,
@@ -339,6 +340,21 @@ async def update_sections_config(
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
     return response_ok({"sections": service.update_sections(payload).sections})
+
+
+@router.get("/category-cards")
+async def get_category_cards_config(
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok({"category_cards": service.get_config().category_cards})
+
+
+@router.post("/category-cards")
+async def update_category_cards_config(
+    payload: CategoryCardsConfigUpdate,
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok({"category_cards": service.update_category_cards(payload).category_cards})
 
 
 @router.get("/document-types")

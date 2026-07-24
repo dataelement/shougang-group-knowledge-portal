@@ -3,6 +3,11 @@ export function buildDomainSearchPath(domainName: string): string {
   return trimmedDomainName ? `/domain/${encodeURIComponent(trimmedDomainName)}` : '/domains';
 }
 
+export function buildCategorySearchPath(categoryCode: string): string {
+  const trimmed = categoryCode.trim();
+  return trimmed ? `/category/${encodeURIComponent(trimmed)}` : '/';
+}
+
 export function buildSpaceSearchPath(spaceId: number): string {
   const params = new URLSearchParams({
     space_id: String(spaceId),

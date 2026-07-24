@@ -46,8 +46,8 @@ import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
-import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
-import { buildDomainSearchPath } from '../utils/searchParams';
+import { getEnabledCategoryCards, getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
+import { buildCategorySearchPath, buildDomainSearchPath } from '../utils/searchParams';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { fetchCourses } from '../api/courses';
 import { formatCourseDuration, type Course } from '../types/course';
@@ -337,6 +337,7 @@ export default function HomePage() {
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
   const [domainScrollState, setDomainScrollState] = useState({ atStart: true, atEnd: false });
+  const [navTab, setNavTab] = useState<'domain' | 'category'>('domain');
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionRecommendationModes, setSectionRecommendationModes] = useState<Record<string, RecommendationMode>>({});
   const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
@@ -734,6 +735,7 @@ export default function HomePage() {
   };
 
   const enabledDomains = useMemo(() => (config ? getEnabledDomains(config.domains) : []), [config]);
+  const enabledCategoryCards = useMemo(() => (config ? getEnabledCategoryCards(config.category_cards) : []), [config]);
   const enabledSections = useMemo(() => (config ? getEnabledSections(config.sections) : []), [config]);
   const qaHotQuestions = useMemo(() => {
     const items = (config?.qa.hot_questions || []).map((question) => question.trim()).filter(Boolean);
@@ -821,6 +823,10 @@ export default function HomePage() {
     const code = (domain.code || '').trim().toUpperCase();
     return [domain.name, code ? (domainCounts[code] ?? 0) : 0] as [string, number];
   }));
+  const homeCategoryCards = enabledCategoryCards.slice(0, displayConfig.home.domainCount);
+  const showCategoryTab = homeCategoryCards.length > 0;
+  const activeNavTab = showCategoryTab ? navTab : 'domain';
+  const activeNavCardCount = activeNavTab === 'category' ? homeCategoryCards.length : homeDomains.length;
   const homeSections = enabledSections.slice(0, 3);
   const contentSections = homeSections;
   const showHotSearch = searchTab === 'global' && displayHotQueries.length > 0;
@@ -859,7 +865,13 @@ export default function HomePage() {
       el.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
     };
-  }, [homeDomains.length]);
+  }, [activeNavCardCount]);
+
+  // 切换导航 tab 时,滚动条回到起点,箭头状态重算
+  useEffect(() => {
+    const el = domainScrollRef.current;
+    if (el) el.scrollLeft = 0;
+  }, [activeNavTab]);
 
   return (
     <PageShell>
@@ -1190,7 +1202,30 @@ export default function HomePage() {
         <div className={`${s.section} ${s.domainSection}`}>
           <div className={s.domainHeader}>
             <img src={navIcon} alt="" className={s.domainHeaderIcon} />
-            <span className={s.domainHeaderTitle}>业务域导航</span>
+            {showCategoryTab ? (
+              <div className={s.domainNavTabs} role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeNavTab === 'domain'}
+                  className={`${s.domainNavTab} ${activeNavTab === 'domain' ? s.domainNavTabActive : ''}`}
+                  onClick={() => setNavTab('domain')}
+                >
+                  业务域导航
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeNavTab === 'category'}
+                  className={`${s.domainNavTab} ${activeNavTab === 'category' ? s.domainNavTabActive : ''}`}
+                  onClick={() => setNavTab('category')}
+                >
+                  分类导航
+                </button>
+              </div>
+            ) : (
+              <span className={s.domainHeaderTitle}>业务域导航</span>
+            )}
           </div>
           <div className={s.domainCarousel}>
             <button
@@ -1211,39 +1246,69 @@ export default function HomePage() {
               onPointerLeave={handleDomainPointerCancel}
               onPointerCancel={handleDomainPointerCancel}
             >
-              {homeDomains.map((d) => {
-                const Icon = DOMAIN_ICONS[d.icon] || Settings;
-                const visualPreset = getDomainVisualPreset(d);
-                const domainBackground = visualPreset.backgroundImage;
-                const usesBannerThumb = Boolean(domainBackground);
-                const totalFiles = domainTotals.get(d.name) ?? 0;
-                return (
-                  <div
-                    key={d.name}
-                    className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
-                    style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
-                    data-domain-path={buildDomainSearchPath(d.name)}
-                    role="link"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        navigateToTop(buildDomainSearchPath(d.name));
-                      }
-                    }}
-                  >
-                    {usesBannerThumb ? null : (
-                      <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>
-                        <Icon size={20} />
+              {activeNavTab === 'category'
+                ? homeCategoryCards.map((card) => {
+                    const categoryPath = buildCategorySearchPath(card.code);
+                    const usesBannerThumb = Boolean(card.image);
+                    return (
+                      <div
+                        key={card.code}
+                        className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
+                        style={usesBannerThumb ? { backgroundImage: `url("${card.image}")` } : undefined}
+                        data-domain-path={categoryPath}
+                        role="link"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            navigateToTop(categoryPath);
+                          }
+                        }}
+                      >
+                        {usesBannerThumb ? null : (
+                          <div className={s.domainIcon} style={{ background: '#eff6ff', color: '#2563eb' }}>
+                            <Settings size={20} />
+                          </div>
+                        )}
+                        <div className={s.domainCardContent}>
+                          <div className={s.domainName}>{card.name || card.code}</div>
+                        </div>
                       </div>
-                    )}
-                    <div className={s.domainCardContent}>
-                      <div className={s.domainName}>{d.name}</div>
-                      <div className={s.domainMeta}>知识数量 {domainCountsLoading ? '加载中…' : formatCount(totalFiles)}</div>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })
+                : homeDomains.map((d) => {
+                    const Icon = DOMAIN_ICONS[d.icon] || Settings;
+                    const visualPreset = getDomainVisualPreset(d);
+                    const domainBackground = visualPreset.backgroundImage;
+                    const usesBannerThumb = Boolean(domainBackground);
+                    const totalFiles = domainTotals.get(d.name) ?? 0;
+                    return (
+                      <div
+                        key={d.name}
+                        className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
+                        style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
+                        data-domain-path={buildDomainSearchPath(d.name)}
+                        role="link"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            navigateToTop(buildDomainSearchPath(d.name));
+                          }
+                        }}
+                      >
+                        {usesBannerThumb ? null : (
+                          <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>
+                            <Icon size={20} />
+                          </div>
+                        )}
+                        <div className={s.domainCardContent}>
+                          <div className={s.domainName}>{d.name}</div>
+                          <div className={s.domainMeta}>知识数量 {domainCountsLoading ? '加载中…' : formatCount(totalFiles)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
             </div>
             <button
               type="button"
