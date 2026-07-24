@@ -448,10 +448,13 @@ export default function ListPage() {
             <option value="">知识库</option>
             {filteredSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
           </select>
-          <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
-            <option value="">文件格式</option>
-            {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          {/* Business-domain entry has its own scope: hide the file-format filter there. */}
+          {!isDomainList && (
+            <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
+              <option value="">文件格式</option>
+              {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
           <DocumentTypeFilterDropdown
             groups={documentTypeGroups}
             documentType={documentType}
