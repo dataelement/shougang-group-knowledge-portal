@@ -23,10 +23,11 @@ import {
 } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
+import { buildKnowledgeFileDeepLinkPath } from '../utils/bishengEmbed';
 import { resolveDetailBackTarget } from '../utils/detailPage';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { resolveFilePreview } from '../utils/filePreview';
-import { downloadWatermarkedFile } from '../utils/fileDownload';
+import { buildDownloadFileName, downloadWatermarkedFile } from '../utils/fileDownload';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { PORTAL_APPROVAL_EVENT } from '../utils/portalApprovalBridge';
@@ -248,6 +249,7 @@ export default function DetailPage() {
   const canDownload = Boolean(user && (!detail.isDepartmentFile || detail.canDownload));
   const downloadEntryPoint = resolveDownloadEntryPoint(requestedEntryPoint, shareToken);
   const formattedUpdatedAt = formatDisplayDateTime(detail.date) || '—';
+  const knowledgeFileName = buildDownloadFileName(detail);
   const resolvedPreview = resolveFilePreview(preview);
   let effectivePreview = resolvedPreview;
   if (clientFallbackActive) {
@@ -338,11 +340,22 @@ export default function DetailPage() {
               onClick={() => {
                 if (window.parent !== window) {
                   window.parent.postMessage(
-                    { type: 'OPEN_KNOWLEDGE_READ', spaceId, fileId, openChat: true },
+                    {
+                      type: 'OPEN_KNOWLEDGE_READ',
+                      spaceId,
+                      fileId,
+                      fileName: knowledgeFileName,
+                      openChat: true,
+                    },
                     window.location.origin,
                   );
                 } else {
-                  navigate(`/knowledge-spaces?spaceId=${spaceId}&fileId=${fileId}&openChat=1`);
+                  navigate(buildKnowledgeFileDeepLinkPath({
+                    spaceId,
+                    fileId,
+                    fileName: knowledgeFileName,
+                    openChat: true,
+                  }));
                 }
               }}
             >
