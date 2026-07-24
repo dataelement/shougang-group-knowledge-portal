@@ -49,22 +49,6 @@ const valid = validateRestAuthDraft(
     rest_app_id: 'portal-rest',
     login_sync_hmac_secret: 'secret',
   },
-  {
-    enabled: false,
-    rest_base_url: '',
-    rest_app_id: '',
-    authenticate_url: '',
-    token_valid_url: '',
-    user_attributes_url: '',
-    rest_token_id_param: 'tokenId',
-    http_timeout_seconds: 10,
-    token_check_interval_seconds: 300,
-    verify_tls: true,
-    login_sync_signature_header: 'X-Signature',
-    bisheng_lookup_required: false,
-    has_login_sync_hmac_secret: false,
-    missing_fields: [],
-  },
 );
 
 assert.ok(valid.payload);

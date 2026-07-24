@@ -261,7 +261,7 @@ export function RestAuthAdminSection({
           setFormError('');
         }}
         onSubmit={() => {
-          const result = validateRestAuthDraft(draft, config);
+          const result = validateRestAuthDraft(draft);
           if (!result.payload) {
             setFormError(result.error || 'REST 配置无效');
             return;

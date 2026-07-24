@@ -70,7 +70,6 @@ export function createRestAuthDraft(current?: RestAuthRuntimeConfig): RestAuthDr
 
 export function validateRestAuthDraft(
   draft: RestAuthDraft,
-  config?: RestAuthRuntimeConfig | null,
 ): { error?: string; payload?: Parameters<typeof updateRestAuthRuntimeConfig>[0] } {
   if (draft.enabled && !draft.rest_base_url.trim()) {
     return { error: '启用 REST 前需要填写 REST Base URL' };
