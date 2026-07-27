@@ -651,6 +651,13 @@ class FakeBishengClient:
                     "share_token": "share-token-1580",
                     "space_id": 12,
                     "file_id": 1580,
+                    "entry_file_id": 2580,
+                    "canonical_document_id": 91,
+                    "canonical_version_id": 501,
+                    "desired_content_generation": 4,
+                    "applied_content_generation": 4,
+                    "desired_entry_generation": 3,
+                    "applied_entry_generation": 3,
                     "allow_download": False,
                 },
             }
@@ -741,7 +748,7 @@ def test_home_stats_uses_redis_cache(tmp_path: Path):
     assert redis.set_calls[0][2] == 1800
 
 
-def test_home_content_serves_cached_sse_without_upstream_request(tmp_path: Path):
+def test_home_content_revalidates_cached_file_reference_before_serving(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     redis = InMemoryRedis()
     cache_service = PortalHomeCacheService(redis)
@@ -751,7 +758,13 @@ def test_home_content_serves_cached_sse_without_upstream_request(tmp_path: Path)
             "sections": [
                 {
                     "tag": "缓存栏目",
-                    "items": [{"id": 1, "title": "缓存文档"}],
+                    "items": [
+                        {
+                            "id": 1580,
+                            "space_id": 12,
+                            "title": "缓存文档",
+                        }
+                    ],
                 }
             ]
         },
@@ -767,7 +780,9 @@ def test_home_content_serves_cached_sse_without_upstream_request(tmp_path: Path)
     assert response.status_code == 200
     sections, done = _parse_home_sse(response)
     assert done is True
-    assert sections == {"缓存栏目": [{"id": 1, "title": "缓存文档"}]}
+    assert sections["缓存栏目"][0]["id"] == 1580
+    assert sections["缓存栏目"][0]["space_id"] == 12
+    assert sections["缓存栏目"][0]["title"] != "缓存文档"
 
 
 class FakePortalAuthService:
@@ -1088,9 +1103,20 @@ def test_favorite_routes_map_bisheng_business_error_to_bad_gateway(tmp_path: Pat
         assert response.json()["detail"] == "上游收藏服务异常"
 
 
-def test_create_share_link_uses_current_user_bisheng_session(tmp_path: Path):
+def test_create_share_link_maps_disabled_upstream_code_to_gone(tmp_path: Path):
+    class DisabledShareClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/share-links":
+                return {
+                    "status_code": 10995,
+                    "status_message": "新建链接或邀请码分享已停用",
+                    "data": None,
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
-    fake_bisheng = FakeBishengClient()
+    fake_bisheng = DisabledShareClient()
     with TestClient(app) as client:
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_config_service = config_service
@@ -1112,9 +1138,8 @@ def test_create_share_link_uses_current_user_bisheng_session(tmp_path: Path):
             if previous_auth is not None:
                 client.app.state.portal_auth_service = previous_auth
 
-    assert response.status_code == 200
-    assert response.json()["data"]["share_token"] == "share-token-1580"
-    assert response.json()["data"]["invite_code"] == "ABC123"
+    assert response.status_code == 410
+    assert response.json()["detail"] == "新建链接或邀请码分享已停用"
     assert fake_bisheng.post_calls[-1] == (
         "/api/v1/knowledge/shougang-portal/share-links",
         {
@@ -1129,16 +1154,173 @@ def test_create_share_link_uses_current_user_bisheng_session(tmp_path: Path):
     )
 
 
+def test_distribution_contract_is_forwarded_without_recomputing_capabilities(
+    tmp_path: Path,
+):
+    from app.services.knowledge_service import KnowledgeService
+
+    service = KnowledgeService(
+        bisheng_client=FakeBishengClient(),
+        portal_config_service=PortalConfigService(
+            config_path=tmp_path / "portal_config.json"
+        ),
+    )
+
+    item = service._map_shougang_portal_response_items(
+        [
+            {
+                "id": 9301,
+                "space_id": 7103,
+                "title": "部门检修方案",
+                "entry_type": "share",
+                "entry_status": "active",
+                "canonical_document_id": 91,
+                "canonical_version_id": 501,
+                "manager_file_id": 9001,
+                "manager_space_id": 7001,
+                "desired_content_generation": 4,
+                "applied_content_generation": 3,
+                "desired_entry_generation": 2,
+                "applied_entry_generation": 2,
+                "projection_status": "pending",
+                "projection_ready": False,
+                "can_download": True,
+                "capabilities": {
+                    "can_view": True,
+                    "can_preview": True,
+                    "can_download": False,
+                },
+            }
+        ]
+    )[0]
+
+    assert item.entry_type == "share"
+    assert item.canonical_document_id == 91
+    assert item.manager_file_id is None
+    assert item.manager_space_id == 7001
+    assert item.projection_ready is False
+    assert item.desired_content_generation == 4
+    assert item.capabilities["can_download"] is False
+
+
+def test_detail_accepts_upstream_durable_reference_remap(tmp_path: Path):
+    import asyncio
+
+    from app.services.knowledge_service import KnowledgeService
+
+    class DurableReferenceBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == (
+                "/api/v1/knowledge/shougang-portal/files/12/999"
+            ):
+                return {
+                    "status_code": 200,
+                    "data": {"data": self._portal_file_1580()},
+                }
+            return await super().get_json(
+                path,
+                params=params,
+                headers=headers,
+            )
+
+    config_service = PortalConfigService(
+        config_path=tmp_path / "portal_config.json"
+    )
+    _seed_test_spaces(config_service)
+    service = KnowledgeService(
+        bisheng_client=DurableReferenceBishengClient(),
+        portal_config_service=config_service,
+    )
+
+    detail = asyncio.run(
+        service.get_file_detail(space_id=12, file_id=999)
+    )
+
+    assert detail is not None
+    assert detail.id == 1580
+    assert detail.space_id == 12
+
+
+def test_cached_home_distribution_reference_is_refreshed_before_use(
+    tmp_path: Path,
+):
+    import asyncio
+
+    from app.services.knowledge_service import KnowledgeService
+
+    class DurableReferenceBishengClient(FakeBishengClient):
+        async def get_json(self, path: str, params=None, headers=None):
+            if path == (
+                "/api/v1/knowledge/shougang-portal/files/12/999"
+            ):
+                current = {
+                    **self._portal_file_1580(),
+                    "canonical_document_id": 91,
+                    "canonical_version_id": 501,
+                    "desired_content_generation": 4,
+                    "applied_content_generation": 4,
+                    "desired_entry_generation": 3,
+                    "applied_entry_generation": 3,
+                }
+                return {
+                    "status_code": 200,
+                    "data": {"data": current},
+                }
+            return await super().get_json(
+                path,
+                params=params,
+                headers=headers,
+            )
+
+    config_service = PortalConfigService(
+        config_path=tmp_path / "portal_config.json"
+    )
+    _seed_test_spaces(config_service)
+    service = KnowledgeService(
+        bisheng_client=DurableReferenceBishengClient(),
+        portal_config_service=config_service,
+    )
+    cached_sections = [
+        {
+            "tag": "最新精选",
+            "items": [
+                {
+                    "id": 999,
+                    "space_id": 12,
+                    "title": "旧缓存标题",
+                    "canonical_document_id": 91,
+                    "canonical_version_id": 400,
+                    "desired_content_generation": 1,
+                    "desired_entry_generation": 1,
+                }
+            ],
+            "recommendation_mode": "latest_selected",
+        }
+    ]
+
+    refreshed = asyncio.run(
+        service.refresh_cached_home_sections(cached_sections)
+    )
+
+    assert refreshed[0]["recommendation_mode"] == "latest_selected"
+    assert refreshed[0]["items"][0]["id"] == 1580
+    assert refreshed[0]["items"][0]["canonical_document_id"] == 91
+    assert refreshed[0]["items"][0]["canonical_version_id"] == 501
+    assert refreshed[0]["items"][0]["desired_content_generation"] == 4
+    assert refreshed[0]["items"][0]["desired_entry_generation"] == 3
+
+
 def test_share_access_session_controls_detail_and_preview_download(tmp_path: Path):
     config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
     _seed_test_spaces(config_service)
     fake_bisheng = FakeBishengClient()
+    share_access_store = InMemoryPortalShareAccessSessionStore()
     with TestClient(app) as client:
         previous_auth = getattr(client.app.state, "portal_auth_service", None)
         client.app.state.portal_config_service = config_service
         client.app.state.bisheng_client = fake_bisheng
         client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
-        client.app.state.portal_share_access_session_store = InMemoryPortalShareAccessSessionStore()
+        client.app.state.portal_share_access_session_store = share_access_store
         try:
             meta_response = client.get("/api/v1/knowledge/share-links/share-token-1580")
             access_response = client.post(
@@ -1155,6 +1337,15 @@ def test_share_access_session_controls_detail_and_preview_download(tmp_path: Pat
     assert meta_response.json()["data"]["requires_invite_code"] is True
     assert access_response.status_code == 200
     assert access_response.json()["data"]["space_id"] == 12
+    stored_session = next(iter(share_access_store._sessions.values()))
+    assert stored_session.file_id == 1580
+    assert stored_session.entry_file_id == 2580
+    assert stored_session.canonical_document_id == 91
+    assert stored_session.canonical_version_id == 501
+    assert stored_session.desired_content_generation == 4
+    assert stored_session.applied_content_generation == 4
+    assert stored_session.desired_entry_generation == 3
+    assert stored_session.applied_entry_generation == 3
     assert detail_response.status_code == 200
     preview = preview_response.json()["data"]
     assert preview_response.status_code == 200
@@ -4863,6 +5054,8 @@ def test_keyword_search_route_uses_dedicated_top_50_contract(tmp_path: Path):
                     "space_level": "public",
                     "file_ext": None,
                     "sort": "relevance",
+                    "cursor": None,
+                    "limit": 50,
                     "rerank_model_id": "",
                     "discovery_scope": "public",
                 }

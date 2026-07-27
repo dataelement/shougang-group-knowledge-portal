@@ -1060,6 +1060,8 @@ class KnowledgeService:
         file_subcategory_code: Optional[str],
         business_domain_code: Optional[str],
         sort: str,
+        cursor: Optional[str],
+        limit: int,
         extra_space_ids: Optional[list[int]],
         discovery_scope: PortalDiscoveryScope = "legacy",
     ) -> CursorKnowledgeFileData:
@@ -1101,6 +1103,8 @@ class KnowledgeService:
             business_domain_code=self._normalize_business_domain_code(business_domain_code),
             recommendation=None,
             sort=sort,
+            cursor=cursor,
+            limit=limit,
             discovery_scope=discovery_scope,
         )
 
@@ -1632,6 +1636,14 @@ class KnowledgeService:
                 content_access == "allowed"
                 or not is_department_file
             )
+            capabilities = (
+                {
+                    str(key): bool(value)
+                    for key, value in item["capabilities"].items()
+                }
+                if isinstance(item.get("capabilities"), dict)
+                else {}
+            )
             items.append(
                 KnowledgeFileItem(
                 id=int(item.get("id") or 0),
@@ -1668,6 +1680,46 @@ class KnowledgeService:
                     else None
                 ),
                 is_department_file=is_department_file,
+                entry_type=str(item.get("entry_type") or "normal"),
+                entry_status=str(item.get("entry_status") or "active"),
+                canonical_document_id=(
+                    int(item["canonical_document_id"])
+                    if item.get("canonical_document_id") is not None
+                    else None
+                ),
+                canonical_version_id=(
+                    int(item["canonical_version_id"])
+                    if item.get("canonical_version_id") is not None
+                    else None
+                ),
+                manager_file_id=(
+                    int(item["manager_file_id"])
+                    if item.get("manager_file_id") is not None
+                    and capabilities.get("can_edit_content", False)
+                    else None
+                ),
+                manager_space_id=(
+                    int(item["manager_space_id"])
+                    if item.get("manager_space_id") is not None
+                    else None
+                ),
+                desired_content_generation=int(
+                    item.get("desired_content_generation") or 0
+                ),
+                applied_content_generation=int(
+                    item.get("applied_content_generation") or 0
+                ),
+                desired_entry_generation=int(
+                    item.get("desired_entry_generation") or 0
+                ),
+                applied_entry_generation=int(
+                    item.get("applied_entry_generation") or 0
+                ),
+                projection_status=str(
+                    item.get("projection_status") or "ready"
+                ),
+                projection_ready=bool(item.get("projection_ready", True)),
+                capabilities=capabilities,
             )
             )
         return items
@@ -1693,12 +1745,12 @@ class KnowledgeService:
         if not mapped_items:
             return None
         item = mapped_items[0]
-        if item.id != file_id or item.space_id != space_id:
+        if item.space_id != space_id:
             return None
 
         source = item.source or (await self.get_space_name_map(extra_space_ids)).get(space_id, str(space_id))
         return KnowledgeFileDetail(
-            id=file_id,
+            id=item.id,
             space_id=space_id,
             title=item.title,
             summary=item.summary,
@@ -1715,8 +1767,109 @@ class KnowledgeService:
             content_access=item.content_access,
             access_source=item.access_source,
             is_department_file=item.is_department_file,
+            entry_type=item.entry_type,
+            entry_status=item.entry_status,
+            canonical_document_id=item.canonical_document_id,
+            canonical_version_id=item.canonical_version_id,
+            manager_file_id=item.manager_file_id,
+            manager_space_id=item.manager_space_id,
+            desired_content_generation=item.desired_content_generation,
+            applied_content_generation=item.applied_content_generation,
+            desired_entry_generation=item.desired_entry_generation,
+            applied_entry_generation=item.applied_entry_generation,
+            projection_status=item.projection_status,
+            projection_ready=item.projection_ready,
+            capabilities=item.capabilities,
             space=KnowledgeFileSpace(id=space_id, name=source),
         )
+
+    async def refresh_cached_home_sections(
+        self,
+        sections: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """重新解析缓存中的持久文件引用，避免旧入口或旧代际直接放行。"""
+
+        semaphore = asyncio.Semaphore(8)
+        try:
+            allowed_space_ids = await self._allowed_detail_space_ids()
+        except Exception:
+            logger.exception("刷新门户首页缓存的可见知识库范围失败")
+            allowed_space_ids = set()
+        allowed_space_id_list = sorted(allowed_space_ids)
+
+        async def refresh_item(
+            cached_item: Any,
+        ) -> dict[str, Any] | None:
+            if not isinstance(cached_item, dict):
+                return None
+            try:
+                space_id = int(cached_item.get("space_id") or 0)
+                file_id = int(cached_item.get("id") or 0)
+            except (TypeError, ValueError):
+                return None
+            if space_id <= 0 or file_id <= 0:
+                return None
+            if space_id not in allowed_space_ids:
+                return None
+
+            try:
+                async with semaphore:
+                    detail = await self.get_file_detail(
+                        space_id=space_id,
+                        file_id=file_id,
+                        extra_space_ids=allowed_space_id_list,
+                    )
+            except Exception:
+                logger.exception(
+                    "刷新门户首页缓存文件引用失败",
+                    extra={
+                        "portal_space_id": space_id,
+                        "portal_file_id": file_id,
+                    },
+                )
+                return None
+            if detail is None:
+                return None
+
+            cached_document_id = cached_item.get(
+                "canonical_document_id"
+            )
+            if cached_document_id is not None:
+                try:
+                    cached_document_id = int(cached_document_id)
+                except (TypeError, ValueError):
+                    return None
+                if (
+                    detail.canonical_document_id is None
+                    or detail.canonical_document_id
+                    != cached_document_id
+                ):
+                    return None
+            return detail.model_dump(mode="json")
+
+        refreshed_sections: list[dict[str, Any]] = []
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            raw_items = section.get("items")
+            if not isinstance(raw_items, list):
+                continue
+            refreshed_items = await asyncio.gather(
+                *(refresh_item(item) for item in raw_items)
+            )
+            refreshed_section: dict[str, Any] = {
+                "tag": str(section.get("tag") or ""),
+                "items": [
+                    item for item in refreshed_items if item is not None
+                ],
+            }
+            recommendation_mode = section.get("recommendation_mode")
+            if recommendation_mode:
+                refreshed_section["recommendation_mode"] = (
+                    recommendation_mode
+                )
+            refreshed_sections.append(refreshed_section)
+        return refreshed_sections
 
     async def open_portal_pdf_download_stream(
         self,

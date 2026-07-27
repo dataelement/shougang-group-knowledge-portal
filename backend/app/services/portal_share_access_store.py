@@ -31,6 +31,13 @@ class PortalShareAccessSession:
     download_grant: str
     portal_session_id: str
     expires_at: float
+    canonical_document_id: int | None = None
+    canonical_version_id: int | None = None
+    entry_file_id: int | None = None
+    desired_content_generation: int = 0
+    applied_content_generation: int = 0
+    desired_entry_generation: int = 0
+    applied_entry_generation: int = 0
 
 
 class PortalShareAccessSessionStore(Protocol):
@@ -53,6 +60,15 @@ def _validate_session(session: PortalShareAccessSession) -> None:
         raise ValueError("share session identity is required")
     if session.space_id <= 0 or session.file_id <= 0:
         raise ValueError("share session target is invalid")
+    if (
+        session.canonical_document_id is not None
+        and (
+            session.canonical_document_id <= 0
+            or session.entry_file_id is None
+            or session.entry_file_id <= 0
+        )
+    ):
+        raise ValueError("share session durable reference is invalid")
     if session.download_grant and not session.portal_session_id:
         raise ValueError("download grant requires portal session binding")
 

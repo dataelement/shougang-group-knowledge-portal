@@ -7,6 +7,20 @@ export interface FileTag {
   resource_type: string;
 }
 
+export type KnowledgeDocumentEntryType = 'normal' | 'manager' | 'publish' | 'share';
+
+export interface KnowledgeDocumentEntryCapabilities {
+  canView: boolean;
+  canPreview: boolean;
+  canDownload: boolean;
+  canMove: boolean;
+  canManageMembers: boolean;
+  canEditContent: boolean;
+  canPublish: boolean;
+  canShare: boolean;
+  canDelete: boolean;
+}
+
 export interface FileItem {
   id: number;
   spaceId: number;
@@ -31,6 +45,19 @@ export interface FileItem {
   contentAccess?: 'allowed' | 'approval_required' | 'unavailable';
   accessSource?: string | null;
   isDepartmentFile?: boolean;
+  entryType?: KnowledgeDocumentEntryType;
+  entryStatus?: string;
+  canonicalDocumentId?: number | null;
+  canonicalVersionId?: number | null;
+  managerFileId?: number | null;
+  managerSpaceId?: number | null;
+  desiredContentGeneration?: number;
+  appliedContentGeneration?: number;
+  desiredEntryGeneration?: number;
+  appliedEntryGeneration?: number;
+  projectionStatus?: string;
+  projectionReady?: boolean;
+  capabilities?: KnowledgeDocumentEntryCapabilities;
 }
 
 export interface FileDetail extends FileItem {
@@ -322,6 +349,29 @@ interface KnowledgeFileItemDto {
   content_access?: 'allowed' | 'approval_required' | 'unavailable';
   access_source?: string | null;
   is_department_file?: boolean;
+  entry_type?: KnowledgeDocumentEntryType;
+  entry_status?: string;
+  canonical_document_id?: number | null;
+  canonical_version_id?: number | null;
+  manager_file_id?: number | null;
+  manager_space_id?: number | null;
+  desired_content_generation?: number;
+  applied_content_generation?: number;
+  desired_entry_generation?: number;
+  applied_entry_generation?: number;
+  projection_status?: string;
+  projection_ready?: boolean;
+  capabilities?: {
+    can_view?: boolean;
+    can_preview?: boolean;
+    can_download?: boolean;
+    can_move?: boolean;
+    can_manage_members?: boolean;
+    can_edit_content?: boolean;
+    can_publish?: boolean;
+    can_share?: boolean;
+    can_delete?: boolean;
+  };
 }
 
 interface DepartmentFileViewAccessDto {
@@ -653,6 +703,19 @@ interface WorkstationMessageDto {
 
 export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
   const tagInfos = normalizeFileTagInfos(dto.tags, dto.tag_infos);
+  const capabilities = dto.capabilities
+    ? {
+      canView: Boolean(dto.capabilities.can_view),
+      canPreview: Boolean(dto.capabilities.can_preview),
+      canDownload: Boolean(dto.capabilities.can_download),
+      canMove: Boolean(dto.capabilities.can_move),
+      canManageMembers: Boolean(dto.capabilities.can_manage_members),
+      canEditContent: Boolean(dto.capabilities.can_edit_content),
+      canPublish: Boolean(dto.capabilities.can_publish),
+      canShare: Boolean(dto.capabilities.can_share),
+      canDelete: Boolean(dto.capabilities.can_delete),
+    }
+    : undefined;
   return {
     id: dto.id,
     spaceId: dto.space_id,
@@ -669,10 +732,26 @@ export function mapKnowledgeFileItem(dto: KnowledgeFileItemDto): FileItem {
     fileSubcategoryCode: dto.file_subcategory_code ?? '',
     folderPath: dto.folder_path ?? '',
     sourcePath: dto.source_path ?? '',
-    canDownload: dto.can_download ?? false,
+    canDownload: capabilities?.canDownload ?? dto.can_download ?? false,
     contentAccess: dto.content_access ?? 'allowed',
     accessSource: dto.access_source ?? null,
     isDepartmentFile: dto.is_department_file ?? false,
+    entryType: dto.entry_type ?? 'normal',
+    entryStatus: dto.entry_status ?? 'active',
+    canonicalDocumentId: dto.canonical_document_id ?? null,
+    canonicalVersionId: dto.canonical_version_id ?? null,
+    managerFileId:
+      capabilities?.canEditContent === true
+        ? dto.manager_file_id ?? null
+        : null,
+    managerSpaceId: dto.manager_space_id ?? null,
+    desiredContentGeneration: dto.desired_content_generation ?? 0,
+    appliedContentGeneration: dto.applied_content_generation ?? 0,
+    desiredEntryGeneration: dto.desired_entry_generation ?? 0,
+    appliedEntryGeneration: dto.applied_entry_generation ?? 0,
+    projectionStatus: dto.projection_status ?? 'ready',
+    projectionReady: dto.projection_ready ?? true,
+    capabilities,
   };
 }
 
@@ -693,6 +772,12 @@ function mapSearchResultForSummary(item: FileItem) {
     file_subcategory_code: item.fileSubcategoryCode,
     folder_path: item.folderPath,
     source_path: item.sourcePath,
+    entry_type: item.entryType,
+    canonical_document_id: item.canonicalDocumentId,
+    canonical_version_id: item.canonicalVersionId,
+    manager_space_id: item.managerSpaceId,
+    projection_status: item.projectionStatus,
+    projection_ready: item.projectionReady,
   };
 }
 
@@ -950,9 +1035,13 @@ export async function searchFiles(params: {
 export async function searchKeywordFiles(params: {
   q: string;
   sort?: string;
+  cursor?: string | null;
+  limit?: number;
 }): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
   const query = new URLSearchParams({ q: params.q });
   if (params.sort) query.set('sort', params.sort);
+  if (params.cursor) query.set('cursor', params.cursor);
+  if (params.limit) query.set('limit', String(params.limit));
   const data = await request<CursorKnowledgeFileDataDto>(
     `/api/v1/knowledge/files/search?${query.toString()}`,
   );

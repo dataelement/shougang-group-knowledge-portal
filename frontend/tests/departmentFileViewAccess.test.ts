@@ -121,6 +121,38 @@ test('file mapping preserves the independent content and download decisions', ()
   assert.equal(item.canDownload, true);
 });
 
+test('file mapping treats server entry capabilities as authoritative', () => {
+  const item = mapKnowledgeFileItem({
+    id: 9301,
+    space_id: 7103,
+    title: '部门检修方案',
+    summary: '',
+    source: '设备部知识库',
+    updated_at: '2026-07-23T10:00:00',
+    can_download: true,
+    entry_type: 'share',
+    canonical_document_id: 91,
+    canonical_version_id: 501,
+    manager_file_id: 9001,
+    manager_space_id: 7001,
+    projection_status: 'pending',
+    projection_ready: false,
+    capabilities: {
+      can_view: true,
+      can_preview: true,
+      can_download: false,
+    },
+  });
+
+  assert.equal(item.entryType, 'share');
+  assert.equal(item.canonicalDocumentId, 91);
+  assert.equal(item.managerFileId, null);
+  assert.equal(item.managerSpaceId, 7001);
+  assert.equal(item.projectionReady, false);
+  assert.equal(item.canDownload, false);
+  assert.equal(item.capabilities?.canPreview, true);
+});
+
 test('detail page checks status before content and gate never auto-submits', () => {
   const detailSource = readFileSync('src/pages/DetailPage.tsx', 'utf8');
   const gateSource = readFileSync(

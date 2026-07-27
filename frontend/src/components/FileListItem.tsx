@@ -49,6 +49,13 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflowing, setSummaryOverflowing] = useState(false);
   const [downloadPending, setDownloadPending] = useState(false);
+  const entryLabel = file.entryType === 'manager'
+    ? '管理文件'
+    : file.entryType === 'publish'
+      ? '发布文件'
+      : file.entryType === 'share'
+        ? '分享文件'
+        : '';
 
   // Detect whether the clamped (2-line) summary actually overflows so the
   // expand toggle only shows when there is hidden text. Skip measuring while
@@ -79,23 +86,29 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
       <div className={s.body}>
         <div className={s.header}>
           <div className={s.heading}>
-            {onOpen ? (
-              <button
-                type="button"
-                className={`${s.title} ${s.titleButton}`}
-                title={file.title}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpen(file);
-                }}
-              >
-                {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
-              </button>
-            ) : (
-              <div className={s.title}>
-                {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
-              </div>
-            )}
+            <div className={s.titleLine}>
+              {onOpen ? (
+                <button
+                  type="button"
+                  className={`${s.title} ${s.titleButton}`}
+                  title={file.title}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpen(file);
+                  }}
+                >
+                  {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
+                </button>
+              ) : (
+                <div className={s.title}>
+                  {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
+                </div>
+              )}
+              {entryLabel ? <span className={s.entryBadge}>{entryLabel}</span> : null}
+              {file.projectionReady === false ? (
+                <span className={`${s.entryBadge} ${s.syncBadge}`}>同步中</span>
+              ) : null}
+            </div>
             <div className={s.meta}>
               {view.locked ? (
                 <span className={s.metaItem} title={view.lockHint}>
@@ -117,6 +130,11 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
                 <span className={s.metaItem}>
                   <FolderTree size={15} />
                   {view.sourcePath}
+                </span>
+              ) : null}
+              {entryLabel && file.managerSpaceId ? (
+                <span className={s.metaItem}>
+                  管理库 ID：{file.managerSpaceId}
                 </span>
               ) : null}
             </div>

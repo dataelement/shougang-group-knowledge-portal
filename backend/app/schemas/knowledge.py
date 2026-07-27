@@ -30,6 +30,19 @@ class KnowledgeFileItem(BaseModel):
     content_access: Literal["allowed", "approval_required", "unavailable"] = "allowed"
     access_source: str | None = None
     is_department_file: bool = False
+    entry_type: Literal["normal", "manager", "publish", "share"] = "normal"
+    entry_status: str = "active"
+    canonical_document_id: int | None = None
+    canonical_version_id: int | None = None
+    manager_file_id: int | None = None
+    manager_space_id: int | None = None
+    desired_content_generation: int = 0
+    applied_content_generation: int = 0
+    desired_entry_generation: int = 0
+    applied_entry_generation: int = 0
+    projection_status: str = "ready"
+    projection_ready: bool = True
+    capabilities: dict[str, bool] = Field(default_factory=dict)
 
 
 class KnowledgeFileSpace(BaseModel):
@@ -297,6 +310,13 @@ class ShareDocumentAccessData(BaseModel):
 
 
 class ShareDocumentAccessInternalData(ShareDocumentAccessData):
+    entry_file_id: int | None = None
+    canonical_document_id: int | None = None
+    canonical_version_id: int | None = None
+    desired_content_generation: int = 0
+    applied_content_generation: int = 0
+    desired_entry_generation: int = 0
+    applied_entry_generation: int = 0
     download_grant: str = ""
     download_grant_expires_at: int | None = None
 

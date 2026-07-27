@@ -80,6 +80,7 @@ _BISHENG_DEPARTMENT_FILE_SCENARIO_INVALID_CODE = 18123
 _BISHENG_DEPARTMENT_FILE_CONTENT_APPROVAL_REQUIRED_CODE = 10992
 _BISHENG_DEPARTMENT_FILE_CONTENT_UNAVAILABLE_CODE = 10993
 _BISHENG_DEPARTMENT_SHARE_LOGIN_REQUIRED_CODE = 10994
+_BISHENG_LEGACY_SHARE_CREATE_DISABLED_CODE = 10995
 _DEFAULT_SEARCH_PAGE_SIZE = 10
 _MAX_SEARCH_PAGE_SIZE = 100
 _QA_MODEL_OPTIONS_CACHE_TTL_SECONDS = 300.0
@@ -136,7 +137,9 @@ def get_domain_file_count_service(
 
 
 def _raise_bisheng_business_error(err: BishengBusinessError) -> NoReturn:
-    if err.status_code == _BISHENG_DEPARTMENT_SHARE_LOGIN_REQUIRED_CODE:
+    if err.status_code == _BISHENG_LEGACY_SHARE_CREATE_DISABLED_CODE:
+        status_code = 410
+    elif err.status_code == _BISHENG_DEPARTMENT_SHARE_LOGIN_REQUIRED_CODE:
         status_code = 401
     elif err.status_code in {
         _BISHENG_PERMISSION_DENIED_CODE,
@@ -394,6 +397,8 @@ async def search_keyword_files(
     file_subcategory_code: str | None = None,
     business_domain_code: str | None = None,
     sort: str = "relevance",
+    cursor: Optional[str] = None,
+    limit: int = Query(default=50, ge=1, le=50),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
@@ -419,6 +424,8 @@ async def search_keyword_files(
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=business_domain_code,
                 sort=sort,
+                cursor=cursor,
+                limit=limit,
                 extra_space_ids=extra_space_ids,
                 discovery_scope=("public" if extra_space_ids is None else "public_and_department"),
             )
@@ -807,16 +814,21 @@ async def get_home_content(
     ttl_seconds = _home_cache_ttl_seconds(config)
 
     if session is None:
-        cache_key = cache_service.home_content_key(config=config)
-        cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
-        if cached_sections is not None:
-            return StreamingResponse(_cached_home_stream(cached_sections), media_type="text/event-stream")
-
         service = KnowledgeService(
             bisheng_client=await get_bisheng_client(request),
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
+        cache_key = cache_service.home_content_key(config=config)
+        cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
+        if cached_sections is not None:
+            refreshed_sections = await service.refresh_cached_home_sections(
+                cached_sections
+            )
+            return StreamingResponse(
+                _cached_home_stream(refreshed_sections),
+                media_type="text/event-stream",
+            )
 
         async def anonymous_stream():
             sections: list[dict[str, Any]] = []
@@ -1497,6 +1509,13 @@ async def access_share_link(
             download_grant=download_grant,
             portal_session_id=(getattr(session, "session_id", "") if download_grant else ""),
             expires_at=expires_at,
+            canonical_document_id=access.canonical_document_id,
+            canonical_version_id=access.canonical_version_id,
+            entry_file_id=access.entry_file_id,
+            desired_content_generation=access.desired_content_generation,
+            applied_content_generation=access.applied_content_generation,
+            desired_entry_generation=access.desired_entry_generation,
+            applied_entry_generation=access.applied_entry_generation,
         )
         try:
             await share_access_store.save(share_session)
