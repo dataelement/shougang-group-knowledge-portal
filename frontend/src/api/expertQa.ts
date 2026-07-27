@@ -241,6 +241,7 @@ export interface ExpertProfileResponse {
   adoption_count: number;
   vote_count: number;
   expert_score?: number;
+  wechat_user_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -299,6 +300,7 @@ export interface ExpertUpsertPayload {
   position?: string;
   job_family?: string;
   job_category?: string;
+  wechat_user_id?: string;
 }
 
 // ─── 用户相关 ────────────────────────────────────────────────

@@ -240,6 +240,7 @@ const EMPTY_FORM: ExpertUpsertPayload = {
   position: '',
   job_family: '',
   job_category: '',
+  wechat_user_id: '',
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -281,7 +282,8 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
       normalize(form.major) !== normalize(initial.major) ||
       normalize(form.position) !== normalize(initial.position) ||
       normalize(form.job_family) !== normalize(initial.job_family) ||
-      normalize(form.job_category) !== normalize(initial.job_category)
+      normalize(form.job_category) !== normalize(initial.job_category) ||
+      normalize(form.wechat_user_id) !== normalize(initial.wechat_user_id)
     );
   }, [form, initial]);
 
@@ -420,6 +422,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
           position: form.position?.trim(),
           job_family: form.job_family?.trim(),
           job_category: form.job_category?.trim(),
+          wechat_user_id: form.wechat_user_id?.trim() || undefined,
         });
       } else {
         result = await createExpert({
@@ -431,6 +434,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
           position: form.position?.trim(),
           job_family: form.job_family?.trim(),
           job_category: form.job_category?.trim(),
+          wechat_user_id: form.wechat_user_id?.trim() || undefined,
         });
       }
       onSuccess(result);
@@ -592,6 +596,17 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
                 placeholder="请输入所属岗位"
               />
             </div>
+          </div>
+
+          <div className={s.field}>
+            <label className={s.fieldLabel}>用户企业微信 ID</label>
+            <p className={s.fieldHint}>用于接收企业微信消息推送；可选</p>
+            <input
+              className={s.input}
+              value={form.wechat_user_id ?? ''}
+              onChange={(e) => set('wechat_user_id', e.target.value)}
+              placeholder="请输入企业微信用户 ID"
+            />
           </div>
         </div>
 
@@ -1572,6 +1587,7 @@ export default function ExpertManagePage() {
           position: modal.expert.position ?? '',
           job_family: modal.expert.job_family ?? '',
           job_category: modal.expert.job_category ?? '',
+          wechat_user_id: modal.expert.wechat_user_id ?? '',
         }}
           onClose={() => setModal({ type: 'none' })}
           onSuccess={handleEditSuccess}

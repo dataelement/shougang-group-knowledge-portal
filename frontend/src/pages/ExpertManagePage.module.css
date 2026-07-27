@@ -751,6 +751,13 @@
   margin-left: 2px;
 }
 
+.fieldHint {
+  margin: -2px 0 6px;
+  font-size: 0.78rem;
+  color: var(--neutral-500);
+  line-height: 1.4;
+}
+
 .input {
   width: 100%;
   border: 1px solid var(--neutral-200);
