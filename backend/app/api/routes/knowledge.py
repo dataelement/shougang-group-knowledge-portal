@@ -397,7 +397,7 @@ async def search_keyword_files(
     file_subcategory_code: str | None = None,
     business_domain_code: str | None = None,
     sort: str = "relevance",
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=50),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
