@@ -2,7 +2,6 @@ import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import { Search, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
-// import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
 import DocumentTypeFilterDropdown from '../components/DocumentTypeFilterDropdown';
@@ -21,7 +20,6 @@ import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
-// import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import {
@@ -167,7 +165,6 @@ export default function SearchPage() {
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { toast, showError } = useActionToast();
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
-  // const { openShare, shareModalProps } = useShareDocument();
   const { documentQaModalProps } = useDocumentQa();
   const canDownload = Boolean(user);
   const canFavorite = Boolean(user);
@@ -832,7 +829,6 @@ export default function SearchPage() {
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload && (!f.isDepartmentFile || f.canDownload) ? handleDownload : undefined}
-            // onShare={openShare}
             onOpen={setPreviewFile}
           />
         ))}
@@ -847,7 +843,6 @@ export default function SearchPage() {
             <button type="button" className={s.retryButton} onClick={() => void handleLoadMore()}>重试</button>
           </div>
         ) : null}
-        {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
         <FilePreviewModal
           file={previewFile}

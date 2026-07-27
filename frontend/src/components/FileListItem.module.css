@@ -30,11 +30,19 @@
   flex: 1;
 }
 
+.titleLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
 .title {
   font-size: 18px;
   font-weight: 500;
   color: #3662E3;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -53,6 +61,21 @@
 
 .titleButton:hover {
   text-decoration: underline;
+}
+
+.entryBadge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #eef3ff;
+  color: #3662e3;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.syncBadge {
+  background: #fff7e6;
+  color: #ad6800;
 }
 
 .meta {

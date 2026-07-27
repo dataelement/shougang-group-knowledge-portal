@@ -9,18 +9,20 @@ function stripComments(source: string): string {
     .replace(/^\s*\/\/.*$/gm, '');
 }
 
-test('search result cards keep the share action commented out', () => {
+test('search result cards do not mount legacy share creation', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/pages/SearchPage.tsx'), 'utf8');
   const activeSource = stripComments(source);
 
-  assert.equal(source.includes('onShare={openShare}'), true);
   assert.equal(activeSource.includes('onShare={openShare}'), false);
+  assert.equal(activeSource.includes('ShareDocumentModal'), false);
+  assert.equal(activeSource.includes('useShareDocument'), false);
 });
 
-test('list result cards keep the share action commented out', () => {
+test('list result cards do not mount legacy share creation', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/pages/ListPage.tsx'), 'utf8');
   const activeSource = stripComments(source);
 
-  assert.equal(source.includes('onShare={openShare}'), true);
   assert.equal(activeSource.includes('onShare={openShare}'), false);
+  assert.equal(activeSource.includes('ShareDocumentModal'), false);
+  assert.equal(activeSource.includes('useShareDocument'), false);
 });

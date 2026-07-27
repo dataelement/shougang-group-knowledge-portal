@@ -3,7 +3,6 @@ import { useParams, useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, Search } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
-// import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
 import DocumentTypeFilterDropdown from '../components/DocumentTypeFilterDropdown';
@@ -20,7 +19,6 @@ import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
-// import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import { resolveListContext } from '../utils/listPageContext';
@@ -103,7 +101,6 @@ export default function ListPage() {
   const { toast, showError } = useActionToast();
   const { user } = useAuth();
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
-  // const { openShare, shareModalProps } = useShareDocument();
   const { openDocumentQa, documentQaModalProps } = useDocumentQa();
   const canDownload = Boolean(user);
   const canFavorite = Boolean(user);
@@ -508,7 +505,6 @@ export default function ListPage() {
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload && (!f.isDepartmentFile || f.canDownload) ? handleDownload : undefined}
-            // onShare={openShare}
             onAsk={user ? openDocumentQa : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
             onOpen={user ? setPreviewFile : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
           />
@@ -518,7 +514,6 @@ export default function ListPage() {
           {loadingMore ? '正在加载更多...' : null}
           {!loading && !loadingMore && files.length > 0 && !hasMore ? '已加载全部文档' : null}
         </div>
-        {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
         <FilePreviewModal
           file={previewFile}
