@@ -17,6 +17,7 @@ import {
   type DisplayConfig,
   type RebindDepartmentOption,
   fetchRebindDepartments,
+  type CategoryCardConfig,
   type DocumentTypeConfig,
   type DomainConfig,
   bindDeptSpace,
@@ -46,6 +47,7 @@ import {
   updateBannersConfig,
   updateBishengRuntimeConfig,
   updateDisplayConfig,
+  updateCategoryCardsConfig,
   updateDomainsConfig,
   updateDocumentTypesConfig,
   updateIntegrationsConfig,
@@ -72,6 +74,13 @@ import {
   type DomainCodeOption,
   type DomainDraft,
 } from '../utils/adminDomains';
+import {
+  createCategoryCardDraft,
+  validateCategoryCardDraft,
+  type CategoryCardDraft,
+} from '../utils/adminCategoryCards';
+import { CATEGORY_IMAGE_OPTIONS, DOMAIN_IMAGE_OPTIONS } from '../utils/navImageOptions';
+import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import {
   createSectionDraft,
   LATEST_SELECTED_SECTION_KEY,
@@ -140,7 +149,7 @@ function isLatestSelectedSectionDraft(draft: Pick<SectionDraft, 'builtinKey'>): 
 }
 
 const NAV_ITEMS = [
-  { key: 'domains', label: '业务域', icon: Building },
+  { key: 'domains', label: '首页导航', icon: Building },
   { key: 'sections', label: '首页分区', icon: Tag },
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
   { key: 'courses', label: '课程管理', icon: GraduationCap },
@@ -275,6 +284,12 @@ export default function AdminPage() {
   const [domainDraft, setDomainDraft] = useState<DomainDraft>(createDomainDraft());
   const [domainFormError, setDomainFormError] = useState('');
   const [domainDeleteIndex, setDomainDeleteIndex] = useState<number | null>(null);
+  const [domainSubTab, setDomainSubTab] = useState<'domain' | 'category'>('domain');
+  const [categoryCardEditorOpen, setCategoryCardEditorOpen] = useState(false);
+  const [categoryCardEditorIndex, setCategoryCardEditorIndex] = useState<number | null>(null);
+  const [categoryCardDraft, setCategoryCardDraft] = useState<CategoryCardDraft>(createCategoryCardDraft());
+  const [categoryCardFormError, setCategoryCardFormError] = useState('');
+  const [categoryCardDeleteIndex, setCategoryCardDeleteIndex] = useState<number | null>(null);
   const [sectionEditorOpen, setSectionEditorOpen] = useState(false);
   const [sectionEditorIndex, setSectionEditorIndex] = useState<number | null>(null);
   const [sectionDraft, setSectionDraft] = useState<SectionDraft>(createSectionDraft());
@@ -515,6 +530,22 @@ export default function AdminPage() {
     setDomainFormError('');
     void loadSpaceOptions();
     void loadDomainDepartments();
+  }
+
+  function openCreateCategoryCardDialog() {
+    setCategoryCardEditorOpen(true);
+    setCategoryCardEditorIndex(null);
+    setCategoryCardDraft(createCategoryCardDraft());
+    setCategoryCardFormError('');
+    void loadSpaceOptions();
+  }
+
+  function openEditCategoryCardDialog(card: CategoryCardConfig, index: number) {
+    setCategoryCardEditorOpen(true);
+    setCategoryCardEditorIndex(index);
+    setCategoryCardDraft(createCategoryCardDraft(card));
+    setCategoryCardFormError('');
+    void loadSpaceOptions();
   }
 
   function openCreateSectionDialog() {
@@ -842,18 +873,50 @@ export default function AdminPage() {
             <div className={s.emptyState}>配置暂时不可用</div>
           ) : null}
           {config && active === 'domains' && (
-            <DomainsTable
-              domains={config.domains}
-              spaces={spaceOptions}
-              spaceOptionsLoaded={spaceOptionsLoaded}
-              spaceOptionsError={spaceOptionsError}
-              saving={saving}
-              onAdd={openCreateDomainDialog}
-              onEdit={(index) => openEditDomainDialog(config.domains[index], index)}
-              onDelete={(index) => setDomainDeleteIndex(index)}
-              onMoveUp={(index) => void handleMoveDomain(config.domains, index, -1, runSave, setConfig)}
-              onMoveDown={(index) => void handleMoveDomain(config.domains, index, 1, runSave, setConfig)}
-            />
+            <>
+              <div className={s.subTabBar}>
+                <button
+                  type="button"
+                  className={`${s.subTabBtn} ${domainSubTab === 'domain' ? s.subTabBtnActive : ''}`}
+                  onClick={() => setDomainSubTab('domain')}
+                >
+                  业务域卡片
+                </button>
+                <button
+                  type="button"
+                  className={`${s.subTabBtn} ${domainSubTab === 'category' ? s.subTabBtnActive : ''}`}
+                  onClick={() => setDomainSubTab('category')}
+                >
+                  分类卡片
+                </button>
+              </div>
+              {domainSubTab === 'domain' ? (
+                <DomainsTable
+                  domains={config.domains}
+                  spaces={spaceOptions}
+                  spaceOptionsLoaded={spaceOptionsLoaded}
+                  spaceOptionsError={spaceOptionsError}
+                  saving={saving}
+                  onAdd={openCreateDomainDialog}
+                  onEdit={(index) => openEditDomainDialog(config.domains[index], index)}
+                  onDelete={(index) => setDomainDeleteIndex(index)}
+                  onMoveUp={(index) => void handleMoveDomain(config.domains, index, -1, runSave, setConfig)}
+                  onMoveDown={(index) => void handleMoveDomain(config.domains, index, 1, runSave, setConfig)}
+                />
+              ) : (
+                <CategoryCardsTable
+                  cards={config.category_cards}
+                  documentTypes={config.document_types}
+                  spaces={spaceOptions}
+                  saving={saving}
+                  onAdd={openCreateCategoryCardDialog}
+                  onEdit={(index) => openEditCategoryCardDialog(config.category_cards[index], index)}
+                  onDelete={(index) => setCategoryCardDeleteIndex(index)}
+                  onMoveUp={(index) => void handleMoveCategoryCard(config.category_cards, index, -1, runSave, setConfig)}
+                  onMoveDown={(index) => void handleMoveCategoryCard(config.category_cards, index, 1, runSave, setConfig)}
+                />
+              )}
+            </>
           )}
           {config && active === 'sections' && (
             <SectionsTable
@@ -1153,6 +1216,68 @@ export default function AdminPage() {
                 setDomainDeleteIndex(null);
                 showToast('业务域删除成功');
               }
+            });
+          }}
+        />
+      ) : null}
+      {config && categoryCardEditorOpen ? (
+        <CategoryCardEditorDialog
+          open
+          spaces={spaceOptions}
+          spacesLoading={spaceOptionsLoading}
+          spacesError={spaceOptionsError}
+          documentTypes={config.document_types}
+          draft={categoryCardDraft}
+          saving={saving}
+          error={categoryCardFormError}
+          isEdit={categoryCardEditorIndex !== null}
+          onClose={() => setCategoryCardEditorOpen(false)}
+          onRefreshSpaces={() => void loadSpaceOptions()}
+          onChange={(patch) => {
+            setCategoryCardDraft((current) => ({ ...current, ...patch }));
+            setCategoryCardFormError('');
+          }}
+          onSubmit={() => {
+            const result = validateCategoryCardDraft(
+              categoryCardDraft,
+              spaceOptions,
+              config.category_cards,
+              categoryCardEditorIndex,
+            );
+            if (!result.card) {
+              setCategoryCardFormError(result.error || '分类卡片配置无效');
+              return;
+            }
+            if (categoryCardEditorIndex === null) {
+              void handleAddCategoryCard(config.category_cards, result.card, runSave, setConfig, {
+                onSuccess: () => {
+                  setCategoryCardEditorOpen(false);
+                  showToast('分类卡片添加成功');
+                },
+              });
+              return;
+            }
+            void handleEditCategoryCard(config.category_cards, categoryCardEditorIndex, result.card, runSave, setConfig, {
+              onSuccess: () => {
+                setCategoryCardEditorOpen(false);
+                showToast('分类卡片编辑成功');
+              },
+            });
+          }}
+        />
+      ) : null}
+      {config && categoryCardDeleteIndex !== null ? (
+        <CategoryCardDeleteDialog
+          open
+          card={config.category_cards[categoryCardDeleteIndex]}
+          saving={saving}
+          onClose={() => setCategoryCardDeleteIndex(null)}
+          onConfirm={() => {
+            void handleDeleteCategoryCard(config.category_cards, categoryCardDeleteIndex, runSave, setConfig, {
+              onSuccess: () => {
+                setCategoryCardDeleteIndex(null);
+                showToast('分类卡片删除成功');
+              },
             });
           }}
         />
@@ -2164,15 +2289,12 @@ function DomainEditorDialog({
           </div>
           <label className={s.formField}>
             <span className={s.fieldLabel}>背景图</span>
-            <input
-              className={s.formInput}
+            <NavImageSelect
               value={draft.backgroundImage}
-              onChange={(event) => onChange({ backgroundImage: event.target.value })}
-              placeholder="https://example.com/domain.jpg 或 /rolling-domain-bg.jpg"
+              options={DOMAIN_IMAGE_OPTIONS}
+              onChange={(next) => onChange({ backgroundImage: next })}
             />
-            <span className={s.fieldHint}>
-              支持两种格式：网络图片 URL（例如 `https://example.com/domain.jpg`）或站点本地静态路径（例如 `/rolling-domain-bg.jpg`，也兼容 `rolling-domain-bg.jpg`）。
-            </span>
+            <span className={s.fieldHint}>从预置的业务域封面图中看图选择。</span>
           </label>
           <div className={`${s.formField} ${s.formFieldWide}`}>
             <span className={s.fieldLabel}>图标</span>
@@ -2257,6 +2379,398 @@ function DomainDeleteDialog({
         <div className={s.confirmBody}>
           <div className={s.confirmLine}><strong>业务域名称：</strong>{domain.name}</div>
           <div className={s.confirmLine}><strong>绑定空间：</strong>{spaceName || domain.space_ids.join(', ')}</div>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+          <button className={s.dangerBtn} onClick={onConfirm} disabled={saving}>确认删除</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NavImageSelect({
+  value,
+  options,
+  onChange,
+  placeholder = '选择封面图',
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (next: string) => void;
+  placeholder?: string;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className={s.navImageSelect}>
+      <button type="button" className={s.navImageTrigger} onClick={() => setOpen((v) => !v)}>
+        {selected ? (
+          <span className={s.navImageTriggerInner}>
+            <img src={selected.value} alt="" className={s.navImageThumbSm} />
+            <span>{selected.label}</span>
+          </span>
+        ) : (
+          <span className={s.navImagePlaceholder}>{placeholder}</span>
+        )}
+        <ChevronDown size={16} />
+      </button>
+      {open ? (
+        <div className={s.navImageMenu}>
+          {options.map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              className={`${s.navImageOption} ${option.value === value ? s.navImageOptionActive : ''}`}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              <img src={option.value} alt="" className={s.navImageThumb} />
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CategoryCardsTable({
+  cards,
+  documentTypes,
+  spaces,
+  saving,
+  onAdd,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+}: {
+  cards: CategoryCardConfig[];
+  documentTypes: DocumentTypeConfig[];
+  spaces: SpaceOption[];
+  saving: boolean;
+  onAdd: () => void;
+  onEdit: (index: number) => void;
+  onDelete: (index: number) => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
+}) {
+  const groups = getRuntimeDocumentTypeGroups(documentTypes);
+  const labelByCode = new Map(groups.map((group) => [group.code, group.label]));
+  const nameById = new Map(spaces.map((space) => [space.id, space.name]));
+  return (
+    <>
+      <div className={s.titleBar}>
+        <h2 className={s.pageTitle}>分类卡片管理</h2>
+        <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
+      </div>
+      <p className={s.pageNote}>
+        分类卡片对应「文件分类」的一级分类，展示在首页「分类导航」tab。点击卡片进入按该分类筛选的落地页；绑定空间用于限定落地页文件范围（与业务域一致），未绑定空间的卡片不会在首页展示。
+      </p>
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>卡片名称</th>
+            <th>绑定分类</th>
+            <th>封面图</th>
+            <th>绑定空间</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cards.length === 0 ? (
+            <tr><td colSpan={6}><div className={s.emptyState}>暂无分类卡片，点击右上角「添加」创建一张。</div></td></tr>
+          ) : cards.map((card, index) => {
+            const boundSpaceText = card.space_ids.map((id) => nameById.get(id) || String(id)).join('、');
+            return (
+              <tr key={card.code}>
+                <td>{card.name || card.code}</td>
+                <td>{labelByCode.get(card.code) ? `${labelByCode.get(card.code)} / ${card.code}` : card.code}</td>
+                <td>
+                  {card.image ? (
+                    <img src={card.image} alt={`${card.name} 封面`} className={s.backgroundPreview} />
+                  ) : '未配置'}
+                </td>
+                <td>
+                  {boundSpaceText || <span className={s.unboundBadge} title="未绑定空间的分类卡片不会显示在首页">未绑定 · 待补绑定</span>}
+                </td>
+                <td>{card.enabled ? '启用' : '停用'}</td>
+                <td>
+                  <div className={s.actionGroup}>
+                    <button className={s.inlineBtn} onClick={() => onEdit(index)} disabled={saving}>编辑</button>
+                    <button className={s.inlineDangerBtn} onClick={() => onDelete(index)} disabled={saving}>删除</button>
+                    <button
+                      className={s.iconActionBtn}
+                      onClick={() => onMoveUp(index)}
+                      disabled={saving || index === 0}
+                      aria-label={`上移${card.name || card.code}`}
+                      title="上移"
+                    >
+                      <ArrowUp size={15} />
+                    </button>
+                    <button
+                      className={s.iconActionBtn}
+                      onClick={() => onMoveDown(index)}
+                      disabled={saving || index === cards.length - 1}
+                      aria-label={`下移${card.name || card.code}`}
+                      title="下移"
+                    >
+                      <ArrowDown size={15} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function CategoryCardEditorDialog({
+  open,
+  spaces,
+  spacesLoading,
+  spacesError,
+  documentTypes,
+  draft,
+  saving,
+  error,
+  isEdit,
+  onClose,
+  onRefreshSpaces,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  spaces: SpaceOption[];
+  spacesLoading: boolean;
+  spacesError: string;
+  documentTypes: DocumentTypeConfig[];
+  draft: CategoryCardDraft;
+  saving: boolean;
+  error: string;
+  isEdit: boolean;
+  onClose: () => void;
+  onRefreshSpaces: () => void;
+  onChange: (patch: Partial<CategoryCardDraft>) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  const groups = getRuntimeDocumentTypeGroups(documentTypes);
+  const selectedSpaceIds = new Set(draft.spaceIds);
+  const selectedSpaces = draft.spaceIds.map((spaceId) => {
+    const numericId = Number(spaceId);
+    return spaces.find((space) => space.id === numericId) ?? {
+      id: numericId,
+      name: spaceId,
+      description: '',
+      file_count: 0,
+      space_level: '',
+      business_domain_codes: [],
+    };
+  });
+  const toggleSpace = (spaceId: string) => {
+    if (selectedSpaceIds.has(spaceId)) {
+      onChange({ spaceIds: draft.spaceIds.filter((id) => id !== spaceId) });
+      return;
+    }
+    onChange({ spaceIds: [...draft.spaceIds, spaceId] });
+  };
+  const removeSpace = (spaceId: string) => {
+    onChange({ spaceIds: draft.spaceIds.filter((id) => id !== spaceId) });
+  };
+
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>{isEdit ? `编辑分类卡片 · ${draft.name || draft.code}` : '新增分类卡片'}</h3>
+            <p className={s.modalNote}>选择一个一级分类作为卡片，绑定的知识空间决定落地页可检索的文件范围。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>关闭</button>
+        </div>
+        {error ? <div className={s.errorBox}>{error}</div> : null}
+        <div className={s.formGrid}>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>绑定一级分类</span>
+            <select
+              className={s.formInput}
+              value={draft.code}
+              onChange={(event) => {
+                const nextCode = event.target.value;
+                const matched = groups.find((group) => group.code === nextCode);
+                onChange({ code: nextCode, name: draft.name.trim() ? draft.name : (matched?.label ?? '') });
+              }}
+            >
+              <option value="">请选择一级分类</option>
+              {groups.map((group) => (
+                <option key={group.code} value={group.code}>{group.label} / {group.code}</option>
+              ))}
+            </select>
+            <span className={s.fieldHint}>分类来自「文件分类」配置的一级分类。落地页的二级分类筛选会自动限定在该分类下。</span>
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>卡片名称</span>
+            <input
+              className={s.formInput}
+              value={draft.name}
+              onChange={(event) => onChange({ name: event.target.value })}
+              placeholder="选填，默认取一级分类名称"
+            />
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>封面图</span>
+            <NavImageSelect
+              value={draft.image}
+              options={CATEGORY_IMAGE_OPTIONS}
+              onChange={(next) => onChange({ image: next })}
+            />
+            <span className={s.fieldHint}>从预置的分类封面图中看图选择。</span>
+          </label>
+          <label className={s.formField}>
+            <span className={s.fieldLabel}>状态</span>
+            <select
+              className={s.formInput}
+              value={draft.enabled ? '1' : '0'}
+              onChange={(event) => onChange({ enabled: event.target.value === '1' })}
+            >
+              <option value="1">启用</option>
+              <option value="0">停用</option>
+            </select>
+          </label>
+          <div className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>绑定空间</span>
+            <div className={s.spaceMultiPicker}>
+              {spacesLoading ? <div className={s.spacePickerEmpty}>正在加载候选空间...</div> : null}
+              {getDomainBindableSpaceGroups(spaces).map((group) => {
+                const groupSpaceIds = group.options.map((space) => String(space.id));
+                const allGroupSelected =
+                  groupSpaceIds.length > 0 &&
+                  groupSpaceIds.every((id) => selectedSpaceIds.has(id));
+                const toggleGroup = () => {
+                  if (allGroupSelected) {
+                    onChange({ spaceIds: draft.spaceIds.filter((id) => !groupSpaceIds.includes(id)) });
+                  } else {
+                    onChange({ spaceIds: Array.from(new Set([...draft.spaceIds, ...groupSpaceIds])) });
+                  }
+                };
+                return (
+                  <div key={group.level} className={s.spacePickerGroup}>
+                    <div className={s.spacePickerGroupHead}>
+                      <div className={s.spacePickerGroupTitle}>{group.label}</div>
+                      {group.options.length ? (
+                        <label className={s.spacePickerGroupSelectAll}>
+                          <span>全选</span>
+                          <input type="checkbox" checked={allGroupSelected} onChange={toggleGroup} />
+                        </label>
+                      ) : null}
+                    </div>
+                    {group.options.length ? (
+                      group.options.map((space) => (
+                        <label key={space.id} className={s.spacePickerOption}>
+                          <input
+                            type="checkbox"
+                            checked={selectedSpaceIds.has(String(space.id))}
+                            onChange={() => toggleSpace(String(space.id))}
+                          />
+                          <span className={s.spacePickerName}>{space.name}</span>
+                          {(space.business_domain_codes ?? []).length ? (
+                            <span className={s.spacePickerMeta}>{space.business_domain_codes?.join(' / ')}</span>
+                          ) : null}
+                        </label>
+                      ))
+                    ) : (
+                      <div className={s.spacePickerEmpty}>暂无{group.label}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className={s.selectedSpaceChips}>
+              {selectedSpaces.length ? selectedSpaces.map((space) => (
+                <button
+                  key={space.id}
+                  type="button"
+                  className={s.selectedSpaceChip}
+                  onClick={() => removeSpace(String(space.id))}
+                  title="取消绑定"
+                >
+                  <span>{space.name}</span>
+                  <X size={13} />
+                </button>
+              )) : (
+                <span className={s.unboundBadge} title="未绑定空间的分类卡片不会显示在首页">未绑定 · 待补绑定</span>
+              )}
+            </div>
+            {spacesError ? (
+              <span className={s.fieldHint}>
+                {spacesError}
+                <button type="button" className={s.inlineBtn} onClick={onRefreshSpaces} disabled={spacesLoading}>
+                  重新加载
+                </button>
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className={s.confirmActions}>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+          <button className={s.addBtn} onClick={onSubmit} disabled={saving}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategoryCardDeleteDialog({
+  open,
+  card,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  card: CategoryCardConfig;
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className={s.modalBackdrop} onClick={onClose}>
+      <div className={s.confirmCard} onClick={(event) => event.stopPropagation()}>
+        <div className={s.modalHeader}>
+          <div>
+            <h3 className={s.modalTitle}>删除分类卡片</h3>
+            <p className={s.modalNote}>删除后该分类卡片会从首页「分类导航」消失，但不影响文件分类本身与知识空间。</p>
+          </div>
+          <button className={s.subtleBtn} onClick={onClose}>取消</button>
+        </div>
+        <div className={s.confirmBody}>
+          <div className={s.confirmLine}><strong>卡片名称：</strong>{card.name || card.code}</div>
+          <div className={s.confirmLine}><strong>绑定分类：</strong>{card.code}</div>
         </div>
         <div className={s.confirmActions}>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
@@ -5389,6 +5903,11 @@ async function persistSections(sections: SectionConfig[], setConfig: Dispatch<Se
   setConfig((current) => (current ? { ...current, sections: data.sections } : current));
 }
 
+async function persistCategoryCards(cards: CategoryCardConfig[], setConfig: Dispatch<SetStateAction<PortalConfig | null>>) {
+  const data = await updateCategoryCardsConfig(cards);
+  setConfig((current) => (current ? { ...current, category_cards: data.category_cards } : current));
+}
+
 function normalizeDocumentTypeCode(value?: string): string {
   return (value ?? '').trim().toUpperCase();
 }
@@ -5559,6 +6078,63 @@ async function handleMoveDomain(
   const [moved] = reordered.splice(index, 1);
   reordered.splice(nextIndex, 0, moved);
   await runSave(() => persistDomains(reordered, setConfig));
+}
+
+async function handleAddCategoryCard(
+  cards: CategoryCardConfig[],
+  next: CategoryCardConfig,
+  runSave: SaveRunner,
+  setConfig: ConfigSetter,
+  options?: { onSuccess?: () => void },
+) {
+  await runSave(async () => {
+    await persistCategoryCards([...cards, next], setConfig);
+    options?.onSuccess?.();
+  });
+}
+
+async function handleEditCategoryCard(
+  cards: CategoryCardConfig[],
+  index: number,
+  next: CategoryCardConfig,
+  runSave: SaveRunner,
+  setConfig: ConfigSetter,
+  options?: { onSuccess?: () => void },
+) {
+  const updated = [...cards];
+  updated[index] = next;
+  await runSave(async () => {
+    await persistCategoryCards(updated, setConfig);
+    options?.onSuccess?.();
+  });
+}
+
+async function handleDeleteCategoryCard(
+  cards: CategoryCardConfig[],
+  index: number,
+  runSave: SaveRunner,
+  setConfig: ConfigSetter,
+  options?: { onSuccess?: () => void },
+) {
+  await runSave(async () => {
+    await persistCategoryCards(cards.filter((_, i) => i !== index), setConfig);
+    options?.onSuccess?.();
+  });
+}
+
+async function handleMoveCategoryCard(
+  cards: CategoryCardConfig[],
+  index: number,
+  direction: -1 | 1,
+  runSave: SaveRunner,
+  setConfig: ConfigSetter,
+) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= cards.length) return;
+  const reordered = [...cards];
+  const [moved] = reordered.splice(index, 1);
+  reordered.splice(nextIndex, 0, moved);
+  await runSave(() => persistCategoryCards(reordered, setConfig));
 }
 
 async function handleAddSection(

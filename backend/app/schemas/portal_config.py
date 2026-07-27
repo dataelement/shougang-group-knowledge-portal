@@ -80,6 +80,43 @@ class DomainConfig(BaseModel):
         return normalized
 
 
+class CategoryCardConfig(BaseModel):
+    """首页「分类导航」卡片：绑定一个一级文件分类(document_type)，点击进入按该分类筛选的落地页。"""
+
+    code: str = ""
+    name: str = ""
+    image: str = ""
+    space_ids: list[int] = Field(default_factory=list)
+    enabled: bool = True
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_code(cls, value):
+        return _clean_config_text(value).upper()
+
+    @field_validator("name", "image", mode="before")
+    @classmethod
+    def normalize_text(cls, value):
+        return _clean_config_text(value)
+
+    @field_validator("space_ids")
+    @classmethod
+    def normalize_space_ids(cls, space_ids: list[int]) -> list[int]:
+        normalized: list[int] = []
+        for space_id in space_ids:
+            if space_id <= 0:
+                raise ValueError("Space id must be positive")
+            if space_id not in normalized:
+                normalized.append(space_id)
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_required_fields(self):
+        if not self.code:
+            raise ValueError("Category card code is required")
+        return self
+
+
 class SectionConfig(BaseModel):
     title: str
     tag: str
@@ -584,6 +621,7 @@ DEFAULT_DOCUMENT_TYPES: list[dict[str, str]] = [
 
 class PortalConfig(BaseModel):
     domains: list[DomainConfig] = Field(default_factory=list)
+    category_cards: list[CategoryCardConfig] = Field(default_factory=list)
     sections: list[SectionConfig] = Field(default_factory=list)
     document_types: list[DocumentTypeConfig] = Field(default_factory=list)
     qa: QAConfig
@@ -675,6 +713,18 @@ class PortalConfig(BaseModel):
 
 class DomainsConfigUpdate(BaseModel):
     domains: list[DomainConfig]
+
+
+class CategoryCardsConfigUpdate(BaseModel):
+    category_cards: list[CategoryCardConfig]
+
+    @model_validator(mode="after")
+    def validate_unique_codes(self):
+        codes = [card.code for card in self.category_cards]
+        duplicate_codes = {code for code in codes if codes.count(code) > 1}
+        if duplicate_codes:
+            raise ValueError("Category card codes must be unique")
+        return self
 
 
 class SectionsConfigUpdate(BaseModel):

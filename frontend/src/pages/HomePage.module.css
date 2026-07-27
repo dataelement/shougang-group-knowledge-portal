@@ -786,6 +786,23 @@
   background: transparent;
 }
 
+/* tab 版头部:高度收紧,底部分隔线两侧留 padding(用伪元素内缩) */
+.domainHeaderWithTabs {
+  position: relative;
+  height: 60px;
+  gap: 0;
+}
+
+.domainHeaderWithTabs::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 1px;
+  background: #eceef2;
+}
+
 .domainHeaderIcon {
   width: 32px;
   height: 32px;
@@ -798,6 +815,49 @@
   font-weight: 800;
   color: #333;
   line-height: 24px;
+}
+
+.domainNavTabs {
+  display: flex;
+  align-items: center;
+}
+
+.domainNavTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.domainNavTabIcon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.domainNavTabText {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 32px;
+  white-space: nowrap;
+  color: #333;
+  transition: color 0.15s ease;
+}
+
+.domainNavTabActive .domainNavTabText {
+  color: rgba(54, 98, 227, 1);
+}
+
+.domainNavTabDivider {
+  width: 1px;
+  height: 28px;
+  margin: 0 16px;
+  background: #e5e7eb;
+  flex: 0 0 auto;
 }
 
 /* ===== Domain grid ===== */

@@ -303,8 +303,17 @@ export interface SiteConfig {
   home_cache_ttl_seconds: number;
 }
 
+export interface CategoryCardConfig {
+  code: string;
+  name: string;
+  image: string;
+  space_ids: number[];
+  enabled: boolean;
+}
+
 export interface PortalConfig {
   domains: DomainConfig[];
+  category_cards: CategoryCardConfig[];
   sections: SectionConfig[];
   document_types: DocumentTypeConfig[];
   qa: QAConfig;
@@ -390,6 +399,13 @@ export function updateDomainsConfig(domains: DomainConfig[]) {
   return request<{ domains: DomainConfig[] }>('/api/v1/admin/config/domains', {
     method: 'POST',
     body: JSON.stringify({ domains }),
+  });
+}
+
+export function updateCategoryCardsConfig(category_cards: CategoryCardConfig[]) {
+  return request<{ category_cards: CategoryCardConfig[] }>('/api/v1/admin/config/category-cards', {
+    method: 'POST',
+    body: JSON.stringify({ category_cards }),
   });
 }
 

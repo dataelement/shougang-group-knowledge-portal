@@ -1,4 +1,4 @@
-import type { AppConfig, BannerSlide, DisplayConfig, DomainConfig, SectionConfig } from '../api/adminConfig';
+import type { AppConfig, BannerSlide, CategoryCardConfig, DisplayConfig, DomainConfig, SectionConfig } from '../api/adminConfig';
 import { DISPLAY_CONFIG } from '../config/display';
 
 export interface RuntimeBanner {
@@ -104,6 +104,14 @@ export function toRuntimeDisplayConfig(display?: DisplayConfig): RuntimeDisplayC
 export function getEnabledDomains(domains: DomainConfig[]): DomainConfig[] {
   return domains.filter((domain) => {
     if (!domain.enabled || !domain.space_ids.length) return false;
+    return true;
+  });
+}
+
+export function getEnabledCategoryCards(cards?: CategoryCardConfig[]): CategoryCardConfig[] {
+  return (cards ?? []).filter((card) => {
+    if (!card.enabled || !card.code) return false;
+    if (!card.space_ids.length) return false;
     return true;
   });
 }
