@@ -11,6 +11,10 @@ import {
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
+import {
+  resolveActiveQaScope,
+  type QaKnowledgePickerMode,
+} from '../components/qaKnowledgeScopeMode';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/Tooltip';
 import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
@@ -22,6 +26,7 @@ import {
   fetchQaKnowledgeTreeChildren,
   fetchQaKnowledgeFolderStats,
   searchQaKnowledgeFiles,
+  browseSearchFiles,
   uploadChatAttachment,
   recordPortalSearchEvent,
   type ChatAttachment,
@@ -46,6 +51,7 @@ import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
+import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import { getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildDomainSearchPath } from '../utils/searchParams';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
@@ -374,7 +380,14 @@ export default function HomePage() {
   const [qaSpaces, setQaSpaces] = useState<KnowledgeSpace[]>([]);
   const [qaSpacesLoaded, setQaSpacesLoaded] = useState(false);
   const [qaSpacesLoading, setQaSpacesLoading] = useState(false);
-  const [qaScope, setQaScope] = useState<QaKnowledgeScope>({ mode: 'none' });
+  const [qaScopeMode, setQaScopeMode] = useState<QaKnowledgePickerMode>('knowledge');
+  const [qaKnowledgeScope, setQaKnowledgeScope] = useState<QaKnowledgeScope>({ mode: 'none' });
+  const [qaCategoryScope, setQaCategoryScope] = useState<QaKnowledgeScope>({ mode: 'none' });
+  const qaScope = resolveActiveQaScope(qaScopeMode, qaKnowledgeScope, qaCategoryScope);
+  const documentTypeGroups = useMemo(
+    () => getRuntimeDocumentTypeGroups(config?.document_types),
+    [config?.document_types],
+  );
   const [qaPickerOpen, setQaPickerOpen] = useState(false);
   const [qaTip, setQaTip] = useState('');
   const qaFileInputRef = useRef<HTMLInputElement>(null);
@@ -397,7 +410,10 @@ export default function HomePage() {
       if (ids.length === 1) return qaSpaces.find((sp) => sp.id === ids[0])?.name || '已选 1 个知识库';
       return `已选 ${ids.length} 个知识库`;
     }
-    if (qaScope.mode === 'files') return `已选 ${qaScope.fileRefs.length} 个文件`;
+    if (qaScope.mode === 'files') {
+      const count = qaScope.resolvedFileCount || qaScope.fileRefs.length;
+      return count ? `已选 ${count} 个文件` : '选择知识库';
+    }
     return '选择知识库';
   })();
 
@@ -551,6 +567,9 @@ export default function HomePage() {
       const draft: HomeQaDraft = {
         keyword,
         answerMode: qaAnswerMode,
+        scopeMode: qaScopeMode,
+        knowledgeScope: qaKnowledgeScope,
+        categoryScope: qaCategoryScope,
         scope: qaScope,
         attachments: qaAttachments,
       };
@@ -562,7 +581,7 @@ export default function HomePage() {
       void recordPortalSearchEvent(keyword, 'search_page').catch(() => undefined);
     }
     navigate(keyword ? `/search?q=${encodeURIComponent(keyword)}` : '/search');
-  }, [query, searchTab, navigate, user, qaAnswerMode, qaScope, qaAttachments, qaUploading.length]);
+  }, [query, searchTab, navigate, user, qaAnswerMode, qaScopeMode, qaKnowledgeScope, qaCategoryScope, qaScope, qaAttachments, qaUploading.length]);
 
   async function ensureQaSpaces() {
     if (qaSpacesLoaded || qaSpacesLoading) return;
@@ -1052,7 +1071,14 @@ export default function HomePage() {
                               spaces={qaSpaces}
                               scope={qaScope}
                               loading={qaSpacesLoading}
-                              onChange={setQaScope}
+                              onChange={(next) => {
+                                if (qaScopeMode === 'category') setQaCategoryScope(next);
+                                else setQaKnowledgeScope(next);
+                              }}
+                              pickerMode={qaScopeMode}
+                              onPickerModeChange={setQaScopeMode}
+                              documentTypeGroups={documentTypeGroups}
+                              onBrowseCategoryFiles={(params) => browseSearchFiles(params)}
                               onLoadChildren={fetchQaKnowledgeTreeChildren}
                               onLoadFolderStats={fetchQaKnowledgeFolderStats}
                               onSearchFiles={searchQaKnowledgeFiles}

@@ -5,7 +5,7 @@ import logging
 import secrets
 import time
 from time import monotonic
-from typing import Annotated, Any, NoReturn, Optional
+from typing import Annotated, Any, NoReturn
 from urllib.parse import quote
 
 import httpx
@@ -20,6 +20,7 @@ from app.api.dependencies import (
     get_portal_share_access_session_store,
 )
 from app.clients.bisheng import BishengClient
+from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.common import response_ok
 from app.schemas.knowledge import (
     DepartmentFileViewRequestBody,
@@ -29,25 +30,24 @@ from app.schemas.knowledge import (
     FavoriteStatusRequest,
     FilePreviewSourceKind,
     HomeStatsData,
-    PublishPrecheckRequest,
     PortalPreviewEntryPoint,
     PortalRecommendationScene,
     PortalSearchTelemetryRequest,
+    PublishPrecheckRequest,
     QaKnowledgeFolderStatsRequest,
-    ShareDocumentAccessRequest,
     ShareDocumentAccessData,
+    ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
-from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.portal_config import DEFAULT_DOCUMENT_TYPES, DocumentTypeConfig, PortalConfig
 from app.services.chat_stream import ChatStreamObserver, safe_chat_stream
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
-    BishengBusinessError,
-    KnowledgeService,
     LATEST_SELECTED_RECOMMENDATION,
     PERSONALIZED_RECOMMENDATION,
+    BishengBusinessError,
+    KnowledgeService,
 )
 from app.services.portal_auth_service import (
     PortalAuthError,
@@ -289,7 +289,7 @@ async def _scoped_service_and_extra_ids(
     bisheng_client: BishengClient,
     portal_config_service: PortalConfigService,
     public_only: bool = False,
-) -> tuple[KnowledgeService, Optional[list[int]], Optional[BishengClient]]:
+) -> tuple[KnowledgeService, list[int] | None, BishengClient | None]:
     """Build a KnowledgeService scoped to the current user when logged in.
 
     Returns (service, extra_space_ids, client_to_close).
@@ -313,9 +313,7 @@ async def _scoped_service_and_extra_ids(
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
-        visible_spaces = await service.list_visible_spaces(
-            discovery_scope="public_and_department"
-        )
+        visible_spaces = await service.list_visible_spaces(discovery_scope="public_and_department")
         extra_space_ids = [space.id for space in visible_spaces.data]
         return service, extra_space_ids, scoped_client
     except Exception:
@@ -387,14 +385,14 @@ async def _read_download_error_message(upstream: httpx.Response) -> str:
 async def search_keyword_files(
     request: Request,
     q: str,
-    tag: Optional[str] = None,
-    base_tag: Optional[str] = None,
-    space_ids: Annotated[Optional[list[int]], Query()] = None,
-    space_level: Optional[str] = None,
-    file_ext: Optional[str] = None,
-    document_type: Optional[str] = None,
-    file_subcategory_code: Optional[str] = None,
-    business_domain_code: Optional[str] = None,
+    tag: str | None = None,
+    base_tag: str | None = None,
+    space_ids: Annotated[list[int] | None, Query()] = None,
+    space_level: str | None = None,
+    file_ext: str | None = None,
+    document_type: str | None = None,
+    file_subcategory_code: str | None = None,
+    business_domain_code: str | None = None,
     sort: str = "relevance",
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
@@ -422,11 +420,7 @@ async def search_keyword_files(
                 business_domain_code=business_domain_code,
                 sort=sort,
                 extra_space_ids=extra_space_ids,
-                discovery_scope=(
-                    "public"
-                    if extra_space_ids is None
-                    else "public_and_department"
-                ),
+                discovery_scope=("public" if extra_space_ids is None else "public_and_department"),
             )
         )
     except BishengBusinessError as err:
@@ -439,18 +433,18 @@ async def search_keyword_files(
 @router.get("/files/browse")
 async def browse_files(
     request: Request,
-    tag: Optional[str] = None,
-    base_tag: Optional[str] = None,
-    space_ids: Annotated[Optional[list[int]], Query()] = None,
-    space_level: Optional[str] = None,
-    file_ext: Optional[str] = None,
-    document_type: Optional[str] = None,
-    file_subcategory_code: Optional[str] = None,
-    business_domain_code: Optional[str] = None,
-    recommendation: Optional[str] = None,
+    tag: str | None = None,
+    base_tag: str | None = None,
+    space_ids: Annotated[list[int] | None, Query()] = None,
+    space_level: str | None = None,
+    file_ext: str | None = None,
+    document_type: str | None = None,
+    file_subcategory_code: str | None = None,
+    business_domain_code: str | None = None,
+    recommendation: str | None = None,
     public_only: bool = False,
     sort: str = "updated_at_desc",
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
     limit: int = 20,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
@@ -467,10 +461,11 @@ async def browse_files(
         config=config,
     )
     is_personalized = recommendation == PERSONALIZED_RECOMMENDATION
+    configured_page_size = _configured_search_page_size(config)
     page_size = (
         config.recommendation.home_total_count
         if is_personalized
-        else _configured_search_page_size(config)
+        else min(max(int(limit or configured_page_size), 1), configured_page_size)
     )
     service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
         request=request,
@@ -496,11 +491,7 @@ async def browse_files(
                 limit=page_size,
                 extra_space_ids=extra_space_ids,
                 public_only=public_only,
-                discovery_scope=(
-                    "public"
-                    if extra_space_ids is None
-                    else "public_and_department"
-                ),
+                discovery_scope=("public" if extra_space_ids is None else "public_and_department"),
             )
         )
     except BishengBusinessError as err:
@@ -513,19 +504,19 @@ async def browse_files(
 @router.get("/files")
 async def search_files(
     request: Request,
-    q: Optional[str] = None,
-    tag: Optional[str] = None,
-    base_tag: Optional[str] = None,
-    space_ids: Annotated[Optional[list[int]], Query()] = None,
-    space_level: Optional[str] = None,
-    file_ext: Optional[str] = None,
-    document_type: Optional[str] = None,
-    file_subcategory_code: Optional[str] = None,
-    business_domain_code: Optional[str] = None,
-    recommendation: Optional[str] = None,
+    q: str | None = None,
+    tag: str | None = None,
+    base_tag: str | None = None,
+    space_ids: Annotated[list[int] | None, Query()] = None,
+    space_level: str | None = None,
+    file_ext: str | None = None,
+    document_type: str | None = None,
+    file_subcategory_code: str | None = None,
+    business_domain_code: str | None = None,
+    recommendation: str | None = None,
     public_only: bool = False,
     sort: str = "relevance",
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
     limit: int = 20,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
@@ -588,9 +579,7 @@ async def search_files(
         )
         extra_space_ids = None
         if not service.is_latest_selected_scoped_request(recommendation) and not public_only:
-            visible_spaces = await service.list_visible_spaces(
-                discovery_scope="public_and_department"
-            )
+            visible_spaces = await service.list_visible_spaces(discovery_scope="public_and_department")
             extra_space_ids = [space.id for space in visible_spaces.data]
         return response_ok(
             await service.search_files(
@@ -622,9 +611,9 @@ async def search_files(
 @router.get("/tags")
 async def get_aggregated_tags(
     request: Request,
-    space_ids: Annotated[Optional[list[int]], Query()] = None,
-    space_level: Optional[str] = None,
-    business_domain_code: Optional[str] = None,
+    space_ids: Annotated[list[int] | None, Query()] = None,
+    space_level: str | None = None,
+    business_domain_code: str | None = None,
     public_only: bool = False,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
@@ -692,7 +681,7 @@ async def _cached_home_stream(sections: list[dict[str, Any]]):
 
 
 def _personalized_rollout_bucket(*, tenant_id: int, user_id: int) -> int:
-    raw = f"{tenant_id}:{user_id}:{PERSONALIZED_RECOMMENDATION}".encode("utf-8")
+    raw = f"{tenant_id}:{user_id}:{PERSONALIZED_RECOMMENDATION}".encode()
     digest_prefix = hashlib.sha256(raw).digest()[:8]
     return int.from_bytes(digest_prefix, "big", signed=False) % 100
 
@@ -715,10 +704,10 @@ def _select_home_recommendation_mode(session: Any, config: PortalConfig) -> str:
 
 def _apply_personalized_rollout_guard(
     *,
-    recommendation: Optional[str],
+    recommendation: str | None,
     session: Any,
     config: PortalConfig,
-) -> Optional[str]:
+) -> str | None:
     """Keep direct list requests inside the same rollout boundary as the homepage."""
     if recommendation != PERSONALIZED_RECOMMENDATION:
         return recommendation
@@ -784,7 +773,7 @@ async def _compute_shadow_home_recommendation(
             user = getattr(session, "user", None)
             tenant_id = getattr(user, "tenant_id", 0)
             user_id = getattr(user, "user_id", 0)
-            actor_hash = hashlib.sha256(f"{tenant_id}:{user_id}".encode("utf-8")).hexdigest()[:16]
+            actor_hash = hashlib.sha256(f"{tenant_id}:{user_id}".encode()).hexdigest()[:16]
             baseline_count = len(set(baseline_file_keys))
             logger.info(
                 "portal personalized shadow metric",
@@ -831,9 +820,7 @@ async def get_home_content(
 
         async def anonymous_stream():
             sections: list[dict[str, Any]] = []
-            async for tag, items, recommendation_mode in service.iter_home_content_with_modes(
-                discovery_scope="public"
-            ):
+            async for tag, items, recommendation_mode in service.iter_home_content_with_modes(discovery_scope="public"):
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
                 if recommendation_mode:
                     section["recommendation_mode"] = recommendation_mode
@@ -877,10 +864,7 @@ async def get_home_content(
             ):
                 if actual_mode:
                     items = items[: config.display.home.section_page_size]
-                if (
-                    config.recommendation.personalized_shadow_enabled
-                    and actual_mode == LATEST_SELECTED_RECOMMENDATION
-                ):
+                if config.recommendation.personalized_shadow_enabled and actual_mode == LATEST_SELECTED_RECOMMENDATION:
                     shadow_baseline_file_keys.extend((item.space_id, item.id) for item in items)
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
                 if actual_mode:
@@ -945,10 +929,7 @@ async def get_hot_searches(
         hot_searches = await service.fetch_hot_searches()
         return response_ok(
             {
-                "hot_searches": [
-                    item.model_dump(mode="json")
-                    for item in hot_searches
-                ],
+                "hot_searches": [item.model_dump(mode="json") for item in hot_searches],
             }
         )
     finally:
@@ -991,11 +972,13 @@ async def get_portal_config(
             if reasoning_id in name_by_id and not str(qa.get("reasoning_model_display_name") or "").strip():
                 qa["reasoning_model_display_name"] = name_by_id[reasoning_id]
 
-    return response_ok({
-        **config_dict,
-        "document_types": document_types,
-        "business_domain_options": business_domain_options,
-    })
+    return response_ok(
+        {
+            **config_dict,
+            "document_types": document_types,
+            "business_domain_options": business_domain_options,
+        }
+    )
 
 
 @router.get("/qa/model-options")
@@ -1033,9 +1016,7 @@ async def get_domain_file_counts(
                 portal_config_service=portal_config_service,
                 default_model=get_settings().bisheng_default_model,
             )
-            visible_spaces = await service.list_visible_spaces(
-                discovery_scope="public_and_department"
-            )
+            visible_spaces = await service.list_visible_spaces(discovery_scope="public_and_department")
             extra_space_ids = [space.id for space in visible_spaces.data]
             account = getattr(getattr(session, "user", None), "account", "")
         scopes = await service.resolve_domain_count_scopes(domains, extra_space_ids=extra_space_ids)
@@ -1076,9 +1057,7 @@ async def list_visible_spaces(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        return response_ok(
-            await service.list_visible_spaces(discovery_scope="public")
-        )
+        return response_ok(await service.list_visible_spaces(discovery_scope="public"))
 
     scoped_client = auth_service.create_bisheng_client(session)
     try:
@@ -1086,11 +1065,7 @@ async def list_visible_spaces(
             bisheng_client=scoped_client,
             portal_config_service=portal_config_service,
         )
-        return response_ok(
-            await service.list_visible_spaces(
-                discovery_scope="public_and_department"
-            )
-        )
+        return response_ok(await service.list_visible_spaces(discovery_scope="public_and_department"))
     finally:
         await scoped_client.aclose()
 
@@ -1115,11 +1090,7 @@ async def list_qa_tree_spaces(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        return response_ok(
-            await service.list_visible_spaces(
-                discovery_scope="public_and_department"
-            )
-        )
+        return response_ok(await service.list_visible_spaces(discovery_scope="public_and_department"))
     finally:
         await bisheng_client.aclose()
 
@@ -1128,8 +1099,8 @@ async def list_qa_tree_spaces(
 async def list_qa_tree_children(
     space_id: int,
     request: Request,
-    parent_id: Optional[int] = Query(default=None),
-    cursor: Optional[str] = Query(default=None),
+    parent_id: int | None = Query(default=None),
+    cursor: str | None = Query(default=None),
     page_size: int = Query(default=10, ge=1, le=100),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
@@ -1261,9 +1232,7 @@ async def search_qa_files_by_name(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        visible_spaces = await service.list_visible_spaces(
-            discovery_scope="public_and_department"
-        )
+        visible_spaces = await service.list_visible_spaces(discovery_scope="public_and_department")
         space_ids = [space.id for space in visible_spaces.data]
         return response_ok(
             await service.search_qa_files_by_name(
@@ -1446,16 +1415,10 @@ async def get_share_link_meta(
     request: Request,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
-    portal_config_service: PortalConfigService = Depends(
-        get_portal_config_service
-    ),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     session = await get_portal_session(auth_service, request)
-    active_client = (
-        auth_service.create_bisheng_client(session)
-        if session is not None
-        else bisheng_client
-    )
+    active_client = auth_service.create_bisheng_client(session) if session is not None else bisheng_client
     try:
         service = KnowledgeService(
             bisheng_client=active_client,
@@ -1483,16 +1446,10 @@ async def access_share_link(
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
-    share_access_store: PortalShareAccessSessionStore = Depends(
-        get_portal_share_access_session_store
-    ),
+    share_access_store: PortalShareAccessSessionStore = Depends(get_portal_share_access_session_store),
 ):
     session = await get_portal_session(auth_service, request)
-    metadata_client = (
-        auth_service.create_bisheng_client(session)
-        if session is not None
-        else bisheng_client
-    )
+    metadata_client = auth_service.create_bisheng_client(session) if session is not None else bisheng_client
     metadata_service = KnowledgeService(
         bisheng_client=metadata_client,
         portal_config_service=portal_config_service,
@@ -1526,12 +1483,7 @@ async def access_share_link(
         now = time.time()
         grant_expires_at = float(access.download_grant_expires_at or 0)
         download_grant = access.download_grant
-        if (
-            session is None
-            or not access.allow_download
-            or not download_grant
-            or grant_expires_at <= now
-        ):
+        if session is None or not access.allow_download or not download_grant or grant_expires_at <= now:
             download_grant = ""
         expires_at = now + SHARE_ACCESS_TTL_SECONDS
         if download_grant:
@@ -1578,10 +1530,10 @@ async def access_share_link(
 async def list_space_files(
     space_id: int,
     request: Request,
-    file_ext: Optional[str] = None,
-    document_type: Optional[str] = None,
-    file_subcategory_code: Optional[str] = None,
-    tag: Optional[str] = None,
+    file_ext: str | None = None,
+    document_type: str | None = None,
+    file_subcategory_code: str | None = None,
+    tag: str | None = None,
     page: int = 1,
     page_size: int = 20,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
@@ -1695,13 +1647,11 @@ async def get_file_detail(
     space_id: int,
     file_id: int,
     request: Request,
-    share_token: Optional[str] = None,
+    share_token: str | None = None,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
-    share_access_store: PortalShareAccessSessionStore = Depends(
-        get_portal_share_access_session_store
-    ),
+    share_access_store: PortalShareAccessSessionStore = Depends(get_portal_share_access_session_store),
 ):
     share_session = None
     if share_token:
@@ -1716,9 +1666,7 @@ async def get_file_detail(
         request, auth_service, bisheng_client, portal_config_service
     )
     try:
-        detail = await service.get_file_detail(
-            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
-        )
+        detail = await service.get_file_detail(space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids)
         if detail is not None and share_session is not None:
             portal_session = await get_portal_session(auth_service, request)
             detail.can_download = bool(
@@ -1728,8 +1676,7 @@ async def get_file_detail(
                     or (
                         share_session.allow_download
                         and share_session.download_grant
-                        and share_session.portal_session_id
-                        == getattr(portal_session, "session_id", "")
+                        and share_session.portal_session_id == getattr(portal_session, "session_id", "")
                     )
                 )
             )
@@ -1746,15 +1693,13 @@ async def get_file_preview(
     space_id: int,
     file_id: int,
     request: Request,
-    share_token: Optional[str] = None,
-    entry_point: Optional[PortalPreviewEntryPoint] = Query(default=None),
-    recommendation_scene: Optional[PortalRecommendationScene] = Query(default=None),
+    share_token: str | None = None,
+    entry_point: PortalPreviewEntryPoint | None = Query(default=None),
+    recommendation_scene: PortalRecommendationScene | None = Query(default=None),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
-    share_access_store: PortalShareAccessSessionStore = Depends(
-        get_portal_share_access_session_store
-    ),
+    share_access_store: PortalShareAccessSessionStore = Depends(get_portal_share_access_session_store),
 ):
     await _require_preview_session(auth_service, request)
     if share_token:
@@ -1769,9 +1714,7 @@ async def get_file_preview(
         request, auth_service, bisheng_client, portal_config_service
     )
     try:
-        preview = await service.get_file_preview(
-            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
-        )
+        preview = await service.get_file_preview(space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids)
         if preview is not None:
             await PortalTelemetryService(service._bisheng).record_event(
                 event_type="portal_document_read",
@@ -1794,10 +1737,7 @@ async def get_file_preview(
             query = f"source_kind={preview.source_kind}"
             if share_token:
                 query = f"{query}&share_token={quote(share_token)}"
-            preview.viewer_url = (
-                f"/api/v1/knowledge/space/{space_id}/files/{file_id}/preview/content"
-                f"?{query}"
-            )
+            preview.viewer_url = f"/api/v1/knowledge/space/{space_id}/files/{file_id}/preview/content?{query}"
         return response_ok(preview)
     except BishengBusinessError as err:
         _raise_bisheng_business_error(err)
@@ -1811,14 +1751,12 @@ async def get_file_preview_content(
     space_id: int,
     file_id: int,
     request: Request,
-    source_kind: Optional[FilePreviewSourceKind] = Query(default=None),
-    share_token: Optional[str] = None,
+    source_kind: FilePreviewSourceKind | None = Query(default=None),
+    share_token: str | None = None,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
-    share_access_store: PortalShareAccessSessionStore = Depends(
-        get_portal_share_access_session_store
-    ),
+    share_access_store: PortalShareAccessSessionStore = Depends(get_portal_share_access_session_store),
 ):
     await _require_preview_session(auth_service, request)
     if share_token:
@@ -1900,12 +1838,10 @@ async def download_portal_pdf(
     file_id: int,
     request: Request,
     entry_point: str = Query(default="other", max_length=64),
-    share_token: Optional[str] = None,
+    share_token: str | None = None,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
-    share_access_store: PortalShareAccessSessionStore = Depends(
-        get_portal_share_access_session_store
-    ),
+    share_access_store: PortalShareAccessSessionStore = Depends(get_portal_share_access_session_store),
 ):
     try:
         portal_session = await require_portal_session(auth_service, request)
@@ -1944,11 +1880,7 @@ async def download_portal_pdf(
         content_type = upstream.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         if not (200 <= upstream.status_code < 300) or content_type != "application/pdf":
             message = await _read_download_error_message(upstream)
-            status_code = (
-                upstream.status_code
-                if upstream.status_code in _DOWNLOAD_ERROR_STATUSES
-                else 500
-            )
+            status_code = upstream.status_code if upstream.status_code in _DOWNLOAD_ERROR_STATUSES else 500
             if status_code == 500:
                 # 上游 500 错误体不透传，避免内部异常细节暴露给浏览器。
                 message = _DOWNLOAD_ERROR_FALLBACKS[500]
@@ -2018,13 +1950,11 @@ async def get_file_chunks(
     space_id: int,
     file_id: int,
     request: Request,
-    share_token: Optional[str] = None,
+    share_token: str | None = None,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
-    share_access_store: PortalShareAccessSessionStore = Depends(
-        get_portal_share_access_session_store
-    ),
+    share_access_store: PortalShareAccessSessionStore = Depends(get_portal_share_access_session_store),
 ):
     await _require_preview_session(auth_service, request)
     if share_token:
@@ -2039,9 +1969,7 @@ async def get_file_chunks(
         request, auth_service, bisheng_client, portal_config_service
     )
     try:
-        chunks = await service.get_file_chunks(
-            space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids
-        )
+        chunks = await service.get_file_chunks(space_id=space_id, file_id=file_id, extra_space_ids=extra_space_ids)
         return response_ok(chunks)
     except BishengBusinessError as err:
         _raise_bisheng_business_error(err)
@@ -2058,9 +1986,7 @@ async def chat_document_file(
     request: Request,
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
-    portal_config_service: PortalConfigService = Depends(
-        get_portal_config_service
-    ),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
 ):
     portal_session = await get_portal_session(auth_service, request)
     if portal_session is None:
@@ -2069,9 +1995,7 @@ async def chat_document_file(
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
-        public_spaces = await public_service.list_visible_spaces(
-            discovery_scope="public"
-        )
+        public_spaces = await public_service.list_visible_spaces(discovery_scope="public")
         if space_id not in {space.id for space in public_spaces.data}:
             raise HTTPException(status_code=401, detail="请登录后进行文档问答")
     service, _, client_to_close = await _scoped_service_and_extra_ids(

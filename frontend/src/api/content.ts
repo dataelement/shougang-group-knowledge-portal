@@ -974,6 +974,7 @@ export async function browseSearchFiles(params: {
   publicOnly?: boolean;
   sort?: string;
   cursor?: string | null;
+  limit?: number;
 }): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
   const query = new URLSearchParams();
   if (params.tag) query.set('tag', params.tag);
@@ -985,6 +986,7 @@ export async function browseSearchFiles(params: {
   if (params.publicOnly) query.set('public_only', 'true');
   if (params.sort) query.set('sort', params.sort);
   if (params.cursor) query.set('cursor', params.cursor);
+  if (params.limit) query.set('limit', String(params.limit));
   params.spaceIds?.forEach((id) => query.append('space_ids', String(id)));
   const suffix = query.toString();
   const data = await request<CursorKnowledgeFileDataDto>(

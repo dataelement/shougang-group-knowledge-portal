@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Bot,
@@ -30,7 +30,12 @@ import {
 } from '../components/PreviewWatermark';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
 import {
+  resolveActiveQaScope,
+  type QaKnowledgePickerMode,
+} from '../components/qaKnowledgeScopeMode';
+import {
   ApiRequestError,
+  browseSearchFiles,
   fetchQaKnowledgeFolderStats,
   fetchQaKnowledgeTreeChildren,
   fetchQaKnowledgeTreeSpaces,
@@ -52,6 +57,7 @@ import { useAuth } from '../hooks/useAuth';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { extractReferencedCitations, renderChatMarkdown } from '../utils/chatMessage';
 import { clearHomeQaDraft, readHomeQaDraft } from '../utils/homeQaDraft';
+import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import { QA_KB_HINT_TEXT, dismissQaKbHint, shouldShowQaKbHint } from '../utils/qaKbHint';
 import composerModelIcon from '../assets/composer-model.svg';
 import composerKnowledgeIcon from '../assets/composer-knowledge.svg';
@@ -391,7 +397,22 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [availableSpaces, setAvailableSpaces] = useState<KnowledgeSpace[]>([]);
-  const [selectedKnowledgeScope, setSelectedKnowledgeScope] = useState<QaKnowledgeScope>({ mode: 'none' });
+  const [knowledgePickerMode, setKnowledgePickerMode] = useState<QaKnowledgePickerMode>('knowledge');
+  const [knowledgeScopeDraft, setKnowledgeScopeDraft] = useState<QaKnowledgeScope>({ mode: 'none' });
+  const [categoryScopeDraft, setCategoryScopeDraft] = useState<QaKnowledgeScope>({ mode: 'none' });
+  const selectedKnowledgeScope = resolveActiveQaScope(
+    knowledgePickerMode,
+    knowledgeScopeDraft,
+    categoryScopeDraft,
+  );
+  const setSelectedKnowledgeScope = (next: QaKnowledgeScope) => {
+    if (knowledgePickerMode === 'category') setCategoryScopeDraft(next);
+    else setKnowledgeScopeDraft(next);
+  };
+  const documentTypeGroups = useMemo(
+    () => getRuntimeDocumentTypeGroups(portalConfig?.document_types),
+    [portalConfig?.document_types],
+  );
   const [loadingKnowledgeSpaces, setLoadingKnowledgeSpaces] = useState(false);
   const [knowledgeSpacesLoaded, setKnowledgeSpacesLoaded] = useState(false);
   const [templateCategories, setTemplateCategories] = useState<QATemplateCategoryConfig[]>([]);
@@ -483,8 +504,21 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const autosend = params.get('autosend') === '1';
 
     const draftAnswerMode: AnswerMode = draft?.answerMode ?? 'normal';
-    const draftScope: QaKnowledgeScope = draft?.scope ?? { mode: 'none' };
-    const scopeIsExplicit = draftScope.mode !== 'none';
+    const draftScopeMode: QaKnowledgePickerMode = draft?.scopeMode === 'category' ? 'category' : 'knowledge';
+    const draftKnowledgeScope: QaKnowledgeScope = draft?.knowledgeScope
+      ?? (draftScopeMode === 'knowledge' ? (draft?.scope ?? { mode: 'none' }) : { mode: 'none' });
+    const draftCategoryScope: QaKnowledgeScope = draft?.categoryScope
+      ?? (draftScopeMode === 'category' ? (draft?.scope ?? { mode: 'none' }) : { mode: 'none' });
+    const draftScope = resolveActiveQaScope(draftScopeMode, draftKnowledgeScope, draftCategoryScope);
+    const scopeIsExplicit = draftScope.mode !== 'none'
+      && (draftScope.mode !== 'files' || draftScope.fileRefs.length > 0 || draftScope.folderRefs.length > 0)
+      && (draftScope.mode !== 'knowledge_space' || draftScope.knowledgeSpaceIds.length > 0);
+
+    const applyDraftScope = () => {
+      setKnowledgePickerMode(draftScopeMode);
+      setKnowledgeScopeDraft(draftKnowledgeScope);
+      setCategoryScopeDraft(draftCategoryScope);
+    };
 
     const stripParams = () => {
       params.delete('q');
@@ -499,7 +533,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       setInput(q);
       if (draft) {
         setSessions((prev) => prev.map((ss) => (ss.id === activeId ? { ...ss, answerMode: draftAnswerMode } : ss)));
-        if (scopeIsExplicit) setSelectedKnowledgeScope(draftScope);
+        if (scopeIsExplicit) applyDraftScope();
         if (draftAttachments.length) setAttachedFiles(draftAttachments);
         clearHomeQaDraft();
       }
@@ -518,7 +552,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     homeQaAutoSentRef.current = true;
     // 让当前会话的模型档位与草稿一致(界面标签、后续消息都用它)
     setSessions((prev) => prev.map((ss) => (ss.id === activeId ? { ...ss, answerMode: draftAnswerMode } : ss)));
-    if (scopeIsExplicit) setSelectedKnowledgeScope(draftScope);
+    if (scopeIsExplicit) applyDraftScope();
     clearHomeQaDraft();
     stripParams();
     if (scopeIsExplicit) {
@@ -626,6 +660,9 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     knowledgeSpacesRequestRef.current += 1;
     setAvailableSpaces([]);
     setSelectedKnowledgeScope({ mode: 'none' });
+    setKnowledgePickerMode('knowledge');
+    setKnowledgeScopeDraft({ mode: 'none' });
+    setCategoryScopeDraft({ mode: 'none' });
     setLoadingKnowledgeSpaces(false);
     setKnowledgeSpacesLoaded(false);
     setKnowledgePickerOpen(false);
@@ -697,7 +734,9 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       const { data: spaces } = await fetchQaKnowledgeTreeSpaces();
       if (knowledgeSpacesRequestRef.current !== requestId) return;
       setAvailableSpaces(spaces);
-      setSelectedKnowledgeScope({ mode: 'none' });
+      setKnowledgePickerMode('knowledge');
+      setKnowledgeScopeDraft({ mode: 'none' });
+      setCategoryScopeDraft({ mode: 'none' });
       setKnowledgeSpacesLoaded(true);
       if (!spaces.length) {
         setComposerTip(user?.account ? '当前账号暂无可用知识库。' : '当前暂无可用公共知识库。');
@@ -1333,6 +1372,10 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                   scope={selectedKnowledgeScope}
                   loading={loadingKnowledgeSpaces}
                   onChange={setSelectedKnowledgeScope}
+                  pickerMode={knowledgePickerMode}
+                  onPickerModeChange={setKnowledgePickerMode}
+                  documentTypeGroups={documentTypeGroups}
+                  onBrowseCategoryFiles={(params) => browseSearchFiles(params)}
                   onLoadChildren={fetchQaKnowledgeTreeChildren}
                   onLoadFolderStats={fetchQaKnowledgeFolderStats}
                   onSearchFiles={searchQaKnowledgeFiles}
@@ -1435,6 +1478,10 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                     scope={selectedKnowledgeScope}
                     loading={loadingKnowledgeSpaces}
                     onChange={setSelectedKnowledgeScope}
+                    pickerMode={knowledgePickerMode}
+                    onPickerModeChange={setKnowledgePickerMode}
+                    documentTypeGroups={documentTypeGroups}
+                    onBrowseCategoryFiles={(params) => browseSearchFiles(params)}
                     onLoadChildren={fetchQaKnowledgeTreeChildren}
                     onLoadFolderStats={fetchQaKnowledgeFolderStats}
                     onSearchFiles={searchQaKnowledgeFiles}
