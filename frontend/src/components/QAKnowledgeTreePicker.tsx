@@ -20,6 +20,9 @@ import type {
   QaKnowledgeScope,
   QaKnowledgeTreeNode,
 } from '../api/content';
+import type { RuntimeDocumentTypeGroupOption } from '../utils/documentTypes';
+import QAKnowledgeCategoryTree from './QAKnowledgeCategoryTree';
+import type { QaKnowledgePickerMode } from './qaKnowledgeScopeMode';
 import { buildFilesScope, fileRefKey, folderRefKey } from './qaKnowledgeScopeSelection';
 import s from './QAKnowledgeTreePicker.module.css';
 
@@ -57,6 +60,10 @@ export default function QAKnowledgeTreePicker({
   onLoadChildren,
   onLoadFolderStats,
   onSearchFiles,
+  onBrowseCategoryFiles,
+  documentTypeGroups = [],
+  pickerMode = 'knowledge',
+  onPickerModeChange,
   onTip,
   onClose,
   maxHeight,
@@ -69,6 +76,15 @@ export default function QAKnowledgeTreePicker({
     => Promise<{ data: QaKnowledgeTreeNode[]; hasMore: boolean; nextCursor: string | null }>;
   onLoadFolderStats: (spaceId: number, folderIds: number[]) => Promise<QaKnowledgeFolderStats[]>;
   onSearchFiles: (q: string, page?: number, pageSize?: number) => Promise<{ data: FileItem[]; total: number }>;
+  onBrowseCategoryFiles?: (params: {
+    documentType?: string;
+    fileSubcategoryCode?: string;
+    cursor?: string | null;
+    limit?: number;
+  }) => Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }>;
+  documentTypeGroups?: RuntimeDocumentTypeGroupOption[];
+  pickerMode?: QaKnowledgePickerMode;
+  onPickerModeChange?: (mode: QaKnowledgePickerMode) => void;
   onTip?: (message: string) => void;
   onClose?: () => void;
   /** 覆盖面板最大高度(用于在受限容器内定位,如首页 banner)。 */
@@ -503,7 +519,7 @@ export default function QAKnowledgeTreePicker({
   return (
     <div className={s.panel} style={maxHeight ? { maxHeight } : undefined}>
       <div className={s.header}>
-        <strong className={s.headerTitle}>知识库范围</strong>
+        <strong className={s.headerTitle}>知识范围</strong>
         <button
           type="button"
           onClick={() => onClose?.()}
@@ -513,6 +529,35 @@ export default function QAKnowledgeTreePicker({
           <X size={18} />
         </button>
       </div>
+
+      {onPickerModeChange ? (
+        <div className={s.modeTabs} role="tablist" aria-label="知识范围模式">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pickerMode === 'knowledge'}
+            className={`${s.modeTab} ${pickerMode === 'knowledge' ? s.modeTabActive : ''}`}
+            onClick={() => {
+              setSearchQuery('');
+              onPickerModeChange('knowledge');
+            }}
+          >
+            按知识库
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pickerMode === 'category'}
+            className={`${s.modeTab} ${pickerMode === 'category' ? s.modeTabActive : ''}`}
+            onClick={() => {
+              setSearchQuery('');
+              onPickerModeChange('category');
+            }}
+          >
+            按文件分类
+          </button>
+        </div>
+      ) : null}
 
       {inlineTip ? <div className={s.inlineTip}>{inlineTip}</div> : null}
 
@@ -527,6 +572,94 @@ export default function QAKnowledgeTreePicker({
 
       <div className={s.searchDivider} />
 
+      {pickerMode === 'category' ? (
+        <>
+          <div className={s.selectedBar}>
+            <span className={s.selectedBarLeft}>
+              <i className={s.selectedBarMark} />
+              <span className={s.selectedText}>
+                已选择 <b>{getScopeFileCount(scope)}</b> 个文件
+              </span>
+              {scope.mode !== 'none' ? (
+                <button
+                  type="button"
+                  className={s.clearButton}
+                  onClick={() => onChange({ mode: 'none' })}
+                  title="清空已选"
+                >
+                  清空选择
+                </button>
+              ) : null}
+            </span>
+            <span className={s.selectedHint}>文件最多20个</span>
+          </div>
+          <div className={s.spaceList} ref={scrollRootRef}>
+            {searchMode ? (
+              <>
+                {searchLoading ? <div className={s.stateLine}><Loader2 size={14} className={s.spin} /> 搜索中</div> : null}
+                {searchError ? <div className={s.stateLine}>{searchError}</div> : null}
+                {!searchLoading && !searchError && searchGroups.length === 0 ? <div className={s.stateLine}>搜索无结果</div> : null}
+                {!searchLoading && !searchError ? searchGroups.map((group) => (
+                  <section key={`search-cat-${group.spaceId}`} className={`${s.spaceBlock} ${s.searchSpaceBlock}`}>
+                    <div className={s.searchSpaceHeader}>
+                      <Database size={16} className={s.spaceIcon} />
+                      <span className={s.spaceContent}>
+                        <strong>{group.spaceName}</strong>
+                        <span>{group.files.length} 个匹配文件</span>
+                      </span>
+                    </div>
+                    <div className={s.searchFileList}>
+                      {group.files.map((file) => {
+                        const selected = isFileSelected(file.spaceId, file.id);
+                        const selectable = !file.isDepartmentFile
+                          || file.contentAccess === 'allowed';
+                        return (
+                          <button
+                            key={`${file.spaceId}-${file.id}`}
+                            type="button"
+                            className={`${s.searchFileRow} ${selected ? s.searchFileRowActive : ''}`}
+                            disabled={!selectable}
+                            title={selectable ? '' : '申请后可用于问答'}
+                            onClick={() => {
+                              if (!selectable) {
+                                notify('申请后可用于问答');
+                                return;
+                              }
+                              toggleFileRef({ spaceId: file.spaceId, id: file.id });
+                            }}
+                          >
+                            <span className={`${s.checkBox} ${selected ? s.checkBoxActive : ''}`}>
+                              {selected ? <Check size={13} /> : null}
+                            </span>
+                            <FileText size={15} className={s.nodeIcon} />
+                            <span className={s.searchMeta}>
+                              <strong>{file.title}</strong>
+                              {!selectable ? <span>申请后可用于问答</span> : null}
+                              {file.fileEncoding ? <span>文件编码：{file.fileEncoding}</span> : null}
+                              <span>所在目录：{file.folderPath || file.sourcePath || '根目录'}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )) : null}
+              </>
+            ) : onBrowseCategoryFiles ? (
+              <QAKnowledgeCategoryTree
+                groups={documentTypeGroups}
+                scope={scope}
+                onChange={onChange}
+                onBrowseFiles={onBrowseCategoryFiles}
+                onTip={notify}
+              />
+            ) : (
+              <div className={s.stateLine}>分类文件加载未配置</div>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
       <div className={s.selectedBar}>
         <span className={s.selectedBarLeft}>
           <i className={s.selectedBarMark} />
@@ -684,6 +817,8 @@ export default function QAKnowledgeTreePicker({
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
