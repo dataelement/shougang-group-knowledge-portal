@@ -89,7 +89,11 @@ export function applyExpertListOptions(
       || normalizeFilterValue(expert.major) === normalizeFilterValue(options.major))
   ));
 
-  if (!options.sortBy) return filtered;
+  // 当使用服务端排序参数时，不再进行客户端排序，避免覆盖服务端结果。
+  const hasServerSort = options.answerDesc != null
+    || options.adoptionDesc != null
+    || options.voteDesc != null;
+  if (!options.sortBy || hasServerSort) return filtered;
 
   const direction = options.sortOrder === 'asc' ? 1 : -1;
   return [...filtered].sort((left, right) => {

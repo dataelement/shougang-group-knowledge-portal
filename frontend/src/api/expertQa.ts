@@ -274,6 +274,12 @@ export interface ExpertListOptions {
   major?: string;
   sortBy?: ExpertSortField;
   sortOrder?: ExpertSortOrder;
+  /** 回答数排序：true 倒序，false 正序，未设置/null 不排序 */
+  answerDesc?: boolean | null;
+  /** 采纳数排序：true 倒序，false 正序，未设置/null 不排序 */
+  adoptionDesc?: boolean | null;
+  /** 点赞数排序：true 倒序，false 正序，未设置/null 不排序 */
+  voteDesc?: boolean | null;
 }
 
 export interface ExpertDepartmentFilterOption {
@@ -643,6 +649,9 @@ export function buildExpertProfilesPath(
     major: options.major,
     sort_by: options.sortBy,
     sort_order: options.sortOrder,
+    answer_desc: options.answerDesc,
+    adoption_desc: options.adoptionDesc,
+    vote_desc: options.voteDesc,
   })}`;
 }
 

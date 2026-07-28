@@ -15,6 +15,12 @@ import { getExpertAvatarColor, getExpertInitial } from '../utils/expertInvite';
 import s from './ExpertInvitePicker.module.css';
 
 const EXPERT_PAGE_SIZE = 20;
+const SORT_ICON_BASE = '/assets/channel';
+
+function getSortIconSrc(active: boolean, desc: boolean | null) {
+  const direction = active && desc === true ? 'down' : 'up';
+  return `${SORT_ICON_BASE}/sort-amount-${direction}${active ? '-blue' : ''}.svg`;
+}
 
 interface ExpertPickerFilters {
   jobFamily: string;
@@ -57,6 +63,11 @@ export default function ExpertInvitePicker({
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<ExpertPickerFilters>(EMPTY_FILTERS);
+  const [sorts, setSorts] = useState({
+    answerDesc: null as boolean | null,
+    adoptionDesc: null as boolean | null,
+    voteDesc: null as boolean | null,
+  });
   const [filterOptions, setFilterOptions] = useState<ExpertFilterOptions>(
     EMPTY_FILTER_OPTIONS,
   );
@@ -66,6 +77,9 @@ export default function ExpertInvitePicker({
   const requestSequenceRef = useRef(0);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const hasActiveSort = sorts.answerDesc != null
+    || sorts.adoptionDesc != null
+    || sorts.voteDesc != null;
   const hasMoreExperts = experts.length < total;
 
   useEffect(() => {
@@ -109,6 +123,9 @@ export default function ExpertInvitePicker({
             ...filters,
             sortBy: 'expert_score',
             sortOrder: 'desc',
+            answerDesc: sorts.answerDesc,
+            adoptionDesc: sorts.adoptionDesc,
+            voteDesc: sorts.voteDesc,
           },
         );
         if (signal?.aborted || requestId !== requestSequenceRef.current) return;
@@ -124,7 +141,7 @@ export default function ExpertInvitePicker({
         if (requestId === requestSequenceRef.current) setLoading(false);
       }
     },
-    [filters, search],
+    [filters, search, sorts],
   );
 
   useEffect(() => {
@@ -165,6 +182,14 @@ export default function ExpertInvitePicker({
 
   function handleResetFilters() {
     setFilters(EMPTY_FILTERS);
+    setSorts({ answerDesc: null, adoptionDesc: null, voteDesc: null });
+  }
+
+  function handleSortToggle(key: 'answerDesc' | 'adoptionDesc' | 'voteDesc') {
+    setSorts((current) => {
+      const nextValue = current[key] === null ? true : current[key] === true ? false : null;
+      return { ...current, [key]: nextValue };
+    });
   }
 
   function handleListScroll() {
@@ -273,8 +298,47 @@ export default function ExpertInvitePicker({
         </label>
         <button
           type="button"
+          className={`${s.sortButton} ${sorts.answerDesc != null ? s.sortButtonActive : ''}`}
+          onClick={() => handleSortToggle('answerDesc')}
+        >
+          <span>回答</span>
+          <img
+            className={s.sortIcon}
+            src={getSortIconSrc(sorts.answerDesc != null, sorts.answerDesc)}
+            alt="回答数排序"
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
+          className={`${s.sortButton} ${sorts.adoptionDesc != null ? s.sortButtonActive : ''}`}
+          onClick={() => handleSortToggle('adoptionDesc')}
+        >
+          <span>采纳</span>
+          <img
+            className={s.sortIcon}
+            src={getSortIconSrc(sorts.adoptionDesc != null, sorts.adoptionDesc)}
+            alt="采纳数排序"
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
+          className={`${s.sortButton} ${sorts.voteDesc != null ? s.sortButtonActive : ''}`}
+          onClick={() => handleSortToggle('voteDesc')}
+        >
+          <span>获赞</span>
+          <img
+            className={s.sortIcon}
+            src={getSortIconSrc(sorts.voteDesc != null, sorts.voteDesc)}
+            alt="获赞数排序"
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
           className={s.resetFilters}
-          disabled={!activeFilterCount}
+          disabled={!activeFilterCount && !hasActiveSort}
           onClick={handleResetFilters}
         >
           <RotateCcw size={13} aria-hidden />
