@@ -637,17 +637,8 @@
   border-color: var(--neutral-200);
 }
 
-.tipsTitle {
-  font-size: 1.08rem;
-  font-weight: 800;
-  color: var(--neutral-900);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--neutral-100);
-}
-
 .tipsIcon {
-  color: var(--primary-600);
+  color: #d97706;
 }
 
 .tipList {

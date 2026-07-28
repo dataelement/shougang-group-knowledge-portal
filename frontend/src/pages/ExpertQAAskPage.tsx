@@ -791,7 +791,7 @@ export default function ExpertQAAskPage() {
           <aside className={s.right}>
             <div className={`${s.sideCard} ${s.tipsCard}`}>
               <div className={s.tipsHeader}>
-                <Lightbulb size={18} className={s.tipsIcon} />
+                <Lightbulb size={15} className={s.tipsIcon} />
                 <span>提问小贴士</span>
               </div>
               <div className={s.tipsSectionTitle}>
