@@ -88,6 +88,7 @@
 
 .field {
   margin-bottom: 22px;
+  position: relative;
 }
 
 .fieldLabel {
@@ -132,6 +133,51 @@
   outline: none;
   border-color: var(--primary-400);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.similarDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.15);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.similarDropdownEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  color: var(--neutral-500);
+  font-size: 0.85rem;
+}
+
+.similarDropdownItem {
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  color: var(--neutral-700);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  border-bottom: 1px solid var(--neutral-100);
+  line-height: 1.5;
+}
+
+.similarDropdownItem:last-of-type {
+  border-bottom: none;
+}
+
+.similarDropdownItem:hover,
+.similarDropdownItem:focus {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  outline: none;
 }
 
 .textarea {

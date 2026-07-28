@@ -15,7 +15,6 @@ import {
   Paperclip,
   Plus,
   Quote,
-  Search,
   Send,
   X,
 } from 'lucide-react';
@@ -36,7 +35,6 @@ import {
 } from '../api/expertQa';
 import s from './ExpertQAAskPage.module.css';
 import type { DomainConfig } from '../api/adminConfig';
-import { ASK_DRAFT } from '../data/expertQaMock';
 import askBanner from '../assets/ask-banner@2x.png';
 import { resolveQaImageUrl } from '../utils/qaImageUrl';
 import {
@@ -599,6 +597,31 @@ export default function ExpertQAAskPage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
+              {title.trim().length >= 2 ? (
+                <div className={s.similarDropdown}>
+                  {similarLoading ? (
+                    <div className={s.similarDropdownEmpty}>
+                      <Loader2 size={14} className={s.spin} />
+                      <span>正在匹配</span>
+                    </div>
+                  ) : similarQuestions.length > 0 ? (
+                    similarQuestions.map((item) => (
+                      <div
+                        key={item.id}
+                        className={s.similarDropdownItem}
+                        onClick={() => navigate(`/expert-qa/${item.id}`)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') navigate(`/expert-qa/${item.id}`);
+                        }}
+                      >
+                        {item.title}
+                      </div>
+                    ))
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {/* 业务领域 */}
@@ -882,33 +905,6 @@ export default function ExpertQAAskPage() {
                   <span>表意不明确，别人无从回答的。</span>
                 </li>
               </ul>
-            </div>
-            <div className={s.sideCard}>
-              <div className={s.sideTitle}>
-                <Search size={15} className={s.sideTitleIco} /> 类似问题
-              </div>
-              {similarLoading ? (
-                <div className={s.similarEmpty}>
-                  <Loader2 size={15} className={s.spin} />
-                  <span>正在匹配</span>
-                </div>
-              ) : similarQuestions.length > 0 ? (
-                similarQuestions.map((item) => (
-                  <Link key={item.id} to={`/expert-qa/${item.id}`} className={s.similarItem}>
-                    <span>{item.title}</span>
-                    <small>
-                      {item.answer_count ?? 0} 回答 · {item.view_count ?? 0} 浏览
-                    </small>
-                  </Link>
-                ))
-              ) : (
-                // 修复：fallback 也用 Link，与真实数据行为一致
-                ASK_DRAFT.similar.map((item) => (
-                  <Link key={item} to="/expert-qa" className={s.similarItem}>
-                    <span>{item}</span>
-                  </Link>
-                ))
-              )}
             </div>
           </aside>
         </div>
