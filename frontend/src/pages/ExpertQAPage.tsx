@@ -626,7 +626,7 @@ export default function ExpertQAPage() {
                   <QuestionCard
                     key={q.id}
                     q={q}
-                    showOwnerActions={isQuestionOwner(q, user)}
+                    showOwnerActions={isQuestionOwner(q, user) && q.statusMeta.text !== 'solved'}
                     onOpen={(id) => navigate(`/expert-qa/${id}`)}
                     onEdit={(item) => handleEditQuestion(item)}
                     onDelete={(item) => handleDeleteQuestion(item)}
