@@ -194,6 +194,7 @@ export default function ExpertQAAskPage() {
   const isEditMode = Boolean(editQuestionId);
 
   const [title, setTitle] = useState('');
+  const [titleFocused, setTitleFocused] = useState(false);
   const [body, setBody] = useState('');
   const [selectedDomain, setSelectedDomain] = useState<string>('');
   const [domainList, setDomainList] = useState<DomainConfig[]>([]);
@@ -596,8 +597,12 @@ export default function ExpertQAAskPage() {
                 placeholder="请输入问题"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                onFocus={() => setTitleFocused(true)}
+                onBlur={() => {
+                  setTimeout(() => setTitleFocused(false), 150);
+                }}
               />
-              {title.trim().length >= 2 ? (
+              {titleFocused && title.trim().length >= 2 ? (
                 <div className={s.similarDropdown}>
                   {similarLoading ? (
                     <div className={s.similarDropdownEmpty}>
