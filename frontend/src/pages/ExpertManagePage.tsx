@@ -1317,7 +1317,7 @@ export default function ExpertManagePage() {
                 <col style={{ width: columnWidths.adoptionCount }} />
                 <col style={{ width: columnWidths.voteCount }} />
                 <col style={{ width: columnWidths.createdAt }} />
-                <col style={{ width: columnWidths.actions }} />
+                {isAdmin && <col style={{ width: columnWidths.actions }} />}
               </colgroup>
               <thead>
                 <tr>
@@ -1402,24 +1402,26 @@ export default function ExpertManagePage() {
                     onSort={handleSort}
                     {...sortableResizeProps}
                   />
-                  <ResizableHeader
-                    label="操作"
-                    columnKey="actions"
-                    width={columnWidths.actions}
-                    {...resizeProps}
-                  />
+                  {isAdmin && (
+                    <ResizableHeader
+                      label="操作"
+                      columnKey="actions"
+                      width={columnWidths.actions}
+                      {...resizeProps}
+                    />
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={11}>
+                    <td colSpan={isAdmin ? 11 : 10}>
                       <div className={s.stateRow}>专家数据加载中…</div>
                     </td>
                   </tr>
                 ) : experts.length === 0 ? (
                   <tr>
-                    <td colSpan={11}>
+                    <td colSpan={isAdmin ? 11 : 10}>
                       <div className={s.stateRow}>
                         {hasQueryConditions ? '没有符合条件的专家' : '暂无专家数据'}
                       </div>
@@ -1483,33 +1485,30 @@ export default function ExpertManagePage() {
                       </td>
 
                       {/* 操作 */}
-                      <td className={s.actionCell}>
-                        <div className={s.actionBtns}>
-                          {isAdmin && (
-                            <>
-                              <button
-                                type="button"
-                                className={`${s.actionIconBtn} ${s.btnEdit}`}
-                                onClick={() => setModal({ type: 'edit', expert })}
-                                aria-label={`编辑专家 ${expert.expert_name}`}
-                                title="编辑"
-                              >
-                                <Pencil size={16} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                className={`${s.actionIconBtn} ${s.btnDelete}`}
-                                onClick={() => setModal({ type: 'delete', expert })}
-                                aria-label={`删除专家 ${expert.expert_name}`}
-                                title="删除"
-                              >
-                                <Trash2 size={16} aria-hidden />
-                              </button>
-                            </>
-                          )}
-
-                        </div>
-                      </td>
+                      {isAdmin && (
+                        <td className={s.actionCell}>
+                          <div className={s.actionBtns}>
+                            <button
+                              type="button"
+                              className={`${s.actionIconBtn} ${s.btnEdit}`}
+                              onClick={() => setModal({ type: 'edit', expert })}
+                              aria-label={`编辑专家 ${expert.expert_name}`}
+                              title="编辑"
+                            >
+                              <Pencil size={16} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${s.actionIconBtn} ${s.btnDelete}`}
+                              onClick={() => setModal({ type: 'delete', expert })}
+                              aria-label={`删除专家 ${expert.expert_name}`}
+                              title="删除"
+                            >
+                              <Trash2 size={16} aria-hidden />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}

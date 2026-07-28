@@ -1208,14 +1208,15 @@
   line-height: 1.2;
 }
 
-/* 首页知识推荐/行业情报 摘要 hover 浮窗（按蓝湖设计稿：640 宽对话框，高度按内容自适应） */
+/* 首页知识推荐/行业情报 摘要 hover 浮窗
+   宽度跟随触发摘要行的可视宽度，边框与文字内容保持 4px 间距 */
 .summaryTooltip {
   box-sizing: border-box;
   position: relative;
-  width: 640px;
-  min-height: 60px;
-  max-width: 640px;
-  padding: 16px 20px;
+  width: auto;
+  min-height: 0;
+  max-width: none !important;
+  padding: 4px;
   color: #273142;
   font-family: PingFangSC, 'PingFang SC', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
@@ -1239,7 +1240,7 @@
 .summaryTooltip::after {
   content: '';
   position: absolute;
-  left: 60px;
+  left: 8px;
   width: 0;
   height: 0;
   border-left: 9px solid transparent;

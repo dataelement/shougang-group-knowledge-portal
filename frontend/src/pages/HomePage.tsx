@@ -336,6 +336,38 @@ function formatCount(value: number): string {
   return String(value);
 }
 
+/** 摘要 hover 浮窗：宽度与触发摘要行的可视宽度保持一致 */
+function SummaryWithTooltip({ summary }: { summary: string }) {
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [triggerWidth, setTriggerWidth] = useState(0);
+
+  useEffect(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const measure = () => setTriggerWidth(el.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div ref={triggerRef} className={s.itemSummary}>{summary}</div>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        align="start"
+        className={s.summaryTooltip}
+        style={{ width: triggerWidth > 0 ? triggerWidth : undefined }}
+      >
+        {summary}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export default function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -1436,16 +1468,7 @@ export default function HomePage() {
                               {(() => {
                                 const displaySummary = cleanSummaryText(f.summary);
                                 if (enableSummaryTooltip && displaySummary) {
-                                  return (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div className={s.itemSummary}>{displaySummary}</div>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
-                                        {displaySummary}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  );
+                                  return <SummaryWithTooltip summary={displaySummary} />;
                                 }
                                 return <div className={s.itemSummary}>{displaySummary}</div>;
                               })()}
