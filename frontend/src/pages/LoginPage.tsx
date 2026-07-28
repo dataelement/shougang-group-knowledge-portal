@@ -376,7 +376,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className={s.visualFootnote}>© 2026 首钢集团 · 首钢股份知库知识门户平台</div>
+          <div className={s.visualFootnote}>© 2026 首钢集团 · 首钢股份知库平台</div>
         </aside>
 
         <section className={s.formSide}>

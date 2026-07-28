@@ -104,7 +104,7 @@ export default function BootstrapBishengPage() {
             <h1 className={s.visualTitle}>连接 Bisheng<br />恢复门户登录</h1>
             <p className={s.visualSub}>填写可用的 Bisheng 后端 API 地址与管理员账号，验证通过后门户将恢复正常登录流程。</p>
           </div>
-          <div className={s.visualFootnote}>© 2026 首钢集团 · 首钢股份知库知识门户平台</div>
+          <div className={s.visualFootnote}>© 2026 首钢集团 · 首钢股份知库平台</div>
         </aside>
 
         <section className={s.formSide}>
