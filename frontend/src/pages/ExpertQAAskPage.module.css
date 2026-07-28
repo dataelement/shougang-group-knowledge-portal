@@ -633,12 +633,21 @@
 }
 
 .tipsCard {
-  background: linear-gradient(180deg, #fffbeb, #fff);
-  border-color: #fde68a;
+  background: #fff;
+  border-color: var(--neutral-200);
+}
+
+.tipsTitle {
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: var(--neutral-900);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--neutral-100);
 }
 
 .tipsIcon {
-  color: #d97706;
+  color: var(--primary-600);
 }
 
 .tipList {
@@ -655,6 +664,65 @@
 
 .tipList li strong {
   color: var(--neutral-800);
+}
+
+.tipsHeader {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--neutral-900);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tipsIntro {
+  font-size: 0.85rem;
+  color: var(--neutral-600);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.tipsSectionTitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--neutral-900);
+  margin-top: 14px;
+  margin-bottom: 10px;
+}
+
+.tipsCheckList,
+.tipsAvoidList {
+  font-size: 0.85rem;
+  color: var(--neutral-600);
+  line-height: 1.7;
+  list-style: none;
+  padding-left: 0;
+}
+
+.tipsCheckList li,
+.tipsAvoidList li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tipsCheckList li strong,
+.tipsAvoidList li strong {
+  color: var(--neutral-800);
+}
+
+.tipsCheckIcon {
+  color: var(--green-500);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.tipsAvoidIcon {
+  color: var(--red-500);
+  flex-shrink: 0;
+  margin-top: 3px;
 }
 
 .recommendNote {

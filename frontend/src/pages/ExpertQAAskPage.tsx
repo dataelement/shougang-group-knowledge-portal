@@ -789,18 +789,69 @@ export default function ExpertQAAskPage() {
 
           {/* 侧边栏 */}
           <aside className={s.right}>
-            <div className={s.sideCard}>
-              <div className={s.sideTitle}>
-                <Lightbulb size={15} className={s.tipsIcon} /> 提问小贴士
+            <div className={`${s.sideCard} ${s.tipsCard}`}>
+              <div className={s.tipsHeader}>
+                <Lightbulb size={18} className={s.tipsIcon} />
+                <span>提问小贴士</span>
+              </div>
+              <div className={s.tipsSectionTitle}>
+                如何提问才能更快得到有帮助的答案？
+              </div>
+              <div className={s.tipsIntro}>
+                  提问应遵循真实、完整、明确、简洁的原则。
               </div>
               <ul className={s.tipList}>
                 <li>
-                  先描述<strong>现象</strong>与<strong>已做检查</strong>，再提出问题
+                  <strong>完整</strong>: 问句完整，以“？”结束，让别人看得懂；
                 </li>
-                <li>附上现场照片、趋势曲线、点检表</li>
-                <li>注明设备编号、钢种、规格</li>
-                <li>避免与其他用户重复提问，优先在右上角搜索</li>
-                <li>采纳最佳回答可帮助沉淀知识</li>
+                <li>
+                  <strong>明确</strong>: 有针对性的提问，描述不模糊，阐明要点；
+                </li>
+                <li>
+                  <strong>简洁</strong>: 不赘述，问题一句话，描述1～3句说清楚；
+                </li>
+              </ul>
+
+              <div className={s.tipsSectionTitle}>一个好提问需要包含如下信息：</div>
+              <ul className={s.tipsCheckList}>
+                <li>
+                  <Check size={14} className={s.tipsCheckIcon} />
+                  <span>
+                    <strong>问题是什么</strong>：说出你想得到的帮助，每次只问一件事，以“？”结束。
+                  </span>
+                </li>
+                <li>
+                  <Check size={14} className={s.tipsCheckIcon} />
+                  <span>
+                    <strong>具体情况</strong>： 目前“你”遇到的问题情况描述，你对遇到现状和问题的理解和观点。
+                  </span>
+                </li>
+                <li>
+                  <Check size={14} className={s.tipsCheckIcon} />
+                  <span>
+                    <strong>时间信息</strong>： 你的问题是什么时间出现的，持续多久，希望在什么时间被解决？
+                  </span>
+                </li>
+              </ul>
+
+              <div className={s.tipsSectionTitle}>请避免如下的提问：</div>
+              <ul className={s.tipsAvoidList}>
+                <li>
+                  <X size={14} className={s.tipsAvoidIcon} />
+                  <span>违反法律法规，政治敏感的：例如色情、暴力血腥、求盗版资源等违法内容。</span>
+                </li>
+                <li>
+                  <X size={14} className={s.tipsAvoidIcon} />
+                  <span>不友善行为：辱骂、人身攻击、地域攻击等引起其他用户不悦等内容。</span>
+                </li>
+                <li>
+                  <X size={14} className={s.tipsAvoidIcon} />
+                  <span>含有垃圾广告信息等内容。</span>
+                </li>
+                <li>
+                  <X size={14} className={s.tipsAvoidIcon} />
+                  <span>表意不明确，别人无从回答的。</span>
+                </li>
               </ul>
             </div>
             <div className={s.sideCard}>
