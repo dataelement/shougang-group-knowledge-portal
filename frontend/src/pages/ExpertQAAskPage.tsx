@@ -395,6 +395,35 @@ export default function ExpertQAAskPage() {
     selection.addRange(range);
   }
 
+  function toggleQuote() {
+    const editor = richTextEditorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    const ancestor = range.commonAncestorContainer;
+    const element = ancestor.nodeType === Node.ELEMENT_NODE
+      ? (ancestor as HTMLElement)
+      : ancestor.parentElement;
+    const existingQuote = element?.closest('blockquote');
+
+    if (existingQuote && editor.contains(existingQuote)) {
+      const paragraph = document.createElement('p');
+      while (existingQuote.firstChild) {
+        paragraph.appendChild(existingQuote.firstChild);
+      }
+      existingQuote.replaceWith(paragraph);
+      const newRange = document.createRange();
+      newRange.selectNodeContents(paragraph);
+      newRange.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+      return;
+    }
+
+    document.execCommand('formatBlock', false, 'blockquote');
+  }
+
   function handleEditorPaste(event: ClipboardEvent<HTMLDivElement>) {
     event.preventDefault();
     const plainText = event.clipboardData.getData('text/plain');
@@ -441,7 +470,7 @@ export default function ExpertQAAskPage() {
     if (key === 'bold') document.execCommand('bold');
     if (key === 'italic') document.execCommand('italic');
     if (key === 'list') document.execCommand('insertUnorderedList');
-    if (key === 'quote') document.execCommand('formatBlock', false, 'blockquote');
+    if (key === 'quote') toggleQuote();
     if (key === 'code') toggleBlockCode();
     syncEditorContent();
   }
