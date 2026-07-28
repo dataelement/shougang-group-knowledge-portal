@@ -11,12 +11,11 @@ from app.services.portal_auth_service import (
 )
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
-from app.services.portal_share_access_store import PortalShareAccessSessionStore
 from app.services.portal_rest_auth_service import PortalRestAuthService
+from app.services.portal_share_access_store import PortalShareAccessSessionStore
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.rest_auth_runtime_service import RestAuthRuntimeService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
-
 
 ADMIN_ROLES = {"管理员", "系统管理员", "admin"}
 ADMIN_ACCOUNTS = {"admin"}
@@ -84,7 +83,7 @@ async def _apply_remote_bisheng_runtime_config_if_needed(
         return
 
     await runtime_service.apply_persistent_config(
-        PortalBishengPersistentConfig.model_validate(remote_runtime),
+        PortalBishengPersistentConfig.model_validate(remote_runtime).with_env_base_url_override(),
     )
 
 

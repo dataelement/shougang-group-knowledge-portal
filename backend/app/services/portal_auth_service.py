@@ -2,14 +2,15 @@ import json
 import logging
 import secrets
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import isawaitable
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 import httpx
 from fastapi import Request
-from redis.exceptions import RedisError
 from fastapi.responses import Response
+from redis.exceptions import RedisError
 
 from app.clients.bisheng import BishengClient
 from app.schemas.auth import PortalUserView
@@ -429,7 +430,10 @@ class PortalAuthService:
         return self.get_auth_source(request) == "unified_auth"
 
     def create_bisheng_client(self, session: PortalSession) -> BishengClient:
-        return self._client_factory(session.base_url, session.timeout_seconds, session.access_token)
+        # Prefer live runtime base_url so PORTAL_BISHENG_BASE_URL / admin updates
+        # take effect without requiring every existing portal session to re-login.
+        base_url, timeout_seconds = self._runtime_service.get_connection_settings()
+        return self._client_factory(base_url, timeout_seconds, session.access_token)
 
     async def _login_to_bisheng(
         self,
