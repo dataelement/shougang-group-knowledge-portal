@@ -1,4 +1,5 @@
 .container {
+  width: 100%;
   max-width: var(--max-w);
   margin: 0 auto;
   padding: 24px;
@@ -27,6 +28,7 @@
 }
 
 .layout {
+  width: 100%;
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 20px;
@@ -44,6 +46,8 @@
 
 /* === Form card === */
 .formCard {
+  width: 100%;
+  min-width: 0;
   background: #fff;
   border: 1px solid var(--neutral-200);
   border-radius: 12px;
@@ -649,6 +653,7 @@
 
 /* === Right panel === */
 .right {
+  width: 320px;
   position: sticky;
   top: calc(var(--header-h) + 16px);
 }
