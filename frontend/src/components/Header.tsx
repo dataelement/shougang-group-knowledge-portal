@@ -8,6 +8,7 @@ import {
   LogIn,
   LogOut,
   Send,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -242,6 +243,19 @@ export default function Header() {
                     >
                       <LayoutDashboard size={15} />
                       知识管理后台
+                    </button>
+                  ) : null}
+                  {canOpenAdmin ? (
+                    <button
+                      type="button"
+                      className={s.userMenuItem}
+                      onClick={() => {
+                        closeMenu();
+                        navigate('/recycle');
+                      }}
+                    >
+                      <Trash2 size={15} />
+                      回收站
                     </button>
                   ) : null}
                   {showMyUploadsEntry ? (

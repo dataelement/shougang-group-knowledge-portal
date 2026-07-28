@@ -16,17 +16,17 @@ from app.services.bisheng_auth_state_store import (
 from app.services.bisheng_runtime_service import BishengRuntimeService
 from app.services.config_store import InMemoryConfigStore
 from app.services.error_messages import normalize_user_facing_message
+from app.services.portal_admin_config_store import RemotePortalAdminConfigStore
 from app.services.portal_auth_service import (
     InMemoryPortalSessionStore,
     PortalAuthService,
     RedisPortalSessionStore,
 )
-from app.services.portal_admin_config_store import RemotePortalAdminConfigStore
+from app.services.portal_bisheng_user_lookup import PortalBishengUserLookup
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
-from app.services.portal_share_access_store import build_portal_share_access_session_store
-from app.services.portal_bisheng_user_lookup import PortalBishengUserLookup
 from app.services.portal_rest_auth_service import PortalRestAuthService
+from app.services.portal_share_access_store import build_portal_share_access_session_store
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.rest_auth_runtime_service import RestAuthRuntimeService
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
@@ -39,11 +39,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
-    redis_client = (
-        redis_asyncio.from_url(settings.redis_url, decode_responses=True)
-        if settings.redis_url
-        else None
-    )
+    redis_client = redis_asyncio.from_url(settings.redis_url, decode_responses=True) if settings.redis_url else None
     if settings.app_env.lower() == "production" and redis_client is None:
         raise RuntimeError("生产环境必须配置 PORTAL_REDIS_URL 以共享门户登录会话和数据源登录态")
     if redis_client is not None:
@@ -64,16 +60,10 @@ async def lifespan(app: FastAPI):
         default_timeout_seconds=settings.bisheng_timeout_seconds,
         default_api_token=settings.bisheng_api_token,
         default_username=settings.bisheng_username,
-        default_password=(
-            settings.bisheng_password.get_secret_value() if settings.bisheng_password else None
-        ),
+        default_password=(settings.bisheng_password.get_secret_value() if settings.bisheng_password else None),
         default_asset_base_url=settings.bisheng_asset_base_url,
         store=InMemoryConfigStore(),
-        auth_state_store=(
-            RedisBishengAuthStateStore(redis_client)
-            if redis_client is not None
-            else None
-        ),
+        auth_state_store=(RedisBishengAuthStateStore(redis_client) if redis_client is not None else None),
     )
     await app.state.bisheng_runtime_service.initialize()
     app.state.portal_admin_config_store = RemotePortalAdminConfigStore(
@@ -85,7 +75,7 @@ async def lifespan(app: FastAPI):
         )
         if remote_runtime:
             await app.state.bisheng_runtime_service.apply_persistent_config(
-                PortalBishengPersistentConfig.model_validate(remote_runtime),
+                PortalBishengPersistentConfig.model_validate(remote_runtime).with_env_base_url_override(),
             )
     except Exception:
         logger.exception("BiSheng 远程门户运行时配置加载失败")

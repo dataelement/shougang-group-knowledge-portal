@@ -7,6 +7,7 @@ import DetailPage from './pages/DetailPage';
 import ShareDocumentPage from './pages/ShareDocumentPage';
 import AppsPage from './pages/AppsPage';
 import AdminPage from './pages/AdminPage';
+import RecyclePage from './pages/RecyclePage';
 import DomainsPage from './pages/DomainsPage';
 import LoginPage from './pages/LoginPage';
 import IamStartPage from './pages/IamStartPage';
@@ -114,6 +115,32 @@ function AdminRoute() {
   );
 }
 
+function RecycleRoute() {
+  const location = useLocation();
+  const { user } = useAuth();
+  const accessState = getAdminAccessState(user);
+
+  if (accessState === 'login') {
+    return (
+      <UnifiedAuthLoginRedirect returnTo={`${location.pathname}${location.search}`} />
+    );
+  }
+
+  if (accessState === 'forbidden') {
+    return (
+      <>
+        <Header />
+        <main style={{ padding: '96px 24px', textAlign: 'center' }}>
+          <h1>无权限</h1>
+          <p>仅管理员和系统管理员可以访问回收站。</p>
+        </main>
+      </>
+    );
+  }
+
+  return <RecyclePage />;
+}
+
 function RedirectToSmartQa() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
@@ -155,6 +182,7 @@ export default function App() {
         <Route path="/course/:courseId" element={<CoursePage />} />
         <Route path="/apps" element={<AppsPage />} />
         <Route path="/admin" element={<AdminRoute />} />
+        <Route path="/recycle" element={<RecycleRoute />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/iam_start" element={<IamStartPage />} />
         <Route path="/bootstrap/bisheng" element={<BootstrapBishengPage />} />

@@ -15,6 +15,12 @@ def _normalize_asset_base_url(value: str | None) -> str:
     return text.rstrip("/")
 
 
+def _env_bisheng_base_url_override() -> str:
+    import os
+
+    return (os.getenv("PORTAL_BISHENG_BASE_URL") or "").strip()
+
+
 class PortalBishengPersistentConfig(BaseModel):
     base_url: AnyHttpUrl
     asset_base_url: str = ""
@@ -34,6 +40,13 @@ class PortalBishengPersistentConfig(BaseModel):
     @classmethod
     def normalize_asset_base_url(cls, value: str | None) -> str:
         return _normalize_asset_base_url(value)
+
+    def with_env_base_url_override(self) -> "PortalBishengPersistentConfig":
+        """Prefer PORTAL_BISHENG_BASE_URL for local 联调 without rewriting remote config."""
+        explicit = _env_bisheng_base_url_override()
+        if not explicit:
+            return self
+        return self.model_copy(update={"base_url": explicit})
 
 
 class PortalAdminAggregateConfig(BaseModel):
