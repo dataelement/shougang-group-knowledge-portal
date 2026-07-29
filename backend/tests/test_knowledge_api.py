@@ -2242,6 +2242,68 @@ def test_chat_proxy_expert_mode_uses_reasoning_model_and_prompt(tmp_path: Path):
     assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == [7103]
 
 
+def test_chat_proxy_merges_writing_template_into_system_prompt(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            qa_config = config_service.get_config().qa.model_copy(
+                update={
+                    "general_model": "10",
+                    "normal_mode_system_prompt": "普通提示词",
+                }
+            )
+            config_service.update_qa(qa_config)
+            template_id = qa_config.templates[0].id
+            template_prompt = qa_config.templates[0].prompt
+
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-07-29T10:00:00",
+                    "model": "",
+                    "scene": "qa",
+                    "text": "请按模板写一份材料",
+                    "template_id": template_id,
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert fake_bisheng.chat_payload is not None
+    assert fake_bisheng.chat_payload["json"]["text"] == "请按模板写一份材料"
+    assert fake_bisheng.chat_payload["json"]["system_prompt"] == f"普通提示词\n\n{template_prompt}"
+    assert "template_id" not in fake_bisheng.chat_payload["json"]
+
+
+def test_chat_proxy_rejects_invalid_writing_template_id(tmp_path: Path):
+    for client, config_service, fake_bisheng in make_client(tmp_path):
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            config_service.update_qa(
+                config_service.get_config().qa.model_copy(update={"general_model": "10"})
+            )
+            response = client.post(
+                "/api/v1/workstation/chat/completions",
+                json={
+                    "clientTimestamp": "2026-07-29T10:00:00",
+                    "scene": "qa",
+                    "text": "无效模板",
+                    "template_id": "not-exists",
+                },
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "写作模板不存在或已停用"
+    assert fake_bisheng.chat_payload is None
+
+
 def test_chat_proxy_rejects_disabled_general_model_before_upstream_call(tmp_path: Path):
     for client, config_service, fake_bisheng in make_client(tmp_path):
         previous_auth = getattr(client.app.state, "portal_auth_service", None)

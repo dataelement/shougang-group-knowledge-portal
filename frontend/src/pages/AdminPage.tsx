@@ -4960,7 +4960,7 @@ function QaTemplateDialog({
             </label>
             <label className={`${s.formField} ${s.formFieldWide}`}>
               <span className={s.fieldLabel}>提示词</span>
-              <textarea className={`${s.formTextarea} ${s.qaTemplatePromptInput}`} value={draft.prompt} onChange={(event) => onChange({ prompt: event.target.value })} placeholder="点击模板后填入问答输入框的提示词" />
+              <textarea className={`${s.formTextarea} ${s.qaTemplatePromptInput}`} value={draft.prompt} onChange={(event) => onChange({ prompt: event.target.value })} placeholder="选中模板后作为系统提示词注入，不展示在对话框" />
             </label>
           </div>
         </div>

@@ -971,6 +971,12 @@ async def get_portal_config(
                 qa["general_model_display_name"] = name_by_id[general_id]
             if reasoning_id in name_by_id and not str(qa.get("reasoning_model_display_name") or "").strip():
                 qa["reasoning_model_display_name"] = name_by_id[reasoning_id]
+        # 写作模板 prompt 仅服务端注入 system_prompt，公开配置不下发
+        templates = qa.get("templates")
+        if isinstance(templates, list):
+            for template in templates:
+                if isinstance(template, dict):
+                    template.pop("prompt", None)
 
     return response_ok(
         {
