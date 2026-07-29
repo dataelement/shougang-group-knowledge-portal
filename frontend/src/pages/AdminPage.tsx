@@ -4759,7 +4759,7 @@ function QATemplatesTable({
               </td>
               <td>{categoryNameById.get(template.category_id) || '分类不存在'}</td>
               <td><DomainIcon icon={template.icon} color={template.color} bg={template.bg} size={32} /></td>
-              <td>{truncateText(template.prompt, 42)}</td>
+              <td>{template.prompt ? truncateText(template.prompt, 42) : '未配置'}</td>
               <td>
                 <div className={s.valueStack}>
                   <span className={template.enabled ? s.stateEnabled : s.stateDisabled}>{template.enabled ? '已启用' : '已停用'}</span>
