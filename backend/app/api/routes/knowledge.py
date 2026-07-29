@@ -946,8 +946,27 @@ async def get_home_content(
                 ),
                 fallback_latest_on_error=True,
             ):
+                upstream_result_count = len(items)
                 if actual_mode:
                     items = items[: config.display.home.section_page_size]
+                if recommendation_mode == PERSONALIZED_RECOMMENDATION and actual_mode:
+                    logger.info(
+                        "portal home recommendation section",
+                        extra={
+                            "portal_recommendation_actual_mode": actual_mode,
+                            "portal_recommendation_display_count": len(items),
+                            "portal_recommendation_display_limit": config.display.home.section_page_size,
+                            "portal_recommendation_empty": upstream_result_count == 0,
+                            "portal_recommendation_fallback_used": (
+                                actual_mode != PERSONALIZED_RECOMMENDATION
+                            ),
+                            "portal_recommendation_requested_mode": recommendation_mode,
+                            "portal_recommendation_top_n": config.recommendation.home_total_count,
+                            "portal_recommendation_upstream_count": upstream_result_count,
+                            "tenant_id": int(session.user.tenant_id),
+                            "user_id": int(session.user.user_id),
+                        },
+                    )
                 if config.recommendation.personalized_shadow_enabled and actual_mode == LATEST_SELECTED_RECOMMENDATION:
                     shadow_baseline_file_keys.extend((item.space_id, item.id) for item in items)
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
