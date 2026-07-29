@@ -41,7 +41,13 @@ export function hasSearchContext(params: URLSearchParams): boolean {
     || (params.get('document_type') || '').trim()
     || (params.get('file_subcategory_code') || '').trim()
     || (params.get('business_domain_code') || '').trim()
-    || (params.get('tag') || '').trim(),
+    || (params.get('tag') || '').trim()
+    || (params.get('all_keywords') || '').trim()
+    || (params.get('exact_phrase') || '').trim()
+    || (params.get('any_keywords') || '').trim()
+    || (params.get('exclude_keywords') || '').trim()
+    || (params.get('updated_from') || '').trim()
+    || (params.get('updated_to') || '').trim(),
   );
 }
 
@@ -50,6 +56,12 @@ export function createSubmittedSearchParams(params: URLSearchParams, draft: stri
   const next = new URLSearchParams(params);
   if (keyword) next.set('q', keyword);
   else next.delete('q');
+  next.delete('advanced');
+  next.delete('all_keywords');
+  next.delete('exact_phrase');
+  next.delete('any_keywords');
+  next.delete('exclude_keywords');
+  next.delete('search_field');
   next.delete('prefill');
   next.delete('page');
   return next;

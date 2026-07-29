@@ -37,6 +37,13 @@
   isolation: isolate;
 }
 
+.heroBannerAdvanced {
+  height: auto;
+  min-height: 940px;
+  padding-bottom: 40px;
+  overflow: visible;
+}
+
 .heroSlides {
   position: absolute;
   inset: 0;
@@ -293,6 +300,12 @@
   color: var(--neutral-400);
 }
 
+.searchInput:disabled {
+  cursor: not-allowed;
+  color: #9aa4b2;
+  background: #f5f7fa;
+}
+
 .hotSearchMenu {
   position: absolute;
   top: calc(100% + 6px);
@@ -383,6 +396,45 @@
 
 .searchBtn:hover {
   background: #245de0;
+}
+
+.searchBtn:disabled {
+  cursor: not-allowed;
+  background: #aeb8c9;
+}
+
+.searchActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advancedSearchButton {
+  height: 32px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #b9cdf3;
+  border-radius: 10px;
+  background: #fff;
+  color: #3662e3;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.advancedSearchButton:hover,
+.advancedSearchButtonActive {
+  background: #eef4ff;
+  border-color: #8dabef;
+}
+
+.homeAdvancedSearch {
+  position: relative;
+  z-index: 3;
+  width: min(calc(100% - 48px), 1360px);
+  margin: 18px auto 0;
 }
 
 /* ── 智能问答复合输入框:附件 / 工具条 ── */
@@ -2033,6 +2085,10 @@
     padding-bottom: 30px;
   }
 
+  .heroBannerAdvanced {
+    min-height: 1320px;
+  }
+
   .heroInner {
     padding: 38px 20px 0;
   }
@@ -2049,6 +2105,11 @@
   .heroSearchPanel {
     width: 100%;
     max-width: none;
+    padding: 0 20px;
+  }
+
+  .homeAdvancedSearch {
+    width: 100%;
     padding: 0 20px;
   }
 

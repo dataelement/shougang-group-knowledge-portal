@@ -27,7 +27,12 @@ class KnowledgeFileItem(BaseModel):
     # per-space effective download permission so the portal can hide the download
     # entry for view-only users.
     can_download: bool = False
-    content_access: Literal["allowed", "approval_required", "unavailable"] = "allowed"
+    content_access: Literal[
+        "allowed",
+        "approval_required",
+        "unavailable",
+        "check_required",
+    ] = "allowed"
     access_source: str | None = None
     is_department_file: bool = False
     entry_type: Literal["normal", "manager", "publish", "share"] = "normal"

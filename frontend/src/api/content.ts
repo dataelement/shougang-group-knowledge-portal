@@ -39,10 +39,10 @@ export interface FileItem {
   folderPath?: string;
   /** 可读文档来源路径 "<source space>><folder>/<file>"，根目录文件仅使用知识空间名称。 */
   sourcePath?: string;
-  /** 当前用户是否有该文件的下载权限，无权限时列表不展示下载按钮。 */
+  /** 当前请求已确认的下载权限；检索结果为部门文件时，点击下载后再校验。 */
   canDownload?: boolean;
   /** 部门文件内容门禁状态；列表可见不代表正文可读。 */
-  contentAccess?: 'allowed' | 'approval_required' | 'unavailable';
+  contentAccess?: 'allowed' | 'approval_required' | 'unavailable' | 'check_required';
   accessSource?: string | null;
   isDepartmentFile?: boolean;
   entryType?: KnowledgeDocumentEntryType;
@@ -346,7 +346,7 @@ interface KnowledgeFileItemDto {
   folder_path?: string;
   source_path?: string;
   can_download?: boolean;
-  content_access?: 'allowed' | 'approval_required' | 'unavailable';
+  content_access?: 'allowed' | 'approval_required' | 'unavailable' | 'check_required';
   access_source?: string | null;
   is_department_file?: boolean;
   entry_type?: KnowledgeDocumentEntryType;
@@ -1034,16 +1034,76 @@ export async function searchFiles(params: {
 
 export async function searchKeywordFiles(params: {
   q: string;
+  tag?: string;
+  spaceIds?: number[];
+  spaceLevel?: string;
+  fileExt?: string;
+  documentType?: string;
+  fileSubcategoryCode?: string;
+  businessDomainCode?: string;
   sort?: string;
   cursor?: string | null;
   limit?: number;
 }): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
   const query = new URLSearchParams({ q: params.q });
+  if (params.tag) query.set('tag', params.tag);
+  if (params.spaceLevel) query.set('space_level', params.spaceLevel);
+  if (params.fileExt) query.set('file_ext', params.fileExt);
+  if (params.documentType) query.set('document_type', params.documentType);
+  if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
+  if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
   if (params.sort) query.set('sort', params.sort);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));
+  params.spaceIds?.forEach((id) => query.append('space_ids', String(id)));
   const data = await request<CursorKnowledgeFileDataDto>(
     `/api/v1/knowledge/files/search?${query.toString()}`,
+  );
+  return {
+    data: data.data.map(mapKnowledgeFileItem),
+    hasMore: Boolean(data.has_more),
+    nextCursor: data.next_cursor || null,
+  };
+}
+
+export async function advancedSearchFiles(params: {
+  tag?: string;
+  spaceIds?: number[];
+  spaceLevel?: string;
+  fileExt?: string;
+  documentType?: string;
+  fileSubcategoryCode?: string;
+  businessDomainCode?: string;
+  allKeywords?: string;
+  exactPhrase?: string;
+  anyKeywords?: string;
+  excludeKeywords?: string;
+  searchField: 'file_name' | 'summary' | 'tags';
+  updatedFrom?: string;
+  updatedTo?: string;
+  sort?: string;
+  cursor?: string | null;
+  limit?: number;
+}): Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }> {
+  const query = new URLSearchParams({ search_field: params.searchField });
+  if (params.tag) query.set('tag', params.tag);
+  if (params.spaceLevel) query.set('space_level', params.spaceLevel);
+  if (params.fileExt) query.set('file_ext', params.fileExt);
+  if (params.documentType) query.set('document_type', params.documentType);
+  if (params.fileSubcategoryCode) query.set('file_subcategory_code', params.fileSubcategoryCode);
+  if (params.businessDomainCode) query.set('business_domain_code', params.businessDomainCode);
+  if (params.allKeywords) query.set('all_keywords', params.allKeywords);
+  if (params.exactPhrase) query.set('exact_phrase', params.exactPhrase);
+  if (params.anyKeywords) query.set('any_keywords', params.anyKeywords);
+  if (params.excludeKeywords) query.set('exclude_keywords', params.excludeKeywords);
+  if (params.updatedFrom) query.set('updated_from', params.updatedFrom);
+  if (params.updatedTo) query.set('updated_to', params.updatedTo);
+  if (params.sort) query.set('sort', params.sort);
+  if (params.cursor) query.set('cursor', params.cursor);
+  if (params.limit) query.set('limit', String(params.limit));
+  params.spaceIds?.forEach((id) => query.append('space_ids', String(id)));
+  const data = await request<CursorKnowledgeFileDataDto>(
+    `/api/v1/knowledge/files/advanced-search?${query.toString()}`,
   );
   return {
     data: data.data.map(mapKnowledgeFileItem),

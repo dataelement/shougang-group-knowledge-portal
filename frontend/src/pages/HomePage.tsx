@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Send,
-  BarChart3, Bot, ChevronLeft, ChevronRight, ChevronDown, FileText,
+  BarChart3, Bot, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, Leaf, Truck, Wrench, GraduationCap,
   Briefcase, Users, ScrollText, Loader2, Plus, X,
@@ -11,6 +11,7 @@ import {
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
+import AdvancedSearchPanel from '../components/AdvancedSearchPanel';
 import {
   resolveActiveQaScope,
   type QaKnowledgePickerMode,
@@ -54,6 +55,11 @@ import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import { getEnabledCategoryCards, getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildCategorySearchPath, buildDomainSearchPath } from '../utils/searchParams';
+import {
+  applyAdvancedSearchForm,
+  EMPTY_ADVANCED_SEARCH_FORM,
+  type AdvancedSearchForm,
+} from '../utils/advancedSearch';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { fetchCourses } from '../api/courses';
 import { formatCourseDuration, type Course } from '../types/course';
@@ -375,6 +381,10 @@ export default function HomePage() {
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [query, setQuery] = useState('');
   const [searchTab, setSearchTab] = useState<'global' | 'qa'>('global');
+  const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
+  const [advancedSearchDraft, setAdvancedSearchDraft] = useState<AdvancedSearchForm>(
+    EMPTY_ADVANCED_SEARCH_FORM,
+  );
   const [bannerIdx, setBannerIdx] = useState(0);
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
@@ -619,6 +629,26 @@ export default function HomePage() {
     }
     navigate(keyword ? `/search?q=${encodeURIComponent(keyword)}` : '/search');
   }, [query, searchTab, navigate, user, qaAnswerMode, qaScopeMode, qaKnowledgeScope, qaCategoryScope, qaScope, qaAttachments, qaUploading.length]);
+
+  const handleAdvancedSearchToggle = () => {
+    setShowHotTagMenu(false);
+    setAdvancedSearchOpen((current) => {
+      const nextOpen = !current;
+      if (nextOpen && query.trim() && !advancedSearchDraft.allKeywords.trim()) {
+        setAdvancedSearchDraft((draft) => ({ ...draft, allKeywords: query.trim() }));
+      }
+      return nextOpen;
+    });
+  };
+
+  const handleAdvancedSearchSubmit = () => {
+    const next = applyAdvancedSearchForm(new URLSearchParams(), advancedSearchDraft);
+    const retrievalQuery = next.get('q') || '';
+    if (retrievalQuery && user) {
+      void recordPortalSearchEvent(retrievalQuery, 'search_page').catch(() => undefined);
+    }
+    navigate(`/search?${next.toString()}`);
+  };
 
   async function ensureQaSpaces() {
     if (qaSpacesLoaded || qaSpacesLoading) return;
@@ -940,7 +970,7 @@ export default function HomePage() {
       {/* Hero */}
       <section className={s.hero}>
         <div
-          className={s.heroBanner}
+          className={`${s.heroBanner} ${advancedSearchOpen ? s.heroBannerAdvanced : ''}`}
           style={{ cursor: activeBanner.linkUrl ? 'pointer' : 'default' }}
           onClick={() => {
             const link = activeBanner.linkUrl;
@@ -991,6 +1021,7 @@ export default function HomePage() {
                 onClick={() => {
                   setSearchTab('qa');
                   setShowHotTagMenu(false);
+                  setAdvancedSearchOpen(false);
                 }}
               >
                 小智知道
@@ -1003,6 +1034,7 @@ export default function HomePage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKey}
+                disabled={advancedSearchOpen && searchTab === 'global'}
                 rows={2}
               />
               {searchTab === 'qa' && qaHasAttachments ? (
@@ -1162,17 +1194,31 @@ export default function HomePage() {
                     {qaTip ? <span className={s.qaTip}>{qaTip}</span> : null}
                   </div>
                 )}
-                <button
-                  type="button"
-                  className={s.searchBtn}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleSearch();
-                  }}
-                  aria-label={searchTab === 'qa' ? '发送' : '搜索'}
-                >
-                  {searchTab === 'qa' ? <Send size={17} /> : <Search size={18} />}
-                </button>
+                <div className={s.searchActions}>
+                  <button
+                    type="button"
+                    className={s.searchBtn}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleSearch();
+                    }}
+                    aria-label={searchTab === 'qa' ? '发送' : '搜索'}
+                    disabled={advancedSearchOpen && searchTab === 'global'}
+                  >
+                    {searchTab === 'qa' ? <Send size={17} /> : <Search size={18} />}
+                  </button>
+                  {searchTab === 'global' ? (
+                    <button
+                      type="button"
+                      className={`${s.advancedSearchButton} ${advancedSearchOpen ? s.advancedSearchButtonActive : ''}`}
+                      aria-expanded={advancedSearchOpen}
+                      onClick={handleAdvancedSearchToggle}
+                    >
+                      高级检索
+                      {advancedSearchOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
             {showHotTagMenu && showHotSearch ? (
@@ -1199,7 +1245,18 @@ export default function HomePage() {
               </div>
             ) : null}
           </div>
-          <div className={s.heroBottomRow} onClick={(event) => event.stopPropagation()}>
+          {advancedSearchOpen && searchTab === 'global' ? (
+            <div className={s.homeAdvancedSearch} onClick={(event) => event.stopPropagation()}>
+              <AdvancedSearchPanel
+                value={advancedSearchDraft}
+                onChange={setAdvancedSearchDraft}
+                onSubmit={handleAdvancedSearchSubmit}
+                onReset={() => setAdvancedSearchDraft({ ...EMPTY_ADVANCED_SEARCH_FORM })}
+                onCollapse={() => setAdvancedSearchOpen(false)}
+              />
+            </div>
+          ) : null}
+          {!advancedSearchOpen ? <div className={s.heroBottomRow} onClick={(event) => event.stopPropagation()}>
             <div className={s.appShortcutList}>
               {appEntryItems.map((template) => {
                 const iconImage =
@@ -1241,8 +1298,8 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-          </div>
-          <div className={s.bannerDots}>
+          </div> : null}
+          {!advancedSearchOpen ? <div className={s.bannerDots}>
             {homeBanners.map((_, i) => (
               <button
                 key={i}
@@ -1253,7 +1310,7 @@ export default function HomePage() {
                 }}
               />
             ))}
-          </div>
+          </div> : null}
         </div>
       </section>
 

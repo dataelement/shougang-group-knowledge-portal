@@ -1108,6 +1108,74 @@ class KnowledgeService:
             discovery_scope=discovery_scope,
         )
 
+    async def advanced_search_files(
+        self,
+        *,
+        tag: Optional[str],
+        requested_space_ids: Optional[list[int]],
+        space_level: Optional[str],
+        file_ext: Optional[str],
+        document_type: Optional[str],
+        file_subcategory_code: Optional[str],
+        business_domain_code: Optional[str],
+        all_keywords: Optional[str],
+        exact_phrase: Optional[str],
+        any_keywords: Optional[str],
+        exclude_keywords: Optional[str],
+        search_field: Literal["file_name", "summary", "tags"],
+        updated_from: Optional[str],
+        updated_to: Optional[str],
+        sort: str,
+        cursor: Optional[str],
+        limit: int,
+        extra_space_ids: Optional[list[int]],
+        discovery_scope: PortalDiscoveryScope = "legacy",
+    ) -> CursorKnowledgeFileData:
+        if discovery_scope == "legacy":
+            space_ids = await self.resolve_requested_space_ids(
+                requested_space_ids,
+                space_level,
+                extra_space_ids,
+                fallback_to_public_spaces=False,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+            upstream_space_level = self._effective_upstream_space_level(
+                space_level,
+                extra_space_ids,
+            )
+        else:
+            space_ids = list(
+                dict.fromkeys(
+                    requested_space_ids
+                    or extra_space_ids
+                    or []
+                )
+            )
+            upstream_space_level = (
+                "public" if discovery_scope == "public" else space_level
+            )
+        return await self._advanced_search_shougang_portal_files(
+            tag=(tag or "").strip() or None,
+            space_ids=space_ids,
+            space_level=upstream_space_level,
+            file_ext=file_ext,
+            document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
+            business_domain_code=self._normalize_business_domain_code(business_domain_code),
+            all_keywords=all_keywords,
+            exact_phrase=exact_phrase,
+            any_keywords=any_keywords,
+            exclude_keywords=exclude_keywords,
+            search_field=search_field,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            sort=sort,
+            cursor=cursor,
+            limit=limit,
+            discovery_scope=discovery_scope,
+        )
+
     async def browse_files(
         self,
         *,
@@ -1570,6 +1638,69 @@ class KnowledgeService:
             next_cursor=str(next_cursor) if next_cursor else None,
         )
 
+    async def _advanced_search_shougang_portal_files(
+        self,
+        *,
+        tag: Optional[str],
+        space_ids: list[int],
+        space_level: Optional[str],
+        file_ext: Optional[str],
+        document_type: Optional[str],
+        file_subcategory_code: Optional[str],
+        business_domain_code: Optional[str],
+        all_keywords: Optional[str],
+        exact_phrase: Optional[str],
+        any_keywords: Optional[str],
+        exclude_keywords: Optional[str],
+        search_field: Literal["file_name", "summary", "tags"],
+        updated_from: Optional[str],
+        updated_to: Optional[str],
+        sort: str,
+        cursor: Optional[str],
+        limit: int,
+        discovery_scope: PortalDiscoveryScope,
+    ) -> CursorKnowledgeFileData:
+        request_body = {
+            "discovery_scope": discovery_scope,
+            "tag": tag,
+            "space_ids": space_ids,
+            "space_level": space_level,
+            "file_ext": file_ext,
+            "all_keywords": all_keywords,
+            "exact_phrase": exact_phrase,
+            "any_keywords": any_keywords,
+            "exclude_keywords": exclude_keywords,
+            "search_field": search_field,
+            "updated_from": updated_from,
+            "updated_to": updated_to,
+            "sort": sort,
+            "cursor": cursor,
+            "limit": min(max(int(limit or 20), 1), 100),
+        }
+        normalized_document_type = self._normalize_document_type_code(document_type)
+        if normalized_document_type:
+            request_body["document_type"] = normalized_document_type
+        normalized_file_subcategory_code = self._normalize_document_type_code(file_subcategory_code)
+        if normalized_file_subcategory_code:
+            request_body["file_subcategory_code"] = normalized_file_subcategory_code
+        normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
+        if normalized_business_domain_code:
+            request_body["business_domain_code"] = normalized_business_domain_code
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/files/advanced-search",
+            json=request_body,
+        )
+        data = self._extract_success_data(response)
+        raw_items = data.get("data") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
+        return CursorKnowledgeFileData(
+            data=self._map_shougang_portal_response_items(raw_items),
+            has_more=bool(data.get("has_more")) if isinstance(data, dict) else False,
+            next_cursor=str(next_cursor) if next_cursor else None,
+        )
+
     async def _browse_shougang_portal_files(
         self,
         tag: Optional[str],
@@ -1633,7 +1764,7 @@ class KnowledgeService:
             content_access = str(item.get("content_access") or "allowed")
             is_department_file = bool(item.get("is_department_file", False))
             content_allowed = (
-                content_access == "allowed"
+                content_access in {"allowed", "check_required"}
                 or not is_department_file
             )
             capabilities = (

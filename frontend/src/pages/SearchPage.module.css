@@ -31,13 +31,22 @@
   padding: 32px 0;
 }
 
+.searchHeroControls {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .searchHeroInputWrap {
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
-  max-width: 832px;
-  margin: 0 auto;
+  flex: 1;
+  max-width: none;
 }
 
 .searchHeroIcon {
@@ -64,6 +73,12 @@
   box-shadow: 0 0 0 3px rgba(59,130,246,0.08);
 }
 
+.searchHeroInput:disabled {
+  cursor: not-allowed;
+  color: #9aa4b2;
+  background: #f5f7fa;
+}
+
 .searchHeroBtn {
   position: absolute;
   right: 8px;
@@ -80,6 +95,34 @@
 
 .searchHeroBtn:hover {
   background: #2c52c4;
+}
+
+.searchHeroBtn:disabled {
+  cursor: not-allowed;
+  background: #aeb8c9;
+}
+
+.advancedSearchButton {
+  flex: 0 0 auto;
+  height: 52px;
+  padding: 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #b9cdf3;
+  border-radius: 8px;
+  background: #fff;
+  color: #3662e3;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.035);
+}
+
+.advancedSearchButton:hover,
+.advancedSearchButtonActive {
+  border-color: #8dabef;
+  background: #eef4ff;
 }
 
 .emptyState {
@@ -167,6 +210,84 @@
 .filterSelect:focus {
   border-color: var(--primary-400);
   box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+}
+
+.appliedFilters {
+  min-height: 52px;
+  margin: 0 0 12px;
+  padding: 9px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 0 6px #d1d6e2;
+}
+
+.appliedFiltersLabel {
+  flex: 0 0 auto;
+  color: #4a5568;
+  font-size: 13px;
+}
+
+.appliedFilterChips {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.appliedFilterChip {
+  max-width: 260px;
+  min-height: 32px;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dbe5f4;
+  border-radius: 5px;
+  background: #f8faff;
+  color: #4a5568;
+  font-size: 12px;
+}
+
+.appliedFilterChip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appliedFilterChip svg {
+  flex: 0 0 auto;
+  color: #9aa4b2;
+}
+
+.clearFiltersButton {
+  flex: 0 0 auto;
+  color: #3662e3;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .searchHeroControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .advancedSearchButton {
+    height: 42px;
+  }
+
+  .appliedFilters {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .appliedFiltersLabel {
+    padding-top: 7px;
+  }
 }
 
 /* AI Overview */
