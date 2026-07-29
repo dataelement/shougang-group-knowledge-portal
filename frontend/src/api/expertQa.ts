@@ -341,6 +341,7 @@ export interface ApiQuestion {
   /** 0: 未解决  1: 已解决  2: 已关闭 */
   status: 0 | 1 | 2;
   attachments: string | null;
+  file_url: string | null;
   related_docs: string | null;
   invited_experts: string | null;
   experts_names: string | null;
@@ -379,7 +380,7 @@ export interface CreateQuestionPayload {
   invited_expert_ids?: string;
   invited_expert_names?: string;
   image_url?: string;
-  attachments?: string;
+  file_url?: string;
   related_docs?: string;
 }
 
@@ -390,7 +391,7 @@ export interface UpdateQuestionPayload {
   invited_expert_ids?: string;
   invited_expert_names?: string;
   image_url?: string | null;
-  attachments?: string | null;
+  file_url?: string | null;
   related_docs?: string | null;
 }
 
@@ -955,7 +956,7 @@ export async function createExpertQuestion(
     invited_experts: payload.invited_expert_ids,
     experts_names: payload.invited_expert_names,
     image_url: payload.image_url ?? null,
-    attachments: payload.attachments ?? null,
+    file_url: payload.file_url ?? null,
     related_docs: payload.related_docs ?? null,
   };
 
@@ -980,7 +981,7 @@ export async function updateExpertQuestion(
     invited_experts: payload.invited_expert_ids,
     experts_names: payload.invited_expert_names,
     image_url: payload.image_url,
-    attachments: payload.attachments,
+    file_url: payload.file_url,
     related_docs: payload.related_docs,
   };
 
@@ -1315,6 +1316,30 @@ export async function uploadQaImage(file: File): Promise<QaUploadResult> {
 
   return {
     image_url: data?.file_path ?? data?.image_url ?? '',
+    file_name: data?.file_name ?? file.name,
+  };
+}
+
+export interface QaAttachmentUploadResult {
+  file_url: string;
+  file_name: string;
+}
+
+export async function uploadQaAttachment(file: File): Promise<QaAttachmentUploadResult> {
+  const form = new FormData();
+  form.append('file', file);
+
+  const data = await req<QaUploadResponse>(
+    `${BASE}/upload`,
+    {
+      method: 'POST',
+      body: form,
+    },
+    UPLOAD_TIMEOUT,
+  );
+
+  return {
+    file_url: data?.file_path ?? data?.image_url ?? '',
     file_name: data?.file_name ?? file.name,
   };
 }
