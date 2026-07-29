@@ -6,12 +6,14 @@ import {
   FileText,
   Folder,
   Loader2,
+  Minus,
 } from 'lucide-react';
-import type { FileItem, QaKnowledgeScope } from '../api/content';
+import type { FileItem, QaKnowledgeFileRef, QaKnowledgeScope } from '../api/content';
 import type { RuntimeDocumentTypeGroupOption } from '../utils/documentTypes';
 import { buildFilesScope, fileRefKey } from './qaKnowledgeScopeSelection';
 import s from './QAKnowledgeTreePicker.module.css';
 
+const FILE_LIMIT = 20;
 const FILE_LIMIT_TIP = '一次最多可选择20个文件进行问答。';
 
 type BrowseCategoryFiles = (params: {
@@ -20,6 +22,8 @@ type BrowseCategoryFiles = (params: {
   cursor?: string | null;
   limit?: number;
 }) => Promise<{ data: FileItem[]; hasMore: boolean; nextCursor: string | null }>;
+
+type CategoryFilters = { documentType?: string; fileSubcategoryCode?: string };
 
 function asFilesScope(scope: QaKnowledgeScope): Extract<QaKnowledgeScope, { mode: 'files' }> {
   if (scope.mode === 'files') return scope;
@@ -54,6 +58,7 @@ export default function QAKnowledgeCategoryTree({
   const [nextCursorByKey, setNextCursorByKey] = useState<Record<string, string | null>>({});
   const [hasMoreByKey, setHasMoreByKey] = useState<Record<string, boolean>>({});
   const [loadingMoreKeys, setLoadingMoreKeys] = useState<Set<string>>(() => new Set());
+  const [selectingKeys, setSelectingKeys] = useState<Set<string>>(() => new Set());
 
   const selectedFileKeys = useMemo(() => {
     if (scope.mode !== 'files') return new Set<string>();
@@ -62,9 +67,21 @@ export default function QAKnowledgeCategoryTree({
 
   const notify = (message: string) => onTip?.(message);
 
+  const mergeFetchedFiles = (key: string, incoming: FileItem[], append: boolean) => {
+    setFilesByKey((prev) => {
+      if (!append) return { ...prev, [key]: incoming };
+      const existing = prev[key] ?? [];
+      const seen = new Set(existing.map((file) => fileRefKey(file.spaceId, file.id)));
+      return {
+        ...prev,
+        [key]: [...existing, ...incoming.filter((file) => !seen.has(fileRefKey(file.spaceId, file.id)))],
+      };
+    });
+  };
+
   const loadFiles = async (
     key: string,
-    filters: { documentType?: string; fileSubcategoryCode?: string },
+    filters: CategoryFilters,
     cursor?: string | null,
   ) => {
     if (cursor) {
@@ -81,15 +98,7 @@ export default function QAKnowledgeCategoryTree({
     });
     try {
       const result = await onBrowseFiles({ ...filters, cursor: cursor ?? undefined });
-      setFilesByKey((prev) => {
-        if (!cursor) return { ...prev, [key]: result.data };
-        const existing = prev[key] ?? [];
-        const seen = new Set(existing.map((file) => fileRefKey(file.spaceId, file.id)));
-        return {
-          ...prev,
-          [key]: [...existing, ...result.data.filter((file) => !seen.has(fileRefKey(file.spaceId, file.id)))],
-        };
-      });
+      mergeFetchedFiles(key, result.data, Boolean(cursor));
       setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
       setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
     } catch {
@@ -111,9 +120,68 @@ export default function QAKnowledgeCategoryTree({
     }
   };
 
+  const ensureCategoryFilesLoaded = async (key: string, filters: CategoryFilters): Promise<FileItem[]> => {
+    let files = filesByKey[key];
+    let cursor = nextCursorByKey[key] ?? null;
+    let hasMore = hasMoreByKey[key] ?? false;
+
+    if (!files) {
+      setLoadingKeys((prev) => new Set(prev).add(key));
+      setErrorKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      try {
+        const result = await onBrowseFiles({ ...filters });
+        files = result.data;
+        cursor = result.nextCursor;
+        hasMore = result.hasMore;
+        mergeFetchedFiles(key, result.data, false);
+        setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
+        setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
+      } catch {
+        setErrorKeys((prev) => new Set(prev).add(key));
+        return [];
+      } finally {
+        setLoadingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    }
+
+    while (hasMore && cursor) {
+      setLoadingMoreKeys((prev) => new Set(prev).add(key));
+      try {
+        const result = await onBrowseFiles({ ...filters, cursor });
+        const existing = files ?? [];
+        const seen = new Set(existing.map((file) => fileRefKey(file.spaceId, file.id)));
+        files = [...existing, ...result.data.filter((file) => !seen.has(fileRefKey(file.spaceId, file.id)))];
+        cursor = result.nextCursor;
+        hasMore = result.hasMore;
+        mergeFetchedFiles(key, result.data, true);
+        setNextCursorByKey((prev) => ({ ...prev, [key]: result.nextCursor }));
+        setHasMoreByKey((prev) => ({ ...prev, [key]: result.hasMore }));
+      } catch {
+        setErrorKeys((prev) => new Set(prev).add(key));
+        break;
+      } finally {
+        setLoadingMoreKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    }
+
+    return files ?? [];
+  };
+
   const toggleExpand = (
     key: string,
-    filters: { documentType?: string; fileSubcategoryCode?: string },
+    filters: CategoryFilters,
     loadOnExpand: boolean,
   ) => {
     setExpandedKeys((prev) => {
@@ -139,13 +207,111 @@ export default function QAKnowledgeCategoryTree({
     const fileRefs = exists
       ? current.fileRefs.filter((ref) => fileRefKey(ref.knowledgeSpaceId, ref.fileId) !== key)
       : [...current.fileRefs, { knowledgeSpaceId: file.spaceId, fileId: file.id }];
-    const nextScope = buildFilesScope(fileRefs, []);
-    if (!exists && nextScope.resolvedFileCount > 20) {
+    const nextScope = buildFilesScope(fileRefs, current.folderRefs);
+    if (!exists && nextScope.resolvedFileCount > FILE_LIMIT) {
       notify(FILE_LIMIT_TIP);
       return;
     }
     onChange(nextScope.resolvedFileCount ? nextScope : { mode: 'none' });
   };
+
+  const categoryCheckState = (files: FileItem[]): 'none' | 'partial' | 'all' => {
+    const selectable = files.filter(isFileSelectable);
+    if (!selectable.length) return 'none';
+    let selectedCount = 0;
+    for (const file of selectable) {
+      if (selectedFileKeys.has(fileRefKey(file.spaceId, file.id))) selectedCount += 1;
+    }
+    if (selectedCount === 0) return 'none';
+    if (selectedCount === selectable.length) return 'all';
+    return 'partial';
+  };
+
+  const toggleCategoryFiles = async (
+    selectionKey: string,
+    targets: Array<{ key: string; filters: CategoryFilters }>,
+  ) => {
+    if (selectingKeys.has(selectionKey)) return;
+    setSelectingKeys((prev) => new Set(prev).add(selectionKey));
+    try {
+      const loadedGroups = await Promise.all(
+        targets.map(async (target) => ({
+          key: target.key,
+          files: await ensureCategoryFilesLoaded(target.key, target.filters),
+        })),
+      );
+      const allFiles = loadedGroups.flatMap((group) => group.files);
+      const selectable = allFiles.filter(isFileSelectable);
+      if (!selectable.length) {
+        notify('该分类下暂无可用文件');
+        return;
+      }
+
+      const state = categoryCheckState(allFiles);
+      const current = asFilesScope(scope);
+      const targetKeys = new Set(selectable.map((file) => fileRefKey(file.spaceId, file.id)));
+
+      if (state === 'all') {
+        const fileRefs = current.fileRefs.filter(
+          (ref) => !targetKeys.has(fileRefKey(ref.knowledgeSpaceId, ref.fileId)),
+        );
+        const nextScope = buildFilesScope(fileRefs, current.folderRefs);
+        onChange(nextScope.resolvedFileCount ? nextScope : { mode: 'none' });
+        return;
+      }
+
+      const mergedRefs: QaKnowledgeFileRef[] = [...current.fileRefs];
+      const seen = new Set(mergedRefs.map((ref) => fileRefKey(ref.knowledgeSpaceId, ref.fileId)));
+      for (const file of selectable) {
+        const key = fileRefKey(file.spaceId, file.id);
+        if (seen.has(key)) continue;
+        mergedRefs.push({ knowledgeSpaceId: file.spaceId, fileId: file.id });
+        seen.add(key);
+      }
+      const nextScope = buildFilesScope(mergedRefs, current.folderRefs);
+      if (nextScope.resolvedFileCount > FILE_LIMIT) {
+        notify(FILE_LIMIT_TIP);
+        return;
+      }
+      onChange(nextScope);
+
+      setExpandedKeys((prev) => {
+        const next = new Set(prev);
+        for (const target of targets) next.add(target.key);
+        return next;
+      });
+    } finally {
+      setSelectingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(selectionKey);
+        return next;
+      });
+    }
+  };
+
+  const renderCheckBox = (
+    state: 'none' | 'partial' | 'all',
+    opts: {
+      busy?: boolean;
+      disabled?: boolean;
+      ariaLabel: string;
+      onClick: () => void;
+    },
+  ) => (
+    <button
+      type="button"
+      className={`${s.checkBox} ${state !== 'none' ? s.checkBoxActive : ''}`}
+      disabled={opts.disabled || opts.busy}
+      aria-label={opts.ariaLabel}
+      title={opts.disabled ? '申请后可用于问答' : ''}
+      onClick={(event) => {
+        event.stopPropagation();
+        opts.onClick();
+      }}
+    >
+      {opts.busy ? <Loader2 size={13} className={s.spin} /> : state === 'all' ? <Check size={13} /> : state === 'partial' ? <Minus size={13} /> : null}
+    </button>
+  );
 
   const renderFileRow = (file: FileItem, depth: number) => {
     const selectable = isFileSelectable(file);
@@ -175,7 +341,7 @@ export default function QAKnowledgeCategoryTree({
 
   const renderFileList = (
     key: string,
-    filters: { documentType?: string; fileSubcategoryCode?: string },
+    filters: CategoryFilters,
     depth: number,
   ) => {
     const files = filesByKey[key] ?? [];
@@ -218,11 +384,29 @@ export default function QAKnowledgeCategoryTree({
         const flatLeaf = group.children.length === 1 && group.children[0].code === group.code;
         const l1Key = categoryNodeKey('l1', group.code);
         const l1Expanded = expandedKeys.has(l1Key);
-        const l1Filters = { documentType: group.code };
+        const l1Filters: CategoryFilters = { documentType: group.code };
+        const l1Targets = flatLeaf
+          ? [{ key: l1Key, filters: l1Filters }]
+          : group.children.map((child) => ({
+              key: categoryNodeKey('l2', child.code, group.code),
+              filters: { fileSubcategoryCode: child.code } satisfies CategoryFilters,
+            }));
+        const l1Files = l1Targets.flatMap((target) => filesByKey[target.key] ?? []);
+        const l1State = categoryCheckState(l1Files);
+        const l1Busy = selectingKeys.has(l1Key)
+          || l1Targets.some((target) => loadingKeys.has(target.key) || loadingMoreKeys.has(target.key));
 
         return (
           <section key={group.code} className={`${s.spaceBlock} ${l1Expanded ? s.spaceBlockExpanded : ''}`}>
             <div className={s.spaceRow}>
+              {renderCheckBox(l1State, {
+                busy: l1Busy,
+                ariaLabel: `选择分类 ${group.label}`,
+                onClick: () => {
+                  void toggleCategoryFiles(l1Key, l1Targets);
+                  setExpandedKeys((prev) => new Set(prev).add(l1Key));
+                },
+              })}
               <Folder size={18} className={s.spaceHeaderIcon} />
               <div className={s.spaceContent}>
                 <button
@@ -250,7 +434,12 @@ export default function QAKnowledgeCategoryTree({
                   {group.children.map((child) => {
                     const l2Key = categoryNodeKey('l2', child.code, group.code);
                     const l2Expanded = expandedKeys.has(l2Key);
-                    const l2Filters = { fileSubcategoryCode: child.code };
+                    const l2Filters: CategoryFilters = { fileSubcategoryCode: child.code };
+                    const l2Files = filesByKey[l2Key] ?? [];
+                    const l2State = categoryCheckState(l2Files);
+                    const l2Busy = selectingKeys.has(l2Key)
+                      || loadingKeys.has(l2Key)
+                      || loadingMoreKeys.has(l2Key);
                     return (
                       <div key={l2Key} className={s.treeNode}>
                         <div className={s.nodeRow} style={{ paddingLeft: 14 + 24 }}>
@@ -262,6 +451,11 @@ export default function QAKnowledgeCategoryTree({
                           >
                             {loadingKeys.has(l2Key) ? <Loader2 size={14} className={s.spin} /> : l2Expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           </button>
+                          {renderCheckBox(l2State, {
+                            busy: l2Busy,
+                            ariaLabel: `选择分类 ${child.label}`,
+                            onClick: () => void toggleCategoryFiles(l2Key, [{ key: l2Key, filters: l2Filters }]),
+                          })}
                           <span className={`${s.nodeIcon} ${s.folderIcon}`}><Folder size={15} /></span>
                           <span className={s.nodeText}><strong>{child.label}</strong></span>
                         </div>

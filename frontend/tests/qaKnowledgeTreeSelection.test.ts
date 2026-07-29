@@ -64,14 +64,16 @@ test('qa knowledge tree picker supports dual mode and file limit', () => {
   assert.match(pickerSource, /resolvedFileCount/);
 });
 
-test('category tree loads files by document type and selects files only', () => {
+test('category tree loads files by document type and supports folder checkboxes with file limit', () => {
   assert.match(categoryTreeSource, /一次最多可选择20个文件进行问答。/);
   assert.match(categoryTreeSource, /documentType/);
   assert.match(categoryTreeSource, /fileSubcategoryCode/);
   assert.match(categoryTreeSource, /onBrowseFiles/);
   assert.match(categoryTreeSource, /toggleFileRef/);
-  assert.doesNotMatch(categoryTreeSource, /toggleCategoryFiles/);
-  assert.doesNotMatch(categoryTreeSource, /选择该分类下全部可用文件/);
+  assert.match(categoryTreeSource, /toggleCategoryFiles/);
+  assert.match(categoryTreeSource, /FILE_LIMIT/);
+  assert.match(categoryTreeSource, /选择分类/);
+  assert.match(categoryTreeSource, /Minus/);
 });
 
 test('qa knowledge tree picker supports file-name search metadata and dedupe', () => {
