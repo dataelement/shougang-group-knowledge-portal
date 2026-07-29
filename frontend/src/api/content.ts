@@ -2109,6 +2109,7 @@ export async function streamChatCompletion(params: {
   conversationId?: string;
   model?: string;
   answerMode?: 'quick' | 'normal' | 'expert';
+  templateId?: string;
   onUpdate: (text: string) => void;
   onCitations?: (citations: Citation[]) => void;
   onConversationId?: (conversationId: string) => void;
@@ -2129,6 +2130,7 @@ export async function streamChatCompletion(params: {
         entry_point: params.entryPoint ?? '',
         space_level: params.spaceLevel,
         text: params.text,
+        template_id: params.templateId || undefined,
         search_results: params.searchResults?.map(mapSearchResultForSummary) ?? [],
         use_knowledge_base: {
           personal_knowledge_enabled: false,

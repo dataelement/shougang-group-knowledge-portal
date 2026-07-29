@@ -155,6 +155,16 @@ test('/apps consumes templateId once inside the smart qa workspace', () => {
   assert.match(appsPageSource, /params\.set\('tab', tab\)/);
 });
 
+test('writing template prompt stays out of the dialog and is sent as template_id', () => {
+  const contentSource = readFileSync('src/api/content.ts', 'utf8');
+
+  assert.doesNotMatch(qaPageSource, /setInput\(template\.prompt\)/);
+  assert.match(qaPageSource, /templateId: effTemplateId/);
+  assert.match(qaPageSource, /请按模板要求生成/);
+  assert.match(qaPageSource, /按「\$\{selectedTemplate\.name\}」生成/);
+  assert.match(contentSource, /template_id: params\.templateId/);
+});
+
 test('smart qa and agent share the apps left sidebar record model', () => {
   assert.match(appsPageSource, /type SmartAppsRecord/);
   assert.match(appsPageSource, /kind:\s*'qa'/);

@@ -511,6 +511,8 @@ def test_public_portal_config_does_not_require_admin(tmp_path: Path):
         {"code": "PP", "name": "生产"},
         {"code": "QM", "name": "质量"},
     ]
+    assert data["qa"]["templates"]
+    assert all("prompt" not in template for template in data["qa"]["templates"])
 
 
 def test_public_portal_config_refreshes_qa_model_display_names_for_non_admin_user(tmp_path: Path):

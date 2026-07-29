@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from app.clients.bisheng import BishengClient
 from app.schemas.chat import KnowledgeScopeParam, PortalChatCompletionRequest, UseKnowledgeBaseParam
 from app.schemas.knowledge import KnowledgeFileItem
+from app.schemas.portal_config import QATemplateConfig
 from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_config_service import PortalConfigService
 
@@ -50,7 +51,14 @@ class ChatProxyService:
         scene = payload.scene if payload.scene in {"search", "qa"} else "qa"
         use_knowledge_base = payload.use_knowledge_base or UseKnowledgeBaseParam()
         request_body = payload.model_dump(
-            exclude={"scene", "entry_point", "answer_mode", "space_level", "search_results"},
+            exclude={
+                "scene",
+                "entry_point",
+                "answer_mode",
+                "space_level",
+                "search_results",
+                "template_id",
+            },
             mode="json",
         )
 
@@ -112,10 +120,34 @@ class ChatProxyService:
         await self._ensure_qa_model_enabled(selected_model)
 
         prompt_field = self._QA_MODE_PROMPT_FIELDS[answer_mode]
+        mode_system_prompt = str(getattr(config.qa, prompt_field) or "")
         request_body["model"] = selected_model
         request_body["text"] = payload.text
-        request_body["system_prompt"] = str(getattr(config.qa, prompt_field) or "")
+        request_body["system_prompt"] = self._resolve_qa_system_prompt(
+            mode_system_prompt,
+            payload.template_id,
+            config.qa.templates,
+        )
         return "/api/v1/workstation/shougang-portal/chat/completions", request_body, []
+
+    @staticmethod
+    def _resolve_qa_system_prompt(
+        mode_system_prompt: str,
+        template_id: str | None,
+        templates: list[QATemplateConfig],
+    ) -> str:
+        normalized_template_id = (template_id or "").strip()
+        if not normalized_template_id:
+            return mode_system_prompt
+        matched = next((item for item in templates if item.id == normalized_template_id), None)
+        if matched is None or not matched.enabled:
+            raise ValueError("写作模板不存在或已停用")
+        template_prompt = (matched.prompt or "").strip()
+        if not template_prompt:
+            return mode_system_prompt
+        if mode_system_prompt.strip():
+            return f"{mode_system_prompt.rstrip()}\n\n{template_prompt}"
+        return template_prompt
 
     async def _ensure_qa_model_enabled(self, model_id: str) -> None:
         try:
