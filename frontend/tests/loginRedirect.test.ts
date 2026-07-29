@@ -2,16 +2,101 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { redirectToLogin } from '../src/utils/loginRedirect';
+
 const headerSource = readFileSync('src/components/Header.tsx', 'utf8');
 const loginBannerSource = readFileSync('src/components/LoginBanner.tsx', 'utf8');
 const appSource = readFileSync('src/App.tsx', 'utf8');
 const loginPageSource = readFileSync('src/pages/LoginPage.tsx', 'utf8');
 const loginRedirectSource = readFileSync('src/utils/loginRedirect.ts', 'utf8');
 
-test('login redirect checks unified auth availability before starting SSO', () => {
+test('login redirect checks unified auth availability only when requested', () => {
   assert.match(loginRedirectSource, /fetchUnifiedAuthConfig/);
-  assert.match(loginRedirectSource, /if \(config\.enabled\)/);
+  assert.match(loginRedirectSource, /options\.preferUnifiedAuth/);
+  assert.match(loginRedirectSource, /config\.enabled && config\.authMode === 'oauth'/);
   assert.match(loginRedirectSource, /buildLocalLoginPath/);
+});
+
+test('login redirect starts OAuth directly when unified auth is available', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const assignments: string[] = [];
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { assign: (url: string) => assignments.push(url) } },
+  });
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        status_code: 200,
+        status_message: 'SUCCESS',
+        data: {
+          enabled: true,
+          auth_mode: 'oauth',
+          provider: 'custom',
+          label: '统一身份认证',
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+
+  try {
+    await redirectToLogin('/expert-qa/7', { preferUnifiedAuth: true });
+    assert.deepEqual(assignments, [
+      '/api/v1/auth/unified/start?redirect=%2Fexpert-qa%2F7',
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+});
+
+test('login redirect falls back for non-OAuth config and config lookup failure', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const assignments: string[] = [];
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { assign: (url: string) => assignments.push(url) } },
+  });
+
+  try {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          status_code: 200,
+          status_message: 'SUCCESS',
+          data: {
+            enabled: true,
+            auth_mode: 'rest',
+            provider: 'custom',
+            label: '统一身份认证',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    await redirectToLogin('/expert-qa', { preferUnifiedAuth: true });
+
+    globalThis.fetch = async () => {
+      throw new Error('network unavailable');
+    };
+    await redirectToLogin('/expert-qa/ask', { preferUnifiedAuth: true });
+    assert.deepEqual(assignments, [
+      '/login?redirect=%2Fexpert-qa',
+      '/login?redirect=%2Fexpert-qa%2Fask',
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
 });
 
 test('header login entry uses triggerLoginRedirect instead of hard-coded /login route', () => {

@@ -1,0 +1,50 @@
+# Portal backend 多副本部署参数示例。
+# 当前仓库没有权威 Helm chart；请把这些值映射到实际平台的 Deployment，
+# 不要把本文件作为第二套独立发布源。
+
+replicaCount: 2
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 3
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: shougang-portal-backend
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+env:
+  - name: PORTAL_APP_ENV
+    value: production
+  - name: PORTAL_RUNTIME_CONFIG_SCOPE
+    value: tenant-1
+  - name: PORTAL_RUNTIME_CONFIG_CACHE_TTL_SECONDS
+    value: "900"
+  - name: PORTAL_REDIS_URL
+    valueFrom:
+      secretKeyRef:
+        name: shougang-portal-backend
+        key: redis-url
+

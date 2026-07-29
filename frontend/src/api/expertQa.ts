@@ -27,6 +27,7 @@ import type { DomainConfig, PortalConfig } from './adminConfig';
 
 /** API 基础路径 */
 const BASE = '/workspace/api/v1/qa_experts';
+const HOME_EXPERT_QA_BASE = '/api/v1/expert-qa';
 
 /** 单次请求超时毫秒数 */
 const DEFAULT_TIMEOUT = 8_000;
@@ -900,6 +901,23 @@ type RawQuestionListResponse =
       page?: number;
       pageSize?: number;
     };
+
+export interface HomeExpertQuestion {
+  id: number;
+  title: string;
+}
+
+interface HomeExpertQuestionResponse {
+  questions: HomeExpertQuestion[];
+}
+
+/** 获取门户首页公开专家问题，仅返回首页展示所需字段 */
+export async function fetchHomeExpertQuestions(limit: number): Promise<HomeExpertQuestion[]> {
+  const response = await req<HomeExpertQuestionResponse>(
+    `${HOME_EXPERT_QA_BASE}/home-questions${qs({ limit })}`,
+  );
+  return response.questions;
+}
 
 /** 获取问题列表（支持领域/状态/排序/分页过滤） */
 export async function fetchExpertQuestions(params: {

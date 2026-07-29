@@ -6,6 +6,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.bootstrap import router as bootstrap_router
 from app.api.routes.chat_proxy import router as chat_proxy_router
 from app.api.routes.course import router as course_router
+from app.api.routes.expert_qa import router as expert_qa_router
 from app.api.routes.health import router as health_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.knowledge_recycle import router as knowledge_recycle_router
@@ -22,3 +23,4 @@ api_router.include_router(knowledge_recycle_router)
 api_router.include_router(chat_proxy_router)
 api_router.include_router(notifications_router)
 api_router.include_router(course_router)
+api_router.include_router(expert_qa_router)

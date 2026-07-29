@@ -62,6 +62,37 @@ def test_get_document_loads_remote_section():
     assert payload["site"]["browser_title"] == "远程门户标题"
 
 
+def test_shared_cache_exposes_saved_version_only_after_applier_advances_it():
+    version_one = PortalAdminAggregateConfig(
+        version=1,
+        portal=DEFAULT_PORTAL_CONFIG,
+        bisheng=PortalBishengPersistentConfig(
+            base_url="http://existing.example.com"
+        ),
+    )
+    store = MemoryRemotePortalAdminConfigStore(remote=version_one)
+    store.enable_shared_cache()
+    store.set_cached_aggregate(version_one)
+    next_portal = version_one.portal.model_copy(
+        update={
+            "site": version_one.portal.site.model_copy(
+                update={"browser_title": "待发布标题"}
+            )
+        }
+    )
+
+    result = store.upsert_document(
+        "portal_config",
+        next_portal.model_dump(mode="json"),
+    )
+
+    assert result.document["site"]["browser_title"] == "待发布标题"
+    assert store.get_document("portal_config")["site"]["browser_title"] != "待发布标题"
+    assert store.last_saved_aggregate is not None
+    store.set_cached_aggregate(store.last_saved_aggregate)
+    assert store.get_document("portal_config")["site"]["browser_title"] == "待发布标题"
+
+
 def test_get_document_normalizes_legacy_empty_document_type_children():
     store = RawMemoryRemotePortalAdminConfigStore(
         remote_data={

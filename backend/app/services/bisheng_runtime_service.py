@@ -39,6 +39,7 @@ DEFAULT_SHARED_REFRESH_WAIT_SECONDS = 10.0
 DEFAULT_SHARED_REFRESH_POLL_SECONDS = 0.05
 DEFAULT_DISCONNECTED_STATE_TTL_SECONDS = 5 * 60
 DEFAULT_OPAQUE_TOKEN_TTL_SECONDS = 60 * 60
+DEFAULT_CLIENT_RETIRE_GRACE_SECONDS = 1.0
 PORTAL_RUNTIME_TOKEN_PURPOSE = "portal_runtime"
 
 
@@ -69,6 +70,8 @@ class BishengRuntimeService:
         auth_state_store: BishengAuthStateStore | None = None,
         shared_refresh_wait_seconds: float = DEFAULT_SHARED_REFRESH_WAIT_SECONDS,
         shared_refresh_poll_seconds: float = DEFAULT_SHARED_REFRESH_POLL_SECONDS,
+        client_retire_grace_seconds: float = DEFAULT_CLIENT_RETIRE_GRACE_SECONDS,
+        client_retire_sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ):
         self._config_path = config_path
         self._store = store or InMemoryConfigStore()
@@ -86,9 +89,15 @@ class BishengRuntimeService:
         self._auth_state_store = auth_state_store
         self._shared_refresh_wait_seconds = shared_refresh_wait_seconds
         self._shared_refresh_poll_seconds = shared_refresh_poll_seconds
+        self._client_retire_grace_seconds = max(
+            float(client_retire_grace_seconds),
+            0.0,
+        )
+        self._client_retire_sleeper = client_retire_sleeper
         self._lock = asyncio.Lock()
         self._client: BishengClient | None = None
         self._refresh_task: asyncio.Task | None = None
+        self._retired_client_tasks: set[asyncio.Task] = set()
         self._connected = False
         self._auth_message = "未验证"
         self._auth_user: BishengRuntimeAuthUser | None = None
@@ -112,6 +121,12 @@ class BishengRuntimeService:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
+        retired_tasks = list(self._retired_client_tasks)
+        self._retired_client_tasks.clear()
+        for retired_task in retired_tasks:
+            retired_task.cancel()
+        if retired_tasks:
+            await asyncio.gather(*retired_tasks, return_exceptions=True)
         client = self._client
         self._client = None
         if client is not None:
@@ -713,7 +728,20 @@ class BishengRuntimeService:
         previous = self._client
         self._client = next_client
         if previous is not None:
-            await previous.aclose()
+            task = asyncio.create_task(
+                self._retire_client(previous),
+                name="bisheng-runtime-client-retire",
+            )
+            self._retired_client_tasks.add(task)
+            task.add_done_callback(self._retired_client_tasks.discard)
+
+    async def _retire_client(self, client: BishengClient) -> None:
+        try:
+            await self._client_retire_sleeper(
+                self._client_retire_grace_seconds
+            )
+        finally:
+            await client.aclose()
 
     def _to_public_view(self, config: BishengRuntimeConfig) -> BishengRuntimeConfigView:
         return BishengRuntimeConfigView(
