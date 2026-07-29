@@ -341,6 +341,7 @@ export interface ApiQuestion {
   /** 0: 未解决  1: 已解决  2: 已关闭 */
   status: 0 | 1 | 2;
   attachments: string | null;
+  file_name: string | null;
   file_url: string | null;
   related_docs: string | null;
   invited_experts: string | null;
@@ -381,6 +382,8 @@ export interface CreateQuestionPayload {
   invited_expert_names?: string;
   image_url?: string;
   file_url?: string;
+  file_name?: string;
+  attachments?: string;
   related_docs?: string;
 }
 
@@ -392,6 +395,8 @@ export interface UpdateQuestionPayload {
   invited_expert_names?: string;
   image_url?: string | null;
   file_url?: string | null;
+  file_name?: string | null;
+  attachments?: string | null;
   related_docs?: string | null;
 }
 
@@ -957,6 +962,8 @@ export async function createExpertQuestion(
     experts_names: payload.invited_expert_names,
     image_url: payload.image_url ?? null,
     file_url: payload.file_url ?? null,
+    file_name: payload.file_name ?? null,
+    attachments: payload.attachments ?? null,
     related_docs: payload.related_docs ?? null,
   };
 
@@ -982,6 +989,8 @@ export async function updateExpertQuestion(
     experts_names: payload.invited_expert_names,
     image_url: payload.image_url,
     file_url: payload.file_url,
+    file_name: payload.file_name,
+    attachments: payload.attachments,
     related_docs: payload.related_docs,
   };
 

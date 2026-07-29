@@ -163,6 +163,15 @@ function parseQuestionAttachments(
   }, []);
 }
 
+function serializeKnowledgeAttachments(
+  items: KnowledgeAttachment[],
+): string | undefined {
+  const validItems = items.filter((item) => item.title.trim());
+  return validItems.length
+    ? validItems.map((item) => item.title.trim()).join(ATTACHMENT_LIST_SEPARATOR)
+    : undefined;
+}
+
 function serializeKnowledgeAttachmentsID(
   items: KnowledgeAttachment[],
 ): string | undefined {
@@ -255,13 +264,14 @@ export default function ExpertQAAskPage() {
         setInvited(parseInvitedExperts(question.invited_experts, question.experts_names));
 
         const fileUrlTokens = splitStoredList(question.file_url);
+        const fileNameTokens = splitStoredList(question.file_name);
         const relatedNameTokens = splitStoredList(question.attachments).filter(
           (t) => !isUploadedAttachmentUrl(t),
         );
         setFileAttachments(
           fileUrlTokens.map((url, idx) => ({
             id: `file-${idx}-${url}`,
-            title: url.split('/').pop() || url,
+            title: fileNameTokens[idx]?.trim() || url.split('/').pop() || url,
             url,
           })),
         );
@@ -609,6 +619,10 @@ export default function ExpertQAAskPage() {
         file_url: fileAttachments.length
           ? fileAttachments.map((item) => item.url).join(ATTACHMENT_LIST_SEPARATOR)
           : null,
+        file_name: fileAttachments.length
+          ? fileAttachments.map((item) => item.title).join(ATTACHMENT_LIST_SEPARATOR)
+          : null,
+        attachments: serializeKnowledgeAttachments(relatedDocs) ?? null,
         related_docs: serializeKnowledgeAttachmentsID(relatedDocs) ?? null,
       };
       if (isEditMode && editQuestionId) {
@@ -618,6 +632,8 @@ export default function ExpertQAAskPage() {
           ...payload,
           image_url: payload.image_url ?? undefined,
           file_url: payload.file_url ?? undefined,
+          file_name: payload.file_name ?? undefined,
+          attachments: payload.attachments ?? undefined,
           related_docs: payload.related_docs ?? undefined,
         });
       }
