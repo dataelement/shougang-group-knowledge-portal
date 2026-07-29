@@ -117,7 +117,6 @@ function ConfirmModal({
               {state.duplicates!.map((entry, index) => (
                 <li key={`${entry.name}-${index}`} className={s.duplicateItem}>
                   {entry.name}
-                  {entry.path ? `（${entry.path}）` : ''}
                 </li>
               ))}
             </ul>
@@ -540,14 +539,15 @@ export default function RecyclePage() {
   }) => {
     let mergeFolder = false;
     let overwriteFiles = false;
-    const preview = await previewRestore({
+    const previewBody = {
       item_ids: params.ids,
       mode: params.mode,
       target_knowledge_id: params.targetKnowledgeId,
       target_folder_id: params.targetFolderId ?? null,
-      merge_folder: false,
-      overwrite_files: false,
-    });
+      merge_folder: false as boolean,
+      overwrite_files: false as boolean,
+    };
+    let preview = await previewRestore(previewBody);
     if (preview.need_confirm_merge) {
       mergeFolder = await askConfirm({
         title: '文件夹冲突',
@@ -557,14 +557,17 @@ export default function RecyclePage() {
         confirmText: '合并',
       });
       if (!mergeFolder) return;
+      // Re-preview with merge confirmed so child-file conflicts in the folder surface.
+      preview = await previewRestore({
+        ...previewBody,
+        merge_folder: true,
+        overwrite_files: false,
+      });
     }
     if (preview.need_confirm_overwrite || preview.warnings.some((w) => w.code === 'FILE_OVERWRITE_CONFLICT')) {
       const warning = preview.warnings.find((w) => w.code === 'FILE_OVERWRITE_CONFLICT');
       const duplicates = (warning?.conflicts || [])
-        .map((c) => ({
-          name: c.name || '',
-          path: c.path || undefined,
-        }))
+        .map((c) => ({ name: c.name || '' }))
         .filter((c) => c.name);
       overwriteFiles = await askConfirm({
         title: '发现重复文件',
