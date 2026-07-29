@@ -80,6 +80,7 @@ interface QaRequestSnapshot {
   files: ChatAttachment[];
   answerMode: AnswerMode;
   model: string;
+  templateId?: string;
 }
 
 export interface Session {
@@ -479,7 +480,6 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
   const applyWritingTemplate = (template: QATemplateConfig) => {
     setTemplateCategory(template.category_id);
     setSelectedTemplateId(template.id);
-    setInput(template.prompt);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
 
@@ -804,6 +804,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     files?: ChatAttachment[];
     answerMode?: AnswerMode;
     model?: string;
+    templateId?: string;
     retryMessageIndex?: number;
   }) => {
     // 程序化发送(首页问答草稿/自动发送)时,选择项从 opts 显式带入,避免依赖异步 state。
@@ -815,7 +816,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const effModelChoice = effAnswerMode === 'expert' ? reasoningModelChoice : generalModelChoice;
     const effModel = opts?.model ?? effModelChoice?.id ?? '';
     const effScope = opts?.scope ?? selectedKnowledgeScope;
-    if ((!text && !messageFiles.length) || streaming || uploadingFiles.length) return;
+    const effTemplateId = (opts?.templateId ?? selectedTemplateId).trim();
+    const selectedTemplate = effTemplateId
+      ? findWritingTemplateById(writingTemplates, effTemplateId)
+      : undefined;
+    if ((!text && !messageFiles.length && !effTemplateId) || streaming || uploadingFiles.length) return;
     if (effAnswerMode === 'expert' && !reasoningModelChoice) {
       setComposerTip('请先在后台配置推理模型。');
       return;
@@ -824,7 +829,18 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       setComposerTip('请先在后台配置问答模型。');
       return;
     }
-    const finalText = text || '请分析附件内容。';
+    let finalText: string;
+    let displayText: string;
+    if (text) {
+      finalText = text;
+      displayText = text;
+    } else if (effTemplateId) {
+      finalText = '请按模板要求生成';
+      displayText = selectedTemplate?.name ? `按「${selectedTemplate.name}」生成` : finalText;
+    } else {
+      finalText = '请分析附件内容。';
+      displayText = finalText;
+    }
     const targetSessionId = activeId;
     const retryMessageIndex = opts?.retryMessageIndex;
     const targetMessageIndex = retryMessageIndex ?? activeSession.messages.length + 1;
@@ -835,6 +851,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       files: [...messageFiles],
       answerMode: effAnswerMode,
       model: effModel,
+      templateId: effTemplateId || undefined,
     };
     onBeforeSend?.();
     setInput('');
@@ -850,11 +867,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
         ss.id === targetSessionId
           ? {
               ...ss,
-              title: ss.title === '新会话' ? finalText.slice(0, 18) : ss.title,
+              title: ss.title === '新会话' ? displayText.slice(0, 18) : ss.title,
               messages: retryMessageIndex === undefined
                 ? [
                     ...ss.messages,
-                    { role: 'user', text: finalText, files: messageFiles },
+                    { role: 'user', text: displayText, files: messageFiles },
                     { role: 'bot', text: '', requestSnapshot },
                   ]
                 : ss.messages.map((message, index) => (
@@ -874,6 +891,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       entryPoint: 'qa_page',
       signal: abortController.signal,
       text: finalText,
+      templateId: effTemplateId || undefined,
       knowledgeSpaceIds: useAllSpaces ? opts!.allSpaceIds! : [],
       knowledgeScope: useAllSpaces ? undefined : effScope,
       files: messageFiles,
@@ -938,6 +956,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       files: snapshot.files,
       answerMode: snapshot.answerMode,
       model: snapshot.model,
+      templateId: snapshot.templateId,
       retryMessageIndex: messageIndex,
     });
   };
@@ -1400,7 +1419,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               type="button"
               className={s.smartAppSendButton}
               onClick={() => sendMessage()}
-              disabled={uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
+              disabled={uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length && !selectedTemplateId)}
               aria-label="发送智能问答"
             >
               <Send size={17} />
@@ -1527,7 +1546,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
               type="button"
               className={s.sendBtn}
               onClick={() => sendMessage()}
-              disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length)}
+              disabled={streaming || uploadingFiles.length > 0 || (!input.trim() && !attachedFiles.length && !selectedTemplateId)}
             >
               {streaming ? <Loader2 size={18} className={s.spinner} /> : <Send size={18} />}
             </button>

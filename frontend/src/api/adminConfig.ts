@@ -52,7 +52,8 @@ export interface QATemplateConfig {
   name: string;
   desc: string;
   category_id: string;
-  prompt: string;
+  /** Admin 必填；公开 /knowledge/config 已剥离，仅服务端注入 system_prompt */
+  prompt?: string;
   icon: string;
   home_icon: string;
   color: string;
