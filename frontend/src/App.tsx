@@ -19,6 +19,7 @@ import KnowledgeSpacesPage from './pages/KnowledgeSpacesPage';
 import ApprovalDialogHost from './components/ApprovalDialogHost';
 import FloatingQaButton from './components/FloatingQaButton';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
+import RequireAuth from './components/RequireAuth';
 import LoginBanner from './components/LoginBanner';
 import PortalAuthNoticeHost from './components/PortalAuthNoticeHost';
 import WikiPage from './pages/WikiPage';
@@ -181,7 +182,7 @@ export default function App() {
         <Route path="/wiki/:wikiId" element={<WikiDetailPage />} />
         <Route path="/course" element={<CourseListPage />} />
         <Route path="/course/:courseId" element={<CoursePage />} />
-        <Route path="/apps" element={<AppsPage />} />
+        <Route path="/apps" element={<RequireAuth><AppsPage /></RequireAuth>} />
         <Route path="/admin" element={<AdminRoute />} />
         <Route path="/recycle" element={<RecycleRoute />} />
         <Route path="/login" element={<LoginPage />} />
