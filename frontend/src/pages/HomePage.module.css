@@ -901,14 +901,14 @@
 }
 
 .domainNavTabActive .domainNavTabText {
-  color: rgba(54, 98, 227, 1);
+  color: #666666;
 }
 
 .domainNavTabDivider {
   width: 1px;
   height: 28px;
   margin: 0 16px;
-  background: #e5e7eb;
+  background: #9cb2cd;
   flex: 0 0 auto;
 }
 

@@ -1333,7 +1333,7 @@ export default function HomePage() {
                   onClick={() => setNavTab('category')}
                 >
                   <img
-                    src={activeNavTab === 'category' ? navTabCategoryActive : navTabCategoryInactive}
+                    src={activeNavTab === 'category' ? navTabDomainActive : navTabDomainInactive}
                     alt=""
                     className={s.domainNavTabIcon}
                   />
@@ -1348,7 +1348,7 @@ export default function HomePage() {
                   onClick={() => setNavTab('domain')}
                 >
                   <img
-                    src={activeNavTab === 'domain' ? navTabDomainActive : navTabDomainInactive}
+                    src={activeNavTab === 'domain' ? navTabCategoryActive : navTabCategoryInactive}
                     alt=""
                     className={s.domainNavTabIcon}
                   />
