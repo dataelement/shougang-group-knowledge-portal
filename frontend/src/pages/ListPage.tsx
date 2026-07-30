@@ -426,6 +426,22 @@ export default function ListPage() {
       ? '/list-banners/industry.png'
       : '/list-banners/recommend.png';
 
+  const documentTypeFilter = (
+    <DocumentTypeFilterDropdown
+      groups={filterDocumentTypeGroups}
+      documentType={documentType}
+      fileSubcategoryCode={fileSubcategoryCode}
+      compact
+      placeholder={isCategoryList ? '二级分类' : '文件分类'}
+      onChange={(next) => {
+        setFilters({
+          document_type: next.documentType,
+          file_subcategory_code: next.fileSubcategoryCode,
+        });
+      }}
+    />
+  );
+
   return (
     <PageShell>
       <ActionToast toast={toast} />
@@ -463,56 +479,45 @@ export default function ListPage() {
             共 <span className={s.countNum}>{files.length}</span> 篇文档
           </div>
           <div className={s.filters}>
-          <select
-            className={s.filterSelect}
-            value={spaceLevel}
-            onChange={(e) => {
-              const next = new URLSearchParams(params);
-              if (e.target.value) next.set('space_level', e.target.value);
-              else next.delete('space_level');
-              next.delete('space_id');
-              next.delete('page');
-              setParams(next);
-            }}
-          >
-            <option value="">知识库类型</option>
-            {spaceLevelOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <select className={s.filterSelect} value={selectedSpaceFilter} onChange={(e) => setFilter('space_id', e.target.value)}>
-            <option value="">知识库</option>
-            {filteredSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
-          </select>
-          {/* Business-domain / category entries have their own scope: hide the file-format filter there. */}
-          {!isDomainList && !isCategoryList && (
-            <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
-              <option value="">文件格式</option>
-              {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            {isCategoryList ? documentTypeFilter : null}
+            <select
+              className={s.filterSelect}
+              value={spaceLevel}
+              onChange={(e) => {
+                const next = new URLSearchParams(params);
+                if (e.target.value) next.set('space_level', e.target.value);
+                else next.delete('space_level');
+                next.delete('space_id');
+                next.delete('page');
+                setParams(next);
+              }}
+            >
+              <option value="">知识库类型</option>
+              {spaceLevelOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
-          )}
-          <DocumentTypeFilterDropdown
-            groups={filterDocumentTypeGroups}
-            documentType={documentType}
-            fileSubcategoryCode={fileSubcategoryCode}
-            compact
-            placeholder={isCategoryList ? '二级分类' : '文件分类'}
-            onChange={(next) => {
-              setFilters({
-                document_type: next.documentType,
-                file_subcategory_code: next.fileSubcategoryCode,
-              });
-            }}
-          />
-          {showBusinessDomainFilter ? (
-            <select className={s.filterSelect} value={businessDomainFilter} onChange={(e) => setFilter('business_domain_code', e.target.value)}>
-              <option value="">{isCategoryList ? '作用域' : '业务域'}</option>
-              {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+            <select className={s.filterSelect} value={selectedSpaceFilter} onChange={(e) => setFilter('space_id', e.target.value)}>
+              <option value="">知识库</option>
+              {filteredSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
             </select>
-          ) : null}
-          <select className={s.filterSelect} value={filterTag} onChange={(e) => setFilter('filter_tag', e.target.value)}>
-            <option value="">标签</option>
-            {availableTags.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <select
+            {/* Business-domain / category entries have their own scope: hide the file-format filter there. */}
+            {!isDomainList && !isCategoryList && (
+              <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
+                <option value="">文件格式</option>
+                {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            {!isCategoryList ? documentTypeFilter : null}
+            {showBusinessDomainFilter ? (
+              <select className={s.filterSelect} value={businessDomainFilter} onChange={(e) => setFilter('business_domain_code', e.target.value)}>
+                <option value="">业务域</option>
+                {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+              </select>
+            ) : null}
+            <select className={s.filterSelect} value={filterTag} onChange={(e) => setFilter('filter_tag', e.target.value)}>
+              <option value="">标签</option>
+              {availableTags.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select
             className={s.filterSelect}
             value={timeSort}
             onChange={(e) => setFilter('sort', e.target.value)}
