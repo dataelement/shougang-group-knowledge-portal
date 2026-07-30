@@ -882,13 +882,37 @@
   background: transparent;
   border: none;
   cursor: pointer;
+  /* 未选中:蓝色;图标与文字统一取此 color。选中态见 .domainNavTabActive */
+  color: #3662e3;
+  transition: color 0.15s ease;
 }
 
+.domainNavTabActive {
+  color: #666666;
+}
+
+/* 图标用 CSS mask 染成当前文字色(currentColor),与文字严格统一 */
 .domainNavTabIcon {
   width: 24px;
   height: 24px;
   flex: 0 0 auto;
-  object-fit: contain;
+  background-color: currentColor;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.domainNavTabIconDomain {
+  -webkit-mask-image: url('../assets/nav-tab-domain-inactive.png');
+  mask-image: url('../assets/nav-tab-domain-inactive.png');
+}
+
+.domainNavTabIconCategory {
+  -webkit-mask-image: url('../assets/nav-tab-category-inactive.png');
+  mask-image: url('../assets/nav-tab-category-inactive.png');
 }
 
 .domainNavTabText {
@@ -896,12 +920,7 @@
   font-weight: 700;
   line-height: 32px;
   white-space: nowrap;
-  color: #333;
-  transition: color 0.15s ease;
-}
-
-.domainNavTabActive .domainNavTabText {
-  color: #666666;
+  color: inherit;
 }
 
 .domainNavTabDivider {
