@@ -6,7 +6,23 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 REST_STATE_SECRET_PREFIX = "sg-rest-meta:"
 REST_PROVIDER = "rest"
-REST_PERSIST_PROVIDER = "custom"
+# BiSheng unified_auth 持久化层仅接受 group/stock/custom；REST 通过 state_secret 元数据识别。
+REST_BISHENG_PROVIDER = "custom"
+
+# REST 运行时配置 ↔ unified_auth OAuth 字段映射（BiSheng 持久化用）
+REST_TO_OAUTH_FIELD_MAP: dict[str, str] = {
+    "enabled": "enabled",
+    "rest_app_id": "client_id",
+    "rest_base_url": "redirect_uri",
+    "authenticate_url": "authorize_url",
+    "token_valid_url": "token_url",
+    "user_attributes_url": "userinfo_url",
+    "http_timeout_seconds": "http_timeout_seconds",
+    "token_check_interval_seconds": "state_ttl_seconds",
+    "login_sync_hmac_secret": "login_sync_hmac_secret",
+    "login_sync_signature_header": "login_sync_signature_header",
+}
+# rest_token_id_param / verify_tls / bisheng_lookup_required 写入 state_secret 元数据
 
 
 def _normalize_text(value: str | None) -> str:
@@ -190,11 +206,44 @@ def _decode_rest_meta(state_secret: object) -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _derive_rest_base_url(unified_auth: dict[str, object], meta: dict[str, object]) -> str:
+    rest_base_url = str(
+        meta.get("rest_base_url")
+        or unified_auth.get("redirect_uri")
+        or ""
+    ).strip()
+    if rest_base_url:
+        return rest_base_url
+    for key in ("authorize_url", "token_url", "userinfo_url"):
+        url = str(unified_auth.get(key) or "").strip()
+        marker = "/idp/restful/"
+        if marker in url.lower():
+            return url[: url.lower().index(marker)].rstrip("/")
+    return ""
+
+
+def _looks_like_oauth_mapped_rest(unified_auth: dict[str, object]) -> bool:
+    client_id = str(unified_auth.get("client_id") or "").strip()
+    if not client_id:
+        return False
+    rest_markers = (
+        "idp/restful/",
+        "idpauthenticate",
+        "isidptokenvalid",
+        "getidpuserattributes",
+    )
+    for key in ("authorize_url", "token_url", "userinfo_url"):
+        url = str(unified_auth.get(key) or "").lower()
+        if any(marker in url for marker in rest_markers):
+            return True
+    return False
+
+
 def _rest_document_from_oauth_fields(unified_auth: dict[str, object]) -> dict[str, object]:
     meta = _decode_rest_meta(unified_auth.get("state_secret"))
     login_sync_secret = str(unified_auth.get("login_sync_hmac_secret") or "").strip()
     login_sync_header = str(unified_auth.get("login_sync_signature_header") or "X-Signature").strip()
-    rest_base_url = str(meta.get("rest_base_url") or unified_auth.get("redirect_uri") or "").strip()
+    rest_base_url = _derive_rest_base_url(unified_auth, meta)
     return RestAuthRuntimeConfig(
         enabled=bool(unified_auth.get("enabled")),
         rest_base_url=rest_base_url,
@@ -217,7 +266,7 @@ def rest_auth_document_from_unified_auth(unified_auth: dict[str, object]) -> dic
     if isinstance(nested, dict) and rest_auth_payload_has_content(nested):
         return RestAuthRuntimeConfig.model_validate(nested).model_dump(mode="json")
 
-    if is_rest_oauth_unified_auth(unified_auth):
+    if is_rest_oauth_unified_auth(unified_auth) or _looks_like_oauth_mapped_rest(unified_auth):
         return _rest_document_from_oauth_fields(unified_auth)
 
     login_sync_secret = str(unified_auth.get("rest_login_sync_hmac_secret") or unified_auth.get("login_sync_hmac_secret") or "").strip()
@@ -254,6 +303,7 @@ def merge_rest_auth_into_unified_auth(
     unified_auth: dict[str, object],
     rest_payload: dict[str, object],
 ) -> dict[str, object]:
+    """Persist REST runtime config via unified_auth OAuth fields in BiSheng."""
     rest = RestAuthRuntimeConfig.model_validate(rest_payload)
     next_data = dict(unified_auth)
     next_data.pop("rest_auth", None)
@@ -269,14 +319,18 @@ def merge_rest_auth_into_unified_auth(
         user_attributes_url=rest.user_attributes_url,
     )
     default_auth_url, default_token_url, default_user_url = _default_rest_endpoint_urls(rest.rest_base_url)
+    resolved_authenticate_url = authenticate_url or default_auth_url
+    resolved_token_valid_url = token_valid_url or default_token_url
+    resolved_user_attributes_url = user_attributes_url or default_user_url
     next_data.update(
         {
             "enabled": rest.enabled,
-            "provider": REST_PERSIST_PROVIDER,
+            "provider": REST_BISHENG_PROVIDER,
             "client_id": rest.rest_app_id,
-            "authorize_url": authenticate_url or default_auth_url,
-            "token_url": token_valid_url or default_token_url,
-            "userinfo_url": user_attributes_url or default_user_url,
+            "redirect_uri": rest.rest_base_url,
+            "authorize_url": resolved_authenticate_url,
+            "token_url": resolved_token_valid_url,
+            "userinfo_url": resolved_user_attributes_url,
             "http_timeout_seconds": rest.http_timeout_seconds,
             "login_sync_hmac_secret": login_sync_secret,
             "login_sync_signature_header": rest.login_sync_signature_header or "X-Signature",
