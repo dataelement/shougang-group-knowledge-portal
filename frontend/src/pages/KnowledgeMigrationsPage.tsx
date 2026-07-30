@@ -581,7 +581,7 @@ export default function KnowledgeMigrationsPage() {
   const refreshAfterAction = () => void load(false);
 
   return (
-    <PageShell hideFooter>
+    <PageShell hideFooter mainClassName={s.pageMain}>
       <div className={s.container}>
         <div className={s.pageHead}>
           <div>
