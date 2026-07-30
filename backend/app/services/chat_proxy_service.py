@@ -227,9 +227,7 @@ class ChatProxyService:
             bisheng_client=self._bisheng,
             portal_config_service=self._config_service,
         )
-        spaces = await service.list_visible_spaces(
-            discovery_scope="public_and_department"
-        )
+        spaces = await service.list_visible_spaces()
         return {space.id for space in spaces.data}
 
     async def _get_anonymous_public_space_ids(self) -> set[int]:

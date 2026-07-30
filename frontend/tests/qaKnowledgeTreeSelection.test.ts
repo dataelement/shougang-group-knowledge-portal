@@ -44,6 +44,17 @@ test('home page and qa page share category picker mode wiring', () => {
   assert.match(homeQaDraftSource, /knowledgeScope/);
 });
 
+test('category browsing is restricted to the workbench-visible qa spaces', () => {
+  assert.match(
+    homePageSource,
+    /onBrowseCategoryFiles=\{\(params\) => browseSearchFiles\(\{[\s\S]*spaceIds: qaSpaces\.map\(\(space\) => space\.id\)/,
+  );
+  assert.match(
+    qaPageSource,
+    /onBrowseCategoryFiles=\{\(params\) => browseSearchFiles\(\{[\s\S]*spaceIds: availableSpaces\.map\(\(space\) => space\.id\)/,
+  );
+});
+
 test('qa knowledge tree picker supports dual mode and file limit', () => {
   assert.match(pickerSource, /一次最多可选择20个文件进行问答。/);
   assert.match(pickerSource, /按知识库/);

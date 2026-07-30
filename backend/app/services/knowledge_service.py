@@ -1456,18 +1456,24 @@ class KnowledgeService:
         discovery_scope: PortalDiscoveryScope = "public_and_department",
     ) -> QaKnowledgeTreeNodeData:
         resolved_page_size = min(max(page_size, 1), self._page_size_limit)
-        params: dict[str, Any] = {
-            "page_size": resolved_page_size,
-            "discovery_scope": discovery_scope,
-        }
+        params: dict[str, Any] = {"page_size": resolved_page_size}
         if parent_id is not None:
             params["parent_id"] = parent_id
         if cursor:
             params["cursor"] = cursor
-        response = await self._bisheng.get_json(
-            f"/api/v1/knowledge/shougang-portal/qa/spaces/{space_id}/children",
-            params=params,
-        )
+        if discovery_scope == "legacy":
+            params.update(
+                {
+                    "file_status": [SUCCESS_STATUS],
+                    "enrich_files": False,
+                    "folder_count_mode": "shallow",
+                }
+            )
+            path = f"/api/v1/knowledge/space/{space_id}/children"
+        else:
+            params["discovery_scope"] = discovery_scope
+            path = f"/api/v1/knowledge/shougang-portal/qa/spaces/{space_id}/children"
+        response = await self._bisheng.get_json(path, params=params)
         # 上游权限/不存在等业务错误经 HTTP 200 + body status_code 返回;
         # 显式检测并抛 BishengBusinessError,交由路由层翻译为 403。
         data = self._extract_success_data(response)
@@ -1494,15 +1500,19 @@ class KnowledgeService:
         discovery_scope: PortalDiscoveryScope = "public_and_department",
     ) -> QaKnowledgeFolderStatsData:
         unique_folder_ids = list(dict.fromkeys(folder_ids))
-        response = await self._bisheng.post_json(
-            (
+        if discovery_scope == "legacy":
+            path = f"/api/v1/knowledge/space/{space_id}/folder-stats"
+            body = {
+                "folder_ids": unique_folder_ids,
+                "file_status": [SUCCESS_STATUS],
+            }
+        else:
+            path = (
                 f"/api/v1/knowledge/shougang-portal/qa/spaces/{space_id}"
                 f"/folder-stats?discovery_scope={discovery_scope}"
-            ),
-            json={
-                "folder_ids": unique_folder_ids,
-            },
-        )
+            )
+            body = {"folder_ids": unique_folder_ids}
+        response = await self._bisheng.post_json(path, json=body)
         data = self._extract_success_data(response)
         raw_stats = data.get("stats") if isinstance(data, dict) else []
         if not isinstance(raw_stats, list):

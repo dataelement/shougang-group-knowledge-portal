@@ -1394,7 +1394,10 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                   pickerMode={knowledgePickerMode}
                   onPickerModeChange={setKnowledgePickerMode}
                   documentTypeGroups={documentTypeGroups}
-                  onBrowseCategoryFiles={(params) => browseSearchFiles(params)}
+                  onBrowseCategoryFiles={(params) => browseSearchFiles({
+                    ...params,
+                    spaceIds: availableSpaces.map((space) => space.id),
+                  })}
                   onLoadChildren={fetchQaKnowledgeTreeChildren}
                   onLoadFolderStats={fetchQaKnowledgeFolderStats}
                   onSearchFiles={searchQaKnowledgeFiles}
@@ -1500,7 +1503,10 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
                     pickerMode={knowledgePickerMode}
                     onPickerModeChange={setKnowledgePickerMode}
                     documentTypeGroups={documentTypeGroups}
-                    onBrowseCategoryFiles={(params) => browseSearchFiles(params)}
+                    onBrowseCategoryFiles={(params) => browseSearchFiles({
+                      ...params,
+                      spaceIds: availableSpaces.map((space) => space.id),
+                    })}
                     onLoadChildren={fetchQaKnowledgeTreeChildren}
                     onLoadFolderStats={fetchQaKnowledgeFolderStats}
                     onSearchFiles={searchQaKnowledgeFiles}

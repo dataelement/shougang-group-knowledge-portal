@@ -1199,7 +1199,7 @@ async def list_qa_tree_spaces(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        return response_ok(await service.list_visible_spaces(discovery_scope="public_and_department"))
+        return response_ok(await service.list_visible_spaces())
     finally:
         await bisheng_client.aclose()
 
@@ -1251,7 +1251,7 @@ async def list_qa_tree_children(
                     parent_id=parent_id,
                     cursor=cursor,
                     page_size=page_size,
-                    discovery_scope="public_and_department",
+                    discovery_scope="legacy",
                 )
             )
         except BishengBusinessError as err:
@@ -1300,7 +1300,7 @@ async def get_qa_tree_folder_stats(
                 await service.get_qa_tree_folder_stats(
                     space_id,
                     body.folder_ids,
-                    discovery_scope="public_and_department",
+                    discovery_scope="legacy",
                 )
             )
         except BishengBusinessError as err:
@@ -1341,7 +1341,7 @@ async def search_qa_files_by_name(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        visible_spaces = await service.list_visible_spaces(discovery_scope="public_and_department")
+        visible_spaces = await service.list_visible_spaces()
         space_ids = [space.id for space in visible_spaces.data]
         return response_ok(
             await service.search_qa_files_by_name(
@@ -1349,7 +1349,7 @@ async def search_qa_files_by_name(
                 space_ids=space_ids,
                 page=page,
                 page_size=page_size,
-                discovery_scope="public_and_department",
+                discovery_scope="legacy",
             )
         )
     finally:
