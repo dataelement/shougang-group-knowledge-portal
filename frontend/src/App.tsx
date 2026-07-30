@@ -18,6 +18,7 @@ import ExpertQADetailPage from './pages/ExpertQADetailPage';
 import KnowledgeSpacesPage from './pages/KnowledgeSpacesPage';
 import ApprovalDialogHost from './components/ApprovalDialogHost';
 import FloatingQaButton from './components/FloatingQaButton';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
 import LoginBanner from './components/LoginBanner';
 import PortalAuthNoticeHost from './components/PortalAuthNoticeHost';
 import WikiPage from './pages/WikiPage';
@@ -190,6 +191,7 @@ export default function App() {
       <LoginBanner />
       <PortalAuthNoticeHost />
       <ConditionalFloatingQaButton />
+      <PwaInstallPrompt />
       <ApprovalDialogHost />
     </>
   );
