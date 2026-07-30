@@ -49,6 +49,7 @@ import {
   getSearchDisplayKeyword,
 } from '../utils/searchParams';
 import {
+  ADVANCED_SEARCH_ENABLED,
   applyAdvancedSearchForm,
   buildAdvancedRetrievalQuery,
   clearAdvancedSearchConditions,
@@ -146,7 +147,7 @@ export default function SearchPage() {
   const anyKeywords = params.get('any_keywords') || '';
   const excludeKeywords = params.get('exclude_keywords') || '';
   const searchField = params.get('search_field') || 'file_name';
-  const advancedSearchOpen = isAdvancedSearchOpen(params);
+  const advancedSearchOpen = ADVANCED_SEARCH_ENABLED && isAdvancedSearchOpen(params);
   const advancedMode = params.has('search_field');
   const keywordMode = Boolean(q.trim()) && !advancedMode;
   const keywordSort = normalizeSearchSort(params.get('sort'));
@@ -910,19 +911,21 @@ export default function SearchPage() {
               />
               <button className={s.searchHeroBtn} onClick={submitSearch} disabled={advancedSearchOpen}>搜索</button>
             </div>
-            <button
-              type="button"
-              className={`${s.advancedSearchButton} ${advancedSearchOpen ? s.advancedSearchButtonActive : ''}`}
-              aria-expanded={advancedSearchOpen}
-              onClick={toggleAdvancedSearch}
-            >
-              高级检索
-              {advancedSearchOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-            </button>
+            {ADVANCED_SEARCH_ENABLED ? (
+              <button
+                type="button"
+                className={`${s.advancedSearchButton} ${advancedSearchOpen ? s.advancedSearchButtonActive : ''}`}
+                aria-expanded={advancedSearchOpen}
+                onClick={toggleAdvancedSearch}
+              >
+                高级检索
+                {advancedSearchOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
+            ) : null}
           </div>
         </div>
 
-        {advancedSearchOpen ? (
+        {ADVANCED_SEARCH_ENABLED && advancedSearchOpen ? (
           <AdvancedSearchPanel
             value={advancedSearchDraft}
             onChange={setAdvancedSearchDraft}

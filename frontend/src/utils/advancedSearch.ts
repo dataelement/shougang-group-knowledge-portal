@@ -1,5 +1,8 @@
 export type AdvancedSearchField = 'file_name' | 'summary' | 'tags';
 
+// 临时隐藏高级检索入口与面板；恢复时只需改为 true。
+export const ADVANCED_SEARCH_ENABLED = false;
+
 export interface AdvancedSearchForm {
   allKeywords: string;
   exactPhrase: string;
@@ -145,4 +148,3 @@ export function clearAdvancedSearchConditions(params: URLSearchParams): URLSearc
 export function isAdvancedSearchOpen(params: URLSearchParams): boolean {
   return params.get('advanced') === '1';
 }
-

@@ -21,6 +21,7 @@ import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
   streamHomeContent,
   fetchDomainFileCounts,
+  fetchCategoryFileCounts,
   fetchHomeStats,
   fetchHotSearches,
   fetchQaKnowledgeTreeSpaces,
@@ -56,6 +57,7 @@ import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import { getEnabledCategoryCards, getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildCategorySearchPath, buildDomainSearchPath } from '../utils/searchParams';
 import {
+  ADVANCED_SEARCH_ENABLED,
   applyAdvancedSearchForm,
   EMPTY_ADVANCED_SEARCH_FORM,
   type AdvancedSearchForm,
@@ -65,10 +67,6 @@ import { fetchCourses } from '../api/courses';
 import { formatCourseDuration, type Course } from '../types/course';
 import s from './HomePage.module.css';
 import navIcon from '../assets/nav-icon@2x.png';
-import navTabDomainActive from '../assets/nav-tab-domain-active.png';
-import navTabDomainInactive from '../assets/nav-tab-domain-inactive.png';
-import navTabCategoryActive from '../assets/nav-tab-category-active.png';
-import navTabCategoryInactive from '../assets/nav-tab-category-inactive.png';
 import iconCourse from '../assets/icon-course@2x.png';
 import iconExpert from '../assets/icon-expert@2x.png';
 import iconAiqa from '../assets/icon-aiqa@2x.png';
@@ -400,6 +398,8 @@ export default function HomePage() {
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
   const [domainCountsLoading, setDomainCountsLoading] = useState(true);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [categoryCountsLoading, setCategoryCountsLoading] = useState(true);
   const [homeStats, setHomeStats] = useState<HomeStats | null>(null);
   const [homeStatsFailed, setHomeStatsFailed] = useState(false);
   const [homeCourses, setHomeCourses] = useState<Course[]>([]);
@@ -548,6 +548,23 @@ export default function HomePage() {
         /* keep empty -> cards show 0; do not block the page */
       } finally {
         if (active) setDomainCountsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const counts = await fetchCategoryFileCounts();
+        if (active) setCategoryCounts(counts);
+      } catch {
+        /* keep empty -> cards show 0; do not block the page */
+      } finally {
+        if (active) setCategoryCountsLoading(false);
       }
     })();
     return () => {
@@ -1210,7 +1227,7 @@ export default function HomePage() {
                   >
                     {searchTab === 'qa' ? <Send size={17} /> : <Search size={18} />}
                   </button>
-                  {searchTab === 'global' ? (
+                  {ADVANCED_SEARCH_ENABLED && searchTab === 'global' ? (
                     <button
                       type="button"
                       className={`${s.advancedSearchButton} ${advancedSearchOpen ? s.advancedSearchButtonActive : ''}`}
@@ -1248,7 +1265,7 @@ export default function HomePage() {
               </div>
             ) : null}
           </div>
-          {advancedSearchOpen && searchTab === 'global' ? (
+          {ADVANCED_SEARCH_ENABLED && advancedSearchOpen && searchTab === 'global' ? (
             <div className={s.homeAdvancedSearch} onClick={(event) => event.stopPropagation()}>
               <AdvancedSearchPanel
                 value={advancedSearchDraft}
@@ -1332,11 +1349,7 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'category' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('category')}
                 >
-                  <img
-                    src={activeNavTab === 'category' ? navTabCategoryActive : navTabCategoryInactive}
-                    alt=""
-                    className={s.domainNavTabIcon}
-                  />
+                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconDomain}`} aria-hidden />
                   <span className={s.domainNavTabText}>分类导航</span>
                 </button>
                 <span className={s.domainNavTabDivider} aria-hidden />
@@ -1347,11 +1360,7 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'domain' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('domain')}
                 >
-                  <img
-                    src={activeNavTab === 'domain' ? navTabDomainActive : navTabDomainInactive}
-                    alt=""
-                    className={s.domainNavTabIcon}
-                  />
+                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconCategory}`} aria-hidden />
                   <span className={s.domainNavTabText}>业务域导航</span>
                 </button>
               </div>
@@ -1385,6 +1394,8 @@ export default function HomePage() {
                 ? homeCategoryCards.map((card) => {
                     const categoryPath = buildCategorySearchPath(card.code);
                     const usesBannerThumb = Boolean(card.image);
+                    const categoryCode = (card.code || '').trim().toUpperCase();
+                    const totalFiles = categoryCode ? (categoryCounts[categoryCode] ?? 0) : 0;
                     return (
                       <div
                         key={card.code}
@@ -1407,6 +1418,7 @@ export default function HomePage() {
                         )}
                         <div className={s.domainCardContent}>
                           <div className={s.domainName}>{card.name || card.code}</div>
+                          <div className={s.domainMeta}>知识数量 {categoryCountsLoading ? '加载中…' : formatCount(totalFiles)}</div>
                         </div>
                       </div>
                     );
