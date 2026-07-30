@@ -1,19 +1,19 @@
 .button {
   position: fixed;
-  left: calc(100vw - 30px - 134px);
+  left: calc(100vw - 30px - 56px);
   top: calc(100vh - 88px - 56px);
   z-index: 70;
   height: 56px;
-  padding: 0 0 0 14px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   border: none;
   border-radius: 28px;
   background: #fff;
   box-shadow: 0 6px 18px 0 rgba(174, 190, 224, 0.65);
   transition:
-    transform 0.16s ease,
+    transform 0.2s ease,
     box-shadow 0.16s ease;
   cursor: grab;
   touch-action: none;
@@ -27,17 +27,38 @@
   cursor: grabbing;
 }
 
+/* 默认收起:仅圆形头像;hover 向左展开露出「钢小智」文字,头像位置不动 */
 .label {
+  max-width: 0;
+  margin: 0;
+  opacity: 0;
+  overflow: hidden;
   white-space: nowrap;
   color: #3662e3;
   font-size: 18px;
   line-height: 24px;
   font-weight: 400;
+  transition:
+    max-width 0.22s ease,
+    opacity 0.18s ease,
+    margin 0.22s ease;
+}
+
+.button:hover .label {
+  max-width: 60px;
+  margin: 0 12px 0 14px;
+  opacity: 1;
 }
 
 .button:hover {
-  transform: translateY(-2px);
+  transform: translate(-86px, -2px);
   box-shadow: 0 8px 22px 2px rgba(174, 190, 224, 0.75);
+}
+
+.button.dragging:hover .label {
+  max-width: 0;
+  margin: 0;
+  opacity: 0;
 }
 
 .button:focus-visible {
@@ -67,7 +88,7 @@
 
 @media (max-width: 640px) {
   .button {
-    left: calc(100vw - 18px - 134px);
+    left: calc(100vw - 18px - 56px);
     top: calc(100vh - 24px - 56px);
   }
 }
