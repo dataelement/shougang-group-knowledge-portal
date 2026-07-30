@@ -127,7 +127,9 @@ export default function FloatingQaButton() {
       onPointerCancel={handlePointerUp}
     >
       <span className={s.label}>钢小智</span>
-      <img className={s.icon} src="/qa-floating-icon.png" alt="" aria-hidden="true" />
+      <span className={s.avatar}>
+        <img className={s.avatarImg} src="/qa-mascot.png" alt="" aria-hidden="true" />
+      </span>
     </button>
   );
 }
