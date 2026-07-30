@@ -56,6 +56,7 @@ import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import { getEnabledCategoryCards, getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildCategorySearchPath, buildDomainSearchPath } from '../utils/searchParams';
 import {
+  ADVANCED_SEARCH_ENABLED,
   applyAdvancedSearchForm,
   EMPTY_ADVANCED_SEARCH_FORM,
   type AdvancedSearchForm,
@@ -1210,7 +1211,7 @@ export default function HomePage() {
                   >
                     {searchTab === 'qa' ? <Send size={17} /> : <Search size={18} />}
                   </button>
-                  {searchTab === 'global' ? (
+                  {ADVANCED_SEARCH_ENABLED && searchTab === 'global' ? (
                     <button
                       type="button"
                       className={`${s.advancedSearchButton} ${advancedSearchOpen ? s.advancedSearchButtonActive : ''}`}
@@ -1248,7 +1249,7 @@ export default function HomePage() {
               </div>
             ) : null}
           </div>
-          {advancedSearchOpen && searchTab === 'global' ? (
+          {ADVANCED_SEARCH_ENABLED && advancedSearchOpen && searchTab === 'global' ? (
             <div className={s.homeAdvancedSearch} onClick={(event) => event.stopPropagation()}>
               <AdvancedSearchPanel
                 value={advancedSearchDraft}
