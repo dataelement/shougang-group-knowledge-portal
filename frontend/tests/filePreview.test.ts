@@ -135,6 +135,11 @@ test('detail preview failure does not fetch chunks when backend disables chunk f
 test('detail knowledge deep link passes the real file name through both open paths', () => {
   const source = readSource('src/pages/DetailPage.tsx');
 
+  assert.match(
+    source,
+    /const canEnterKnowledge = \(\s*viewAccess\?\.accessSource !== 'approval_grant'\s*&& detail\.accessSource !== 'approval_grant'\s*\);/,
+  );
+  assert.match(source, /\{canEnterKnowledge \? \(\s*<button/);
   assert.match(source, /const knowledgeFileName = buildDownloadFileName\(detail\);/);
   assert.match(source, /fileName: knowledgeFileName,\s*openChat: true,/);
   assert.match(
