@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap, Option
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap, Option, ExternalLink
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -132,6 +132,7 @@ import {
 } from '../utils/deptKnowledgeBinding';
 import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
+import { getSafeExternalHttpUrl } from '../utils/adminIntegrations';
 import RecommendationPersonalizationPanel from './admin/RecommendationPersonalizationPanel';
 import CourseManagementPanel from './admin/CourseManagementPanel';
 import DictConfigPanel from './admin/DictConfigPanel';
@@ -243,6 +244,7 @@ interface BishengDraft {
 interface IntegrationsDraft {
   bisheng_admin_entry_url: string;
   bisheng_knowledge_entry_url: string;
+  bisheng_platform_admin_url: string;
 }
 
 interface SiteDraft {
@@ -828,6 +830,20 @@ export default function AdminPage() {
   const domainCodeOptions = buildDomainCodeOptions();
   const deletingBanner = config && bannerDeleteIndex !== null ? config.banners[bannerDeleteIndex] : null;
 
+  function openBishengPlatformAdmin() {
+    const configuredUrl = config?.integrations.bisheng_platform_admin_url || '';
+    if (!configuredUrl.trim()) {
+      showToast('请先在集成配置中配置 BiSheng 管理后台 URL', 'error');
+      return;
+    }
+    const safeUrl = getSafeExternalHttpUrl(configuredUrl);
+    if (!safeUrl) {
+      showToast('配置的 BiSheng 管理后台 URL 无效，请在集成配置中修改', 'error');
+      return;
+    }
+    window.open(safeUrl, '_blank', 'noopener,noreferrer');
+  }
+
   return (
     <>
       <div className={s.layout}>
@@ -846,6 +862,14 @@ export default function AdminPage() {
               </div>
             );
           })}
+          <button
+            type="button"
+            className={`${s.navItem} ${s.navExternalItem}`}
+            onClick={openBishengPlatformAdmin}
+          >
+            <ExternalLink size={16} />
+            BiSheng 管理后台
+          </button>
         </nav>
 
         {/* Main */}
@@ -1903,10 +1927,18 @@ export default function AdminPage() {
             const nextIntegrations = {
               bisheng_admin_entry_url: integrationsDraft.bisheng_admin_entry_url.trim(),
               bisheng_knowledge_entry_url: integrationsDraft.bisheng_knowledge_entry_url.trim(),
+              bisheng_platform_admin_url: integrationsDraft.bisheng_platform_admin_url.trim(),
             };
             const invalidField = Object.values(nextIntegrations).find((value) => value && !/^https?:\/\//i.test(value));
             if (invalidField) {
               setIntegrationsDialogError('URL 需以 http:// 或 https:// 开头；如要清空请删除全部内容。');
+              return;
+            }
+            if (
+              nextIntegrations.bisheng_platform_admin_url
+              && !getSafeExternalHttpUrl(nextIntegrations.bisheng_platform_admin_url)
+            ) {
+              setIntegrationsDialogError('BiSheng 管理后台 URL 不是有效的 http(s) 地址。');
               return;
             }
             void runSave(async () => {
@@ -5057,6 +5089,7 @@ function IntegrationsConfigTable({
 }) {
   const adminUrl = integrations.bisheng_admin_entry_url?.trim() || '';
   const knowledgeUrl = integrations.bisheng_knowledge_entry_url?.trim() || '';
+  const platformAdminUrl = integrations.bisheng_platform_admin_url?.trim() || '';
   return (
     <>
       <div className={s.titleBar}>
@@ -5099,6 +5132,24 @@ function IntegrationsConfigTable({
                 <span className={s.valueTitle}>{knowledgeUrl || '（未配置 — 使用数据源前端地址推导 /workspace/knowledge）'}</span>
                 <span className={s.valueMeta}>
                   示例：http://workspace.example.com/workspace/knowledge
+                </span>
+              </div>
+            </td>
+            <td>
+              <div className={s.actionGroup}>
+                <button className={s.inlineBtn} onClick={onEdit} disabled={saving}>
+                  {saving ? '保存中...' : '编辑'}
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>BiSheng 管理后台 URL</td>
+            <td>
+              <div className={s.valueStack}>
+                <span className={s.valueTitle}>{platformAdminUrl || '（未配置 — 点击左侧入口时提示）'}</span>
+                <span className={s.valueMeta}>
+                  示例：http://workspace.example.com/admin
                 </span>
               </div>
             </td>
@@ -5356,7 +5407,7 @@ function IntegrationsEditorDialog({
           <div>
             <h3 className={s.modalTitle}>编辑集成配置</h3>
             <p className={s.modalNote}>
-              后台入口控制右上角「知识管理后台」；知识空间入口控制「我的知识」页面嵌入地址。留空表示隐藏或使用默认推导。
+              后台入口控制右上角「知识管理后台」；知识空间入口控制「我的知识」页面嵌入地址；BiSheng 管理后台 URL 控制左侧快捷入口。留空表示隐藏、使用默认推导或点击时提示。
             </p>
           </div>
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
@@ -5379,6 +5430,15 @@ function IntegrationsEditorDialog({
               value={draft.bisheng_knowledge_entry_url}
               onChange={(event) => onChange({ ...draft, bisheng_knowledge_entry_url: event.target.value })}
               placeholder="例如：http://192.168.106.120:3002/workspace/knowledge"
+            />
+          </label>
+          <label className={`${s.formField} ${s.formFieldWide}`}>
+            <span className={s.fieldLabel}>BiSheng 管理后台 URL</span>
+            <input
+              className={s.formInput}
+              value={draft.bisheng_platform_admin_url}
+              onChange={(event) => onChange({ ...draft, bisheng_platform_admin_url: event.target.value })}
+              placeholder="例如：http://192.168.106.120:3004/admin"
             />
           </label>
         </div>
@@ -6290,6 +6350,7 @@ function createIntegrationsDraft(current?: IntegrationsConfig): IntegrationsDraf
   return {
     bisheng_admin_entry_url: current?.bisheng_admin_entry_url ?? '',
     bisheng_knowledge_entry_url: current?.bisheng_knowledge_entry_url ?? '',
+    bisheng_platform_admin_url: current?.bisheng_platform_admin_url ?? '',
   };
 }
 

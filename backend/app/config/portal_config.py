@@ -355,6 +355,7 @@ DEFAULT_PORTAL_CONFIG = {
     "integrations": {
         "bisheng_admin_entry_url": "",
         "bisheng_knowledge_entry_url": "",
+        "bisheng_platform_admin_url": "",
     },
     "site": {
         "header_brand_name": "首钢股份知库",

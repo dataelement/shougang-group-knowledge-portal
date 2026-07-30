@@ -1882,6 +1882,7 @@ def test_get_admin_integrations_defaults_to_empty(tmp_path: Path):
     assert response.json()["data"] == {
         "bisheng_admin_entry_url": "",
         "bisheng_knowledge_entry_url": "",
+        "bisheng_platform_admin_url": "",
     }
 
 
@@ -1891,6 +1892,7 @@ def test_post_admin_integrations_persists_url(tmp_path: Path):
 
     url = "http://192.168.106.120:3002/workspace/shougang-portal-admin"
     knowledge_url = "http://192.168.106.120:3002/workspace/knowledge"
+    platform_admin_url = "http://192.168.106.120:3004/admin"
     with TestClient(app) as client:
         client.app.state.portal_config_service = service
         client.app.state.bisheng_runtime_service = runtime_service
@@ -1899,6 +1901,7 @@ def test_post_admin_integrations_persists_url(tmp_path: Path):
             json={
                 "bisheng_admin_entry_url": url,
                 "bisheng_knowledge_entry_url": knowledge_url,
+                "bisheng_platform_admin_url": platform_admin_url,
             },
         )
         get_response = client.get("/api/v1/admin/config/integrations")
@@ -1906,10 +1909,13 @@ def test_post_admin_integrations_persists_url(tmp_path: Path):
     assert post_response.status_code == 200
     assert post_response.json()["data"]["bisheng_admin_entry_url"] == url
     assert post_response.json()["data"]["bisheng_knowledge_entry_url"] == knowledge_url
+    assert post_response.json()["data"]["bisheng_platform_admin_url"] == platform_admin_url
     assert get_response.json()["data"]["bisheng_admin_entry_url"] == url
     assert get_response.json()["data"]["bisheng_knowledge_entry_url"] == knowledge_url
+    assert get_response.json()["data"]["bisheng_platform_admin_url"] == platform_admin_url
     assert service.get_config().integrations.bisheng_admin_entry_url == url
     assert service.get_config().integrations.bisheng_knowledge_entry_url == knowledge_url
+    assert service.get_config().integrations.bisheng_platform_admin_url == platform_admin_url
 
 
 def test_post_admin_integrations_accepts_empty_to_clear(tmp_path: Path):
@@ -1930,8 +1936,10 @@ def test_post_admin_integrations_accepts_empty_to_clear(tmp_path: Path):
     assert response.status_code == 200
     assert response.json()["data"]["bisheng_admin_entry_url"] == ""
     assert response.json()["data"]["bisheng_knowledge_entry_url"] == ""
+    assert response.json()["data"]["bisheng_platform_admin_url"] == ""
     assert service.get_config().integrations.bisheng_admin_entry_url == ""
     assert service.get_config().integrations.bisheng_knowledge_entry_url == ""
+    assert service.get_config().integrations.bisheng_platform_admin_url == ""
 
 
 def test_get_admin_config_seeds_integrations_when_missing_from_legacy_json(tmp_path: Path):
@@ -1958,6 +1966,7 @@ def test_get_admin_config_seeds_integrations_when_missing_from_legacy_json(tmp_p
     assert response.json()["data"] == {
         "bisheng_admin_entry_url": "",
         "bisheng_knowledge_entry_url": "",
+        "bisheng_platform_admin_url": "",
     }
 
 
@@ -1985,7 +1994,23 @@ def test_get_admin_config_backfills_missing_integration_keys(tmp_path: Path):
     assert response.json()["data"] == {
         "bisheng_admin_entry_url": "http://example.com/admin",
         "bisheng_knowledge_entry_url": "",
+        "bisheng_platform_admin_url": "",
     }
+
+
+def test_post_admin_integrations_rejects_non_http_platform_admin_url(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.post(
+            "/api/v1/admin/config/integrations",
+            json={"bisheng_platform_admin_url": "javascript:alert(1)"},
+        )
+
+    assert response.status_code == 422
 
 
 def test_get_admin_site_defaults_to_brand_values(tmp_path: Path):
