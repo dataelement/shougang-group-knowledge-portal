@@ -36,6 +36,7 @@ test('streams document file chat through the portal BFF', async () => {
     await streamDocumentFileChat({
       spaceId: 12,
       fileId: 1580,
+      questionId: 'question-1',
       text: '这个文档的核心内容是什么？',
       onUpdate(text) {
         updates.push(text);
@@ -49,6 +50,7 @@ test('streams document file chat through the portal BFF', async () => {
   assert.deepEqual(JSON.parse(requestBody), {
     query: '这个文档的核心内容是什么？',
     model: '',
+    question_id: 'question-1',
   });
   assert.deepEqual(updates, ['你好', '你好，文档']);
 });

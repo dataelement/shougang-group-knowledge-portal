@@ -2100,6 +2100,7 @@ async function consumeChatStream(
 export async function streamChatCompletion(params: {
   scene: 'search' | 'qa';
   entryPoint?: 'home_qa' | 'qa_page';
+  questionId?: string;
   text: string;
   knowledgeSpaceIds: number[];
   knowledgeScope?: QaKnowledgeScope;
@@ -2123,6 +2124,9 @@ export async function streamChatCompletion(params: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clientTimestamp: new Date().toISOString(),
+        responseMessageId: params.questionId
+          ?? globalThis.crypto?.randomUUID?.()
+          ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         conversationId: params.conversationId,
         model: params.model ?? '',
         answer_mode: params.answerMode ?? 'normal',
@@ -2176,6 +2180,7 @@ export async function streamDocumentFileChat(params: {
   spaceId: number;
   fileId: number;
   text: string;
+  questionId?: string;
   model?: string;
   onUpdate: (text: string) => void;
   onCitations?: (citations: Citation[]) => void;
@@ -2189,6 +2194,7 @@ export async function streamDocumentFileChat(params: {
       body: JSON.stringify({
         query: params.text,
         model: params.model ?? '',
+        question_id: params.questionId ?? crypto.randomUUID(),
       }),
     });
     await consumeChatStream(response, params.onUpdate, params.onCitations, undefined, params.onRetry);

@@ -2145,6 +2145,7 @@ async def chat_document_file(
                     resource_type="document",
                     space_id=space_id,
                     file_id=file_id,
+                    question_id=req.question_id,
                 )
         finally:
             if client_to_close is not None:

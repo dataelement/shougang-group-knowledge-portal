@@ -13,6 +13,7 @@ import {
   PencilLine,
   Share2,
   Tag,
+  type LucideIcon,
 } from 'lucide-react';
 import { buildFileListItemView } from '../utils/fileListItemView';
 import { highlightMatches } from '../utils/highlightText';
@@ -22,6 +23,13 @@ import iconDownload from '../assets/icon-download.svg';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './ui/Tooltip';
 import s from './FileListItem.module.css';
 import tooltipS from './ui/Tooltip.module.css';
+
+const TAG_GROUP_PRESENTATION: Record<string, { Icon: LucideIcon; tooltipLabel: string }> = {
+  系统标签: { Icon: Network, tooltipLabel: '系统标签' },
+  AI标签: { Icon: Tag, tooltipLabel: 'AI标签' },
+  手动标签: { Icon: PencilLine, tooltipLabel: '人工标签' },
+};
+const DEFAULT_TAG_GROUP_PRESENTATION = { Icon: PencilLine, tooltipLabel: '人工标签' };
 
 interface Props {
   file: FileItem;
@@ -237,15 +245,22 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
           <TooltipProvider delayDuration={100}>
             <div className={s.tagSection}>
               {view.tagGroups.map((group) => {
-                const Icon =
-                  group.label === '系统标签'
-                    ? Network
-                    : group.label === 'AI标签'
-                      ? Tag
-                      : PencilLine;
+                const { Icon, tooltipLabel } = TAG_GROUP_PRESENTATION[group.label]
+                  ?? DEFAULT_TAG_GROUP_PRESENTATION;
                 return (
                   <div key={group.label} className={s.tagRow}>
-                    <Icon size={17} className={s.tagRowIcon} />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={s.tagRowIconTrigger}
+                          tabIndex={0}
+                          aria-label={tooltipLabel}
+                        >
+                          <Icon size={17} aria-hidden="true" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{tooltipLabel}</TooltipContent>
+                    </Tooltip>
                     <div className={s.tagList}>
                       {group.tags.map((tag) => (
                         <TagPill key={`${group.label}-${tag}`} name={tag} neutral />
