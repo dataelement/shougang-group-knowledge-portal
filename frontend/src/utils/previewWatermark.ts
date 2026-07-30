@@ -154,7 +154,7 @@ export function buildPortalPreviewWatermarkLines(
   const departmentName = user.departmentName?.trim() || '';
   const identity = departmentName ? `${departmentName}-${name}` : name;
   return [
-    `${identity}--${account}-${formatPreviewWatermarkTime(viewedAt)}`,
+    `${identity}-${account}-${formatPreviewWatermarkTime(viewedAt)}`,
     '首钢股份内部资料，严禁外传，违者必究',
   ];
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
+  ArrowRightLeft,
   Bell,
   ChevronDown,
   ClipboardList,
@@ -14,7 +15,10 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { isPortalAdmin } from '../utils/adminAccess';
+import {
+  isPortalAdmin,
+  isSystemAdministrator,
+} from '../utils/adminAccess';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import {
   PORTAL_APPROVAL_EVENT,
@@ -85,6 +89,7 @@ export default function Header() {
   const initial = user ? (user.initial || user.name.slice(0, 1)) : '';
   const externalId = user?.externalId?.trim() || user?.account || '';
   const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
+  const canViewMigrations = isSystemAdministrator(user);
   const showMyUploadsEntry = location.pathname === '/knowledge-spaces';
 
   const goLogin = () => {
@@ -268,7 +273,20 @@ export default function Header() {
                       我的上传
                     </button>
                   ) : null}
-                  {canOpenAdmin || showMyUploadsEntry ? (
+                  {canViewMigrations ? (
+                    <button
+                      type="button"
+                      className={s.userMenuItem}
+                      onClick={() => {
+                        closeMenu();
+                        navigate('/knowledge-migrations');
+                      }}
+                    >
+                      <ArrowRightLeft size={15} />
+                      迁移记录
+                    </button>
+                  ) : null}
+                  {canOpenAdmin || showMyUploadsEntry || canViewMigrations ? (
                     <div className={s.userMenuDivider} />
                   ) : null}
                   <button

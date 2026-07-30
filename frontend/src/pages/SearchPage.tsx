@@ -1117,7 +1117,7 @@ export default function SearchPage() {
             onFavorite={canFavorite ? handleToggleFavorite : undefined}
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
-            onDownload={canDownload ? handleDownload : undefined}
+            onDownload={canDownload && (!f.isDepartmentFile || f.canDownload) ? handleDownload : undefined}
             onOpen={setPreviewFile}
           />
         ))}

@@ -26,6 +26,6 @@ test('home and result pages hide advanced search behind the shared feature switc
   assert.match(searchSource, /Boolean\(q\.trim\(\)\) && !advancedMode/);
   assert.match(searchSource, /resolveFileActionAccess\(\s*file,\s*'favorite'/);
   assert.match(searchSource, /resolveFileActionAccess\(\s*file,\s*'download'/);
-  assert.match(searchSource, /onDownload=\{canDownload \? handleDownload : undefined\}/);
+  assert.match(searchSource, /onDownload=\{canDownload && \(!f\.isDepartmentFile \|\| f\.canDownload\) \? handleDownload : undefined\}/);
   assert.match(searchSource, /file\.contentAccess !== 'check_required'/);
 });

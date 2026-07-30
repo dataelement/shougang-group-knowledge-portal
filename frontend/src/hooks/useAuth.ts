@@ -140,7 +140,7 @@ export function clearPortalUser() {
 // 因此挂载时始终校验一次：后端可用门户 session 或 Bisheng cookie 恢复用户态。
 let mePromise: Promise<void> | null = null;
 
-function ensureAuthSynced(): Promise<void> {
+export function ensureAuthSynced(): Promise<void> {
   if (typeof window !== 'undefined') {
     if (shouldSuppressAuthRecovery()) {
       return Promise.resolve();
