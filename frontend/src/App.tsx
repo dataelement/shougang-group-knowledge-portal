@@ -8,6 +8,7 @@ import ShareDocumentPage from './pages/ShareDocumentPage';
 import AppsPage from './pages/AppsPage';
 import AdminPage from './pages/AdminPage';
 import RecyclePage from './pages/RecyclePage';
+import KnowledgeMigrationsPage from './pages/KnowledgeMigrationsPage';
 import DomainsPage from './pages/DomainsPage';
 import LoginPage from './pages/LoginPage';
 import IamStartPage from './pages/IamStartPage';
@@ -32,7 +33,10 @@ import Header from './components/Header';
 import UnifiedAuthLoginRedirect from './components/UnifiedAuthLoginRedirect';
 
 import ExpertManagePage from './pages/ExpertManagePage';
-import { getAdminAccessState } from './utils/adminAccess';
+import {
+  getAdminAccessState,
+  getSystemAdministratorAccessState,
+} from './utils/adminAccess';
 
 function RouteScrollReset() {
   const location = useLocation();
@@ -143,6 +147,34 @@ function RecycleRoute() {
   return <RecyclePage />;
 }
 
+function KnowledgeMigrationsRoute() {
+  const location = useLocation();
+  const { user } = useAuth();
+  const accessState = getSystemAdministratorAccessState(user);
+
+  if (accessState === 'login') {
+    return (
+      <UnifiedAuthLoginRedirect
+        returnTo={`${location.pathname}${location.search}`}
+      />
+    );
+  }
+
+  if (accessState === 'forbidden') {
+    return (
+      <>
+        <Header />
+        <main style={{ padding: '96px 24px', textAlign: 'center' }}>
+          <h1>无权限</h1>
+          <p>仅系统管理员可以访问迁移记录。</p>
+        </main>
+      </>
+    );
+  }
+
+  return <KnowledgeMigrationsPage />;
+}
+
 function RedirectToSmartQa() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
@@ -185,6 +217,10 @@ export default function App() {
         <Route path="/apps" element={<RequireAuth><AppsPage /></RequireAuth>} />
         <Route path="/admin" element={<AdminRoute />} />
         <Route path="/recycle" element={<RecycleRoute />} />
+        <Route
+          path="/knowledge-migrations"
+          element={<KnowledgeMigrationsRoute />}
+        />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/iam_start" element={<IamStartPage />} />
         <Route path="/bootstrap/bisheng" element={<BootstrapBishengPage />} />
