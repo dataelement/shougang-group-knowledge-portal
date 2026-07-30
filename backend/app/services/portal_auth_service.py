@@ -573,6 +573,7 @@ class PortalAuthService:
                 "tenant_id",
                 "tenantId",
             ),
+            is_department_admin=self._first_bool(data, "is_department_admin"),
             login_at=int(time.time() * 1000),
         )
 
@@ -598,6 +599,16 @@ class PortalAuthService:
             if value not in (None, ""):
                 return str(value)
         return ""
+
+    @staticmethod
+    def _first_bool(data: dict, *keys: str) -> bool:
+        """Parse BiSheng boolean flags such as ``is_department_admin``."""
+        truthy = {True, "1", "true", "True", "yes", "YES"}
+        for key in keys:
+            value = data.get(key)
+            if value in truthy:
+                return True
+        return False
 
     @staticmethod
     def _first_positive_int(data: dict, *keys: str) -> int | None:
