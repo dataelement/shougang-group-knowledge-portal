@@ -970,6 +970,11 @@ export async function fetchDomainFileCounts(): Promise<Record<string, number>> {
   return data.counts ?? {};
 }
 
+export async function fetchCategoryFileCounts(): Promise<Record<string, number>> {
+  const data = await request<{ counts: Record<string, number> }>('/api/v1/knowledge/category-file-counts');
+  return data.counts ?? {};
+}
+
 export async function fetchHomeStats(): Promise<HomeStats> {
   const data = await request<HomeStatsDataDto>('/api/v1/knowledge/home/stats');
   return {

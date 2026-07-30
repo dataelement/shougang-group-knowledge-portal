@@ -1105,11 +1105,12 @@ async def get_domain_file_counts(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
     cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
 ):
-    config = portal_config_service.get_config()
-    domains = [domain.model_dump() for domain in config.domains if domain.enabled]
     session = await get_portal_session(auth_service, request)
     client_to_close: BishengClient | None = None
+    domains: list[dict] = []
     try:
+        config = portal_config_service.get_config()
+        domains = [domain.model_dump() for domain in config.domains if domain.enabled]
         if session is None:
             service = KnowledgeService(
                 bisheng_client=await get_bisheng_client(request),
@@ -1147,6 +1148,77 @@ async def get_domain_file_counts(
             _home_cache_ttl_seconds(config),
         )
         return response_ok({"counts": normalized_counts})
+    except Exception:
+        logger.warning("门户业务域知识数量回源失败，已降级返回 0", exc_info=True)
+        fallback_codes = {
+            str(domain.get("code") or "").strip().upper()
+            for domain in domains
+            if str(domain.get("code") or "").strip()
+        }
+        return response_ok({"counts": {code: 0 for code in fallback_codes}})
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
+
+
+@router.get("/category-file-counts")
+async def get_category_file_counts(
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
+):
+    session = await get_portal_session(auth_service, request)
+    client_to_close: BishengClient | None = None
+    categories: list[dict] = []
+    try:
+        config = portal_config_service.get_config()
+        categories = [card.model_dump() for card in config.category_cards if card.enabled]
+        if session is None:
+            service = KnowledgeService(
+                bisheng_client=await get_bisheng_client(request),
+                portal_config_service=portal_config_service,
+                default_model=get_settings().bisheng_default_model,
+            )
+            extra_space_ids = None
+            account = None
+        else:
+            client_to_close = auth_service.create_bisheng_client(session)
+            service = KnowledgeService(
+                bisheng_client=client_to_close,
+                portal_config_service=portal_config_service,
+                default_model=get_settings().bisheng_default_model,
+            )
+            visible_spaces = await service.list_visible_spaces(discovery_scope="public_and_department")
+            extra_space_ids = [space.id for space in visible_spaces.data]
+            account = getattr(getattr(session, "user", None), "account", "")
+        scopes = await service.resolve_category_count_scopes(categories, extra_space_ids=extra_space_ids)
+        cache_key = cache_service.visible_category_file_counts_key(scopes, account=account)
+        expected_codes = {scope["code"] for scope in scopes}
+        cached = await cache_service.get_json(cache_key)
+        if isinstance(cached, dict):
+            cached_counts = cached.get("counts")
+            if isinstance(cached_counts, dict) and set(cached_counts) == expected_codes:
+                try:
+                    return response_ok({"counts": {code: int(cached_counts[code]) for code in expected_codes}})
+                except (TypeError, ValueError):
+                    logger.warning("门户分类知识数量缓存格式异常，已回源获取")
+        counts = await service.count_visible_category_files(scopes)
+        normalized_counts = {scope["code"]: int(counts.get(scope["code"], 0)) for scope in scopes}
+        await cache_service.set_json(
+            cache_key,
+            {"counts": normalized_counts},
+            _home_cache_ttl_seconds(config),
+        )
+        return response_ok({"counts": normalized_counts})
+    except Exception:
+        logger.warning("门户分类知识数量回源失败，已降级返回 0", exc_info=True)
+        fallback_codes = {
+            str(category.get("code") or "").strip().upper()
+            for category in categories
+            if str(category.get("code") or "").strip()
+        }
+        return response_ok({"counts": {code: 0 for code in fallback_codes}})
     finally:
         if client_to_close is not None:
             await client_to_close.aclose()

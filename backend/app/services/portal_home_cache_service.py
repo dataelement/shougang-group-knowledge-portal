@@ -107,6 +107,21 @@ class PortalHomeCacheService:
         scope = {"account": (account or "").strip().lower() or "anonymous", "domains": normalized_domains}
         return f"{_KEY_PREFIX}:visible-domain-file-counts:{_digest(scope)}"
 
+    @staticmethod
+    def visible_category_file_counts_key(categories: list[dict[str, Any]], account: str | None = None) -> str:
+        normalized_categories = sorted(
+            {
+                (
+                    str(category.get("code") or "").strip().upper(),
+                    tuple(sorted({int(space_id) for space_id in category.get("space_ids", [])})),
+                )
+                for category in categories
+                if str(category.get("code") or "").strip()
+            }
+        )
+        scope = {"account": (account or "").strip().lower() or "anonymous", "categories": normalized_categories}
+        return f"{_KEY_PREFIX}:visible-category-file-counts:{_digest(scope)}"
+
 
 def _digest(value: Any) -> str:
     encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

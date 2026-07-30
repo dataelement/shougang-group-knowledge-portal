@@ -21,6 +21,7 @@ import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
   streamHomeContent,
   fetchDomainFileCounts,
+  fetchCategoryFileCounts,
   fetchHomeStats,
   fetchHotSearches,
   fetchQaKnowledgeTreeSpaces,
@@ -400,6 +401,8 @@ export default function HomePage() {
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
   const [domainCountsLoading, setDomainCountsLoading] = useState(true);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [categoryCountsLoading, setCategoryCountsLoading] = useState(true);
   const [homeStats, setHomeStats] = useState<HomeStats | null>(null);
   const [homeStatsFailed, setHomeStatsFailed] = useState(false);
   const [homeCourses, setHomeCourses] = useState<Course[]>([]);
@@ -548,6 +551,23 @@ export default function HomePage() {
         /* keep empty -> cards show 0; do not block the page */
       } finally {
         if (active) setDomainCountsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const counts = await fetchCategoryFileCounts();
+        if (active) setCategoryCounts(counts);
+      } catch {
+        /* keep empty -> cards show 0; do not block the page */
+      } finally {
+        if (active) setCategoryCountsLoading(false);
       }
     })();
     return () => {
@@ -1385,6 +1405,8 @@ export default function HomePage() {
                 ? homeCategoryCards.map((card) => {
                     const categoryPath = buildCategorySearchPath(card.code);
                     const usesBannerThumb = Boolean(card.image);
+                    const categoryCode = (card.code || '').trim().toUpperCase();
+                    const totalFiles = categoryCode ? (categoryCounts[categoryCode] ?? 0) : 0;
                     return (
                       <div
                         key={card.code}
@@ -1407,6 +1429,7 @@ export default function HomePage() {
                         )}
                         <div className={s.domainCardContent}>
                           <div className={s.domainName}>{card.name || card.code}</div>
+                          <div className={s.domainMeta}>知识数量 {categoryCountsLoading ? '加载中…' : formatCount(totalFiles)}</div>
                         </div>
                       </div>
                     );
