@@ -1,20 +1,19 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
 from redis import asyncio as redis_asyncio
 
 from app.api.router import api_router
 from app.clients.bisheng import BishengAuthRefreshError
 from app.schemas.common import response_error
-from app.schemas.portal_admin_config import PortalBishengPersistentConfig
 from app.services.bisheng_auth_state_store import (
     BishengAuthStateStoreError,
     RedisBishengAuthStateStore,
 )
 from app.services.bisheng_runtime_service import BishengRuntimeService
-from app.services.config_store import InMemoryConfigStore
+from app.services.config_store import RuntimeSnapshotConfigStore
 from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_admin_config_store import RemotePortalAdminConfigStore
 from app.services.portal_auth_service import (
@@ -26,9 +25,14 @@ from app.services.portal_bisheng_user_lookup import PortalBishengUserLookup
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_home_cache_service import PortalHomeCacheService
 from app.services.portal_rest_auth_service import PortalRestAuthService
+from app.services.portal_runtime_config_coordinator import (
+    PortalRuntimeConfigCoordinator,
+    RuntimeConfigSyncError,
+)
 from app.services.portal_share_access_store import build_portal_share_access_session_store
 from app.services.portal_unified_auth_service import PortalUnifiedAuthService
 from app.services.rest_auth_runtime_service import RestAuthRuntimeService
+from app.services.runtime_config_applier import RuntimeConfigApplier
 from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 from app.settings import get_settings
 
@@ -51,8 +55,7 @@ async def lifespan(app: FastAPI):
             if settings.app_env.lower() == "production":
                 raise RuntimeError("Redis 不可用，无法启动门户认证服务") from err
             logger.warning(
-                "Redis 不可用，开发环境已降级为进程内会话存储：%s",
-                settings.redis_url,
+                "Redis 不可用，开发环境已降级为进程内会话存储；该模式不支持多副本",
             )
     app.state.bisheng_runtime_service = BishengRuntimeService(
         config_path=settings.bisheng_runtime_config_path,
@@ -62,21 +65,18 @@ async def lifespan(app: FastAPI):
         default_username=settings.bisheng_username,
         default_password=(settings.bisheng_password.get_secret_value() if settings.bisheng_password else None),
         default_asset_base_url=settings.bisheng_asset_base_url,
-        store=InMemoryConfigStore(),
+        store=RuntimeSnapshotConfigStore(),
         auth_state_store=(RedisBishengAuthStateStore(redis_client) if redis_client is not None else None),
     )
     await app.state.bisheng_runtime_service.initialize()
     app.state.portal_admin_config_store = RemotePortalAdminConfigStore(
         runtime_service=app.state.bisheng_runtime_service,
     )
+    remote_aggregate = None
     try:
-        remote_runtime = app.state.portal_admin_config_store.get_document(
-            "bisheng_runtime_config",
+        remote_aggregate = await asyncio.to_thread(
+            app.state.portal_admin_config_store.load_remote_aggregate,
         )
-        if remote_runtime:
-            await app.state.bisheng_runtime_service.apply_persistent_config(
-                PortalBishengPersistentConfig.model_validate(remote_runtime).with_env_base_url_override(),
-            )
     except Exception:
         logger.exception("BiSheng 远程门户运行时配置加载失败")
     session_store = RedisPortalSessionStore(redis_client) if redis_client else InMemoryPortalSessionStore()
@@ -118,6 +118,29 @@ async def lifespan(app: FastAPI):
         config_path=settings.portal_config_path,
         store=app.state.portal_admin_config_store,
     )
+    app.state.runtime_config_applier = RuntimeConfigApplier(
+        aggregate_store=app.state.portal_admin_config_store,
+        bisheng_runtime_service=app.state.bisheng_runtime_service,
+    )
+    app.state.portal_runtime_config_coordinator = None
+    if redis_client is not None or remote_aggregate is not None:
+        app.state.portal_admin_config_store.enable_shared_cache()
+        coordinator = PortalRuntimeConfigCoordinator(
+            redis_client=redis_client,
+            scope=settings.runtime_config_scope,
+            load_remote=(
+                (lambda: remote_aggregate)
+                if remote_aggregate is not None
+                else lambda: asyncio.to_thread(
+                    app.state.portal_admin_config_store.load_remote_aggregate,
+                )
+            ),
+            apply_snapshot=app.state.runtime_config_applier.apply,
+            cache_ttl_seconds=settings.runtime_config_cache_ttl_seconds,
+        )
+        app.state.portal_runtime_config_coordinator = coordinator
+        await coordinator.initialize()
+        await coordinator.start_listener()
     app.state.portal_home_cache_service = PortalHomeCacheService(redis_client)
     app.state.portal_share_access_session_store = build_portal_share_access_session_store(
         redis_client,
@@ -126,6 +149,13 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        coordinator = getattr(
+            app.state,
+            "portal_runtime_config_coordinator",
+            None,
+        )
+        if coordinator is not None:
+            await coordinator.stop_listener()
         await app.state.bisheng_runtime_service.aclose()
         if redis_client is not None:
             await redis_client.aclose()
@@ -138,10 +168,39 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    uploads_root = settings.portal_config_path.parent / "uploads"
-    uploads_root.mkdir(parents=True, exist_ok=True)
-    app.state.uploads_root = uploads_root
-    app.mount("/uploads", StaticFiles(directory=uploads_root), name="uploads")
+    @app.middleware("http")
+    async def synchronize_runtime_config(request: Request, call_next):
+        coordinator = getattr(
+            request.app.state,
+            "portal_runtime_config_coordinator",
+            None,
+        )
+        if coordinator is not None:
+            try:
+                await coordinator.ensure_current()
+            except RuntimeConfigSyncError:
+                if coordinator.local_version <= 0:
+                    logger.warning(
+                        "门户运行时配置尚未持久化，继续使用环境默认配置"
+                    )
+                else:
+                    logger.exception(
+                        "门户运行时配置检查失败，继续使用最后有效版本"
+                    )
+
+        response = await call_next(request)
+        if coordinator is None:
+            return response
+
+        store = getattr(request.app.state, "portal_admin_config_store", None)
+        saved = store.last_saved_aggregate if store is not None else None
+        if saved is None or saved.version <= coordinator.local_version:
+            return response
+        try:
+            await coordinator.commit_saved_snapshot(saved)
+        except RuntimeConfigSyncError as exc:
+            return response_error(str(exc), status_code=503)
+        return response
 
     @app.exception_handler(BishengAuthRefreshError)
     async def bisheng_auth_refresh_exception_handler(

@@ -1,13 +1,10 @@
-import io
-import uuid
-from pathlib import Path
-from typing import Final
+import httpx
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from PIL import Image, UnidentifiedImageError
-
-from app.api.dependencies import require_admin_session
+from app.api.dependencies import get_bisheng_client, require_admin_session
+from app.clients.bisheng import BishengClient
 from app.schemas.common import response_ok
+from app.services.error_messages import normalize_user_facing_message
 
 router = APIRouter(
     prefix="/api/v1/admin/upload",
@@ -15,69 +12,59 @@ router = APIRouter(
     dependencies=[Depends(require_admin_session)],
 )
 
-MAX_IMAGE_BYTES: Final[int] = 5 * 1024 * 1024
-MAX_IMAGE_EDGE: Final[int] = 4096
-MAX_IMAGE_PIXELS: Final[int] = 16 * 1024 * 1024
-ALLOWED_MIME: Final[set[str]] = {"image/jpeg", "image/png", "image/webp"}
-PILLOW_FORMAT_TO_EXT: Final[dict[str, str]] = {
-    "JPEG": "jpg",
-    "PNG": "png",
-    "WEBP": "webp",
-}
-
-
-def get_uploads_root(request: Request) -> Path:
-    return request.app.state.uploads_root
-
-
 @router.post("/banner")
 async def upload_banner_image(
-    request: Request,
     file: UploadFile = File(...),
-    uploads_root: Path = Depends(get_uploads_root),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
-    return await _upload_image(file, uploads_root, "banners")
+    return await _proxy_public_asset(file, bisheng_client, "banner")
 
 
 @router.post("/app-icon")
 async def upload_application_icon(
     file: UploadFile = File(...),
-    uploads_root: Path = Depends(get_uploads_root),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
 ):
-    return await _upload_image(file, uploads_root, "app-icons")
+    return await _proxy_public_asset(file, bisheng_client, "app-icon")
 
 
-async def _upload_image(file: UploadFile, uploads_root: Path, directory: str):
-    if file.content_type not in ALLOWED_MIME:
-        raise HTTPException(status_code=415, detail=f"不支持的图片类型: {file.content_type}")
-
-    payload = await file.read(MAX_IMAGE_BYTES + 1)
-    if len(payload) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="图片不得超过 5MB")
-    if not payload:
-        raise HTTPException(status_code=422, detail="文件为空")
-
+async def _proxy_public_asset(
+    file: UploadFile,
+    bisheng_client: BishengClient,
+    category: str,
+):
     try:
-        with Image.open(io.BytesIO(payload)) as img:
-            width, height = img.size
-            if width > MAX_IMAGE_EDGE or height > MAX_IMAGE_EDGE or width * height > MAX_IMAGE_PIXELS:
-                raise HTTPException(status_code=413, detail="图片尺寸不得超过 4096×4096")
-            img.verify()
-        with Image.open(io.BytesIO(payload)) as img:
-            pillow_format = (img.format or "").upper()
-    except HTTPException:
-        raise
-    except (UnidentifiedImageError, OSError, ValueError):
-        raise HTTPException(status_code=415, detail="图片解析失败，可能不是有效的图片")
+        payload = await bisheng_client.post_multipart(
+            f"/api/v1/shougang-portal/assets/{category}",
+            files={
+                "file": (
+                    file.filename or "portal-asset",
+                    file.file,
+                    file.content_type or "application/octet-stream",
+                )
+            },
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=normalize_user_facing_message(
+                exc,
+                fallback="BiSheng 资源上传服务连接异常，请稍后重试",
+                status_code=502,
+            ),
+        ) from exc
 
-    ext = PILLOW_FORMAT_TO_EXT.get(pillow_format)
-    if not ext:
-        raise HTTPException(status_code=415, detail=f"不支持的图片格式: {pillow_format or '未知'}")
+    remote_status = int(payload.get("status_code") or 500)
+    data = payload.get("data")
+    if remote_status != 200 or not isinstance(data, dict) or not data.get("image_url"):
+        portal_status = remote_status if 400 <= remote_status < 500 else 502
+        raise HTTPException(
+            status_code=portal_status,
+            detail=normalize_user_facing_message(
+                payload.get("status_message"),
+                fallback="BiSheng 资源上传失败，请稍后重试",
+                status_code=portal_status,
+            ),
+        )
 
-    target_dir = uploads_root / directory
-    target_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    target_path = target_dir / filename
-    target_path.write_bytes(payload)
-
-    return response_ok({"image_url": f"/uploads/{directory}/{filename}"})
+    return response_ok({"image_url": str(data["image_url"])})

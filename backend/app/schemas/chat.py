@@ -55,6 +55,7 @@ class PortalChatCompletionRequest(BaseModel):
     isCreatedByUser: bool = False
     isContinued: bool = False
     text: str = ""
+    template_id: Optional[str] = None
     search_enabled: bool = False
     use_knowledge_base: Optional[UseKnowledgeBaseParam] = None
     search_results: list[KnowledgeFileItem] = Field(default_factory=list)

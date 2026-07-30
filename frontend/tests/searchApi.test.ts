@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { browseSearchFiles, searchFiles, searchKeywordFiles } from '../src/api/content';
+import {
+  advancedSearchFiles,
+  browseSearchFiles,
+  searchFiles,
+  searchKeywordFiles,
+} from '../src/api/content';
 
 test('keyword search uses the dedicated endpoint without pagination parameters', async () => {
   const originalFetch = globalThis.fetch;
@@ -50,6 +55,38 @@ test('empty search browse uses the dedicated endpoint and forwards filters and c
     });
     assert.equal(result.hasMore, true);
     assert.equal(result.nextCursor, 'next-2');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('advanced search uses the dedicated database endpoint and forwards all conditions', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(
+      String(input),
+      '/api/v1/knowledge/files/advanced-search?search_field=file_name&space_level=department&file_ext=pdf&business_domain_code=PM&all_keywords=%E8%BD%A7%E6%9C%BA+%E6%8C%AF%E5%8A%A8&exclude_keywords=%E6%8B%9B%E6%A0%87&updated_from=2025-01-01&updated_to=2025-12-31&sort=updated_at_desc&space_ids=12',
+    );
+    return new Response(JSON.stringify({
+      status_code: 200,
+      status_message: 'OK',
+      data: { data: [], has_more: false, next_cursor: null },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    await advancedSearchFiles({
+      spaceIds: [12],
+      spaceLevel: 'department',
+      fileExt: 'pdf',
+      businessDomainCode: 'PM',
+      allKeywords: '轧机 振动',
+      excludeKeywords: '招标',
+      searchField: 'file_name',
+      updatedFrom: '2025-01-01',
+      updatedTo: '2025-12-31',
+      sort: 'updated_at_desc',
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

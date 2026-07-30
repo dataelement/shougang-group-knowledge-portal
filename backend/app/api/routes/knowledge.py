@@ -4,8 +4,9 @@ import json
 import logging
 import secrets
 import time
+from datetime import date
 from time import monotonic
-from typing import Annotated, Any, NoReturn
+from typing import Annotated, Any, Literal, NoReturn
 from urllib.parse import quote
 
 import httpx
@@ -428,6 +429,77 @@ async def search_keyword_files(
                 limit=limit,
                 extra_space_ids=extra_space_ids,
                 discovery_scope=("public" if extra_space_ids is None else "public_and_department"),
+            )
+        )
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
+
+
+@router.get("/files/advanced-search")
+async def advanced_search_files(
+    request: Request,
+    tag: str | None = None,
+    space_ids: Annotated[list[int] | None, Query()] = None,
+    space_level: str | None = None,
+    file_ext: str | None = None,
+    document_type: str | None = None,
+    file_subcategory_code: str | None = None,
+    business_domain_code: str | None = None,
+    all_keywords: str | None = Query(default=None, max_length=200),
+    exact_phrase: str | None = Query(default=None, max_length=200),
+    any_keywords: str | None = Query(default=None, max_length=200),
+    exclude_keywords: str | None = Query(default=None, max_length=200),
+    search_field: Literal["file_name", "summary", "tags"] = "file_name",
+    updated_from: date | None = None,
+    updated_to: date | None = None,
+    sort: Literal["updated_at", "updated_at_desc", "updated_at_asc"] = "updated_at_desc",
+    cursor: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    if updated_from is not None and updated_to is not None and updated_from > updated_to:
+        raise HTTPException(status_code=422, detail="更新时间起始日期不能晚于结束日期")
+    configured_page_size = _configured_search_page_size(
+        portal_config_service.get_config()
+    )
+    page_size = min(max(int(limit or configured_page_size), 1), configured_page_size)
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request=request,
+        auth_service=auth_service,
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+    )
+    try:
+        return response_ok(
+            await service.advanced_search_files(
+                tag=tag,
+                requested_space_ids=space_ids,
+                space_level=space_level,
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=business_domain_code,
+                all_keywords=all_keywords,
+                exact_phrase=exact_phrase,
+                any_keywords=any_keywords,
+                exclude_keywords=exclude_keywords,
+                search_field=search_field,
+                updated_from=updated_from.isoformat() if updated_from else None,
+                updated_to=updated_to.isoformat() if updated_to else None,
+                sort=sort,
+                cursor=cursor,
+                limit=page_size,
+                extra_space_ids=extra_space_ids,
+                discovery_scope=(
+                    "public"
+                    if extra_space_ids is None
+                    else "public_and_department"
+                ),
             )
         )
     except BishengBusinessError as err:
@@ -874,8 +946,27 @@ async def get_home_content(
                 ),
                 fallback_latest_on_error=True,
             ):
+                upstream_result_count = len(items)
                 if actual_mode:
                     items = items[: config.display.home.section_page_size]
+                if recommendation_mode == PERSONALIZED_RECOMMENDATION and actual_mode:
+                    logger.info(
+                        "portal home recommendation section",
+                        extra={
+                            "portal_recommendation_actual_mode": actual_mode,
+                            "portal_recommendation_display_count": len(items),
+                            "portal_recommendation_display_limit": config.display.home.section_page_size,
+                            "portal_recommendation_empty": upstream_result_count == 0,
+                            "portal_recommendation_fallback_used": (
+                                actual_mode != PERSONALIZED_RECOMMENDATION
+                            ),
+                            "portal_recommendation_requested_mode": recommendation_mode,
+                            "portal_recommendation_top_n": config.recommendation.home_total_count,
+                            "portal_recommendation_upstream_count": upstream_result_count,
+                            "tenant_id": int(session.user.tenant_id),
+                            "user_id": int(session.user.user_id),
+                        },
+                    )
                 if config.recommendation.personalized_shadow_enabled and actual_mode == LATEST_SELECTED_RECOMMENDATION:
                     shadow_baseline_file_keys.extend((item.space_id, item.id) for item in items)
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
@@ -983,6 +1074,12 @@ async def get_portal_config(
                 qa["general_model_display_name"] = name_by_id[general_id]
             if reasoning_id in name_by_id and not str(qa.get("reasoning_model_display_name") or "").strip():
                 qa["reasoning_model_display_name"] = name_by_id[reasoning_id]
+        # 写作模板 prompt 仅服务端注入 system_prompt，公开配置不下发
+        templates = qa.get("templates")
+        if isinstance(templates, list):
+            for template in templates:
+                if isinstance(template, dict):
+                    template.pop("prompt", None)
 
     return response_ok(
         {

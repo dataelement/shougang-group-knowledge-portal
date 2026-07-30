@@ -28,3 +28,7 @@ class InMemoryConfigStore:
         with self._lock:
             self._documents[table_name] = deepcopy(payload)
             return ConfigStoreWriteResult(document=deepcopy(payload))
+
+
+class RuntimeSnapshotConfigStore(InMemoryConfigStore):
+    """Non-authoritative local copy of the last DB/Redis-coordinated snapshot."""

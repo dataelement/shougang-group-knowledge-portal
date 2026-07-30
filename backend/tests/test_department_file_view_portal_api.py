@@ -263,3 +263,33 @@ def test_bff_redacts_unauthorized_department_content_even_if_upstream_leaks():
     assert item.source_path == ""
     assert item.content_access == "approval_required"
     assert item.can_download is True
+
+
+def test_bff_keeps_search_metadata_when_department_access_is_deferred():
+    items = KnowledgeService._map_shougang_portal_response_items(
+        [
+            {
+                "id": 21,
+                "space_id": 2,
+                "title": "设备点检标准",
+                "summary": "检索阶段允许展示的摘要",
+                "source": "设备部知识库",
+                "file_ext": "pdf",
+                "file_size": "1MB",
+                "file_encoding": "DEVICE-001",
+                "folder_path": "制度/点检",
+                "source_path": "设备部知识库/制度/点检/设备点检标准.pdf",
+                "content_access": "check_required",
+                "is_department_file": True,
+                "can_download": False,
+            }
+        ]
+    )
+
+    assert len(items) == 1
+    item = items[0]
+    assert item.summary == "检索阶段允许展示的摘要"
+    assert item.file_size == "1MB"
+    assert item.file_encoding == "DEVICE-001"
+    assert item.source_path == "设备部知识库/制度/点检/设备点检标准.pdf"
+    assert item.content_access == "check_required"

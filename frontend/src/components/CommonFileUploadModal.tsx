@@ -135,6 +135,8 @@ export default function CommonFileUploadModal({
   const folderSentinelCbRef = useRef<
     (el: HTMLDivElement | null, folderId: string) => void
   >(undefined);
+  const selectedFilesRef = useRef(selectedFiles);
+  selectedFilesRef.current = selectedFiles;
 
   const selectedSpace = useMemo(
     () => spaces.find((space) => space.id === selectedSpaceId) ?? null,
@@ -150,12 +152,20 @@ export default function CommonFileUploadModal({
     try {
       const nextSpaces = await fetchQaKnowledgePublicSpaces();
       setSpaces(nextSpaces);
-      setSelectedSpaceId((current) => {
-        if (current && nextSpaces.some((space) => space.id === current)) {
-          return current;
-        }
-        return nextSpaces[0]?.id ?? null;
-      });
+
+      // 优先根据已选文件确定目标空间；否则取首个有数据的空间；最后兜底取第一个
+      const firstSelectedFile = selectedFilesRef.current[0];
+      const targetSpace =
+        (firstSelectedFile
+          ? nextSpaces.find((sp) => sp.id === firstSelectedFile.spaceId)
+          : null) ??
+        nextSpaces.find((sp) => sp.fileNum > 0) ??
+        nextSpaces[0] ??
+        null;
+      setSelectedSpaceId(targetSpace?.id ?? null);
+      setExpandedCategoryKeys(
+        targetSpace ? new Set([getSpaceLevel(targetSpace)]) : new Set(),
+      );
     } catch (err) {
       console.error('知识空间加载失败:', err);
       setSpaces([]);
