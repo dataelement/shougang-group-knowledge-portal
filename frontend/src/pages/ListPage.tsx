@@ -419,12 +419,15 @@ export default function ListPage() {
     if (canFavorite && files.length) void loadStatuses(files);
   }, [files, canFavorite, loadStatuses]);
 
-  // 顶部 hero banner 背景:业务域/分类共用「业务域二级」图,推荐用推荐图,行业情报(典型案例)用趋势图,其余默认推荐图
-  const heroBanner = (isDomainList || isCategoryList)
-    ? '/list-banners/domain.png'
-    : (tagParam === '行业情报' || titleParam.includes('典型案例'))
-      ? '/list-banners/industry.png'
-      : '/list-banners/recommend.png';
+  // 顶部 hero banner 背景:分类页用分类二级图,业务域页用业务域二级图,推荐用推荐图,
+  // 行业情报(典型案例)用趋势图,其余默认推荐图
+  const heroBanner = isCategoryList
+    ? '/list-banners/category.png'
+    : isDomainList
+      ? '/list-banners/domain.png'
+      : (tagParam === '行业情报' || titleParam.includes('典型案例'))
+        ? '/list-banners/industry.png'
+        : '/list-banners/recommend.png';
 
   const documentTypeFilter = (
     <DocumentTypeFilterDropdown

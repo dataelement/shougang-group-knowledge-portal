@@ -66,10 +66,6 @@ import { fetchCourses } from '../api/courses';
 import { formatCourseDuration, type Course } from '../types/course';
 import s from './HomePage.module.css';
 import navIcon from '../assets/nav-icon@2x.png';
-import navTabDomainActive from '../assets/nav-tab-domain-active.png';
-import navTabDomainInactive from '../assets/nav-tab-domain-inactive.png';
-import navTabCategoryActive from '../assets/nav-tab-category-active.png';
-import navTabCategoryInactive from '../assets/nav-tab-category-inactive.png';
 import iconCourse from '../assets/icon-course@2x.png';
 import iconExpert from '../assets/icon-expert@2x.png';
 import iconAiqa from '../assets/icon-aiqa@2x.png';
@@ -1333,11 +1329,7 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'category' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('category')}
                 >
-                  <img
-                    src={activeNavTab === 'category' ? navTabCategoryActive : navTabCategoryInactive}
-                    alt=""
-                    className={s.domainNavTabIcon}
-                  />
+                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconDomain}`} aria-hidden />
                   <span className={s.domainNavTabText}>分类导航</span>
                 </button>
                 <span className={s.domainNavTabDivider} aria-hidden />
@@ -1348,11 +1340,7 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'domain' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('domain')}
                 >
-                  <img
-                    src={activeNavTab === 'domain' ? navTabDomainActive : navTabDomainInactive}
-                    alt=""
-                    className={s.domainNavTabIcon}
-                  />
+                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconCategory}`} aria-hidden />
                   <span className={s.domainNavTabText}>业务域导航</span>
                 </button>
               </div>
