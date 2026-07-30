@@ -128,7 +128,7 @@ export default function FloatingQaButton() {
     >
       <span className={s.label}>钢小智</span>
       <span className={s.avatar}>
-        <img className={s.avatarImg} src="/qa-mascot.png" alt="" aria-hidden="true" />
+        <img className={s.avatarImg} src="/qa-mascot.png" alt="" aria-hidden="true" draggable={false} />
       </span>
     </button>
   );

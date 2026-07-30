@@ -41,6 +41,10 @@
   border-radius: 50%;
   object-fit: cover;
   display: block;
+  /* 禁用浏览器默认图片拖拽,避免干扰自定义指针拖动 */
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* 文字:挂在头像左侧,右侧内缩到头像下方形成无缝药丸;默认淡出,hover/拖动时显示 */
