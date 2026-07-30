@@ -1466,14 +1466,12 @@ export default function HomePage() {
               const recommendationMode = sectionRecommendationModes[sectionKey];
               const recommendationModePending = isLatestSelectedSection(sec) && !recommendationMode;
               const moreLink = buildSectionMoreLink(sec, recommendationMode);
-              // 需要参与「左右高度补长」的左侧板块
-              const isLeftFillPanel = /知识推荐|典型案例/.test(sec.title);
               // 「知识推荐」「典型案例」「行业情报」摘要开启 hover 全文提示浮窗
               const enableSummaryTooltip = /知识推荐|典型案例|行业情报/.test(sec.title);
               return (
                 <div
                   key={sectionKey}
-                  className={`${s.panel} ${index === 0 ? s.primarySectionPanel : s.tallSectionPanel} ${isLeftFillPanel ? s.leftFillPanel : ''}`}
+                  className={`${s.panel} ${index === 0 ? s.primarySectionPanel : s.tallSectionPanel}`}
                 >
                   <div className={`${s.panelHeader} ${resolveSectionHeaderClass(sec.title)}`}>
                     <div className={s.panelHeaderLeft}>
