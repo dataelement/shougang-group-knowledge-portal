@@ -1158,7 +1158,10 @@ export default function HomePage() {
                               pickerMode={qaScopeMode}
                               onPickerModeChange={setQaScopeMode}
                               documentTypeGroups={documentTypeGroups}
-                              onBrowseCategoryFiles={(params) => browseSearchFiles(params)}
+                              onBrowseCategoryFiles={(params) => browseSearchFiles({
+                                ...params,
+                                spaceIds: qaSpaces.map((space) => space.id),
+                              })}
                               onLoadChildren={fetchQaKnowledgeTreeChildren}
                               onLoadFolderStats={fetchQaKnowledgeFolderStats}
                               onSearchFiles={searchQaKnowledgeFiles}

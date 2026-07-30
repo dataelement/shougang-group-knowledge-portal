@@ -302,7 +302,11 @@ class RemotePortalAdminConfigStore:
         base_url = str(runtime.base_url).rstrip("/")
         headers: dict[str, str] = {}
         cookies: dict[str, str] = {}
-        if runtime.api_token:
+        is_internal_config_read = (
+            method.upper() == "GET"
+            and path == REMOTE_CONFIG_INTERNAL_PATH
+        )
+        if runtime.api_token and not is_internal_config_read:
             headers["Authorization"] = f"Bearer {runtime.api_token}"
             cookies["access_token_cookie"] = runtime.api_token
         with httpx.Client(
