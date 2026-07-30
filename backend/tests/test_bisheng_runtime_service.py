@@ -586,6 +586,59 @@ def test_stale_worker_cannot_overwrite_newer_shared_token(tmp_path: Path):
     assert local.api_token == fresh_token
 
 
+def test_explicit_login_replaces_stale_shared_token(tmp_path: Path):
+    redis = SharedFakeRedis()
+    auth_store = RedisBishengAuthStateStore(redis)
+    stale_token = _make_fake_jwt(2 * 3600)
+    fresh_token = _make_fake_jwt(24 * 3600)
+    factory, state = _make_scripted_factory(login_tokens=[fresh_token])
+    service = BishengRuntimeService(
+        config_path=tmp_path / "runtime.json",
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        default_username="portal-admin",
+        default_password="pwd",
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+        auth_state_store=auth_store,
+    )
+
+    async def _run():
+        fingerprint = service._config_fingerprint(service.get_runtime_config_snapshot())
+        await auth_store.save(
+            fingerprint,
+            BishengSharedAuthState(
+                access_token=stale_token,
+                connected=False,
+                auth_message="旧 token 已失效",
+                last_auth_at="2026-07-29T10:00:00+00:00",
+                expires_at=time.time() + 2 * 3600,
+                version="stale",
+            ),
+        )
+        await service.update_config(
+            BishengRuntimeConfigUpdate(
+                base_url="http://example.com",
+                username="portal-admin",
+                password="pwd",
+                timeout_seconds=30.0,
+            )
+        )
+        shared = await auth_store.get(fingerprint)
+        local = service.get_runtime_config_snapshot()
+        await service.aclose()
+        return shared, local
+
+    shared, local = asyncio.run(_run())
+
+    assert state["login_calls"] == 1
+    assert state["user_info_tokens"] == [fresh_token]
+    assert shared is not None
+    assert shared.access_token == fresh_token
+    assert shared.connected is True
+    assert local.api_token == fresh_token
+
+
 def test_shared_auth_refresh_failure_clears_token_for_all_workers(tmp_path: Path):
     redis = SharedFakeRedis()
     auth_store = RedisBishengAuthStateStore(redis)

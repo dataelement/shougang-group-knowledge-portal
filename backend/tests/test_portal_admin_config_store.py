@@ -1,3 +1,7 @@
+from types import SimpleNamespace
+
+import httpx
+
 from app.config.portal_config import DEFAULT_PORTAL_CONFIG
 from app.schemas.portal_admin_config import PortalAdminAggregateConfig, PortalBishengPersistentConfig
 from app.services.bisheng_runtime_service import BishengRuntimeService
@@ -18,6 +22,13 @@ class FakeRuntimeService:
 
     def get_persistent_config(self) -> PortalBishengPersistentConfig:
         return self._persistent
+
+    def get_runtime_config_snapshot(self):
+        return SimpleNamespace(
+            base_url=self._persistent.base_url,
+            timeout_seconds=self._persistent.timeout_seconds,
+            api_token="runtime-token",
+        )
 
 
 class MemoryRemotePortalAdminConfigStore(RemotePortalAdminConfigStore):
@@ -339,3 +350,34 @@ def test_bisheng_runtime_service_can_store_runtime_state_in_memory(tmp_path):
     config = runtime_service.get_public_config()
 
     assert str(config.base_url) == "http://bisheng.example.com/"
+
+
+def test_internal_config_read_omits_user_token_but_admin_write_keeps_it(monkeypatch):
+    requests: list[httpx.Request] = []
+    original_client = httpx.Client
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            request=request,
+            json={"status_code": 200, "data": {}},
+        )
+
+    def build_client(**kwargs):
+        return original_client(
+            **kwargs,
+            transport=httpx.MockTransport(handle_request),
+        )
+
+    monkeypatch.setattr(httpx, "Client", build_client)
+    store = RemotePortalAdminConfigStore(runtime_service=FakeRuntimeService())
+
+    store._request("GET", "/api/v1/shougang-portal/config/internal")
+    store._request("PUT", "/api/v1/shougang-portal/config", json={})
+
+    internal_get, admin_put = requests
+    assert "Authorization" not in internal_get.headers
+    assert "access_token_cookie" not in internal_get.headers.get("cookie", "")
+    assert admin_put.headers["Authorization"] == "Bearer runtime-token"
+    assert "access_token_cookie=runtime-token" in admin_put.headers["cookie"]

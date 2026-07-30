@@ -43,12 +43,6 @@ from app.services.unified_auth_runtime_service import UnifiedAuthRuntimeService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/api/v1/admin/config",
-    tags=["admin-config"],
-    dependencies=[Depends(require_admin_session)],
-)
-
 DOMAIN_BINDABLE_SPACE_LEVELS: Final[set[str]] = {"public", "department"}
 SYNC_SPACE_BUSINESS_DOMAIN_CODES_PATH: Final[str] = (
     "/api/v1/knowledge/shougang-portal/spaces/business-domain-codes"
@@ -63,6 +57,43 @@ def _runtime_config_store(request: Request, runtime_service: BishengRuntimeServi
     if store is None or getattr(store, "runtime_service", None) is not runtime_service:
         return None
     return store
+
+
+async def _ensure_runtime_auth_for_config_write(
+    request: Request,
+    runtime_service: BishengRuntimeService = Depends(get_bisheng_runtime_service),
+) -> None:
+    if request.method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return
+    if request.url.path.rstrip("/") == "/api/v1/admin/config/bisheng":
+        # 该接口使用请求内的新账号密码登录，不能先用旧配置阻断。
+        return
+    if _runtime_config_store(request, runtime_service) is None:
+        return
+
+    try:
+        config = await runtime_service.refresh_connection_status()
+    except Exception as err:
+        logger.warning("BiSheng 配置写入前登录态恢复异常：%s", err.__class__.__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="BiSheng 数据源登录态恢复失败，请检查服务账号配置",
+        ) from err
+    if not config.connected:
+        raise HTTPException(
+            status_code=502,
+            detail="BiSheng 数据源登录态恢复失败，请检查服务账号配置",
+        )
+
+
+router = APIRouter(
+    prefix="/api/v1/admin/config",
+    tags=["admin-config"],
+    dependencies=[
+        Depends(require_admin_session),
+        Depends(_ensure_runtime_auth_for_config_write),
+    ],
+)
 
 
 async def _load_domain_bindable_space_rows(

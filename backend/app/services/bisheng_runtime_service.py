@@ -235,6 +235,7 @@ class BishengRuntimeService:
 
     async def update_config(self, payload: BishengRuntimeConfigUpdate) -> BishengRuntimeConfigView:
         await self.sync_shared_auth_state()
+        authenticated_config: BishengRuntimeConfig | None = None
         async with self._lock:
             current = self._read_config()
             password = payload.password.get_secret_value().strip() if payload.password else ""
@@ -278,6 +279,10 @@ class BishengRuntimeService:
             )
             self._write_config(updated)
             await self._replace_client(updated)
+            if requires_reauth:
+                authenticated_config = updated
+        if authenticated_config is not None:
+            await self._publish_explicit_login_state(authenticated_config)
         await self._refresh_runtime_account_info()
         return self.get_public_config()
 
@@ -710,6 +715,48 @@ class BishengRuntimeService:
                 await self._auth_state_store.release_refresh_lock(fingerprint, owner)
             except BishengAuthStateStoreError:
                 logger.warning("BiSheng 共享登录状态发布锁释放失败，将等待租期自动清理")
+
+    async def _publish_explicit_login_state(
+        self,
+        config: BishengRuntimeConfig,
+    ) -> None:
+        """将刚完成账号密码登录的新 token 权威写入共享状态。"""
+        if self._auth_state_store is None:
+            return
+
+        fingerprint = self._config_fingerprint(config)
+        state = BishengSharedAuthState(
+            access_token=config.api_token,
+            connected=False,
+            auth_message="正在验证 BiSheng 数据源登录信息",
+            auth_user=None,
+            last_auth_at=config.last_auth_at,
+            expires_at=self._shared_token_expires_at(config.api_token),
+            version=secrets.token_urlsafe(16),
+        )
+        owner = secrets.token_urlsafe(24)
+        deadline = time.monotonic() + self._shared_refresh_wait_seconds
+        acquired = False
+        while not acquired:
+            acquired = await self._auth_state_store.acquire_refresh_lock(
+                fingerprint,
+                owner,
+                ttl_seconds=max(60, int(config.timeout_seconds * 3)),
+            )
+            if acquired:
+                break
+            if time.monotonic() >= deadline:
+                raise ValueError("BiSheng 数据源登录态更新超时，请稍后重试")
+            await asyncio.sleep(self._shared_refresh_poll_seconds)
+
+        try:
+            # 显式账号密码登录已由 BiSheng 成功签发 token，不能再被旧共享状态覆盖。
+            await self._auth_state_store.save(fingerprint, state)
+        finally:
+            try:
+                await self._auth_state_store.release_refresh_lock(fingerprint, owner)
+            except BishengAuthStateStoreError:
+                logger.warning("BiSheng 显式登录状态发布锁释放失败，将等待租期自动清理")
 
     @staticmethod
     def _config_fingerprint(config: BishengRuntimeConfig) -> str:
