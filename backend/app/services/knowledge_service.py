@@ -826,6 +826,44 @@ class KnowledgeService:
             if self._normalize_business_domain_code(code)
         }
 
+    async def resolve_category_count_scopes(
+        self,
+        categories: list[dict[str, Any]],
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[dict[str, Any]]:
+        allowed_space_ids = {
+            space.id for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)
+        }
+        scopes: list[dict[str, Any]] = []
+        seen_codes: set[str] = set()
+        for category in categories:
+            code = self._normalize_document_type_code(category.get("code"))
+            if not code or code in seen_codes:
+                continue
+            seen_codes.add(code)
+            requested_space_ids = {
+                int(space_id)
+                for space_id in (category.get("space_ids") or [])
+                if isinstance(space_id, int) or (isinstance(space_id, str) and space_id.isdigit())
+            }
+            scopes.append({"code": code, "space_ids": sorted(allowed_space_ids.intersection(requested_space_ids))})
+        return scopes
+
+    async def count_visible_category_files(self, categories: list[dict[str, Any]]) -> dict[str, int]:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/category-file-counts",
+            json={"categories": categories},
+        )
+        data = self._extract_success_data(response)
+        raw_counts = data.get("counts") if isinstance(data, dict) else {}
+        if not isinstance(raw_counts, dict):
+            return {}
+        return {
+            self._normalize_document_type_code(code): int(count or 0)
+            for code, count in raw_counts.items()
+            if self._normalize_document_type_code(code)
+        }
+
     def _resolve_document_chat_model_id(self, requested_model: str = "") -> int:
         config = self._config_service.get_config()
         raw_model = (requested_model or config.qa.selected_model or self._default_model).strip()
