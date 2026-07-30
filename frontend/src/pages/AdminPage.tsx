@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap,
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap, Option
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -134,6 +134,7 @@ import { formatDisplayDateTime } from '../utils/dateTime';
 import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import RecommendationPersonalizationPanel from './admin/RecommendationPersonalizationPanel';
 import CourseManagementPanel from './admin/CourseManagementPanel';
+import DictConfigPanel from './admin/DictConfigPanel';
 import s from './AdminPage.module.css';
 
 function isBuiltinSection(section: SectionConfig): boolean {
@@ -165,6 +166,7 @@ const NAV_ITEMS = [
   { key: 'deptBinding', label: '科室知识库绑定', icon: Link2 },
   { key: 'integrations', label: '集成配置', icon: Plug },
   { key: 'site', label: '站点配置', icon: Settings },
+  { key: 'dictConfig', label: '字典配置', icon: Option },
 ];
 
 type NavKey = typeof NAV_ITEMS[number]['key'];
@@ -1156,6 +1158,7 @@ export default function AdminPage() {
               }}
             />
           )}
+          {active === 'dictConfig' && <DictConfigPanel />}
         </main>
       </div>
       {config && domainEditorOpen ? (

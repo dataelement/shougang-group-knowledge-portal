@@ -7,11 +7,12 @@ interface Props {
   total: number;
   pageSize: number;
   onChange: (page: number) => void;
+  alwaysShow?: boolean;
 }
 
-export default function Pagination({ page, total, pageSize, onChange }: Props) {
+export default function Pagination({ page, total, pageSize, onChange, alwaysShow }: Props) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  if (totalPages <= 1) return null;
+  if (totalPages <= 1 && !alwaysShow) return null;
   const pages = getPaginationPages(page, totalPages);
 
   return (
