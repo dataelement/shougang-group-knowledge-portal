@@ -882,13 +882,13 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  /* 未选中:蓝色;图标与文字统一取此 color。选中态见 .domainNavTabActive */
-  color: #3662e3;
+  /* 未选中:灰色;图标与文字统一取此 color。选中态见 .domainNavTabActive */
+  color: #666666;
   transition: color 0.15s ease;
 }
 
 .domainNavTabActive {
-  color: #666666;
+  color: #3662e3;
 }
 
 /* 图标用 CSS mask 染成当前文字色(currentColor),与文字严格统一 */

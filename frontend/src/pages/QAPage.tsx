@@ -42,6 +42,7 @@ import {
   fetchWorkstationConversations,
   fetchWorkstationMessages,
   renameWorkstationConversation,
+  deleteWorkstationConversation,
   searchQaKnowledgeFiles,
   streamChatCompletion,
   uploadChatAttachment,
@@ -377,6 +378,7 @@ export interface SmartQaWorkspaceRenderArgs {
     newSession: () => void;
     selectSession: (session: Session) => void;
     renameSession: (session: Session, name: string) => Promise<void>;
+    deleteSession: (session: Session) => Promise<void>;
   };
 }
 
@@ -1003,6 +1005,25 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     );
   };
 
+  const deleteSession = async (session: Session) => {
+    if (session.conversationId) {
+      await deleteWorkstationConversation(session.conversationId);
+    }
+    setSessions((prev) => {
+      const next = prev.filter((ss) => ss.id !== session.id);
+      if (activeId === session.id) {
+        if (next.length > 0) {
+          setActiveId(next[0].id);
+        } else {
+          const ns = createDraftSession();
+          setActiveId(ns.id);
+          return [ns];
+        }
+      }
+      return next;
+    });
+  };
+
   const chooseTemplate = (template: QATemplateConfig) => {
     if (selectedTemplateId === template.id) {
       setSelectedTemplateId('');
@@ -1579,6 +1600,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     newSession,
     selectSession,
     renameSession,
+    deleteSession,
   };
 
   if (children) {

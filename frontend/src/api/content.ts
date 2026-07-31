@@ -1763,6 +1763,12 @@ export async function renameWorkstationConversation(conversationId: string, name
   });
 }
 
+export async function deleteWorkstationConversation(conversationId: string): Promise<void> {
+  await request(`/api/v1/workstation/chat/${encodeURIComponent(conversationId)}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function fetchAgentWorkflowConversations(params: {
   page?: number;
   limit?: number;

@@ -137,6 +137,32 @@ async def rename_conversation(
         await bisheng_client.aclose()
 
 
+@router.delete("/chat/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    conversation_id = conversation_id.strip()
+    if not conversation_id:
+        raise HTTPException(status_code=422, detail="conversation_id 不能为空")
+    session = await _require_portal_session(request, auth_service)
+    bisheng_client = auth_service.create_bisheng_client(session)
+    try:
+        service = ChatProxyService(
+            bisheng_client=bisheng_client,
+            portal_config_service=portal_config_service,
+            default_model=get_settings().bisheng_default_model,
+        )
+        await service.delete_conversation(conversation_id)
+        return response_ok({"conversation_id": conversation_id})
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    finally:
+        await bisheng_client.aclose()
+
+
 @router.get("/workflow/conversations")
 async def list_workflow_conversations(
     request: Request,
