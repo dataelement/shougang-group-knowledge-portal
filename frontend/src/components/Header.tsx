@@ -95,8 +95,11 @@ export default function Header() {
   const externalId = user?.externalId?.trim() || user?.account || '';
   const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
   const canViewMigrations = isSystemAdministrator(user);
-  const showMyUploadsEntry = location.pathname === '/knowledge-spaces';
-  const showTagReviewEntry = location.pathname === '/knowledge-spaces' && canAccessTagReview(user);
+  const isKnowledgeSpacesPage = location.pathname === '/knowledge-spaces';
+  const showMyUploadsEntry = isKnowledgeSpacesPage;
+  const showTagReviewEntry = isKnowledgeSpacesPage && canAccessTagReview(user);
+  // Recycle bin is a knowledge-space admin tool; hide it on home/other headers.
+  const showRecycleEntry = isKnowledgeSpacesPage && canOpenAdmin;
 
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
@@ -120,6 +123,8 @@ export default function Header() {
 
   const handleOpenTagReviewFile = (target: { spaceId: number; fileId: number; fileName: string }) => {
     setTagReviewOpen(false);
+    // Parent URL stays shareable; KnowledgeSpacesPage delivers open-file via postMessage
+    // so the knowledge iframe.src is not remounted. openNonce forces re-open of the same file.
     const next = new URLSearchParams(searchParams);
     next.set('spaceId', String(target.spaceId));
     next.set('fileId', String(target.fileId));
@@ -128,6 +133,7 @@ export default function Header() {
     } else {
       next.delete('fileName');
     }
+    next.set('openNonce', String(Date.now()));
     next.delete('openChat');
     setSearchParams(next, { replace: true });
   };
@@ -270,7 +276,7 @@ export default function Header() {
                       知识管理后台
                     </button>
                   ) : null}
-                  {canOpenAdmin ? (
+                  {showRecycleEntry ? (
                     <button
                       type="button"
                       className={s.userMenuItem}
@@ -319,7 +325,7 @@ export default function Header() {
                       迁移记录
                     </button>
                   ) : null}
-                  {canOpenAdmin || showTagReviewEntry || showMyUploadsEntry || canViewMigrations ? (
+                  {canOpenAdmin || showRecycleEntry || showTagReviewEntry || showMyUploadsEntry || canViewMigrations ? (
                     <div className={s.userMenuDivider} />
                   ) : null}
                   <button
