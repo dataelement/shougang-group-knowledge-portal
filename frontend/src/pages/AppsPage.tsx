@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Edit3,
+  Trash2,
   Eye,
   FileText,
   Globe,
@@ -45,6 +46,7 @@ import {
   fetchAgentWorkflows,
   removeAgentWorkflowFavorite,
   renameWorkstationConversation,
+  deleteWorkstationConversation,
   type AgentWorkflowConversation,
 } from '../api/content';
 import { usePortalConfig } from '../hooks/usePortalConfig';
@@ -181,6 +183,7 @@ function SmartAppsSidebar({
   onNewQa,
   onSelectRecord,
   onRenameRecord,
+  onDeleteRecord,
 }: {
   records: SmartAppsRecord[];
   activeRecordId: string;
@@ -188,6 +191,7 @@ function SmartAppsSidebar({
   onNewQa: () => void;
   onSelectRecord: (record: SmartAppsRecord) => void;
   onRenameRecord: (record: SmartAppsRecord, name: string) => Promise<void>;
+  onDeleteRecord: (record: SmartAppsRecord) => Promise<void>;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingKey, setRenamingKey] = useState<string | null>(null);
@@ -314,6 +318,20 @@ function SmartAppsSidebar({
                           title="重命名会话"
                         >
                           <Edit3 size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className={s.convItemDeleteBtn}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (window.confirm(`确定删除会话「${record.title}」?`)) {
+                              void onDeleteRecord(record);
+                            }
+                          }}
+                          aria-label="删除会话"
+                          title="删除会话"
+                        >
+                          <Trash2 size={13} />
                         </button>
                       </>
                     )}
@@ -692,6 +710,20 @@ export default function AppsPage() {
             ),
           );
         };
+        const handleDeleteRecord = async (record: SmartAppsRecord) => {
+          if (record.kind === 'qa') {
+            await qaSidebarState.deleteSession(record.session);
+            return;
+          }
+          await deleteWorkstationConversation(record.conversationId);
+          setAgentWorkflowConversations((prev) =>
+            prev.filter((item) => item.conversationId !== record.conversationId),
+          );
+          if (activeAgentRecordId === record.conversationId) {
+            setSelectedAgentConversationId('');
+            setActiveAgentRecordId('');
+          }
+        };
         const activeRecordId = activeTab === 'agent' ? activeAgentRecordId : qaSidebarState.activeId;
         const hasSelectedAgentWorkflow = activeTab === 'agent' && Boolean(selectedAgent);
         const showTopComposer = !hasSelectedAgentWorkflow && (activeTab === 'agent' || !hasQaConversation);
@@ -709,6 +741,7 @@ export default function AppsPage() {
                   activeRecordId={activeRecordId}
                   loading={qaSidebarState.loadingSessions || loadingAgentWorkflowConversations}
                   onRenameRecord={handleRenameRecord}
+                  onDeleteRecord={handleDeleteRecord}
                   onNewQa={() => {
                     qaSidebarState.newSession();
                     setSelectedAgentId('');

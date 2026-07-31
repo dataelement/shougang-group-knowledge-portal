@@ -316,6 +316,10 @@ class ChatProxyService:
         )
         self._unwrap_bisheng_data(payload)
 
+    async def delete_conversation(self, conversation_id: str) -> None:
+        payload = await self._bisheng.delete_json(f"/api/v1/chat/{conversation_id}")
+        self._unwrap_bisheng_data(payload)
+
     async def list_agent_workflow_conversations(self, page: int = 1, limit: int = 20):
         payload = await self._bisheng.get_json(
             "/api/v1/workstation/app/portal-agent-conversations",

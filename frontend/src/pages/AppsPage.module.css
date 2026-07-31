@@ -175,9 +175,9 @@ button.navRow:hover {
   color: #3662E3;
 }
 
-.convItemEditBtn {
+.convItemEditBtn,
+.convItemDeleteBtn {
   position: absolute;
-  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   width: 24px;
@@ -191,14 +191,24 @@ button.navRow:hover {
   transition: opacity 0.15s, color 0.15s, background 0.15s;
 }
 
+.convItemEditBtn { right: 36px; }
+.convItemDeleteBtn { right: 8px; }
+
 .convItemRow:hover .convItemEditBtn,
-.convItemRow:focus-within .convItemEditBtn {
+.convItemRow:focus-within .convItemEditBtn,
+.convItemRow:hover .convItemDeleteBtn,
+.convItemRow:focus-within .convItemDeleteBtn {
   opacity: 1;
 }
 
 .convItemEditBtn:hover {
   color: #3662E3;
   background: #E6ECFA;
+}
+
+.convItemDeleteBtn:hover {
+  color: #f5222d;
+  background: #fdecec;
 }
 
 .convItemInput {
