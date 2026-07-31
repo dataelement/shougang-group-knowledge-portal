@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRightLeft,
   Bell,
@@ -9,6 +9,7 @@ import {
   LogIn,
   LogOut,
   Send,
+  Tags,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import {
+  canAccessTagReview,
   isPortalAdmin,
   isSystemAdministrator,
 } from '../utils/adminAccess';
@@ -26,6 +28,7 @@ import {
   type PortalApprovalAction,
 } from '../utils/portalApprovalBridge';
 import adminIcon from '../assets/admin-icon.svg';
+import TagReviewDialog from './TagReviewDialog';
 import s from './Header.module.css';
 
 type HeaderNavItem =
@@ -46,6 +49,7 @@ function formatBadgeCount(count: number): string {
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, logout } = useAuth();
   const badges = useNotificationSummary(Boolean(user));
   const { config } = usePortalConfig();
@@ -58,6 +62,7 @@ export default function Header() {
   const [msgKey, setMsgKey] = useState<string | null>(null);
   const msgRef = useRef<HTMLDivElement>(null);
   const msgOpen = msgKey === location.pathname;
+  const [tagReviewOpen, setTagReviewOpen] = useState(false);
 
   // Never render the portal header when loaded inside an iframe.
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
@@ -91,6 +96,7 @@ export default function Header() {
   const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
   const canViewMigrations = isSystemAdministrator(user);
   const showMyUploadsEntry = location.pathname === '/knowledge-spaces';
+  const showTagReviewEntry = location.pathname === '/knowledge-spaces' && canAccessTagReview(user);
 
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
@@ -110,6 +116,20 @@ export default function Header() {
     closeMenu();
     const knowledgeFrame = document.getElementById('bisheng-knowledge-frame') as HTMLIFrameElement | null;
     postPortalApprovalMessageToFrame(knowledgeFrame, 'my_uploads');
+  };
+
+  const handleOpenTagReviewFile = (target: { spaceId: number; fileId: number; fileName: string }) => {
+    setTagReviewOpen(false);
+    const next = new URLSearchParams(searchParams);
+    next.set('spaceId', String(target.spaceId));
+    next.set('fileId', String(target.fileId));
+    if (target.fileName) {
+      next.set('fileName', target.fileName);
+    } else {
+      next.delete('fileName');
+    }
+    next.delete('openChat');
+    setSearchParams(next, { replace: true });
   };
 
   if (isInIframe) return null;
@@ -263,6 +283,19 @@ export default function Header() {
                       回收站
                     </button>
                   ) : null}
+                  {showTagReviewEntry ? (
+                    <button
+                      type="button"
+                      className={s.userMenuItem}
+                      onClick={() => {
+                        closeMenu();
+                        setTagReviewOpen(true);
+                      }}
+                    >
+                      <Tags size={15} />
+                      标签审核
+                    </button>
+                  ) : null}
                   {showMyUploadsEntry ? (
                     <button
                       type="button"
@@ -286,7 +319,7 @@ export default function Header() {
                       迁移记录
                     </button>
                   ) : null}
-                  {canOpenAdmin || showMyUploadsEntry || canViewMigrations ? (
+                  {canOpenAdmin || showTagReviewEntry || showMyUploadsEntry || canViewMigrations ? (
                     <div className={s.userMenuDivider} />
                   ) : null}
                   <button
@@ -311,6 +344,13 @@ export default function Header() {
           </button>
         )}
       </div>
+      {tagReviewOpen ? (
+        <TagReviewDialog
+          open={tagReviewOpen}
+          onClose={() => setTagReviewOpen(false)}
+          onOpenFile={handleOpenTagReviewFile}
+        />
+      ) : null}
     </header>
   );
 }

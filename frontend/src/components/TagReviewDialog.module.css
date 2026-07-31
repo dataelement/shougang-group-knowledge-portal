@@ -1,0 +1,291 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 24px;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 14px;
+  width: min(960px, 100%);
+  max-height: min(860px, 92vh);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.approveModal {
+  background: #fff;
+  border-radius: 14px;
+  width: min(440px, 100%);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.modalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+  border-bottom: 1px solid #ececec;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.totalHint {
+  margin-left: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #86909c;
+}
+
+.modalDesc {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  color: #86909c;
+  line-height: 1.5;
+}
+
+.modalClose {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f2f3f5;
+  color: #86909c;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.modalClose:hover {
+  background: #e5e6eb;
+  color: #1f2329;
+}
+
+.modalBody {
+  padding: 16px 24px 20px;
+  overflow: auto;
+}
+
+.searchRow {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #86909c;
+}
+
+.searchInput {
+  width: 100%;
+  height: 36px;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  padding: 0 12px 0 36px;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: #3370ff;
+}
+
+.toast,
+.error {
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.toast {
+  background: #f2f9f3;
+  color: #2a6b3c;
+}
+
+.error {
+  background: #fff5f5;
+  color: #c45656;
+}
+
+.tableWrap {
+  border: 1px solid #ececec;
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 52vh;
+  background: #fafbfc;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #fff;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 0.875rem;
+  border-top: 1px solid #f0f0f0;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  color: #86909c;
+  font-weight: 500;
+  border-top: none;
+}
+
+.tagName {
+  font-weight: 600;
+  color: #1f2329;
+}
+
+.muted {
+  color: #86909c;
+}
+
+.empty {
+  text-align: center;
+  color: #86909c;
+  padding: 36px 12px !important;
+}
+
+.fileLink {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #3370ff;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.fileLink:hover {
+  text-decoration: underline;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.iconBtn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #2a6b3c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.iconBtn:hover {
+  background: #f2f9f3;
+}
+
+.iconBtnDanger {
+  color: #c45656;
+}
+
+.iconBtnDanger:hover {
+  background: #fff5f5;
+}
+
+.iconBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pager {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.pageBtn,
+.primaryBtn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #e5e6eb;
+  background: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pageBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.primaryBtn {
+  background: #3370ff;
+  border-color: #3370ff;
+  color: #fff;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pageInfo {
+  font-size: 0.85rem;
+  color: #86909c;
+}
+
+.fieldLabel {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: 0.85rem;
+  color: #4e5969;
+}
+
+.select {
+  width: 100%;
+  height: 36px;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 0.875rem;
+}
+
+.approveFoot {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

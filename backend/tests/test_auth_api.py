@@ -2,11 +2,10 @@ import asyncio
 import json
 import time
 
-from fastapi.testclient import TestClient
-
 from app.main import app
 from app.schemas.auth import PortalUserView
 from app.services.portal_auth_service import PortalAuthError, PortalAuthService, RedisPortalSessionStore
+from fastapi.testclient import TestClient
 
 
 class FakeRuntimeService:
@@ -41,6 +40,7 @@ class FakeAuthBishengClient:
                     "user_name": "bisheng-user",
                     "name": "王工",
                     "department_name": "设备管理部",
+                    "is_department_admin": True,
                 },
             }
         raise AssertionError(f"Unexpected get path: {path}")
@@ -164,9 +164,12 @@ def test_login_me_logout_roundtrip_sets_httponly_session_cookie():
     assert user["name"] == "王工"
     assert user["role"] == "设备管理部"
     assert user["department_name"] == "设备管理部"
+    assert user["is_department_admin"] is True
 
     assert me_response.status_code == 200
-    assert me_response.json()["data"]["user"]["account"] == "bisheng-user"
+    me_user = me_response.json()["data"]["user"]
+    assert me_user["account"] == "bisheng-user"
+    assert me_user["is_department_admin"] is True
     assert logout_response.status_code == 200
     assert after_logout_response.status_code == 401
 
@@ -245,12 +248,8 @@ def test_login_force_login_is_forwarded_to_bisheng():
 def test_force_login_replaces_existing_portal_session_for_same_account():
     service = make_auth_service()
 
-    first = asyncio.run(
-        service.login(account="bisheng-user", password="secret", remember=True)
-    )
-    second = asyncio.run(
-        service.login(account="bisheng-user", password="secret", remember=True, force_login=True)
-    )
+    first = asyncio.run(service.login(account="bisheng-user", password="secret", remember=True))
+    second = asyncio.run(service.login(account="bisheng-user", password="secret", remember=True, force_login=True))
 
     assert first.session_id != second.session_id
     assert asyncio.run(service._session_store.get(first.session_id)) is None
@@ -327,6 +326,22 @@ def test_portal_user_view_keeps_legacy_sessions_compatible_without_numeric_ident
 
     assert user.user_id is None
     assert user.tenant_id is None
+    assert user.is_department_admin is False
+
+
+def test_fetch_user_maps_is_department_admin_from_bisheng_info():
+    async def run():
+        service = make_auth_service()
+        user = await service._fetch_user(
+            base_url="http://bisheng.example.com",
+            timeout_seconds=30.0,
+            access_token="user-token",
+            fallback_account="bisheng-user",
+        )
+        assert user.is_department_admin is True
+        assert user.name == "王工"
+
+    asyncio.run(run())
 
 
 def test_redis_session_store_deserializes_legacy_user_without_user_and_tenant_ids():
@@ -387,9 +402,7 @@ def test_user_info_extracts_numeric_user_id_and_leaf_tenant_id():
         password_encryptor=lambda _public_key, password: f"encrypted-{password}",
     )
 
-    session = asyncio.run(
-        service.login(account="bisheng-user", password="secret", remember=True)
-    )
+    session = asyncio.run(service.login(account="bisheng-user", password="secret", remember=True))
 
     assert session.user.user_id == 10086
     assert session.user.tenant_id == 9

@@ -10,6 +10,8 @@ export interface PortalUser {
   externalId?: string;
   loginAt?: number;
   authSource?: string;
+  /** Org department admin from BiSheng department settings (not portal site admin). */
+  isDepartmentAdmin?: boolean;
 }
 
 export interface PortalUnifiedAuthConfig {
@@ -36,6 +38,7 @@ interface PortalUserDto {
   department_name?: string;
   external_id?: string;
   login_at?: number;
+  is_department_admin?: boolean;
 }
 
 interface PortalAuthDataDto {
@@ -66,6 +69,7 @@ function mapPortalUser(dto: PortalUserDto, authSource = ''): PortalUser {
     departmentName: dto.department_name,
     externalId: dto.external_id,
     loginAt: dto.login_at,
+    isDepartmentAdmin: Boolean(dto.is_department_admin),
     authSource: authSource || undefined,
   };
 }
