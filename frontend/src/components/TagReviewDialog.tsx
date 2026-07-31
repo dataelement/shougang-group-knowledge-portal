@@ -17,6 +17,8 @@ export interface TagReviewFileTarget {
   spaceId: number;
   fileId: number;
   fileName: string;
+  /** Parent folder id for Client deep-link navigation; omit at space root. */
+  folderId?: number;
 }
 
 interface TagReviewDialogProps {
@@ -130,7 +132,14 @@ export default function TagReviewDialog({ open, onClose, onOpenFile }: TagReview
       setToast('无法定位文件，缺少知识空间或文件信息');
       return;
     }
-    onOpenFile({ spaceId, fileId, fileName: fileName || `file-${fileId}` });
+    const parentId = resource.parent_id != null ? Number(resource.parent_id) : NaN;
+    const folderId = Number.isFinite(parentId) && parentId > 0 ? parentId : undefined;
+    onOpenFile({
+      spaceId,
+      fileId,
+      fileName: fileName || `file-${fileId}`,
+      folderId,
+    });
   };
 
   const openApprove = (row: ReviewTagItem, knowledgeId?: number | null) => {

@@ -26,6 +26,8 @@ export interface ReviewTagResourceItem {
   submit_time?: string;
   knowledge_id?: number;
   file_url?: string;
+  /** Immediate parent folder id; null/omitted means space root. */
+  parent_id?: number | null;
 }
 
 export interface ReviewTagItem {

@@ -121,13 +121,23 @@ export default function Header() {
     postPortalApprovalMessageToFrame(knowledgeFrame, 'my_uploads');
   };
 
-  const handleOpenTagReviewFile = (target: { spaceId: number; fileId: number; fileName: string }) => {
+  const handleOpenTagReviewFile = (target: {
+    spaceId: number;
+    fileId: number;
+    fileName: string;
+    folderId?: number;
+  }) => {
     setTagReviewOpen(false);
     // Parent URL stays shareable; KnowledgeSpacesPage delivers open-file via postMessage
     // so the knowledge iframe.src is not remounted. openNonce forces re-open of the same file.
     const next = new URLSearchParams(searchParams);
     next.set('spaceId', String(target.spaceId));
     next.set('fileId', String(target.fileId));
+    if (target.folderId != null && target.folderId > 0) {
+      next.set('folderId', String(target.folderId));
+    } else {
+      next.delete('folderId');
+    }
     if (target.fileName) {
       next.set('fileName', target.fileName);
     } else {
