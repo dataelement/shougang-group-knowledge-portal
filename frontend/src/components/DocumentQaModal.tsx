@@ -14,6 +14,7 @@ interface Props {
 interface Message {
   role: 'bot' | 'user';
   text: string;
+  questionId?: string;
   error?: boolean;
   retrying?: boolean;
 }
@@ -64,16 +65,21 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
     });
   };
 
-  const sendQuestion = (question?: string, retryMessageIndex?: number) => {
+  const sendQuestion = (
+    question?: string,
+    retryMessageIndex?: number,
+    existingQuestionId?: string,
+  ) => {
     const text = (question ?? draft).trim();
     if (!text || streaming) return;
 
+    const questionId = existingQuestionId ?? crypto.randomUUID();
     const currentRequest = ++requestSeq.current;
     const targetMessageIndex = retryMessageIndex ?? messages.length + 1;
     setDraft('');
     setStreaming(true);
     setMessages((prev) => retryMessageIndex === undefined
-      ? [...prev, { role: 'user', text }, { role: 'bot', text: '' }]
+      ? [...prev, { role: 'user', text, questionId }, { role: 'bot', text: '' }]
       : prev.map((message, index) => (
           index === retryMessageIndex ? { role: 'bot', text: '' } : message
         ))
@@ -83,6 +89,7 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
       spaceId: file.spaceId,
       fileId: file.id,
       text,
+      questionId,
       onUpdate(currentText) {
         if (requestSeq.current !== currentRequest) return;
         updateBotMessage(targetMessageIndex, currentText);
@@ -111,7 +118,7 @@ export default function DocumentQaModal({ open, file, onClose }: Props) {
       .reverse()
       .find((message) => message.role === 'user');
     if (!previousQuestion || streaming) return;
-    sendQuestion(previousQuestion.text, messageIndex);
+    sendQuestion(previousQuestion.text, messageIndex, previousQuestion.questionId);
   };
 
   const handleClose = () => {

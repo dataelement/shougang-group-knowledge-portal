@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   buildAdminLoginRedirect,
+  canAccessTagReview,
   getAdminAccessState,
   isPortalAdmin,
 } from '../src/utils/adminAccess';
@@ -26,6 +27,13 @@ test('admin access allows only configured administrator roles', () => {
   assert.equal(isPortalAdmin(adminAccountUserWithSpaces), true);
 });
 
+test('tag review access uses org department-admin flag only', () => {
+  assert.equal(canAccessTagReview(null), false);
+  assert.equal(canAccessTagReview({}), false);
+  assert.equal(canAccessTagReview({ isDepartmentAdmin: false }), false);
+  assert.equal(canAccessTagReview({ isDepartmentAdmin: true }), true);
+});
+
 test('admin route access distinguishes anonymous, forbidden, and allowed users', () => {
   const adminAccountUser = { account: 'admin', role: '内部员工' };
 
@@ -38,14 +46,15 @@ test('admin route access distinguishes anonymous, forbidden, and allowed users',
 
 test('admin login redirect preserves the requested admin URL', () => {
   assert.equal(
-    buildAdminLoginRedirect('/admin', '?tab=site'),
-    '/login?redirect=%2Fadmin%3Ftab%3Dsite',
+    buildAdminLoginRedirect('/admin', '?tab=1'),
+    '/login?redirect=%2Fadmin%3Ftab%3D1',
   );
 });
 
-test('header and app use the shared admin access guard', () => {
+test('header wires portal admin and department-admin tag review entries', () => {
   assert.match(headerSource, /isPortalAdmin\(user\)/);
-  assert.match(appSource, /function AdminRoute/);
-  assert.match(appSource, /getAdminAccessState\(user\)/);
-  assert.match(appSource, /<Route path="\/admin" element={<AdminRoute \/>}/);
+  assert.match(headerSource, /canAccessTagReview\(user\)/);
+  assert.match(headerSource, /标签审核/);
+  assert.match(headerSource, /TagReviewDialog/);
+  assert.match(appSource, /RecycleRoute/);
 });

@@ -45,6 +45,19 @@ class MemoryRemotePortalAdminConfigStore(RemotePortalAdminConfigStore):
         self.save_count += 1
 
 
+class RedactingUnifiedAuthRemoteStore(MemoryRemotePortalAdminConfigStore):
+    def _save_remote_aggregate(self, aggregate: PortalAdminAggregateConfig) -> PortalAdminAggregateConfig:
+        self.save_count += 1
+        redacted_data = aggregate.model_dump(mode="json")
+        redacted_data["unified_auth"]["login_sync_hmac_secret"] = ""
+        redacted_data["unified_auth"]["client_secret"] = ""
+        redacted = PortalAdminAggregateConfig.model_validate(redacted_data)
+        saved = self._merge_unified_auth_secrets(redacted, aggregate)
+        self.remote = saved
+        self._record_saved_aggregate(saved)
+        return saved
+
+
 class RawMemoryRemotePortalAdminConfigStore(RemotePortalAdminConfigStore):
     def __init__(self, *, remote_data: dict | None = None):
         super().__init__(runtime_service=FakeRuntimeService())
@@ -235,6 +248,40 @@ def test_upsert_document_persists_rest_auth_runtime_config():
     assert saved["rest_base_url"] == "https://iam.example.com"
     assert saved["rest_app_id"] == "portal-rest"
     assert store.save_count == 1
+
+
+def test_upsert_rest_auth_preserves_login_sync_secret_when_remote_save_redacts():
+    store = RedactingUnifiedAuthRemoteStore()
+    store.enable_shared_cache()
+    payload = {
+        "enabled": True,
+        "rest_base_url": "https://iam.example.com",
+        "rest_app_id": "portal-rest",
+        "authenticate_url": "",
+        "token_valid_url": "",
+        "user_attributes_url": "",
+        "rest_token_id_param": "tokenId",
+        "http_timeout_seconds": 10.0,
+        "token_check_interval_seconds": 300,
+        "verify_tls": True,
+        "bisheng_lookup_required": False,
+        "login_sync_hmac_secret": "sync-secret",
+        "login_sync_signature_header": "X-Signature",
+    }
+
+    store.upsert_document("rest_auth_runtime_config", payload)
+
+    assert store.remote is not None
+    assert store.remote.unified_auth.login_sync_hmac_secret == "sync-secret"
+    assert store.last_saved_aggregate is not None
+    assert store.last_saved_aggregate.unified_auth.login_sync_hmac_secret == "sync-secret"
+    store.set_cached_aggregate(store.last_saved_aggregate)
+    cached = store.get_cached_aggregate()
+    assert cached is not None
+    assert cached.unified_auth.login_sync_hmac_secret == "sync-secret"
+    saved = store.get_document("rest_auth_runtime_config")
+    assert saved is not None
+    assert saved["login_sync_hmac_secret"] == "sync-secret"
 
 
 def test_get_rest_auth_runtime_document_migrates_nested_rest_auth_object():

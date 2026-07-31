@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  ArrowRightLeft,
   Bell,
   ChevronDown,
   ClipboardList,
@@ -8,13 +9,18 @@ import {
   LogIn,
   LogOut,
   Send,
+  Tags,
   Trash2,
   Upload,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { isPortalAdmin } from '../utils/adminAccess';
+import {
+  canAccessTagReview,
+  isPortalAdmin,
+  isSystemAdministrator,
+} from '../utils/adminAccess';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import {
   PORTAL_APPROVAL_EVENT,
@@ -22,6 +28,7 @@ import {
   type PortalApprovalAction,
 } from '../utils/portalApprovalBridge';
 import adminIcon from '../assets/admin-icon.svg';
+import TagReviewDialog from './TagReviewDialog';
 import s from './Header.module.css';
 
 type HeaderNavItem =
@@ -42,6 +49,7 @@ function formatBadgeCount(count: number): string {
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, logout } = useAuth();
   const badges = useNotificationSummary(Boolean(user));
   const { config } = usePortalConfig();
@@ -54,6 +62,7 @@ export default function Header() {
   const [msgKey, setMsgKey] = useState<string | null>(null);
   const msgRef = useRef<HTMLDivElement>(null);
   const msgOpen = msgKey === location.pathname;
+  const [tagReviewOpen, setTagReviewOpen] = useState(false);
 
   // Never render the portal header when loaded inside an iframe.
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
@@ -85,7 +94,12 @@ export default function Header() {
   const initial = user ? (user.initial || user.name.slice(0, 1)) : '';
   const externalId = user?.externalId?.trim() || user?.account || '';
   const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
-  const showMyUploadsEntry = location.pathname === '/knowledge-spaces';
+  const canViewMigrations = isSystemAdministrator(user);
+  const isKnowledgeSpacesPage = location.pathname === '/knowledge-spaces';
+  const showMyUploadsEntry = isKnowledgeSpacesPage;
+  const showTagReviewEntry = isKnowledgeSpacesPage && canAccessTagReview(user);
+  // Recycle bin is a knowledge-space admin tool; hide it on home/other headers.
+  const showRecycleEntry = isKnowledgeSpacesPage && canOpenAdmin;
 
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
@@ -105,6 +119,33 @@ export default function Header() {
     closeMenu();
     const knowledgeFrame = document.getElementById('bisheng-knowledge-frame') as HTMLIFrameElement | null;
     postPortalApprovalMessageToFrame(knowledgeFrame, 'my_uploads');
+  };
+
+  const handleOpenTagReviewFile = (target: {
+    spaceId: number;
+    fileId: number;
+    fileName: string;
+    folderId?: number;
+  }) => {
+    setTagReviewOpen(false);
+    // Parent URL stays shareable; KnowledgeSpacesPage delivers open-file via postMessage
+    // so the knowledge iframe.src is not remounted. openNonce forces re-open of the same file.
+    const next = new URLSearchParams(searchParams);
+    next.set('spaceId', String(target.spaceId));
+    next.set('fileId', String(target.fileId));
+    if (target.folderId != null && target.folderId > 0) {
+      next.set('folderId', String(target.folderId));
+    } else {
+      next.delete('folderId');
+    }
+    if (target.fileName) {
+      next.set('fileName', target.fileName);
+    } else {
+      next.delete('fileName');
+    }
+    next.set('openNonce', String(Date.now()));
+    next.delete('openChat');
+    setSearchParams(next, { replace: true });
   };
 
   if (isInIframe) return null;
@@ -245,7 +286,7 @@ export default function Header() {
                       知识管理后台
                     </button>
                   ) : null}
-                  {canOpenAdmin ? (
+                  {showRecycleEntry ? (
                     <button
                       type="button"
                       className={s.userMenuItem}
@@ -258,6 +299,19 @@ export default function Header() {
                       回收站
                     </button>
                   ) : null}
+                  {showTagReviewEntry ? (
+                    <button
+                      type="button"
+                      className={s.userMenuItem}
+                      onClick={() => {
+                        closeMenu();
+                        setTagReviewOpen(true);
+                      }}
+                    >
+                      <Tags size={15} />
+                      标签审核
+                    </button>
+                  ) : null}
                   {showMyUploadsEntry ? (
                     <button
                       type="button"
@@ -268,7 +322,20 @@ export default function Header() {
                       我的上传
                     </button>
                   ) : null}
-                  {canOpenAdmin || showMyUploadsEntry ? (
+                  {canViewMigrations ? (
+                    <button
+                      type="button"
+                      className={s.userMenuItem}
+                      onClick={() => {
+                        closeMenu();
+                        navigate('/knowledge-migrations');
+                      }}
+                    >
+                      <ArrowRightLeft size={15} />
+                      迁移记录
+                    </button>
+                  ) : null}
+                  {canOpenAdmin || showRecycleEntry || showTagReviewEntry || showMyUploadsEntry || canViewMigrations ? (
                     <div className={s.userMenuDivider} />
                   ) : null}
                   <button
@@ -293,6 +360,13 @@ export default function Header() {
           </button>
         )}
       </div>
+      {tagReviewOpen ? (
+        <TagReviewDialog
+          open={tagReviewOpen}
+          onClose={() => setTagReviewOpen(false)}
+          onOpenFile={handleOpenTagReviewFile}
+        />
+      ) : null}
     </header>
   );
 }

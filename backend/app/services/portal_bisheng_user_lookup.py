@@ -32,6 +32,17 @@ class PortalBishengUserLookup:
             raise
 
     async def _lookup_user(self, client: BishengClient, account: str) -> dict[str, Any] | None:
+        matched = await self._lookup_user_by_external_id(client, account)
+        if matched is not None:
+            print("BiSheng 用户 source 查询命中: ", matched)
+            logger.info(
+                "BiSheng 用户 source 查询命中(by-external-id): account=%s source=%s external_id=%s",
+                account,
+                matched.get("source"),
+                matched.get("external_id"),
+            )
+            return matched
+
         for params in (
             {"name": account, "page_num": 1, "page_size": 20},
             {"keyword": account, "page_num": 1, "page_size": 20},
@@ -52,6 +63,48 @@ class PortalBishengUserLookup:
         logger.warning("BiSheng 用户 source 查询未命中: account=%s", account)
         return None
 
+    async def _lookup_user_by_external_id(
+        self,
+        client: BishengClient,
+        account: str,
+    ) -> dict[str, Any] | None:
+        try:
+            response = await client.get_json(
+                "/api/v1/user/by-external-id",
+                params={"external_id": account},
+            )
+        except Exception as err:
+            logger.debug(
+                "BiSheng by-external-id 查询失败，将回退 user/list: account=%s error=%s",
+                account,
+                err,
+            )
+            return None
+
+        status_code = response.get("status_code")
+        if status_code == 404:
+            return None
+        if status_code not in (None, 200):
+            logger.debug(
+                "BiSheng by-external-id 未命中: account=%s status_code=%s",
+                account,
+                status_code,
+            )
+            return None
+
+        rows = self._extract_by_external_id_rows(response)
+        if not rows:
+            return None
+
+        matched = self._match_account(rows, account) or rows[0]
+        logger.info(
+            "BiSheng 用户 source 查询命中(by-external-id): account=%s source=%s external_id=%s",
+            account,
+            matched.get("source"),
+            matched.get("external_id"),
+        )
+        return self._normalize_user_record(matched)
+
     @staticmethod
     def _normalize_user_record(row: dict[str, Any]) -> dict[str, Any]:
         user_name = str(
@@ -69,6 +122,18 @@ class PortalBishengUserLookup:
             "external_id": external_id,
             "source": source,
         }
+
+    @staticmethod
+    def _extract_by_external_id_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return []
+        nested_rows = data.get("data")
+        if isinstance(nested_rows, list):
+            return [row for row in nested_rows if isinstance(row, dict)]
+        if any(key in data for key in ("user_id", "user_name", "source", "external_id")):
+            return [data]
+        return []
 
     @staticmethod
     def _extract_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:

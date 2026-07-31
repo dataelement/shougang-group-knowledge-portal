@@ -47,6 +47,7 @@ class PortalTelemetryService:
         source_space_id: int | str | None = None,
         source_file_id: int | str | None = None,
         conversation_id: str | None = None,
+        question_id: str | None = None,
         query: str | None = None,
         recommendation_scene: str | None = None,
     ) -> None:
@@ -65,6 +66,7 @@ class PortalTelemetryService:
             "source_space_id": source_space_id,
             "source_file_id": source_file_id,
             "conversation_id": conversation_id,
+            "question_id": question_id,
             "query": query,
             "recommendation_scene": recommendation_scene,
         }

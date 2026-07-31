@@ -50,5 +50,17 @@ test('manual retry reuses the failed answer slot instead of appending another us
   assert.match(qaSource, /retryMessageIndex/);
   assert.match(documentSource, /retryMessageIndex/);
   assert.match(qaSource, /retryMessageIndex:\s*messageIndex/);
-  assert.match(documentSource, /sendQuestion\(previousQuestion\.text,\s*messageIndex\)/);
+  assert.match(
+    documentSource,
+    /sendQuestion\(\s*previousQuestion\.text,\s*messageIndex,\s*previousQuestion\.questionId\s*\)/,
+  );
+});
+
+test('smart QA keeps one telemetry question id across manual retries', () => {
+  const apiSource = readSource('src/api/content.ts');
+  const qaSource = readSource('src/pages/QAPage.tsx');
+
+  assert.match(apiSource, /responseMessageId:\s*params\.questionId/);
+  assert.match(qaSource, /questionId:\s*snapshot\.questionId/);
+  assert.match(qaSource, /questionId,\s*\n\s*text:\s*finalText/);
 });

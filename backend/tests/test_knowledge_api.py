@@ -2246,6 +2246,9 @@ def test_chat_proxy_uses_portal_prompt_and_disables_rag_for_search_summary(tmp_p
     assert fake_bisheng.chat_payload["path"] == "/api/v1/workstation/chat/completions"
     assert "搜索提示词" in fake_bisheng.chat_payload["json"]["text"]
     assert fake_bisheng.chat_payload["json"]["use_knowledge_base"]["knowledge_space_ids"] == []
+    assert not [
+        event for event in fake_bisheng.telemetry_events if event["event_type"] == "portal_qa"
+    ]
 
 
 def test_search_ai_summary_reuses_supplied_search_results_without_second_search(tmp_path: Path):
@@ -2326,6 +2329,7 @@ def test_chat_proxy_falls_back_to_general_qa_model(tmp_path: Path):
                     "clientTimestamp": "2026-04-15T10:00:00",
                     "model": "",
                     "scene": "qa",
+                    "responseMessageId": "smart-question-1",
                     "text": "振动纹如何排查？",
                     "use_knowledge_base": {
                         "knowledge_space_ids": [7101, 7102],
@@ -2351,6 +2355,7 @@ def test_chat_proxy_falls_back_to_general_qa_model(tmp_path: Path):
         "entry_point": "qa_page",
         "resource_type": "knowledge_space",
         "status": "success",
+        "question_id": "smart-question-1",
     }
     assert len(
         [event for event in fake_bisheng.telemetry_events if event["event_type"] == "portal_qa"]
@@ -3381,7 +3386,7 @@ def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path)
 
         response = client.post(
             "/api/v1/knowledge/space/12/files/1580/chat",
-            json={"query": "这个文档的核心内容是什么？"},
+            json={"query": "这个文档的核心内容是什么？", "question_id": "document-question-1"},
         )
 
     assert response.status_code == 200
@@ -3402,6 +3407,7 @@ def test_document_file_chat_forwards_to_bisheng_single_file_chat(tmp_path: Path)
         "status": "success",
         "space_id": 12,
         "file_id": 1580,
+        "question_id": "document-question-1",
     }
     assert len(
         [event for event in fake_bisheng.telemetry_events if event["event_type"] == "portal_qa"]
@@ -3419,7 +3425,7 @@ def test_document_file_chat_error_stream_does_not_record_success_telemetry(tmp_p
 
         response = client.post(
             "/api/v1/knowledge/space/12/files/1580/chat",
-            json={"query": "触发文档问答错误"},
+            json={"query": "触发文档问答错误", "question_id": "document-question-2"},
         )
 
     assert response.status_code == 200
@@ -3436,7 +3442,7 @@ def test_document_file_chat_rejects_disabled_model_before_upstream_call(tmp_path
 
         response = client.post(
             "/api/v1/knowledge/space/12/files/1580/chat",
-            json={"query": "停用模型不应被调用"},
+            json={"query": "停用模型不应被调用", "question_id": "document-question-3"},
         )
 
     assert response.status_code == 400

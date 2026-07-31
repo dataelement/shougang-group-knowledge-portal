@@ -128,12 +128,8 @@ async def lifespan(app: FastAPI):
         coordinator = PortalRuntimeConfigCoordinator(
             redis_client=redis_client,
             scope=settings.runtime_config_scope,
-            load_remote=(
-                (lambda: remote_aggregate)
-                if remote_aggregate is not None
-                else lambda: asyncio.to_thread(
-                    app.state.portal_admin_config_store.load_remote_aggregate,
-                )
+            load_remote=lambda: asyncio.to_thread(
+                app.state.portal_admin_config_store.load_remote_aggregate,
             ),
             apply_snapshot=app.state.runtime_config_applier.apply,
             cache_ttl_seconds=settings.runtime_config_cache_ttl_seconds,

@@ -1,0 +1,15 @@
+{
+  "name": "钢小智 · 首钢股份知库",
+  "short_name": "钢小智",
+  "description": "首钢股份知库 · 钢小智智能助手，双击图标快速进入。",
+  "start_url": "/apps?tab=qa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3662E3",
+  "icons": [
+    { "src": "/pwa-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

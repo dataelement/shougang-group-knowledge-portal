@@ -19,6 +19,8 @@ class PortalUserView(BaseModel):
     external_id: str = ""
     user_id: int | None = None
     tenant_id: int | None = None
+    # Org department admin from BiSheng department settings (not RBAC / portal site admin).
+    is_department_admin: bool = False
     login_at: int
 
 

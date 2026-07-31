@@ -254,6 +254,27 @@ class RemotePortalAdminConfigStore:
         return None
 
     @staticmethod
+    def _merge_unified_auth_secrets(
+        saved: PortalAdminAggregateConfig,
+        intended: PortalAdminAggregateConfig,
+    ) -> PortalAdminAggregateConfig:
+        """BiSheng PUT 响应可能脱敏密钥字段，写缓存前补回本次提交的值。"""
+        saved_auth = saved.unified_auth.model_dump(mode="json")
+        intended_auth = intended.unified_auth.model_dump(mode="json")
+        changed = False
+        for field in ("login_sync_hmac_secret", "client_secret", "state_secret"):
+            saved_value = str(saved_auth.get(field) or "").strip()
+            intended_value = str(intended_auth.get(field) or "").strip()
+            if not saved_value and intended_value:
+                saved_auth[field] = intended_value
+                changed = True
+        if not changed:
+            return saved
+        next_data = saved.model_dump(mode="json")
+        next_data["unified_auth"] = saved_auth
+        return PortalAdminAggregateConfig.model_validate(next_data)
+
+    @staticmethod
     def _fill_empty_document_type_children(document_types: Any) -> Any:
         if not isinstance(document_types, list):
             return document_types
@@ -294,6 +315,7 @@ class RemotePortalAdminConfigStore:
         saved = PortalAdminAggregateConfig.model_validate(
             self._normalize_remote_aggregate_data(data)
         )
+        saved = self._merge_unified_auth_secrets(saved, aggregate)
         self._record_saved_aggregate(saved)
         return saved
 

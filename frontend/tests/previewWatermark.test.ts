@@ -29,7 +29,7 @@ test('portal preview watermark uses primary department and fixed Beijing date', 
       viewedAt,
     ),
     [
-      '设备管理部-张三--SG001-2026/07/21',
+      '设备管理部-张三-SG001-2026/07/21',
       '首钢股份内部资料，严禁外传，违者必究',
     ],
   );
@@ -42,7 +42,7 @@ test('portal preview watermark falls back to account without department', () => 
   );
 
   assert.deepEqual(lines, [
-    'lisi--lisi-2026/01/01',
+    'lisi-lisi-2026/01/01',
     '首钢股份内部资料，严禁外传，违者必究',
   ]);
 });

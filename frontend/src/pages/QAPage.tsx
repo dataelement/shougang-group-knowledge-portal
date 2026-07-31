@@ -42,6 +42,7 @@ import {
   fetchWorkstationConversations,
   fetchWorkstationMessages,
   renameWorkstationConversation,
+  deleteWorkstationConversation,
   searchQaKnowledgeFiles,
   streamChatCompletion,
   uploadChatAttachment,
@@ -74,6 +75,7 @@ interface Message {
 }
 
 interface QaRequestSnapshot {
+  questionId: string;
   text: string;
   allSpaceIds?: number[];
   scope: QaKnowledgeScope;
@@ -376,6 +378,7 @@ export interface SmartQaWorkspaceRenderArgs {
     newSession: () => void;
     selectSession: (session: Session) => void;
     renameSession: (session: Session, name: string) => Promise<void>;
+    deleteSession: (session: Session) => Promise<void>;
   };
 }
 
@@ -805,6 +808,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     answerMode?: AnswerMode;
     model?: string;
     templateId?: string;
+    questionId?: string;
     retryMessageIndex?: number;
   }) => {
     // 程序化发送(首页问答草稿/自动发送)时,选择项从 opts 显式带入,避免依赖异步 state。
@@ -844,7 +848,11 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     const targetSessionId = activeId;
     const retryMessageIndex = opts?.retryMessageIndex;
     const targetMessageIndex = retryMessageIndex ?? activeSession.messages.length + 1;
+    const questionId = opts?.questionId
+      ?? globalThis.crypto?.randomUUID?.()
+      ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const requestSnapshot: QaRequestSnapshot = {
+      questionId,
       text: finalText,
       allSpaceIds: useAllSpaces ? [...opts!.allSpaceIds!] : undefined,
       scope: effScope,
@@ -889,6 +897,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     void streamChatCompletion({
       scene: 'qa',
       entryPoint: 'qa_page',
+      questionId,
       signal: abortController.signal,
       text: finalText,
       templateId: effTemplateId || undefined,
@@ -957,6 +966,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
       answerMode: snapshot.answerMode,
       model: snapshot.model,
       templateId: snapshot.templateId,
+      questionId: snapshot.questionId,
       retryMessageIndex: messageIndex,
     });
   };
@@ -993,6 +1003,25 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     setSessions((prev) =>
       prev.map((ss) => (ss.id === session.id ? { ...ss, title: trimmed } : ss)),
     );
+  };
+
+  const deleteSession = async (session: Session) => {
+    if (session.conversationId) {
+      await deleteWorkstationConversation(session.conversationId);
+    }
+    setSessions((prev) => {
+      const next = prev.filter((ss) => ss.id !== session.id);
+      if (activeId === session.id) {
+        if (next.length > 0) {
+          setActiveId(next[0].id);
+        } else {
+          const ns = createDraftSession();
+          setActiveId(ns.id);
+          return [ns];
+        }
+      }
+      return next;
+    });
   };
 
   const chooseTemplate = (template: QATemplateConfig) => {
@@ -1571,6 +1600,7 @@ export function SmartQaWorkspace({ children, onBeforeSend }: SmartQaWorkspacePro
     newSession,
     selectSession,
     renameSession,
+    deleteSession,
   };
 
   if (children) {

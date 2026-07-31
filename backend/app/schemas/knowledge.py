@@ -329,6 +329,7 @@ class ShareDocumentAccessInternalData(ShareDocumentAccessData):
 class DocumentFileChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
     model: str = ""
+    question_id: str = Field(..., min_length=1, max_length=128)
 
 
 class FilePreviewData(BaseModel):

@@ -72,21 +72,30 @@ function compareExpertField(
  * 兼容尚未实现职业字段筛选与排序的旧版首钢后端。
  * 搜索仍交给接口完成；这里对接口返回的候选集做精确筛选和稳定排序。
  */
+function fieldFilterMatches(
+  expertValue: string | number | null | undefined,
+  filterValue: string | undefined,
+  displayValue: string | undefined,
+): boolean {
+  if (!filterValue) return true;
+  const normalizedExpert = normalizeFilterValue(expertValue);
+  if (normalizedExpert === normalizeFilterValue(filterValue)) return true;
+  if (displayValue && normalizedExpert === normalizeFilterValue(displayValue)) return true;
+  return false;
+}
+
 export function applyExpertListOptions(
   experts: ExpertProfileResponse[],
   options: ExpertListOptions,
 ): ExpertProfileResponse[] {
+  const labels = options.filterLabels;
   const filtered = experts.filter((expert) => (
     (!options.departmentId
       || normalizeFilterValue(expert.department_id) === normalizeFilterValue(options.departmentId))
-    && (!options.jobFamily
-      || normalizeFilterValue(expert.job_family) === normalizeFilterValue(options.jobFamily))
-    && (!options.jobCategory
-      || normalizeFilterValue(expert.job_category) === normalizeFilterValue(options.jobCategory))
-    && (!options.position
-      || normalizeFilterValue(expert.position) === normalizeFilterValue(options.position))
-    && (!options.major
-      || normalizeFilterValue(expert.major) === normalizeFilterValue(options.major))
+    && fieldFilterMatches(expert.job_family, options.jobFamily, labels?.jobFamily)
+    && fieldFilterMatches(expert.job_category, options.jobCategory, labels?.jobCategory)
+    && fieldFilterMatches(expert.position, options.position, labels?.position)
+    && fieldFilterMatches(expert.major, options.major, labels?.major)
   ));
 
   // 当使用服务端排序参数时，不再进行客户端排序，避免覆盖服务端结果。
