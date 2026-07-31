@@ -34,6 +34,13 @@ class PortalBishengUserLookup:
     async def _lookup_user(self, client: BishengClient, account: str) -> dict[str, Any] | None:
         matched = await self._lookup_user_by_external_id(client, account)
         if matched is not None:
+            print("BiSheng 用户 source 查询命中: ", matched)
+            logger.info(
+                "BiSheng 用户 source 查询命中(by-external-id): account=%s source=%s external_id=%s",
+                account,
+                matched.get("source"),
+                matched.get("external_id"),
+            )
             return matched
 
         for params in (
