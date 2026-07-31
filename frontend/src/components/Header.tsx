@@ -114,6 +114,8 @@ export default function Header() {
 
   const handleOpenTagReviewFile = (target: { spaceId: number; fileId: number; fileName: string }) => {
     setTagReviewOpen(false);
+    // Parent URL stays shareable; KnowledgeSpacesPage delivers open-file via postMessage
+    // so the knowledge iframe.src is not remounted. openNonce forces re-open of the same file.
     const next = new URLSearchParams(searchParams);
     next.set('spaceId', String(target.spaceId));
     next.set('fileId', String(target.fileId));
@@ -122,6 +124,7 @@ export default function Header() {
     } else {
       next.delete('fileName');
     }
+    next.set('openNonce', String(Date.now()));
     next.delete('openChat');
     setSearchParams(next, { replace: true });
   };
