@@ -722,10 +722,18 @@ export async function fetchExpertFilterOptions(
         id: String(department.id),
         name: department.name,
       })),
-      job_families: raw.job_families ?? [],
-      job_categories: raw.job_categories ?? [],
-      positions: raw.positions ?? [],
-      majors: raw.majors ?? [],
+      job_families: (raw.job_families ?? []).map((item) =>
+        typeof item === 'string' ? item : (item.dict_value ?? item.dict_key ?? '')
+      ).filter(Boolean),
+      job_categories: (raw.job_categories ?? []).map((item) =>
+        typeof item === 'string' ? item : (item.dict_value ?? item.dict_key ?? '')
+      ).filter(Boolean),
+      positions: (raw.positions ?? []).map((item) =>
+        typeof item === 'string' ? item : (item.dict_value ?? item.dict_key ?? '')
+      ).filter(Boolean),
+      majors: (raw.majors ?? []).map((item) =>
+        typeof item === 'string' ? item : (item.dict_value ?? item.dict_key ?? '')
+      ).filter(Boolean),
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
