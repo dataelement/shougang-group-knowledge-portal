@@ -89,8 +89,11 @@ export default function Header() {
   const initial = user ? (user.initial || user.name.slice(0, 1)) : '';
   const externalId = user?.externalId?.trim() || user?.account || '';
   const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
-  const showMyUploadsEntry = location.pathname === '/knowledge-spaces';
-  const showTagReviewEntry = location.pathname === '/knowledge-spaces' && canAccessTagReview(user);
+  const isKnowledgeSpacesPage = location.pathname === '/knowledge-spaces';
+  const showMyUploadsEntry = isKnowledgeSpacesPage;
+  const showTagReviewEntry = isKnowledgeSpacesPage && canAccessTagReview(user);
+  // Recycle bin is a knowledge-space admin tool; hide it on home/other headers.
+  const showRecycleEntry = isKnowledgeSpacesPage && canOpenAdmin;
 
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
@@ -267,7 +270,7 @@ export default function Header() {
                       知识管理后台
                     </button>
                   ) : null}
-                  {canOpenAdmin ? (
+                  {showRecycleEntry ? (
                     <button
                       type="button"
                       className={s.userMenuItem}
@@ -303,7 +306,7 @@ export default function Header() {
                       我的上传
                     </button>
                   ) : null}
-                  {canOpenAdmin || showTagReviewEntry || showMyUploadsEntry ? (
+                  {canOpenAdmin || showRecycleEntry || showTagReviewEntry || showMyUploadsEntry ? (
                     <div className={s.userMenuDivider} />
                   ) : null}
                   <button
