@@ -37,6 +37,13 @@
   isolation: isolate;
 }
 
+.heroBannerAdvanced {
+  height: auto;
+  min-height: 940px;
+  padding-bottom: 40px;
+  overflow: visible;
+}
+
 .heroSlides {
   position: absolute;
   inset: 0;
@@ -293,6 +300,12 @@
   color: var(--neutral-400);
 }
 
+.searchInput:disabled {
+  cursor: not-allowed;
+  color: #9aa4b2;
+  background: #f5f7fa;
+}
+
 .hotSearchMenu {
   position: absolute;
   top: calc(100% + 6px);
@@ -383,6 +396,45 @@
 
 .searchBtn:hover {
   background: #245de0;
+}
+
+.searchBtn:disabled {
+  cursor: not-allowed;
+  background: #aeb8c9;
+}
+
+.searchActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advancedSearchButton {
+  height: 32px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #b9cdf3;
+  border-radius: 10px;
+  background: #fff;
+  color: #3662e3;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.advancedSearchButton:hover,
+.advancedSearchButtonActive {
+  background: #eef4ff;
+  border-color: #8dabef;
+}
+
+.homeAdvancedSearch {
+  position: relative;
+  z-index: 3;
+  width: min(calc(100% - 48px), 1360px);
+  margin: 18px auto 0;
 }
 
 /* ── 智能问答复合输入框:附件 / 工具条 ── */
@@ -830,13 +882,37 @@
   background: transparent;
   border: none;
   cursor: pointer;
+  /* 未选中:蓝色;图标与文字统一取此 color。选中态见 .domainNavTabActive */
+  color: #3662e3;
+  transition: color 0.15s ease;
 }
 
+.domainNavTabActive {
+  color: #666666;
+}
+
+/* 图标用 CSS mask 染成当前文字色(currentColor),与文字严格统一 */
 .domainNavTabIcon {
   width: 24px;
   height: 24px;
   flex: 0 0 auto;
-  object-fit: contain;
+  background-color: currentColor;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.domainNavTabIconDomain {
+  -webkit-mask-image: url('../assets/nav-tab-domain-inactive.png');
+  mask-image: url('../assets/nav-tab-domain-inactive.png');
+}
+
+.domainNavTabIconCategory {
+  -webkit-mask-image: url('../assets/nav-tab-category-inactive.png');
+  mask-image: url('../assets/nav-tab-category-inactive.png');
 }
 
 .domainNavTabText {
@@ -844,19 +920,14 @@
   font-weight: 700;
   line-height: 32px;
   white-space: nowrap;
-  color: #333;
-  transition: color 0.15s ease;
-}
-
-.domainNavTabActive .domainNavTabText {
-  color: rgba(54, 98, 227, 1);
+  color: inherit;
 }
 
 .domainNavTabDivider {
   width: 1px;
   height: 28px;
   margin: 0 16px;
-  background: #e5e7eb;
+  background: #9cb2cd;
   flex: 0 0 auto;
 }
 
@@ -923,13 +994,6 @@
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-}
-
-.domainCardImage::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.24);
 }
 
 .domainIcon {
@@ -1044,15 +1108,19 @@
   min-width: 0;
 }
 
-/* 左侧「知识推荐」「典型案例」等需要与右侧对齐时均分额外高度 */
-.leftFillPanel {
+/* 左侧所有板块在右侧较高时按区域个数均分额外高度 */
+.leftColumn > .panel {
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 右侧三大块在左侧较高时均分额外高度 */
+/* 右侧所有板块在左侧较高时按区域个数均分额外高度 */
 .sideColumn > .qaPanel,
 .sideColumn > .panel {
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .primarySectionPanel {
@@ -1104,8 +1172,10 @@
 }
 
 .sectionList {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .panelHeaderLeft {
@@ -1208,14 +1278,15 @@
   line-height: 1.2;
 }
 
-/* 首页知识推荐/行业情报 摘要 hover 浮窗（按蓝湖设计稿：640 宽对话框，高度按内容自适应） */
+/* 首页知识推荐/行业情报 摘要 hover 浮窗
+   宽度跟随触发摘要行的可视宽度，边框与文字内容保持 4px 间距 */
 .summaryTooltip {
   box-sizing: border-box;
   position: relative;
-  width: 640px;
-  min-height: 60px;
-  max-width: 640px;
-  padding: 16px 20px;
+  width: auto;
+  min-height: 0;
+  max-width: none !important;
+  padding: 4px;
   color: #273142;
   font-family: PingFangSC, 'PingFang SC', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
@@ -1239,7 +1310,7 @@
 .summaryTooltip::after {
   content: '';
   position: absolute;
-  left: 60px;
+  left: 8px;
   width: 0;
   height: 0;
   border-left: 9px solid transparent;
@@ -1350,6 +1421,10 @@
 }
 
 .sectionEmpty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 26px 0 18px;
   color: var(--neutral-400);
   font-size: 0.86rem;
@@ -1785,6 +1860,8 @@
 }
 
 .courseList {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -1963,6 +2040,8 @@
 }
 
 .rankTable {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-radius: 6px;
@@ -2032,6 +2111,10 @@
     padding-bottom: 30px;
   }
 
+  .heroBannerAdvanced {
+    min-height: 1320px;
+  }
+
   .heroInner {
     padding: 38px 20px 0;
   }
@@ -2048,6 +2131,11 @@
   .heroSearchPanel {
     width: 100%;
     max-width: none;
+    padding: 0 20px;
+  }
+
+  .homeAdvancedSearch {
+    width: 100%;
     padding: 0 20px;
   }
 

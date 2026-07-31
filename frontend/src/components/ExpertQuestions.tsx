@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, MessageSquarePlus } from 'lucide-react';
-import { fetchExpertQuestions } from '../api/expertQa';
+import { fetchHomeExpertQuestions } from '../api/expertQa';
 import { useAuth } from '../hooks/useAuth';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import iconExpert from '../assets/icon-expert@2x.png';
@@ -13,7 +13,6 @@ const EXPERT_QUESTION_LIMIT = 8;
 const DEFAULT_ERROR_MESSAGE = '专家问答加载失败，请稍后重试';
 const EXPERT_QA_PATH = '/expert-qa';
 const EXPERT_QA_ASK_PATH = '/expert-qa/ask';
-const EXPERT_QUESTION_SORT = 'latest';
 
 type ExpertQuestionItem = {
   id: number;
@@ -42,7 +41,7 @@ export default function ExpertQuestions({ className = '', count }: ExpertQuestio
   const guardLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
     if (user) return;
     event.preventDefault();
-    triggerLoginRedirect(path);
+    triggerLoginRedirect(path, { preferUnifiedAuth: true });
   };
 
   useEffect(() => {
@@ -51,14 +50,10 @@ export default function ExpertQuestions({ className = '', count }: ExpertQuestio
       setLoading(true);
       setError('');
 
-      fetchExpertQuestions({
-        page: 1,
-        pageSize: limit,
-        sort: EXPERT_QUESTION_SORT,
-      })
+      fetchHomeExpertQuestions(limit)
         .then((response) => {
           if (!active) return;
-          const questionItems = response.questions
+          const questionItems = response
             .slice(0, limit)
             .map((question) => ({
               id: question.id,

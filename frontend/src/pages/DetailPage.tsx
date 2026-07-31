@@ -329,6 +329,10 @@ export default function DetailPage() {
   const hasPreviewContent = effectivePreview.mode === 'chunks'
     ? chunks.length > 0
     : effectivePreview.mode !== 'unsupported' && Boolean(effectivePreview.viewerUrl);
+  const canEnterKnowledge = (
+    viewAccess?.accessSource !== 'approval_grant'
+    && detail.accessSource !== 'approval_grant'
+  );
 
   return wrap(
     <div className={s.container}>
@@ -349,33 +353,35 @@ export default function DetailPage() {
             <h1 className={s.title} title={detail.title}>
               {detail.title}
             </h1>
-            <button
-              type="button"
-              className={s.readAssistBtn}
-              onClick={() => {
-                if (window.parent !== window) {
-                  window.parent.postMessage(
-                    {
-                      type: 'OPEN_KNOWLEDGE_READ',
+            {canEnterKnowledge ? (
+              <button
+                type="button"
+                className={s.readAssistBtn}
+                onClick={() => {
+                  if (window.parent !== window) {
+                    window.parent.postMessage(
+                      {
+                        type: 'OPEN_KNOWLEDGE_READ',
+                        spaceId,
+                        fileId,
+                        fileName: knowledgeFileName,
+                        openChat: true,
+                      },
+                      window.location.origin,
+                    );
+                  } else {
+                    navigate(buildKnowledgeFileDeepLinkPath({
                       spaceId,
                       fileId,
                       fileName: knowledgeFileName,
                       openChat: true,
-                    },
-                    window.location.origin,
-                  );
-                } else {
-                  navigate(buildKnowledgeFileDeepLinkPath({
-                    spaceId,
-                    fileId,
-                    fileName: knowledgeFileName,
-                    openChat: true,
-                  }));
-                }
-              }}
-            >
-              进入知识库
-            </button>
+                    }));
+                  }
+                }}
+              >
+                进入知识库
+              </button>
+            ) : null}
           </div>
           <div className={s.metaGrid}>
             <div className={s.metaItem}>

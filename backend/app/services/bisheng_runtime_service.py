@@ -39,6 +39,7 @@ DEFAULT_SHARED_REFRESH_WAIT_SECONDS = 10.0
 DEFAULT_SHARED_REFRESH_POLL_SECONDS = 0.05
 DEFAULT_DISCONNECTED_STATE_TTL_SECONDS = 5 * 60
 DEFAULT_OPAQUE_TOKEN_TTL_SECONDS = 60 * 60
+DEFAULT_CLIENT_RETIRE_GRACE_SECONDS = 1.0
 PORTAL_RUNTIME_TOKEN_PURPOSE = "portal_runtime"
 
 
@@ -69,6 +70,8 @@ class BishengRuntimeService:
         auth_state_store: BishengAuthStateStore | None = None,
         shared_refresh_wait_seconds: float = DEFAULT_SHARED_REFRESH_WAIT_SECONDS,
         shared_refresh_poll_seconds: float = DEFAULT_SHARED_REFRESH_POLL_SECONDS,
+        client_retire_grace_seconds: float = DEFAULT_CLIENT_RETIRE_GRACE_SECONDS,
+        client_retire_sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ):
         self._config_path = config_path
         self._store = store or InMemoryConfigStore()
@@ -86,9 +89,15 @@ class BishengRuntimeService:
         self._auth_state_store = auth_state_store
         self._shared_refresh_wait_seconds = shared_refresh_wait_seconds
         self._shared_refresh_poll_seconds = shared_refresh_poll_seconds
+        self._client_retire_grace_seconds = max(
+            float(client_retire_grace_seconds),
+            0.0,
+        )
+        self._client_retire_sleeper = client_retire_sleeper
         self._lock = asyncio.Lock()
         self._client: BishengClient | None = None
         self._refresh_task: asyncio.Task | None = None
+        self._retired_client_tasks: set[asyncio.Task] = set()
         self._connected = False
         self._auth_message = "未验证"
         self._auth_user: BishengRuntimeAuthUser | None = None
@@ -112,6 +121,12 @@ class BishengRuntimeService:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
+        retired_tasks = list(self._retired_client_tasks)
+        self._retired_client_tasks.clear()
+        for retired_task in retired_tasks:
+            retired_task.cancel()
+        if retired_tasks:
+            await asyncio.gather(*retired_tasks, return_exceptions=True)
         client = self._client
         self._client = None
         if client is not None:
@@ -220,6 +235,7 @@ class BishengRuntimeService:
 
     async def update_config(self, payload: BishengRuntimeConfigUpdate) -> BishengRuntimeConfigView:
         await self.sync_shared_auth_state()
+        authenticated_config: BishengRuntimeConfig | None = None
         async with self._lock:
             current = self._read_config()
             password = payload.password.get_secret_value().strip() if payload.password else ""
@@ -263,6 +279,10 @@ class BishengRuntimeService:
             )
             self._write_config(updated)
             await self._replace_client(updated)
+            if requires_reauth:
+                authenticated_config = updated
+        if authenticated_config is not None:
+            await self._publish_explicit_login_state(authenticated_config)
         await self._refresh_runtime_account_info()
         return self.get_public_config()
 
@@ -696,6 +716,48 @@ class BishengRuntimeService:
             except BishengAuthStateStoreError:
                 logger.warning("BiSheng 共享登录状态发布锁释放失败，将等待租期自动清理")
 
+    async def _publish_explicit_login_state(
+        self,
+        config: BishengRuntimeConfig,
+    ) -> None:
+        """将刚完成账号密码登录的新 token 权威写入共享状态。"""
+        if self._auth_state_store is None:
+            return
+
+        fingerprint = self._config_fingerprint(config)
+        state = BishengSharedAuthState(
+            access_token=config.api_token,
+            connected=False,
+            auth_message="正在验证 BiSheng 数据源登录信息",
+            auth_user=None,
+            last_auth_at=config.last_auth_at,
+            expires_at=self._shared_token_expires_at(config.api_token),
+            version=secrets.token_urlsafe(16),
+        )
+        owner = secrets.token_urlsafe(24)
+        deadline = time.monotonic() + self._shared_refresh_wait_seconds
+        acquired = False
+        while not acquired:
+            acquired = await self._auth_state_store.acquire_refresh_lock(
+                fingerprint,
+                owner,
+                ttl_seconds=max(60, int(config.timeout_seconds * 3)),
+            )
+            if acquired:
+                break
+            if time.monotonic() >= deadline:
+                raise ValueError("BiSheng 数据源登录态更新超时，请稍后重试")
+            await asyncio.sleep(self._shared_refresh_poll_seconds)
+
+        try:
+            # 显式账号密码登录已由 BiSheng 成功签发 token，不能再被旧共享状态覆盖。
+            await self._auth_state_store.save(fingerprint, state)
+        finally:
+            try:
+                await self._auth_state_store.release_refresh_lock(fingerprint, owner)
+            except BishengAuthStateStoreError:
+                logger.warning("BiSheng 显式登录状态发布锁释放失败，将等待租期自动清理")
+
     @staticmethod
     def _config_fingerprint(config: BishengRuntimeConfig) -> str:
         source = f"{str(config.base_url).rstrip('/')}|{config.username.strip().lower()}"
@@ -713,7 +775,20 @@ class BishengRuntimeService:
         previous = self._client
         self._client = next_client
         if previous is not None:
-            await previous.aclose()
+            task = asyncio.create_task(
+                self._retire_client(previous),
+                name="bisheng-runtime-client-retire",
+            )
+            self._retired_client_tasks.add(task)
+            task.add_done_callback(self._retired_client_tasks.discard)
+
+    async def _retire_client(self, client: BishengClient) -> None:
+        try:
+            await self._client_retire_sleeper(
+                self._client_retire_grace_seconds
+            )
+        finally:
+            await client.aclose()
 
     def _to_public_view(self, config: BishengRuntimeConfig) -> BishengRuntimeConfigView:
         return BishengRuntimeConfigView(

@@ -4,8 +4,9 @@ import json
 import logging
 import secrets
 import time
+from datetime import date
 from time import monotonic
-from typing import Annotated, Any, NoReturn
+from typing import Annotated, Any, Literal, NoReturn
 from urllib.parse import quote
 
 import httpx
@@ -80,6 +81,7 @@ _BISHENG_DEPARTMENT_FILE_SCENARIO_INVALID_CODE = 18123
 _BISHENG_DEPARTMENT_FILE_CONTENT_APPROVAL_REQUIRED_CODE = 10992
 _BISHENG_DEPARTMENT_FILE_CONTENT_UNAVAILABLE_CODE = 10993
 _BISHENG_DEPARTMENT_SHARE_LOGIN_REQUIRED_CODE = 10994
+_BISHENG_LEGACY_SHARE_CREATE_DISABLED_CODE = 10995
 _DEFAULT_SEARCH_PAGE_SIZE = 10
 _MAX_SEARCH_PAGE_SIZE = 100
 _QA_MODEL_OPTIONS_CACHE_TTL_SECONDS = 300.0
@@ -136,7 +138,9 @@ def get_domain_file_count_service(
 
 
 def _raise_bisheng_business_error(err: BishengBusinessError) -> NoReturn:
-    if err.status_code == _BISHENG_DEPARTMENT_SHARE_LOGIN_REQUIRED_CODE:
+    if err.status_code == _BISHENG_LEGACY_SHARE_CREATE_DISABLED_CODE:
+        status_code = 410
+    elif err.status_code == _BISHENG_DEPARTMENT_SHARE_LOGIN_REQUIRED_CODE:
         status_code = 401
     elif err.status_code in {
         _BISHENG_PERMISSION_DENIED_CODE,
@@ -394,6 +398,8 @@ async def search_keyword_files(
     file_subcategory_code: str | None = None,
     business_domain_code: str | None = None,
     sort: str = "relevance",
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=50),
     auth_service: PortalAuthService = Depends(get_portal_auth_service),
     bisheng_client: BishengClient = Depends(get_bisheng_client),
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
@@ -419,8 +425,81 @@ async def search_keyword_files(
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=business_domain_code,
                 sort=sort,
+                cursor=cursor,
+                limit=limit,
                 extra_space_ids=extra_space_ids,
                 discovery_scope=("public" if extra_space_ids is None else "public_and_department"),
+            )
+        )
+    except BishengBusinessError as err:
+        _raise_bisheng_business_error(err)
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
+
+
+@router.get("/files/advanced-search")
+async def advanced_search_files(
+    request: Request,
+    tag: str | None = None,
+    space_ids: Annotated[list[int] | None, Query()] = None,
+    space_level: str | None = None,
+    file_ext: str | None = None,
+    document_type: str | None = None,
+    file_subcategory_code: str | None = None,
+    business_domain_code: str | None = None,
+    all_keywords: str | None = Query(default=None, max_length=200),
+    exact_phrase: str | None = Query(default=None, max_length=200),
+    any_keywords: str | None = Query(default=None, max_length=200),
+    exclude_keywords: str | None = Query(default=None, max_length=200),
+    search_field: Literal["file_name", "summary", "tags"] = "file_name",
+    updated_from: date | None = None,
+    updated_to: date | None = None,
+    sort: Literal["updated_at", "updated_at_desc", "updated_at_asc"] = "updated_at_desc",
+    cursor: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    bisheng_client: BishengClient = Depends(get_bisheng_client),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    if updated_from is not None and updated_to is not None and updated_from > updated_to:
+        raise HTTPException(status_code=422, detail="更新时间起始日期不能晚于结束日期")
+    configured_page_size = _configured_search_page_size(
+        portal_config_service.get_config()
+    )
+    page_size = min(max(int(limit or configured_page_size), 1), configured_page_size)
+    service, extra_space_ids, client_to_close = await _scoped_service_and_extra_ids(
+        request=request,
+        auth_service=auth_service,
+        bisheng_client=bisheng_client,
+        portal_config_service=portal_config_service,
+    )
+    try:
+        return response_ok(
+            await service.advanced_search_files(
+                tag=tag,
+                requested_space_ids=space_ids,
+                space_level=space_level,
+                file_ext=file_ext,
+                document_type=document_type,
+                file_subcategory_code=file_subcategory_code,
+                business_domain_code=business_domain_code,
+                all_keywords=all_keywords,
+                exact_phrase=exact_phrase,
+                any_keywords=any_keywords,
+                exclude_keywords=exclude_keywords,
+                search_field=search_field,
+                updated_from=updated_from.isoformat() if updated_from else None,
+                updated_to=updated_to.isoformat() if updated_to else None,
+                sort=sort,
+                cursor=cursor,
+                limit=page_size,
+                extra_space_ids=extra_space_ids,
+                discovery_scope=(
+                    "public"
+                    if extra_space_ids is None
+                    else "public_and_department"
+                ),
             )
         )
     except BishengBusinessError as err:
@@ -807,16 +886,21 @@ async def get_home_content(
     ttl_seconds = _home_cache_ttl_seconds(config)
 
     if session is None:
-        cache_key = cache_service.home_content_key(config=config)
-        cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
-        if cached_sections is not None:
-            return StreamingResponse(_cached_home_stream(cached_sections), media_type="text/event-stream")
-
         service = KnowledgeService(
             bisheng_client=await get_bisheng_client(request),
             portal_config_service=portal_config_service,
             default_model=get_settings().bisheng_default_model,
         )
+        cache_key = cache_service.home_content_key(config=config)
+        cached_sections = _extract_cached_home_sections(await cache_service.get_json(cache_key))
+        if cached_sections is not None:
+            refreshed_sections = await service.refresh_cached_home_sections(
+                cached_sections
+            )
+            return StreamingResponse(
+                _cached_home_stream(refreshed_sections),
+                media_type="text/event-stream",
+            )
 
         async def anonymous_stream():
             sections: list[dict[str, Any]] = []
@@ -862,8 +946,27 @@ async def get_home_content(
                 ),
                 fallback_latest_on_error=True,
             ):
+                upstream_result_count = len(items)
                 if actual_mode:
                     items = items[: config.display.home.section_page_size]
+                if recommendation_mode == PERSONALIZED_RECOMMENDATION and actual_mode:
+                    logger.info(
+                        "portal home recommendation section",
+                        extra={
+                            "portal_recommendation_actual_mode": actual_mode,
+                            "portal_recommendation_display_count": len(items),
+                            "portal_recommendation_display_limit": config.display.home.section_page_size,
+                            "portal_recommendation_empty": upstream_result_count == 0,
+                            "portal_recommendation_fallback_used": (
+                                actual_mode != PERSONALIZED_RECOMMENDATION
+                            ),
+                            "portal_recommendation_requested_mode": recommendation_mode,
+                            "portal_recommendation_top_n": config.recommendation.home_total_count,
+                            "portal_recommendation_upstream_count": upstream_result_count,
+                            "tenant_id": int(session.user.tenant_id),
+                            "user_id": int(session.user.user_id),
+                        },
+                    )
                 if config.recommendation.personalized_shadow_enabled and actual_mode == LATEST_SELECTED_RECOMMENDATION:
                     shadow_baseline_file_keys.extend((item.space_id, item.id) for item in items)
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
@@ -1002,11 +1105,12 @@ async def get_domain_file_counts(
     portal_config_service: PortalConfigService = Depends(get_portal_config_service),
     cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
 ):
-    config = portal_config_service.get_config()
-    domains = [domain.model_dump() for domain in config.domains if domain.enabled]
     session = await get_portal_session(auth_service, request)
     client_to_close: BishengClient | None = None
+    domains: list[dict] = []
     try:
+        config = portal_config_service.get_config()
+        domains = [domain.model_dump() for domain in config.domains if domain.enabled]
         if session is None:
             service = KnowledgeService(
                 bisheng_client=await get_bisheng_client(request),
@@ -1044,6 +1148,77 @@ async def get_domain_file_counts(
             _home_cache_ttl_seconds(config),
         )
         return response_ok({"counts": normalized_counts})
+    except Exception:
+        logger.warning("门户业务域知识数量回源失败，已降级返回 0", exc_info=True)
+        fallback_codes = {
+            str(domain.get("code") or "").strip().upper()
+            for domain in domains
+            if str(domain.get("code") or "").strip()
+        }
+        return response_ok({"counts": {code: 0 for code in fallback_codes}})
+    finally:
+        if client_to_close is not None:
+            await client_to_close.aclose()
+
+
+@router.get("/category-file-counts")
+async def get_category_file_counts(
+    request: Request,
+    auth_service: PortalAuthService = Depends(get_portal_auth_service),
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+    cache_service: PortalHomeCacheService = Depends(get_portal_home_cache_service),
+):
+    session = await get_portal_session(auth_service, request)
+    client_to_close: BishengClient | None = None
+    categories: list[dict] = []
+    try:
+        config = portal_config_service.get_config()
+        categories = [card.model_dump() for card in config.category_cards if card.enabled]
+        if session is None:
+            service = KnowledgeService(
+                bisheng_client=await get_bisheng_client(request),
+                portal_config_service=portal_config_service,
+                default_model=get_settings().bisheng_default_model,
+            )
+            extra_space_ids = None
+            account = None
+        else:
+            client_to_close = auth_service.create_bisheng_client(session)
+            service = KnowledgeService(
+                bisheng_client=client_to_close,
+                portal_config_service=portal_config_service,
+                default_model=get_settings().bisheng_default_model,
+            )
+            visible_spaces = await service.list_visible_spaces(discovery_scope="public_and_department")
+            extra_space_ids = [space.id for space in visible_spaces.data]
+            account = getattr(getattr(session, "user", None), "account", "")
+        scopes = await service.resolve_category_count_scopes(categories, extra_space_ids=extra_space_ids)
+        cache_key = cache_service.visible_category_file_counts_key(scopes, account=account)
+        expected_codes = {scope["code"] for scope in scopes}
+        cached = await cache_service.get_json(cache_key)
+        if isinstance(cached, dict):
+            cached_counts = cached.get("counts")
+            if isinstance(cached_counts, dict) and set(cached_counts) == expected_codes:
+                try:
+                    return response_ok({"counts": {code: int(cached_counts[code]) for code in expected_codes}})
+                except (TypeError, ValueError):
+                    logger.warning("门户分类知识数量缓存格式异常，已回源获取")
+        counts = await service.count_visible_category_files(scopes)
+        normalized_counts = {scope["code"]: int(counts.get(scope["code"], 0)) for scope in scopes}
+        await cache_service.set_json(
+            cache_key,
+            {"counts": normalized_counts},
+            _home_cache_ttl_seconds(config),
+        )
+        return response_ok({"counts": normalized_counts})
+    except Exception:
+        logger.warning("门户分类知识数量回源失败，已降级返回 0", exc_info=True)
+        fallback_codes = {
+            str(category.get("code") or "").strip().upper()
+            for category in categories
+            if str(category.get("code") or "").strip()
+        }
+        return response_ok({"counts": {code: 0 for code in fallback_codes}})
     finally:
         if client_to_close is not None:
             await client_to_close.aclose()
@@ -1096,7 +1271,7 @@ async def list_qa_tree_spaces(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        return response_ok(await service.list_visible_spaces(discovery_scope="public_and_department"))
+        return response_ok(await service.list_visible_spaces())
     finally:
         await bisheng_client.aclose()
 
@@ -1148,7 +1323,7 @@ async def list_qa_tree_children(
                     parent_id=parent_id,
                     cursor=cursor,
                     page_size=page_size,
-                    discovery_scope="public_and_department",
+                    discovery_scope="legacy",
                 )
             )
         except BishengBusinessError as err:
@@ -1197,7 +1372,7 @@ async def get_qa_tree_folder_stats(
                 await service.get_qa_tree_folder_stats(
                     space_id,
                     body.folder_ids,
-                    discovery_scope="public_and_department",
+                    discovery_scope="legacy",
                 )
             )
         except BishengBusinessError as err:
@@ -1238,7 +1413,7 @@ async def search_qa_files_by_name(
             bisheng_client=bisheng_client,
             portal_config_service=portal_config_service,
         )
-        visible_spaces = await service.list_visible_spaces(discovery_scope="public_and_department")
+        visible_spaces = await service.list_visible_spaces()
         space_ids = [space.id for space in visible_spaces.data]
         return response_ok(
             await service.search_qa_files_by_name(
@@ -1246,7 +1421,7 @@ async def search_qa_files_by_name(
                 space_ids=space_ids,
                 page=page,
                 page_size=page_size,
-                discovery_scope="public_and_department",
+                discovery_scope="legacy",
             )
         )
     finally:
@@ -1503,6 +1678,13 @@ async def access_share_link(
             download_grant=download_grant,
             portal_session_id=(getattr(session, "session_id", "") if download_grant else ""),
             expires_at=expires_at,
+            canonical_document_id=access.canonical_document_id,
+            canonical_version_id=access.canonical_version_id,
+            entry_file_id=access.entry_file_id,
+            desired_content_generation=access.desired_content_generation,
+            applied_content_generation=access.applied_content_generation,
+            desired_entry_generation=access.desired_entry_generation,
+            applied_entry_generation=access.applied_entry_generation,
         )
         try:
             await share_access_store.save(share_session)
@@ -2035,6 +2217,7 @@ async def chat_document_file(
                     resource_type="document",
                     space_id=space_id,
                     file_id=file_id,
+                    question_id=req.question_id,
                 )
         finally:
             if client_to_close is not None:

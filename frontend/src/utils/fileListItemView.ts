@@ -110,7 +110,8 @@ export function buildFileListItemView(
   const folderPath = file.folderPath?.trim();
   const locked = Boolean(
     file.isDepartmentFile
-    && file.contentAccess !== 'allowed',
+    && file.contentAccess !== 'allowed'
+    && file.contentAccess !== 'check_required',
   );
 
   // Display directory path only (no filename). folderPath is already directory-only;

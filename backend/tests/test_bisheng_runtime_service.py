@@ -294,6 +294,64 @@ def test_apply_persistent_config_logs_in_with_remote_password(tmp_path: Path):
     assert state["last_login_payload"]["token_purpose"] == PORTAL_RUNTIME_TOKEN_PURPOSE
 
 
+def test_runtime_client_swap_allows_inflight_holder_to_finish_before_close(
+    tmp_path: Path,
+):
+    retire_gate = asyncio.Event()
+    clients = []
+
+    class TrackingClient:
+        def __init__(self, base_url, timeout_seconds, api_token=None, **kwargs):
+            self.base_url = base_url
+            self.closed = False
+            clients.append(self)
+
+        async def get_json(self, path, params=None):
+            assert path == "/api/v1/user/info"
+            return {
+                "status_code": 200,
+                "data": {
+                    "user_name": "portal-admin",
+                    "role_name": "管理员",
+                },
+            }
+
+        async def aclose(self):
+            self.closed = True
+
+    async def wait_to_retire(_seconds):
+        await retire_gate.wait()
+
+    service = BishengRuntimeService(
+        config_path=tmp_path / "runtime.json",
+        default_base_url="http://old.example.com",
+        default_timeout_seconds=30.0,
+        default_api_token="token",
+        default_username="portal-admin",
+        client_factory=TrackingClient,
+        client_retire_sleeper=wait_to_retire,
+    )
+
+    async def scenario():
+        await service.initialize()
+        inflight_client = service.get_client()
+        await service.apply_persistent_config(
+            PortalBishengPersistentConfig(
+                base_url="http://new.example.com",
+                username="portal-admin",
+            )
+        )
+        assert service.get_client() is not inflight_client
+        assert inflight_client.closed is False
+        retire_gate.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert inflight_client.closed is True
+        await service.aclose()
+
+    asyncio.run(scenario())
+
+
 def test_get_bisheng_client_applies_remote_runtime_config(tmp_path: Path):
     config_path = tmp_path / "rt.json"
     factory, state = _make_scripted_factory(login_tokens=["remote-token"])
@@ -522,6 +580,59 @@ def test_stale_worker_cannot_overwrite_newer_shared_token(tmp_path: Path):
 
     shared, local = asyncio.run(_run())
 
+    assert shared is not None
+    assert shared.access_token == fresh_token
+    assert shared.connected is True
+    assert local.api_token == fresh_token
+
+
+def test_explicit_login_replaces_stale_shared_token(tmp_path: Path):
+    redis = SharedFakeRedis()
+    auth_store = RedisBishengAuthStateStore(redis)
+    stale_token = _make_fake_jwt(2 * 3600)
+    fresh_token = _make_fake_jwt(24 * 3600)
+    factory, state = _make_scripted_factory(login_tokens=[fresh_token])
+    service = BishengRuntimeService(
+        config_path=tmp_path / "runtime.json",
+        default_base_url="http://example.com",
+        default_timeout_seconds=30.0,
+        default_username="portal-admin",
+        default_password="pwd",
+        client_factory=factory,
+        password_encryptor=lambda _pk, _p: "enc",
+        auth_state_store=auth_store,
+    )
+
+    async def _run():
+        fingerprint = service._config_fingerprint(service.get_runtime_config_snapshot())
+        await auth_store.save(
+            fingerprint,
+            BishengSharedAuthState(
+                access_token=stale_token,
+                connected=False,
+                auth_message="旧 token 已失效",
+                last_auth_at="2026-07-29T10:00:00+00:00",
+                expires_at=time.time() + 2 * 3600,
+                version="stale",
+            ),
+        )
+        await service.update_config(
+            BishengRuntimeConfigUpdate(
+                base_url="http://example.com",
+                username="portal-admin",
+                password="pwd",
+                timeout_seconds=30.0,
+            )
+        )
+        shared = await auth_store.get(fingerprint)
+        local = service.get_runtime_config_snapshot()
+        await service.aclose()
+        return shared, local
+
+    shared, local = asyncio.run(_run())
+
+    assert state["login_calls"] == 1
+    assert state["user_info_tokens"] == [fresh_token]
     assert shared is not None
     assert shared.access_token == fresh_token
     assert shared.connected is True

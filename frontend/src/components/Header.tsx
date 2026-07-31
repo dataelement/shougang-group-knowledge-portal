@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  ArrowRightLeft,
   Bell,
   ChevronDown,
   ClipboardList,
@@ -15,7 +16,11 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { canAccessTagReview, isPortalAdmin } from '../utils/adminAccess';
+import {
+  canAccessTagReview,
+  isPortalAdmin,
+  isSystemAdministrator,
+} from '../utils/adminAccess';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import {
   PORTAL_APPROVAL_EVENT,
@@ -89,6 +94,7 @@ export default function Header() {
   const initial = user ? (user.initial || user.name.slice(0, 1)) : '';
   const externalId = user?.externalId?.trim() || user?.account || '';
   const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
+  const canViewMigrations = isSystemAdministrator(user);
   const isKnowledgeSpacesPage = location.pathname === '/knowledge-spaces';
   const showMyUploadsEntry = isKnowledgeSpacesPage;
   const showTagReviewEntry = isKnowledgeSpacesPage && canAccessTagReview(user);
@@ -306,7 +312,20 @@ export default function Header() {
                       我的上传
                     </button>
                   ) : null}
-                  {canOpenAdmin || showRecycleEntry || showTagReviewEntry || showMyUploadsEntry ? (
+                  {canViewMigrations ? (
+                    <button
+                      type="button"
+                      className={s.userMenuItem}
+                      onClick={() => {
+                        closeMenu();
+                        navigate('/knowledge-migrations');
+                      }}
+                    >
+                      <ArrowRightLeft size={15} />
+                      迁移记录
+                    </button>
+                  ) : null}
+                  {canOpenAdmin || showRecycleEntry || showTagReviewEntry || showMyUploadsEntry || canViewMigrations ? (
                     <div className={s.userMenuDivider} />
                   ) : null}
                   <button

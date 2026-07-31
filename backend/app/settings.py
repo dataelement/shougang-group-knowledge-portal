@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     bisheng_default_model: Optional[str] = None
     bisheng_page_size_limit: int = 100
     redis_url: Optional[str] = None
+    runtime_config_scope: str = "tenant-1"
+    runtime_config_cache_ttl_seconds: int = 900
     portal_session_cookie_name: str = "sg_portal_session"
     portal_session_ttl_seconds: int = 7 * 24 * 60 * 60
     portal_session_cookie_secure: bool = False

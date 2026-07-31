@@ -47,6 +47,13 @@ def _session(**overrides) -> PortalShareAccessSession:
         "share_token": "share-1",
         "space_id": 12,
         "file_id": 1580,
+        "canonical_document_id": 91,
+        "canonical_version_id": 501,
+        "entry_file_id": 2580,
+        "desired_content_generation": 4,
+        "applied_content_generation": 4,
+        "desired_entry_generation": 3,
+        "applied_entry_generation": 3,
         "allow_download": True,
         "download_grant": "opaque-grant",
         "portal_session_id": "portal-session-1",
@@ -79,6 +86,10 @@ def test_redis_store_serializes_with_v2_key_ttl_and_reads_across_instances():
         assert 1 <= redis.ttls[key] <= 120
         payload = json.loads(redis.values[key])
         assert payload["download_grant"] == "opaque-grant"
+        assert payload["canonical_document_id"] == 91
+        assert payload["entry_file_id"] == 2580
+        assert payload["applied_content_generation"] == 4
+        assert payload["applied_entry_generation"] == 3
 
     asyncio.run(run())
 

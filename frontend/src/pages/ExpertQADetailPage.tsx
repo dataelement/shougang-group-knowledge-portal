@@ -141,6 +141,7 @@ type DetailQuestion = QuestionDetail & {
   imageUrls: string[];
   attachments: DetailAttachment[];
   relatedDocs: DetailAttachment[];
+  fileAttachments: DetailAttachment[];
   bounty: number;
   ownerUserId: number;
   createdBy: string | null;
@@ -167,6 +168,7 @@ interface CommentThreadProps {
   onTotalChange?: (total: number) => void;
   highlightCommentId?: number;
   onHighlightDone?: () => void;
+  showComposer?: boolean;
 }
 
 interface AnswerCardProps {
@@ -329,6 +331,7 @@ async function mapQuestionDetail(
   relatedQuestions: SimilarQuestionItem[] = [],
 ): Promise<DetailQuestion> {
   const relatedDocs = parseAttachments(question.attachments,question.related_docs);
+  const fileAttachments = parseFileAttachments(question.file_name, question.file_url);
   const bodyRenderModel = toQuestionDescriptionRenderModel(question.description);
   const bodyParagraphs = bodyRenderModel.kind === 'text'
     ? bodyRenderModel.paragraphs
@@ -399,6 +402,7 @@ async function mapQuestionDetail(
     imageUrls: splitStoredList(question.image_url),
     attachments: parseAttachments(question.attachments, question.related_docs),
     relatedDocs,
+    fileAttachments,
     bounty: readNumberField(question, BOUNTY_FIELD_KEYS) ?? 0,
     ownerUserId: question.user_id,
     createdBy: question.created_by,
@@ -565,6 +569,19 @@ function extractQuestionTags(title: string, domain: string): string[] {
   return Array.from(tags).slice(0, 4);
 }
 
+function parseFileAttachments(
+  fileNames?: string | null,
+  fileUrls?: string | null,
+): DetailAttachment[] {
+  const names = splitStoredList(fileNames);
+  const urls = splitStoredList(fileUrls);
+
+  return names.map((label, index) => ({
+    label: label || `${ATTACHMENT_FALLBACK_PREFIX} ${index + 1}`,
+    href: urls[index] || '',
+  }));
+}
+
 function parseAttachments(
   value?: string | null, 
   relatedDocs?: string | null 
@@ -690,6 +707,7 @@ function CommentThread({
   onTotalChange,
   highlightCommentId,
   onHighlightDone,
+  showComposer = true,
 }: CommentThreadProps) {
   const [state, setState] = useState<CommentState>({
     items: [],
@@ -936,34 +954,36 @@ function CommentThread({
 
       {state.error ? <p className={s.commentError}>{state.error}</p> : null}
 
-      <div className={s.commentComposer}>
-        <textarea
-          ref={textareaRef}
-          placeholder={isFollowUpThread ? '发起追问...' : '添加评论...'}
-          value={state.draft}
-          onChange={(event) =>
-            setState((prev) => ({ ...prev, draft: event.target.value }))
-          }
-          readOnly={state.submitting}
-        />
-        <div className={s.commentComposerFoot}>
-          <span />
-          <button
-            type="button"
-            className={s.sendRoundBtn}
-            onClick={() => void handleSubmit()}
-            onMouseDown={(event) => event.preventDefault()}
-            disabled={state.submitting || !hasDraftContent}
-            aria-label="发布"
-          >
-            {state.submitting ? (
-              <Loader2 size={14} className={s.spin} />
-            ) : (
-              <ArrowUp size={16} />
-            )}
-          </button>
+      {showComposer ? (
+        <div className={s.commentComposer}>
+          <textarea
+            ref={textareaRef}
+            placeholder={isFollowUpThread ? '发起追问...' : '添加评论...'}
+            value={state.draft}
+            onChange={(event) =>
+              setState((prev) => ({ ...prev, draft: event.target.value }))
+            }
+            readOnly={state.submitting}
+          />
+          <div className={s.commentComposerFoot}>
+            <span />
+            <button
+              type="button"
+              className={s.sendRoundBtn}
+              onClick={() => void handleSubmit()}
+              onMouseDown={(event) => event.preventDefault()}
+              disabled={state.submitting || !hasDraftContent}
+              aria-label="发布"
+            >
+              {state.submitting ? (
+                <Loader2 size={14} className={s.spin} />
+              ) : (
+                <ArrowUp size={16} />
+              )}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -1819,6 +1839,26 @@ export default function ExpertQADetailPage() {
                   </div>
                 ) : null}
 
+                {question.fileAttachments.length > 0 ? (
+                  <div className={s.attachmentPanel}>
+                    <div className={s.attachmentTitle}>附件文档</div>
+                    <div className={s.attachmentList}>
+                      {question.fileAttachments.map((item) => (
+                        <a
+                          key={`${item.label}-${item.href}`}
+                          href={resolveQaImageUrl(item.href)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={s.attachmentItem}
+                        >
+                          <FileText size={14} />
+                          {item.label}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {question.attachments.length > 0 ? (
                   <div className={s.attachmentPanel}>
                     <div className={s.attachmentTitle}>关联文档</div>
@@ -1882,6 +1922,7 @@ export default function ExpertQADetailPage() {
                       questionId={questionNumericId}
                       initialCount={followupCount}
                       onTotalChange={setFollowupCount}
+                      showComposer={isQuestionOwner}
                     />
                   </div>
                 ) : null}

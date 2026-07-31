@@ -27,6 +27,7 @@ import type { DomainConfig, PortalConfig } from './adminConfig';
 
 /** API 基础路径 */
 const BASE = '/workspace/api/v1/qa_experts';
+const HOME_EXPERT_QA_BASE = '/api/v1/expert-qa';
 
 /** 单次请求超时毫秒数 */
 const DEFAULT_TIMEOUT = 8_000;
@@ -241,6 +242,7 @@ export interface ExpertProfileResponse {
   adoption_count: number;
   vote_count: number;
   expert_score?: number;
+  wechat_user_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -273,6 +275,23 @@ export interface ExpertListOptions {
   major?: string;
   sortBy?: ExpertSortField;
   sortOrder?: ExpertSortOrder;
+  /** 回答数排序：true 倒序，false 正序，未设置/null 不排序 */
+  answerDesc?: boolean | null;
+  /** 采纳数排序：true 倒序，false 正序，未设置/null 不排序 */
+  adoptionDesc?: boolean | null;
+  /** 点赞数排序：true 倒序，false 正序，未设置/null 不排序 */
+  voteDesc?: boolean | null;
+  /**
+   * 职业字段筛选条件对应的显示文本。
+   * 后端接口按 dict_key 过滤，但返回的专家字段可能是 dict_value；
+   * 客户端兜底过滤时需要用该映射避免误判。
+   */
+  filterLabels?: {
+    jobFamily?: string;
+    jobCategory?: string;
+    position?: string;
+    major?: string;
+  };
 }
 
 export interface ExpertDepartmentFilterOption {
@@ -280,12 +299,17 @@ export interface ExpertDepartmentFilterOption {
   name: string;
 }
 
+export interface ExpertFieldFilterOption {
+  dict_key: string;
+  dict_value: string;
+}
+
 export interface ExpertFilterOptions {
   departments: ExpertDepartmentFilterOption[];
-  job_families: string[];
-  job_categories: string[];
-  positions: string[];
-  majors: string[];
+  job_families: ExpertFieldFilterOption[];
+  job_categories: ExpertFieldFilterOption[];
+  positions: ExpertFieldFilterOption[];
+  majors: ExpertFieldFilterOption[];
 }
 
 /** POST/PUT /experts 请求体 */
@@ -299,6 +323,7 @@ export interface ExpertUpsertPayload {
   position?: string;
   job_family?: string;
   job_category?: string;
+  wechat_user_id?: string;
 }
 
 // ─── 用户相关 ────────────────────────────────────────────────
@@ -333,6 +358,8 @@ export interface ApiQuestion {
   /** 0: 未解决  1: 已解决  2: 已关闭 */
   status: 0 | 1 | 2;
   attachments: string | null;
+  file_name: string | null;
+  file_url: string | null;
   related_docs: string | null;
   invited_experts: string | null;
   experts_names: string | null;
@@ -371,6 +398,8 @@ export interface CreateQuestionPayload {
   invited_expert_ids?: string;
   invited_expert_names?: string;
   image_url?: string;
+  file_url?: string;
+  file_name?: string;
   attachments?: string;
   related_docs?: string;
 }
@@ -382,6 +411,8 @@ export interface UpdateQuestionPayload {
   invited_expert_ids?: string;
   invited_expert_names?: string;
   image_url?: string | null;
+  file_url?: string | null;
+  file_name?: string | null;
   attachments?: string | null;
   related_docs?: string | null;
 }
@@ -641,6 +672,9 @@ export function buildExpertProfilesPath(
     major: options.major,
     sort_by: options.sortBy,
     sort_order: options.sortOrder,
+    answer_desc: options.answerDesc,
+    adoption_desc: options.adoptionDesc,
+    vote_desc: options.voteDesc,
   })}`;
 }
 
@@ -688,12 +722,47 @@ export async function fetchExpertProfiles(
   return { experts: raw.experts ?? [], total: raw.total ?? 0, page, limit };
 }
 
+interface RawExpertFieldFilterOption {
+  dict_key?: string;
+  dict_value?: string;
+}
+
+type RawExpertFieldFilterValue = string | RawExpertFieldFilterOption;
+
+interface RawExpertFilterOptions {
+  departments?: Array<{ id?: number | string; name?: string }>;
+  job_families?: RawExpertFieldFilterValue[];
+  job_categories?: RawExpertFieldFilterValue[];
+  positions?: RawExpertFieldFilterValue[];
+  majors?: RawExpertFieldFilterValue[];
+}
+
+function normalizeExpertFieldOptions(
+  raw?: RawExpertFieldFilterValue[],
+): ExpertFieldFilterOption[] {
+  const list = raw ?? [];
+  return list
+    .map((item) => {
+      if (item && typeof item === 'object') {
+        const key = item.dict_key?.trim() ?? '';
+        const value = item.dict_value?.trim() ?? key;
+        if (!key) return null;
+        return { dict_key: key, dict_value: value || key };
+      }
+      const value = String(item ?? '').trim();
+      if (!value) return null;
+      return { dict_key: value, dict_value: value };
+    })
+    .filter((item): item is ExpertFieldFilterOption => item != null)
+    .sort((left, right) => left.dict_value.localeCompare(right.dict_value, 'zh-CN'));
+}
+
 /** 获取专家职业字段筛选项。 */
 export async function fetchExpertFilterOptions(
   signal?: AbortSignal,
 ): Promise<ExpertFilterOptions> {
   try {
-    const raw = await req<Partial<ExpertFilterOptions>>(
+    const raw = await req<Partial<RawExpertFilterOptions>>(
       `${BASE}/experts/filter-options`,
       undefined,
       DEFAULT_TIMEOUT,
@@ -702,12 +771,12 @@ export async function fetchExpertFilterOptions(
     return {
       departments: (raw.departments ?? []).map((department) => ({
         id: String(department.id),
-        name: department.name,
+        name: department.name ?? '',
       })),
-      job_families: raw.job_families ?? [],
-      job_categories: raw.job_categories ?? [],
-      positions: raw.positions ?? [],
-      majors: raw.majors ?? [],
+      job_families: normalizeExpertFieldOptions(raw.job_families),
+      job_categories: normalizeExpertFieldOptions(raw.job_categories),
+      positions: normalizeExpertFieldOptions(raw.positions),
+      majors: normalizeExpertFieldOptions(raw.majors),
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
@@ -722,9 +791,10 @@ export async function fetchExpertFilterOptions(
       signal,
       { sortBy: 'expert_score', sortOrder: 'desc' },
     );
-    const uniqueValues = (values: Array<string | null>) => (
+    const uniqueFieldOptions = (values: Array<string | null>) => (
       [...new Set(values.map((value) => value?.trim()).filter(Boolean) as string[])]
         .sort((left, right) => left.localeCompare(right, 'zh-CN'))
+        .map((value) => ({ dict_key: value, dict_value: value }))
     );
     const departmentMap = new Map<string, string>();
     for (const expert of result.experts) {
@@ -736,10 +806,10 @@ export async function fetchExpertFilterOptions(
       departments: [...departmentMap]
         .map(([id, name]) => ({ id, name }))
         .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
-      job_families: uniqueValues(result.experts.map((expert) => expert.job_family)),
-      job_categories: uniqueValues(result.experts.map((expert) => expert.job_category)),
-      positions: uniqueValues(result.experts.map((expert) => expert.position)),
-      majors: uniqueValues(result.experts.map((expert) => expert.major)),
+      job_families: uniqueFieldOptions(result.experts.map((expert) => expert.job_family)),
+      job_categories: uniqueFieldOptions(result.experts.map((expert) => expert.job_category)),
+      positions: uniqueFieldOptions(result.experts.map((expert) => expert.position)),
+      majors: uniqueFieldOptions(result.experts.map((expert) => expert.major)),
     };
   }
 }
@@ -884,6 +954,23 @@ type RawQuestionListResponse =
       pageSize?: number;
     };
 
+export interface HomeExpertQuestion {
+  id: number;
+  title: string;
+}
+
+interface HomeExpertQuestionResponse {
+  questions: HomeExpertQuestion[];
+}
+
+/** 获取门户首页公开专家问题，仅返回首页展示所需字段 */
+export async function fetchHomeExpertQuestions(limit: number): Promise<HomeExpertQuestion[]> {
+  const response = await req<HomeExpertQuestionResponse>(
+    `${HOME_EXPERT_QA_BASE}/home-questions${qs({ limit })}`,
+  );
+  return response.questions;
+}
+
 /** 获取问题列表（支持领域/状态/排序/分页过滤） */
 export async function fetchExpertQuestions(params: {
   domain?: string;
@@ -944,6 +1031,8 @@ export async function createExpertQuestion(
     invited_experts: payload.invited_expert_ids,
     experts_names: payload.invited_expert_names,
     image_url: payload.image_url ?? null,
+    file_url: payload.file_url ?? null,
+    file_name: payload.file_name ?? null,
     attachments: payload.attachments ?? null,
     related_docs: payload.related_docs ?? null,
   };
@@ -969,6 +1058,8 @@ export async function updateExpertQuestion(
     invited_experts: payload.invited_expert_ids,
     experts_names: payload.invited_expert_names,
     image_url: payload.image_url,
+    file_url: payload.file_url,
+    file_name: payload.file_name,
     attachments: payload.attachments,
     related_docs: payload.related_docs,
   };
@@ -1304,6 +1395,30 @@ export async function uploadQaImage(file: File): Promise<QaUploadResult> {
 
   return {
     image_url: data?.file_path ?? data?.image_url ?? '',
+    file_name: data?.file_name ?? file.name,
+  };
+}
+
+export interface QaAttachmentUploadResult {
+  file_url: string;
+  file_name: string;
+}
+
+export async function uploadQaAttachment(file: File): Promise<QaAttachmentUploadResult> {
+  const form = new FormData();
+  form.append('file', file);
+
+  const data = await req<QaUploadResponse>(
+    `${BASE}/upload`,
+    {
+      method: 'POST',
+      body: form,
+    },
+    UPLOAD_TIMEOUT,
+  );
+
+  return {
+    file_url: data?.file_path ?? data?.image_url ?? '',
     file_name: data?.file_name ?? file.name,
   };
 }

@@ -1,7 +1,12 @@
-import { buildUnifiedAuthStartUrl, normalizePortalRedirect } from '../api/auth';
+import {
+  buildUnifiedAuthStartUrl,
+  fetchUnifiedAuthConfig,
+  normalizePortalRedirect,
+} from '../api/auth';
 
 export type LoginRedirectOptions = {
   guest?: boolean;
+  preferUnifiedAuth?: boolean;
 };
 
 export function buildLocalLoginPath(
@@ -27,6 +32,17 @@ export async function redirectToLogin(
   returnTo: string | null | undefined,
   options: LoginRedirectOptions = {},
 ): Promise<void> {
+  if (options.preferUnifiedAuth) {
+    try {
+      const config = await fetchUnifiedAuthConfig();
+      if (config.enabled && config.authMode === 'oauth') {
+        window.location.assign(buildPortalLoginStartUrl(returnTo));
+        return;
+      }
+    } catch {
+      // 统一认证配置不可用时降级到本地登录页
+    }
+  }
   window.location.assign(buildLocalLoginPath(returnTo, options));
 }
 

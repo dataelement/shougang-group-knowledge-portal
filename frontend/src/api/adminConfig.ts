@@ -291,6 +291,7 @@ export interface BannerSlide {
 export interface IntegrationsConfig {
   bisheng_admin_entry_url: string;
   bisheng_knowledge_entry_url: string;
+  bisheng_platform_admin_url: string;
 }
 
 export interface SiteConfig {

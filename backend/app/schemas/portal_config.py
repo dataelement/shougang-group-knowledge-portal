@@ -592,6 +592,15 @@ class BannerSlide(BaseModel):
 class IntegrationsConfig(BaseModel):
     bisheng_admin_entry_url: str = ""
     bisheng_knowledge_entry_url: str = ""
+    bisheng_platform_admin_url: str = ""
+
+    @field_validator("bisheng_platform_admin_url", mode="before")
+    @classmethod
+    def validate_bisheng_platform_admin_url(cls, value: Any) -> str:
+        normalized = _clean_config_text(str(value or ""))
+        if normalized and not _is_http_url(normalized):
+            raise ValueError("BiSheng platform admin URL must be a valid http/https URL")
+        return normalized
 
 
 class SiteConfig(BaseModel):

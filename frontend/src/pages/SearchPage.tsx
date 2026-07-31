@@ -1,13 +1,15 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, Loader2, ChevronUp, ChevronDown, X } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
-// import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
 import DocumentTypeFilterDropdown from '../components/DocumentTypeFilterDropdown';
+import AdvancedSearchPanel from '../components/AdvancedSearchPanel';
 import {
+  advancedSearchFiles,
   browseSearchFiles,
+  fetchDepartmentFileViewAccess,
   fetchAggregatedTags,
   fetchKnowledgeSpaces,
   recordPortalSearchEvent,
@@ -21,7 +23,6 @@ import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
-// import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import {
@@ -41,11 +42,22 @@ import {
   normalizeBusinessDomainCode,
 } from '../utils/businessDomains';
 import { downloadWatermarkedFile } from '../utils/fileDownload';
+import { resolveFileActionAccess } from '../utils/fileActionAccess';
 import { toRuntimeDisplayConfig } from '../utils/portalConfig';
 import {
   createSubmittedSearchParams,
   getSearchDisplayKeyword,
 } from '../utils/searchParams';
+import {
+  ADVANCED_SEARCH_ENABLED,
+  applyAdvancedSearchForm,
+  buildAdvancedRetrievalQuery,
+  clearAdvancedSearchConditions,
+  EMPTY_ADVANCED_SEARCH_FORM,
+  getAdvancedSearchForm,
+  isAdvancedSearchOpen,
+  type AdvancedSearchForm,
+} from '../utils/advancedSearch';
 import { ActionToast } from '../components/ActionToast';
 import { useActionToast } from '../hooks/useActionToast';
 import searchHeroBg from '../assets/search-hero-bg@2x.png';
@@ -128,7 +140,16 @@ export default function SearchPage() {
   const fileSubcategoryCode = normalizeDocumentTypeCode(params.get('file_subcategory_code'));
   const businessDomainCode = normalizeBusinessDomainCode(params.get('business_domain_code'));
   const tag = params.get('tag') || '';
-  const keywordMode = Boolean(q.trim());
+  const updatedFrom = params.get('updated_from') || '';
+  const updatedTo = params.get('updated_to') || '';
+  const allKeywords = params.get('all_keywords') || '';
+  const exactPhrase = params.get('exact_phrase') || '';
+  const anyKeywords = params.get('any_keywords') || '';
+  const excludeKeywords = params.get('exclude_keywords') || '';
+  const searchField = params.get('search_field') || 'file_name';
+  const advancedSearchOpen = ADVANCED_SEARCH_ENABLED && isAdvancedSearchOpen(params);
+  const advancedMode = params.has('search_field');
+  const keywordMode = Boolean(q.trim()) && !advancedMode;
   const keywordSort = normalizeSearchSort(params.get('sort'));
   const browseSort = normalizeTimeSort(params.get('sort')) || 'updated_at_desc';
   const sort = keywordMode ? keywordSort : browseSort;
@@ -150,6 +171,9 @@ export default function SearchPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState('');
+  const [advancedSearchDraft, setAdvancedSearchDraft] = useState<AdvancedSearchForm>(
+    () => getAdvancedSearchForm(params, q),
+  );
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [total, setTotal] = useState(0);
   const [aiText, setAiText] = useState('');
@@ -161,13 +185,13 @@ export default function SearchPage() {
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const currentSearchParams = params.toString();
   const requestSeq = useRef(0);
   const latestSearchRequestRef = useRef(0);
   const searchPendingRef = useRef(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { toast, showError } = useActionToast();
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
-  // const { openShare, shareModalProps } = useShareDocument();
   const { documentQaModalProps } = useDocumentQa();
   const canDownload = Boolean(user);
   const canFavorite = Boolean(user);
@@ -175,6 +199,19 @@ export default function SearchPage() {
   const handleDownload = useCallback(async (file: FileItem) => {
     setError('');
     try {
+      const access = await resolveFileActionAccess(
+        file,
+        'download',
+        fetchDepartmentFileViewAccess,
+      );
+      if (access.outcome === 'show_access_gate') {
+        setPreviewFile(file);
+        return;
+      }
+      if (access.outcome === 'download_denied') {
+        showError('当前账号没有下载该文档的权限');
+        return;
+      }
       await downloadWatermarkedFile({
         spaceId: file.spaceId,
         fileId: file.id,
@@ -191,6 +228,15 @@ export default function SearchPage() {
   const handleToggleFavorite = useCallback(async (file: FileItem) => {
     setError('');
     try {
+      const access = await resolveFileActionAccess(
+        file,
+        'favorite',
+        fetchDepartmentFileViewAccess,
+      );
+      if (access.outcome === 'show_access_gate') {
+        setPreviewFile(file);
+        return;
+      }
       await toggleFavorite(file);
     } catch (err) {
       setError(err instanceof Error ? err.message : '收藏操作失败');
@@ -200,6 +246,10 @@ export default function SearchPage() {
   useEffect(() => {
     setDraft(displayKeyword);
   }, [displayKeyword]);
+
+  useEffect(() => {
+    setAdvancedSearchDraft(getAdvancedSearchForm(new URLSearchParams(currentSearchParams), q));
+  }, [currentSearchParams, q]);
 
   // 后端会按当前身份返回登录用户可见空间或访客公共空间。
   useEffect(() => {
@@ -432,8 +482,29 @@ export default function SearchPage() {
     };
   }, [businessDomainCode, keywordMode, spaceId, spaceLevel]);
 
-  const fetchBrowsePage = useCallback((cursor?: string | null) => {
+  const fetchDatabasePage = useCallback((cursor?: string | null) => {
     const selectedId = Number(spaceId);
+    if (advancedMode) {
+      return advancedSearchFiles({
+        tag: tag || undefined,
+        spaceIds: Number.isFinite(selectedId) && selectedId > 0 ? [selectedId] : undefined,
+        spaceLevel: spaceLevel || undefined,
+        fileExt: fileExt || undefined,
+        documentType: documentType || undefined,
+        fileSubcategoryCode: fileSubcategoryCode || undefined,
+        businessDomainCode: businessDomainCode || undefined,
+        allKeywords: allKeywords || undefined,
+        exactPhrase: exactPhrase || undefined,
+        anyKeywords: anyKeywords || undefined,
+        excludeKeywords: excludeKeywords || undefined,
+        searchField: searchField === 'summary' || searchField === 'tags' ? searchField : 'file_name',
+        updatedFrom: updatedFrom || undefined,
+        updatedTo: updatedTo || undefined,
+        sort: browseSort,
+        cursor,
+        limit: pageLimit,
+      });
+    }
     return browseSearchFiles({
       tag: tag || undefined,
       spaceIds: Number.isFinite(selectedId) && selectedId > 0 ? [selectedId] : undefined,
@@ -444,8 +515,27 @@ export default function SearchPage() {
       businessDomainCode: businessDomainCode || undefined,
       sort: browseSort,
       cursor,
+      limit: pageLimit,
     });
-  }, [browseSort, businessDomainCode, documentType, fileExt, fileSubcategoryCode, spaceId, spaceLevel, tag]);
+  }, [
+    advancedMode,
+    allKeywords,
+    anyKeywords,
+    browseSort,
+    businessDomainCode,
+    documentType,
+    exactPhrase,
+    excludeKeywords,
+    fileExt,
+    fileSubcategoryCode,
+    pageLimit,
+    searchField,
+    spaceId,
+    spaceLevel,
+    tag,
+    updatedFrom,
+    updatedTo,
+  ]);
 
   useEffect(() => {
     if (!keywordMode) return;
@@ -462,7 +552,17 @@ export default function SearchPage() {
     setNextCursor(null);
     setAiText('');
     setAiCitations([]);
-    void searchKeywordFiles({ q: q.trim(), sort: keywordSort })
+    void searchKeywordFiles({
+      q: q.trim(),
+      tag: tag || undefined,
+      spaceIds: Number.isFinite(selectedSpaceId) && selectedSpaceId > 0 ? [selectedSpaceId] : undefined,
+      spaceLevel: spaceLevel || undefined,
+      fileExt: fileExt || undefined,
+      documentType: documentType || undefined,
+      fileSubcategoryCode: fileSubcategoryCode || undefined,
+      businessDomainCode: businessDomainCode || undefined,
+      sort: keywordSort,
+    })
       .then((result) => {
         if (latestSearchRequestRef.current !== currentRequest) return;
         setRawFiles(result.data);
@@ -478,7 +578,18 @@ export default function SearchPage() {
         searchPendingRef.current = false;
         if (latestSearchRequestRef.current === currentRequest) setLoading(false);
       });
-  }, [keywordMode, keywordSort, q]);
+  }, [
+    businessDomainCode,
+    documentType,
+    fileExt,
+    fileSubcategoryCode,
+    keywordMode,
+    keywordSort,
+    q,
+    selectedSpaceId,
+    spaceLevel,
+    tag,
+  ]);
 
   useEffect(() => {
     if (!keywordMode) return;
@@ -502,7 +613,7 @@ export default function SearchPage() {
     setAiText('');
     setAiCitations([]);
     setAiThinking(false);
-    void fetchBrowsePage(null)
+    void fetchDatabasePage(null)
       .then((result) => {
         if (requestSeq.current !== currentRequest) return;
         const seen = new Set<string>();
@@ -525,7 +636,7 @@ export default function SearchPage() {
       .finally(() => {
         if (requestSeq.current === currentRequest) setLoading(false);
       });
-  }, [fetchBrowsePage, keywordMode]);
+  }, [fetchDatabasePage, keywordMode]);
 
   useEffect(() => {
     if (!keywordMode || loading || !resultsReady) return;
@@ -593,7 +704,7 @@ export default function SearchPage() {
     setLoadingMore(true);
     setLoadMoreError('');
     try {
-      const result = await fetchBrowsePage(nextCursor);
+      const result = await fetchDatabasePage(nextCursor);
       if (requestSeq.current !== currentRequest) return;
       setFiles((current) => {
         const seen = new Set(current.map((file) => `${file.spaceId}:${file.id}`));
@@ -616,7 +727,16 @@ export default function SearchPage() {
     } finally {
       if (requestSeq.current === currentRequest) setLoadingMore(false);
     }
-  }, [fetchBrowsePage, filteredFiles.length, hasMore, keywordMode, loading, loadingMore, nextCursor, pageLimit]);
+  }, [
+    fetchDatabasePage,
+    filteredFiles.length,
+    hasMore,
+    keywordMode,
+    loading,
+    loadingMore,
+    nextCursor,
+    pageLimit,
+  ]);
 
   const displayedFiles = useMemo(
     () => (keywordMode ? filteredFiles.slice(0, visibleLimit) : files),
@@ -635,7 +755,11 @@ export default function SearchPage() {
   }, [canLoadMore, handleLoadMore, loadMoreError, loading, loadingMore]);
 
   useEffect(() => {
-    if (canFavorite && displayedFiles.length) void loadStatuses(displayedFiles);
+    if (!canFavorite || !displayedFiles.length) return;
+    const statusFiles = displayedFiles.filter((file) => (
+      !file.isDepartmentFile || file.contentAccess !== 'check_required'
+    ));
+    if (statusFiles.length) void loadStatuses(statusFiles);
   }, [displayedFiles, canFavorite, loadStatuses]);
 
   const submitSearch = () => {
@@ -645,6 +769,121 @@ export default function SearchPage() {
     }
     setParams(createSubmittedSearchParams(params, draft));
   };
+
+  const toggleAdvancedSearch = () => {
+    const next = new URLSearchParams(params);
+    if (advancedSearchOpen) next.delete('advanced');
+    else {
+      next.set('advanced', '1');
+      setAdvancedSearchDraft(getAdvancedSearchForm(params, draft));
+    }
+    setParams(next);
+  };
+
+  const submitAdvancedSearch = () => {
+    const next = applyAdvancedSearchForm(params, advancedSearchDraft);
+    const retrievalQuery = buildAdvancedRetrievalQuery(advancedSearchDraft);
+    if (user && retrievalQuery) {
+      void recordPortalSearchEvent(retrievalQuery, 'search_page').catch(() => undefined);
+    }
+    setParams(next);
+  };
+
+  const removeAppliedFilter = (keys: string[]) => {
+    const next = new URLSearchParams(params);
+    for (const key of keys) {
+      if (key === 'search_field') next.set('search_field', 'file_name');
+      else next.delete(key);
+    }
+    if (keys.some((key) => (
+      key === 'all_keywords'
+      || key === 'exact_phrase'
+      || key === 'any_keywords'
+      || key === 'exclude_keywords'
+    ))) {
+      const nextForm = getAdvancedSearchForm(next);
+      const nextQuery = buildAdvancedRetrievalQuery(nextForm);
+      if (nextQuery) next.set('q', nextQuery);
+      else next.delete('q');
+    }
+    next.delete('cursor');
+    next.delete('page');
+    setParams(next);
+  };
+
+  const clearAppliedFilters = () => {
+    const next = clearAdvancedSearchConditions(params);
+    if (advancedSearchOpen) next.set('advanced', '1');
+    setAdvancedSearchDraft({ ...EMPTY_ADVANCED_SEARCH_FORM });
+    setParams(next);
+  };
+
+  const appliedFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; keys: string[] }> = [];
+    const add = (key: string, label: string, keys = [key]) => {
+      if (label.trim()) chips.push({ key, label, keys });
+    };
+    if (allKeywords) add('all_keywords', `全部关键词：${allKeywords}`);
+    if (exactPhrase) add('exact_phrase', `完整短语：${exactPhrase}`);
+    if (anyKeywords) add('any_keywords', `任意关键词：${anyKeywords}`);
+    if (excludeKeywords) add('exclude_keywords', `排除：${excludeKeywords}`);
+    if ((allKeywords || exactPhrase || anyKeywords || excludeKeywords) && searchField !== 'file_name') {
+      const fieldLabel = searchField === 'summary' ? '摘要' : searchField === 'tags' ? '标签' : '文件名';
+      add('search_field', `字段：${fieldLabel}`);
+    }
+    if (spaceLevel) {
+      add('space_level', SPACE_LEVEL_OPTIONS.find((item) => item.value === spaceLevel)?.label || spaceLevel, [
+        'space_level',
+        'space_id',
+      ]);
+    }
+    if (spaceId) {
+      add('space_id', resultSpaceOptions.find((item) => String(item.id) === spaceId)?.name || spaceId);
+    }
+    if (businessDomainCode) {
+      add(
+        'business_domain_code',
+        resultBusinessDomainOptions.find((item) => item.code === businessDomainCode)?.label || businessDomainCode,
+      );
+    }
+    if (documentType || fileSubcategoryCode) {
+      const child = findRuntimeDocumentTypeChild(resultDocumentTypeGroups, fileSubcategoryCode);
+      const group = resultDocumentTypeGroups.find((item) => item.code === documentType);
+      add(
+        'document_type',
+        child ? `${child.parentLabel} / ${child.label}` : group?.label || documentType || fileSubcategoryCode,
+        ['document_type', 'file_subcategory_code'],
+      );
+    }
+    if (fileExt) add('file_ext', fileExt.toUpperCase());
+    if (tag) add('tag', tag);
+    if (updatedFrom || updatedTo) {
+      add(
+        'updated_range',
+        `更新时间：${updatedFrom || '不限'} 至 ${updatedTo || '今'}`,
+        ['updated_from', 'updated_to'],
+      );
+    }
+    return chips;
+  }, [
+    allKeywords,
+    anyKeywords,
+    businessDomainCode,
+    documentType,
+    exactPhrase,
+    excludeKeywords,
+    fileExt,
+    fileSubcategoryCode,
+    resultBusinessDomainOptions,
+    resultDocumentTypeGroups,
+    resultSpaceOptions,
+    searchField,
+    spaceId,
+    spaceLevel,
+    tag,
+    updatedFrom,
+    updatedTo,
+  ]);
 
   return (
     <PageShell
@@ -656,21 +895,45 @@ export default function SearchPage() {
       <div className={s.container}>
         <div className={s.searchHero}>
           <div ref={resultsTopRef} />
-          <div className={s.searchHeroInputWrap}>
-            <Search size={18} className={s.searchHeroIcon} />
-            <input
-              className={s.searchHeroInput}
-              placeholder="请输入关键词开始搜索"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitSearch();
-              }}
-              autoFocus
-            />
-            <button className={s.searchHeroBtn} onClick={submitSearch}>搜索</button>
+          <div className={s.searchHeroControls}>
+            <div className={s.searchHeroInputWrap}>
+              <Search size={18} className={s.searchHeroIcon} />
+              <input
+                className={s.searchHeroInput}
+                placeholder="请输入关键词开始搜索"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitSearch();
+                }}
+                disabled={advancedSearchOpen}
+                autoFocus={!advancedSearchOpen}
+              />
+              <button className={s.searchHeroBtn} onClick={submitSearch} disabled={advancedSearchOpen}>搜索</button>
+            </div>
+            {ADVANCED_SEARCH_ENABLED ? (
+              <button
+                type="button"
+                className={`${s.advancedSearchButton} ${advancedSearchOpen ? s.advancedSearchButtonActive : ''}`}
+                aria-expanded={advancedSearchOpen}
+                onClick={toggleAdvancedSearch}
+              >
+                高级检索
+                {advancedSearchOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
+            ) : null}
           </div>
         </div>
+
+        {ADVANCED_SEARCH_ENABLED && advancedSearchOpen ? (
+          <AdvancedSearchPanel
+            value={advancedSearchDraft}
+            onChange={setAdvancedSearchDraft}
+            onSubmit={submitAdvancedSearch}
+            onReset={() => setAdvancedSearchDraft({ ...EMPTY_ADVANCED_SEARCH_FORM })}
+            onCollapse={toggleAdvancedSearch}
+          />
+        ) : null}
 
         {!user && (
           <div className={s.guestNotice} role="note">
@@ -738,6 +1001,29 @@ export default function SearchPage() {
               </select>
             </div>
           </div>
+
+        {appliedFilterChips.length ? (
+          <div className={s.appliedFilters}>
+            <span className={s.appliedFiltersLabel}>当前筛选：</span>
+            <div className={s.appliedFilterChips}>
+              {appliedFilterChips.map((chip) => (
+                <button
+                  key={chip.key}
+                  type="button"
+                  className={s.appliedFilterChip}
+                  onClick={() => removeAppliedFilter(chip.keys)}
+                  aria-label={`移除筛选：${chip.label}`}
+                >
+                  <span>{chip.label}</span>
+                  <X size={13} />
+                </button>
+              ))}
+            </div>
+            <button type="button" className={s.clearFiltersButton} onClick={clearAppliedFilters}>
+              清空条件
+            </button>
+          </div>
+        ) : null}
 
         {keywordMode && (() => {
           // 临时隐藏 AI 总结下方的溯源文件列表，保留数据接收与正文引用渲染，便于后续恢复。
@@ -832,7 +1118,6 @@ export default function SearchPage() {
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload && (!f.isDepartmentFile || f.canDownload) ? handleDownload : undefined}
-            // onShare={openShare}
             onOpen={setPreviewFile}
           />
         ))}
@@ -847,7 +1132,6 @@ export default function SearchPage() {
             <button type="button" className={s.retryButton} onClick={() => void handleLoadMore()}>重试</button>
           </div>
         ) : null}
-        {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
         <FilePreviewModal
           file={previewFile}

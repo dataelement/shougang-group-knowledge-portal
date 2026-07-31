@@ -8,6 +8,7 @@ type TagReviewAccessUser = Partial<Pick<PortalUser, 'isDepartmentAdmin'>>;
 
 const ADMIN_ROLES = new Set(['管理员', '系统管理员', 'admin']);
 const ADMIN_ACCOUNTS = new Set(['admin']);
+const SYSTEM_ADMIN_ROLES = new Set(['系统管理员', 'admin']);
 
 function normalizeIdentity(value: string | undefined): string {
   return (value || '').trim().toLowerCase();
@@ -30,6 +31,19 @@ export function canAccessTagReview(user: TagReviewAccessUser | null | undefined)
 export function getAdminAccessState(user: AdminAccessUser | null | undefined): AdminAccessState {
   if (!user) return 'login';
   return isPortalAdmin(user) ? 'allowed' : 'forbidden';
+}
+
+export function isSystemAdministrator(
+  user: AdminAccessUser | null | undefined,
+): boolean {
+  return SYSTEM_ADMIN_ROLES.has(normalizeIdentity(user?.role));
+}
+
+export function getSystemAdministratorAccessState(
+  user: AdminAccessUser | null | undefined,
+): AdminAccessState {
+  if (!user) return 'login';
+  return isSystemAdministrator(user) ? 'allowed' : 'forbidden';
 }
 
 export function buildAdminLoginRedirect(pathname: string, search = ''): string {

@@ -13,6 +13,7 @@ import {
   PencilLine,
   Share2,
   Tag,
+  type LucideIcon,
 } from 'lucide-react';
 import { buildFileListItemView } from '../utils/fileListItemView';
 import { highlightMatches } from '../utils/highlightText';
@@ -22,6 +23,13 @@ import iconDownload from '../assets/icon-download.svg';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './ui/Tooltip';
 import s from './FileListItem.module.css';
 import tooltipS from './ui/Tooltip.module.css';
+
+const TAG_GROUP_PRESENTATION: Record<string, { Icon: LucideIcon; tooltipLabel: string }> = {
+  系统标签: { Icon: Network, tooltipLabel: '系统标签' },
+  AI标签: { Icon: Tag, tooltipLabel: 'AI标签' },
+  手动标签: { Icon: PencilLine, tooltipLabel: '人工标签' },
+};
+const DEFAULT_TAG_GROUP_PRESENTATION = { Icon: PencilLine, tooltipLabel: '人工标签' };
 
 interface Props {
   file: FileItem;
@@ -49,6 +57,13 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflowing, setSummaryOverflowing] = useState(false);
   const [downloadPending, setDownloadPending] = useState(false);
+  const entryLabel = file.entryType === 'manager'
+    ? '管理文件'
+    : file.entryType === 'publish'
+      ? '发布文件'
+      : file.entryType === 'share'
+        ? '分享文件'
+        : '';
 
   // Detect whether the clamped (2-line) summary actually overflows so the
   // expand toggle only shows when there is hidden text. Skip measuring while
@@ -79,23 +94,29 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
       <div className={s.body}>
         <div className={s.header}>
           <div className={s.heading}>
-            {onOpen ? (
-              <button
-                type="button"
-                className={`${s.title} ${s.titleButton}`}
-                title={file.title}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpen(file);
-                }}
-              >
-                {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
-              </button>
-            ) : (
-              <div className={s.title}>
-                {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
-              </div>
-            )}
+            <div className={s.titleLine}>
+              {onOpen ? (
+                <button
+                  type="button"
+                  className={`${s.title} ${s.titleButton}`}
+                  title={file.title}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpen(file);
+                  }}
+                >
+                  {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
+                </button>
+              ) : (
+                <div className={s.title}>
+                  {highlightQuery ? highlightMatches(file.title, highlightQuery, s.highlight) : file.title}
+                </div>
+              )}
+              {entryLabel ? <span className={s.entryBadge}>{entryLabel}</span> : null}
+              {file.projectionReady === false ? (
+                <span className={`${s.entryBadge} ${s.syncBadge}`}>同步中</span>
+              ) : null}
+            </div>
             <div className={s.meta}>
               {view.locked ? (
                 <span className={s.metaItem} title={view.lockHint}>
@@ -117,6 +138,11 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
                 <span className={s.metaItem}>
                   <FolderTree size={15} />
                   {view.sourcePath}
+                </span>
+              ) : null}
+              {entryLabel && file.managerSpaceId ? (
+                <span className={s.metaItem}>
+                  管理库 ID：{file.managerSpaceId}
                 </span>
               ) : null}
             </div>
@@ -219,15 +245,22 @@ export default function FileListItem({ file, onFavorite, favorited, favoritePend
           <TooltipProvider delayDuration={100}>
             <div className={s.tagSection}>
               {view.tagGroups.map((group) => {
-                const Icon =
-                  group.label === '系统标签'
-                    ? Network
-                    : group.label === 'AI标签'
-                      ? Tag
-                      : PencilLine;
+                const { Icon, tooltipLabel } = TAG_GROUP_PRESENTATION[group.label]
+                  ?? DEFAULT_TAG_GROUP_PRESENTATION;
                 return (
                   <div key={group.label} className={s.tagRow}>
-                    <Icon size={17} className={s.tagRowIcon} />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={s.tagRowIconTrigger}
+                          tabIndex={0}
+                          aria-label={tooltipLabel}
+                        >
+                          <Icon size={17} aria-hidden="true" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{tooltipLabel}</TooltipContent>
+                    </Tooltip>
                     <div className={s.tagList}>
                       {group.tags.map((tag) => (
                         <TagPill key={`${group.label}-${tag}`} name={tag} neutral />

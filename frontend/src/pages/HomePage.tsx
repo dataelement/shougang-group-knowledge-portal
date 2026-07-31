@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Send,
-  BarChart3, Bot, ChevronLeft, ChevronRight, ChevronDown, FileText,
+  BarChart3, Bot, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText,
   Settings, Factory, Snowflake, Zap, Shield, CheckCircle,
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, Leaf, Truck, Wrench, GraduationCap,
   Briefcase, Users, ScrollText, Loader2, Plus, X,
@@ -11,6 +11,7 @@ import {
 import PageShell from '../components/PageShell';
 import ExpertQuestions from '../components/ExpertQuestions';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
+import AdvancedSearchPanel from '../components/AdvancedSearchPanel';
 import {
   resolveActiveQaScope,
   type QaKnowledgePickerMode,
@@ -20,6 +21,7 @@ import type { DomainConfig, SectionConfig } from '../api/adminConfig';
 import {
   streamHomeContent,
   fetchDomainFileCounts,
+  fetchCategoryFileCounts,
   fetchHomeStats,
   fetchHotSearches,
   fetchQaKnowledgeTreeSpaces,
@@ -54,15 +56,17 @@ import { getDomainVisualPreset } from '../utils/domainVisualPresets';
 import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import { getEnabledCategoryCards, getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildCategorySearchPath, buildDomainSearchPath } from '../utils/searchParams';
+import {
+  ADVANCED_SEARCH_ENABLED,
+  applyAdvancedSearchForm,
+  EMPTY_ADVANCED_SEARCH_FORM,
+  type AdvancedSearchForm,
+} from '../utils/advancedSearch';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import { fetchCourses } from '../api/courses';
 import { formatCourseDuration, type Course } from '../types/course';
 import s from './HomePage.module.css';
 import navIcon from '../assets/nav-icon@2x.png';
-import navTabDomainActive from '../assets/nav-tab-domain-active.png';
-import navTabDomainInactive from '../assets/nav-tab-domain-inactive.png';
-import navTabCategoryActive from '../assets/nav-tab-category-active.png';
-import navTabCategoryInactive from '../assets/nav-tab-category-inactive.png';
 import iconCourse from '../assets/icon-course@2x.png';
 import iconExpert from '../assets/icon-expert@2x.png';
 import iconAiqa from '../assets/icon-aiqa@2x.png';
@@ -336,6 +340,38 @@ function formatCount(value: number): string {
   return String(value);
 }
 
+/** 摘要 hover 浮窗：宽度与触发摘要行的可视宽度保持一致 */
+function SummaryWithTooltip({ summary }: { summary: string }) {
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [triggerWidth, setTriggerWidth] = useState(0);
+
+  useEffect(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const measure = () => setTriggerWidth(el.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div ref={triggerRef} className={s.itemSummary}>{summary}</div>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        align="start"
+        className={s.summaryTooltip}
+        style={{ width: triggerWidth > 0 ? triggerWidth : undefined }}
+      >
+        {summary}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export default function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -343,6 +379,10 @@ export default function HomePage() {
   const displayConfig = toRuntimeDisplayConfig(config?.display);
   const [query, setQuery] = useState('');
   const [searchTab, setSearchTab] = useState<'global' | 'qa'>('global');
+  const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
+  const [advancedSearchDraft, setAdvancedSearchDraft] = useState<AdvancedSearchForm>(
+    EMPTY_ADVANCED_SEARCH_FORM,
+  );
   const [bannerIdx, setBannerIdx] = useState(0);
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
@@ -358,6 +398,8 @@ export default function HomePage() {
   const [loadError, setLoadError] = useState('');
   const [domainCounts, setDomainCounts] = useState<Record<string, number>>({});
   const [domainCountsLoading, setDomainCountsLoading] = useState(true);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [categoryCountsLoading, setCategoryCountsLoading] = useState(true);
   const [homeStats, setHomeStats] = useState<HomeStats | null>(null);
   const [homeStatsFailed, setHomeStatsFailed] = useState(false);
   const [homeCourses, setHomeCourses] = useState<Course[]>([]);
@@ -515,6 +557,23 @@ export default function HomePage() {
 
   useEffect(() => {
     let active = true;
+    void (async () => {
+      try {
+        const counts = await fetchCategoryFileCounts();
+        if (active) setCategoryCounts(counts);
+      } catch {
+        /* keep empty -> cards show 0; do not block the page */
+      } finally {
+        if (active) setCategoryCountsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     void fetchCourses('home')
       .then((courses) => {
         if (active) setHomeCourses(courses);
@@ -587,6 +646,26 @@ export default function HomePage() {
     }
     navigate(keyword ? `/search?q=${encodeURIComponent(keyword)}` : '/search');
   }, [query, searchTab, navigate, user, qaAnswerMode, qaScopeMode, qaKnowledgeScope, qaCategoryScope, qaScope, qaAttachments, qaUploading.length]);
+
+  const handleAdvancedSearchToggle = () => {
+    setShowHotTagMenu(false);
+    setAdvancedSearchOpen((current) => {
+      const nextOpen = !current;
+      if (nextOpen && query.trim() && !advancedSearchDraft.allKeywords.trim()) {
+        setAdvancedSearchDraft((draft) => ({ ...draft, allKeywords: query.trim() }));
+      }
+      return nextOpen;
+    });
+  };
+
+  const handleAdvancedSearchSubmit = () => {
+    const next = applyAdvancedSearchForm(new URLSearchParams(), advancedSearchDraft);
+    const retrievalQuery = next.get('q') || '';
+    if (retrievalQuery && user) {
+      void recordPortalSearchEvent(retrievalQuery, 'search_page').catch(() => undefined);
+    }
+    navigate(`/search?${next.toString()}`);
+  };
 
   async function ensureQaSpaces() {
     if (qaSpacesLoaded || qaSpacesLoading) return;
@@ -908,7 +987,7 @@ export default function HomePage() {
       {/* Hero */}
       <section className={s.hero}>
         <div
-          className={s.heroBanner}
+          className={`${s.heroBanner} ${advancedSearchOpen ? s.heroBannerAdvanced : ''}`}
           style={{ cursor: activeBanner.linkUrl ? 'pointer' : 'default' }}
           onClick={() => {
             const link = activeBanner.linkUrl;
@@ -959,6 +1038,7 @@ export default function HomePage() {
                 onClick={() => {
                   setSearchTab('qa');
                   setShowHotTagMenu(false);
+                  setAdvancedSearchOpen(false);
                 }}
               >
                 小智知道
@@ -971,6 +1051,7 @@ export default function HomePage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKey}
+                disabled={advancedSearchOpen && searchTab === 'global'}
                 rows={2}
               />
               {searchTab === 'qa' && qaHasAttachments ? (
@@ -1094,7 +1175,10 @@ export default function HomePage() {
                               pickerMode={qaScopeMode}
                               onPickerModeChange={setQaScopeMode}
                               documentTypeGroups={documentTypeGroups}
-                              onBrowseCategoryFiles={(params) => browseSearchFiles(params)}
+                              onBrowseCategoryFiles={(params) => browseSearchFiles({
+                                ...params,
+                                spaceIds: qaSpaces.map((space) => space.id),
+                              })}
                               onLoadChildren={fetchQaKnowledgeTreeChildren}
                               onLoadFolderStats={fetchQaKnowledgeFolderStats}
                               onSearchFiles={searchQaKnowledgeFiles}
@@ -1130,17 +1214,31 @@ export default function HomePage() {
                     {qaTip ? <span className={s.qaTip}>{qaTip}</span> : null}
                   </div>
                 )}
-                <button
-                  type="button"
-                  className={s.searchBtn}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleSearch();
-                  }}
-                  aria-label={searchTab === 'qa' ? '发送' : '搜索'}
-                >
-                  {searchTab === 'qa' ? <Send size={17} /> : <Search size={18} />}
-                </button>
+                <div className={s.searchActions}>
+                  <button
+                    type="button"
+                    className={s.searchBtn}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleSearch();
+                    }}
+                    aria-label={searchTab === 'qa' ? '发送' : '搜索'}
+                    disabled={advancedSearchOpen && searchTab === 'global'}
+                  >
+                    {searchTab === 'qa' ? <Send size={17} /> : <Search size={18} />}
+                  </button>
+                  {ADVANCED_SEARCH_ENABLED && searchTab === 'global' ? (
+                    <button
+                      type="button"
+                      className={`${s.advancedSearchButton} ${advancedSearchOpen ? s.advancedSearchButtonActive : ''}`}
+                      aria-expanded={advancedSearchOpen}
+                      onClick={handleAdvancedSearchToggle}
+                    >
+                      高级检索
+                      {advancedSearchOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
             {showHotTagMenu && showHotSearch ? (
@@ -1167,7 +1265,18 @@ export default function HomePage() {
               </div>
             ) : null}
           </div>
-          <div className={s.heroBottomRow} onClick={(event) => event.stopPropagation()}>
+          {ADVANCED_SEARCH_ENABLED && advancedSearchOpen && searchTab === 'global' ? (
+            <div className={s.homeAdvancedSearch} onClick={(event) => event.stopPropagation()}>
+              <AdvancedSearchPanel
+                value={advancedSearchDraft}
+                onChange={setAdvancedSearchDraft}
+                onSubmit={handleAdvancedSearchSubmit}
+                onReset={() => setAdvancedSearchDraft({ ...EMPTY_ADVANCED_SEARCH_FORM })}
+                onCollapse={() => setAdvancedSearchOpen(false)}
+              />
+            </div>
+          ) : null}
+          {!advancedSearchOpen ? <div className={s.heroBottomRow} onClick={(event) => event.stopPropagation()}>
             <div className={s.appShortcutList}>
               {appEntryItems.map((template) => {
                 const iconImage =
@@ -1209,8 +1318,8 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-          </div>
-          <div className={s.bannerDots}>
+          </div> : null}
+          {!advancedSearchOpen ? <div className={s.bannerDots}>
             {homeBanners.map((_, i) => (
               <button
                 key={i}
@@ -1221,7 +1330,7 @@ export default function HomePage() {
                 }}
               />
             ))}
-          </div>
+          </div> : null}
         </div>
       </section>
 
@@ -1240,11 +1349,7 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'category' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('category')}
                 >
-                  <img
-                    src={activeNavTab === 'category' ? navTabCategoryActive : navTabCategoryInactive}
-                    alt=""
-                    className={s.domainNavTabIcon}
-                  />
+                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconDomain}`} aria-hidden />
                   <span className={s.domainNavTabText}>分类导航</span>
                 </button>
                 <span className={s.domainNavTabDivider} aria-hidden />
@@ -1255,11 +1360,7 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'domain' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('domain')}
                 >
-                  <img
-                    src={activeNavTab === 'domain' ? navTabDomainActive : navTabDomainInactive}
-                    alt=""
-                    className={s.domainNavTabIcon}
-                  />
+                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconCategory}`} aria-hidden />
                   <span className={s.domainNavTabText}>业务域导航</span>
                 </button>
               </div>
@@ -1293,6 +1394,8 @@ export default function HomePage() {
                 ? homeCategoryCards.map((card) => {
                     const categoryPath = buildCategorySearchPath(card.code);
                     const usesBannerThumb = Boolean(card.image);
+                    const categoryCode = (card.code || '').trim().toUpperCase();
+                    const totalFiles = categoryCode ? (categoryCounts[categoryCode] ?? 0) : 0;
                     return (
                       <div
                         key={card.code}
@@ -1315,6 +1418,7 @@ export default function HomePage() {
                         )}
                         <div className={s.domainCardContent}>
                           <div className={s.domainName}>{card.name || card.code}</div>
+                          <div className={s.domainMeta}>知识数量 {categoryCountsLoading ? '加载中…' : formatCount(totalFiles)}</div>
                         </div>
                       </div>
                     );
@@ -1377,14 +1481,12 @@ export default function HomePage() {
               const recommendationMode = sectionRecommendationModes[sectionKey];
               const recommendationModePending = isLatestSelectedSection(sec) && !recommendationMode;
               const moreLink = buildSectionMoreLink(sec, recommendationMode);
-              // 需要参与「左右高度补长」的左侧板块
-              const isLeftFillPanel = /知识推荐|典型案例/.test(sec.title);
               // 「知识推荐」「典型案例」「行业情报」摘要开启 hover 全文提示浮窗
               const enableSummaryTooltip = /知识推荐|典型案例|行业情报/.test(sec.title);
               return (
                 <div
                   key={sectionKey}
-                  className={`${s.panel} ${index === 0 ? s.primarySectionPanel : s.tallSectionPanel} ${isLeftFillPanel ? s.leftFillPanel : ''}`}
+                  className={`${s.panel} ${index === 0 ? s.primarySectionPanel : s.tallSectionPanel}`}
                 >
                   <div className={`${s.panelHeader} ${resolveSectionHeaderClass(sec.title)}`}>
                     <div className={s.panelHeaderLeft}>
@@ -1436,16 +1538,7 @@ export default function HomePage() {
                               {(() => {
                                 const displaySummary = cleanSummaryText(f.summary);
                                 if (enableSummaryTooltip && displaySummary) {
-                                  return (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div className={s.itemSummary}>{displaySummary}</div>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="bottom" align="start" className={s.summaryTooltip}>
-                                        {displaySummary}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  );
+                                  return <SummaryWithTooltip summary={displaySummary} />;
                                 }
                                 return <div className={s.itemSummary}>{displaySummary}</div>;
                               })()}

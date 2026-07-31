@@ -826,6 +826,44 @@ class KnowledgeService:
             if self._normalize_business_domain_code(code)
         }
 
+    async def resolve_category_count_scopes(
+        self,
+        categories: list[dict[str, Any]],
+        extra_space_ids: Optional[list[int]] = None,
+    ) -> list[dict[str, Any]]:
+        allowed_space_ids = {
+            space.id for space in await self._allowed_spaces(extra_space_ids=extra_space_ids)
+        }
+        scopes: list[dict[str, Any]] = []
+        seen_codes: set[str] = set()
+        for category in categories:
+            code = self._normalize_document_type_code(category.get("code"))
+            if not code or code in seen_codes:
+                continue
+            seen_codes.add(code)
+            requested_space_ids = {
+                int(space_id)
+                for space_id in (category.get("space_ids") or [])
+                if isinstance(space_id, int) or (isinstance(space_id, str) and space_id.isdigit())
+            }
+            scopes.append({"code": code, "space_ids": sorted(allowed_space_ids.intersection(requested_space_ids))})
+        return scopes
+
+    async def count_visible_category_files(self, categories: list[dict[str, Any]]) -> dict[str, int]:
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/category-file-counts",
+            json={"categories": categories},
+        )
+        data = self._extract_success_data(response)
+        raw_counts = data.get("counts") if isinstance(data, dict) else {}
+        if not isinstance(raw_counts, dict):
+            return {}
+        return {
+            self._normalize_document_type_code(code): int(count or 0)
+            for code, count in raw_counts.items()
+            if self._normalize_document_type_code(code)
+        }
+
     def _resolve_document_chat_model_id(self, requested_model: str = "") -> int:
         config = self._config_service.get_config()
         raw_model = (requested_model or config.qa.selected_model or self._default_model).strip()
@@ -1060,6 +1098,8 @@ class KnowledgeService:
         file_subcategory_code: Optional[str],
         business_domain_code: Optional[str],
         sort: str,
+        cursor: Optional[str],
+        limit: int,
         extra_space_ids: Optional[list[int]],
         discovery_scope: PortalDiscoveryScope = "legacy",
     ) -> CursorKnowledgeFileData:
@@ -1101,6 +1141,76 @@ class KnowledgeService:
             business_domain_code=self._normalize_business_domain_code(business_domain_code),
             recommendation=None,
             sort=sort,
+            cursor=cursor,
+            limit=limit,
+            discovery_scope=discovery_scope,
+        )
+
+    async def advanced_search_files(
+        self,
+        *,
+        tag: Optional[str],
+        requested_space_ids: Optional[list[int]],
+        space_level: Optional[str],
+        file_ext: Optional[str],
+        document_type: Optional[str],
+        file_subcategory_code: Optional[str],
+        business_domain_code: Optional[str],
+        all_keywords: Optional[str],
+        exact_phrase: Optional[str],
+        any_keywords: Optional[str],
+        exclude_keywords: Optional[str],
+        search_field: Literal["file_name", "summary", "tags"],
+        updated_from: Optional[str],
+        updated_to: Optional[str],
+        sort: str,
+        cursor: Optional[str],
+        limit: int,
+        extra_space_ids: Optional[list[int]],
+        discovery_scope: PortalDiscoveryScope = "legacy",
+    ) -> CursorKnowledgeFileData:
+        if discovery_scope == "legacy":
+            space_ids = await self.resolve_requested_space_ids(
+                requested_space_ids,
+                space_level,
+                extra_space_ids,
+                fallback_to_public_spaces=False,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
+            upstream_space_level = self._effective_upstream_space_level(
+                space_level,
+                extra_space_ids,
+            )
+        else:
+            space_ids = list(
+                dict.fromkeys(
+                    requested_space_ids
+                    or extra_space_ids
+                    or []
+                )
+            )
+            upstream_space_level = (
+                "public" if discovery_scope == "public" else space_level
+            )
+        return await self._advanced_search_shougang_portal_files(
+            tag=(tag or "").strip() or None,
+            space_ids=space_ids,
+            space_level=upstream_space_level,
+            file_ext=file_ext,
+            document_type=document_type,
+            file_subcategory_code=file_subcategory_code,
+            business_domain_code=self._normalize_business_domain_code(business_domain_code),
+            all_keywords=all_keywords,
+            exact_phrase=exact_phrase,
+            any_keywords=any_keywords,
+            exclude_keywords=exclude_keywords,
+            search_field=search_field,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            sort=sort,
+            cursor=cursor,
+            limit=limit,
             discovery_scope=discovery_scope,
         )
 
@@ -1384,18 +1494,24 @@ class KnowledgeService:
         discovery_scope: PortalDiscoveryScope = "public_and_department",
     ) -> QaKnowledgeTreeNodeData:
         resolved_page_size = min(max(page_size, 1), self._page_size_limit)
-        params: dict[str, Any] = {
-            "page_size": resolved_page_size,
-            "discovery_scope": discovery_scope,
-        }
+        params: dict[str, Any] = {"page_size": resolved_page_size}
         if parent_id is not None:
             params["parent_id"] = parent_id
         if cursor:
             params["cursor"] = cursor
-        response = await self._bisheng.get_json(
-            f"/api/v1/knowledge/shougang-portal/qa/spaces/{space_id}/children",
-            params=params,
-        )
+        if discovery_scope == "legacy":
+            params.update(
+                {
+                    "file_status": [SUCCESS_STATUS],
+                    "enrich_files": False,
+                    "folder_count_mode": "shallow",
+                }
+            )
+            path = f"/api/v1/knowledge/space/{space_id}/children"
+        else:
+            params["discovery_scope"] = discovery_scope
+            path = f"/api/v1/knowledge/shougang-portal/qa/spaces/{space_id}/children"
+        response = await self._bisheng.get_json(path, params=params)
         # 上游权限/不存在等业务错误经 HTTP 200 + body status_code 返回;
         # 显式检测并抛 BishengBusinessError,交由路由层翻译为 403。
         data = self._extract_success_data(response)
@@ -1422,15 +1538,19 @@ class KnowledgeService:
         discovery_scope: PortalDiscoveryScope = "public_and_department",
     ) -> QaKnowledgeFolderStatsData:
         unique_folder_ids = list(dict.fromkeys(folder_ids))
-        response = await self._bisheng.post_json(
-            (
+        if discovery_scope == "legacy":
+            path = f"/api/v1/knowledge/space/{space_id}/folder-stats"
+            body = {
+                "folder_ids": unique_folder_ids,
+                "file_status": [SUCCESS_STATUS],
+            }
+        else:
+            path = (
                 f"/api/v1/knowledge/shougang-portal/qa/spaces/{space_id}"
                 f"/folder-stats?discovery_scope={discovery_scope}"
-            ),
-            json={
-                "folder_ids": unique_folder_ids,
-            },
-        )
+            )
+            body = {"folder_ids": unique_folder_ids}
+        response = await self._bisheng.post_json(path, json=body)
         data = self._extract_success_data(response)
         raw_stats = data.get("stats") if isinstance(data, dict) else []
         if not isinstance(raw_stats, list):
@@ -1566,6 +1686,69 @@ class KnowledgeService:
             next_cursor=str(next_cursor) if next_cursor else None,
         )
 
+    async def _advanced_search_shougang_portal_files(
+        self,
+        *,
+        tag: Optional[str],
+        space_ids: list[int],
+        space_level: Optional[str],
+        file_ext: Optional[str],
+        document_type: Optional[str],
+        file_subcategory_code: Optional[str],
+        business_domain_code: Optional[str],
+        all_keywords: Optional[str],
+        exact_phrase: Optional[str],
+        any_keywords: Optional[str],
+        exclude_keywords: Optional[str],
+        search_field: Literal["file_name", "summary", "tags"],
+        updated_from: Optional[str],
+        updated_to: Optional[str],
+        sort: str,
+        cursor: Optional[str],
+        limit: int,
+        discovery_scope: PortalDiscoveryScope,
+    ) -> CursorKnowledgeFileData:
+        request_body = {
+            "discovery_scope": discovery_scope,
+            "tag": tag,
+            "space_ids": space_ids,
+            "space_level": space_level,
+            "file_ext": file_ext,
+            "all_keywords": all_keywords,
+            "exact_phrase": exact_phrase,
+            "any_keywords": any_keywords,
+            "exclude_keywords": exclude_keywords,
+            "search_field": search_field,
+            "updated_from": updated_from,
+            "updated_to": updated_to,
+            "sort": sort,
+            "cursor": cursor,
+            "limit": min(max(int(limit or 20), 1), 100),
+        }
+        normalized_document_type = self._normalize_document_type_code(document_type)
+        if normalized_document_type:
+            request_body["document_type"] = normalized_document_type
+        normalized_file_subcategory_code = self._normalize_document_type_code(file_subcategory_code)
+        if normalized_file_subcategory_code:
+            request_body["file_subcategory_code"] = normalized_file_subcategory_code
+        normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
+        if normalized_business_domain_code:
+            request_body["business_domain_code"] = normalized_business_domain_code
+        response = await self._bisheng.post_json(
+            "/api/v1/knowledge/shougang-portal/files/advanced-search",
+            json=request_body,
+        )
+        data = self._extract_success_data(response)
+        raw_items = data.get("data") if isinstance(data, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
+        return CursorKnowledgeFileData(
+            data=self._map_shougang_portal_response_items(raw_items),
+            has_more=bool(data.get("has_more")) if isinstance(data, dict) else False,
+            next_cursor=str(next_cursor) if next_cursor else None,
+        )
+
     async def _browse_shougang_portal_files(
         self,
         tag: Optional[str],
@@ -1629,8 +1812,16 @@ class KnowledgeService:
             content_access = str(item.get("content_access") or "allowed")
             is_department_file = bool(item.get("is_department_file", False))
             content_allowed = (
-                content_access == "allowed"
+                content_access in {"allowed", "check_required"}
                 or not is_department_file
+            )
+            capabilities = (
+                {
+                    str(key): bool(value)
+                    for key, value in item["capabilities"].items()
+                }
+                if isinstance(item.get("capabilities"), dict)
+                else {}
             )
             items.append(
                 KnowledgeFileItem(
@@ -1668,6 +1859,46 @@ class KnowledgeService:
                     else None
                 ),
                 is_department_file=is_department_file,
+                entry_type=str(item.get("entry_type") or "normal"),
+                entry_status=str(item.get("entry_status") or "active"),
+                canonical_document_id=(
+                    int(item["canonical_document_id"])
+                    if item.get("canonical_document_id") is not None
+                    else None
+                ),
+                canonical_version_id=(
+                    int(item["canonical_version_id"])
+                    if item.get("canonical_version_id") is not None
+                    else None
+                ),
+                manager_file_id=(
+                    int(item["manager_file_id"])
+                    if item.get("manager_file_id") is not None
+                    and capabilities.get("can_edit_content", False)
+                    else None
+                ),
+                manager_space_id=(
+                    int(item["manager_space_id"])
+                    if item.get("manager_space_id") is not None
+                    else None
+                ),
+                desired_content_generation=int(
+                    item.get("desired_content_generation") or 0
+                ),
+                applied_content_generation=int(
+                    item.get("applied_content_generation") or 0
+                ),
+                desired_entry_generation=int(
+                    item.get("desired_entry_generation") or 0
+                ),
+                applied_entry_generation=int(
+                    item.get("applied_entry_generation") or 0
+                ),
+                projection_status=str(
+                    item.get("projection_status") or "ready"
+                ),
+                projection_ready=bool(item.get("projection_ready", True)),
+                capabilities=capabilities,
             )
             )
         return items
@@ -1693,12 +1924,12 @@ class KnowledgeService:
         if not mapped_items:
             return None
         item = mapped_items[0]
-        if item.id != file_id or item.space_id != space_id:
+        if item.space_id != space_id:
             return None
 
         source = item.source or (await self.get_space_name_map(extra_space_ids)).get(space_id, str(space_id))
         return KnowledgeFileDetail(
-            id=file_id,
+            id=item.id,
             space_id=space_id,
             title=item.title,
             summary=item.summary,
@@ -1715,8 +1946,109 @@ class KnowledgeService:
             content_access=item.content_access,
             access_source=item.access_source,
             is_department_file=item.is_department_file,
+            entry_type=item.entry_type,
+            entry_status=item.entry_status,
+            canonical_document_id=item.canonical_document_id,
+            canonical_version_id=item.canonical_version_id,
+            manager_file_id=item.manager_file_id,
+            manager_space_id=item.manager_space_id,
+            desired_content_generation=item.desired_content_generation,
+            applied_content_generation=item.applied_content_generation,
+            desired_entry_generation=item.desired_entry_generation,
+            applied_entry_generation=item.applied_entry_generation,
+            projection_status=item.projection_status,
+            projection_ready=item.projection_ready,
+            capabilities=item.capabilities,
             space=KnowledgeFileSpace(id=space_id, name=source),
         )
+
+    async def refresh_cached_home_sections(
+        self,
+        sections: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """重新解析缓存中的持久文件引用，避免旧入口或旧代际直接放行。"""
+
+        semaphore = asyncio.Semaphore(8)
+        try:
+            allowed_space_ids = await self._allowed_detail_space_ids()
+        except Exception:
+            logger.exception("刷新门户首页缓存的可见知识库范围失败")
+            allowed_space_ids = set()
+        allowed_space_id_list = sorted(allowed_space_ids)
+
+        async def refresh_item(
+            cached_item: Any,
+        ) -> dict[str, Any] | None:
+            if not isinstance(cached_item, dict):
+                return None
+            try:
+                space_id = int(cached_item.get("space_id") or 0)
+                file_id = int(cached_item.get("id") or 0)
+            except (TypeError, ValueError):
+                return None
+            if space_id <= 0 or file_id <= 0:
+                return None
+            if space_id not in allowed_space_ids:
+                return None
+
+            try:
+                async with semaphore:
+                    detail = await self.get_file_detail(
+                        space_id=space_id,
+                        file_id=file_id,
+                        extra_space_ids=allowed_space_id_list,
+                    )
+            except Exception:
+                logger.exception(
+                    "刷新门户首页缓存文件引用失败",
+                    extra={
+                        "portal_space_id": space_id,
+                        "portal_file_id": file_id,
+                    },
+                )
+                return None
+            if detail is None:
+                return None
+
+            cached_document_id = cached_item.get(
+                "canonical_document_id"
+            )
+            if cached_document_id is not None:
+                try:
+                    cached_document_id = int(cached_document_id)
+                except (TypeError, ValueError):
+                    return None
+                if (
+                    detail.canonical_document_id is None
+                    or detail.canonical_document_id
+                    != cached_document_id
+                ):
+                    return None
+            return detail.model_dump(mode="json")
+
+        refreshed_sections: list[dict[str, Any]] = []
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            raw_items = section.get("items")
+            if not isinstance(raw_items, list):
+                continue
+            refreshed_items = await asyncio.gather(
+                *(refresh_item(item) for item in raw_items)
+            )
+            refreshed_section: dict[str, Any] = {
+                "tag": str(section.get("tag") or ""),
+                "items": [
+                    item for item in refreshed_items if item is not None
+                ],
+            }
+            recommendation_mode = section.get("recommendation_mode")
+            if recommendation_mode:
+                refreshed_section["recommendation_mode"] = (
+                    recommendation_mode
+                )
+            refreshed_sections.append(refreshed_section)
+        return refreshed_sections
 
     async def open_portal_pdf_download_stream(
         self,

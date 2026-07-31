@@ -130,7 +130,7 @@ class CacheSpy(PortalHomeCacheService):
         self.set_calls.append((key, value, ttl_seconds))
 
 
-async def _visible_spaces(_self):
+async def _visible_spaces(_self, **_kwargs):
     return KnowledgeSpaceListData(
         data=[KnowledgeSpaceItem(id=12, name="公共知识库", space_level="public")],
         total=1,
@@ -223,13 +223,19 @@ def test_logged_in_home_rollout_uses_personalized_sse_and_bypasses_full_home_cac
         cached={"sections": [{"tag": "不应读取", "items": [{"id": 999}]}]}
     )
     calls: list[dict] = []
+    recommendation_logs: list[dict] = []
 
     async def iter_sections(self, **kwargs):
         calls.append(kwargs)
         yield "最新精选", [_file()], kwargs["latest_recommendation"]
 
+    def capture_recommendation_log(message, *args, **kwargs):
+        if message == "portal home recommendation section":
+            recommendation_logs.append(kwargs["extra"])
+
     monkeypatch.setattr(KnowledgeService, "list_visible_spaces", _visible_spaces)
     monkeypatch.setattr(KnowledgeService, "iter_home_content_with_modes", iter_sections)
+    monkeypatch.setattr("app.api.routes.knowledge.logger.info", capture_recommendation_log)
     auth = SessionAuthService()
 
     with TestClient(app) as client:
@@ -248,6 +254,20 @@ def test_logged_in_home_rollout_uses_personalized_sse_and_bypasses_full_home_cac
     assert cache.set_calls == []
     assert [client.token for client in auth.clients] == ["current-user-token"]
     assert auth.clients[0].closed == 1
+    assert recommendation_logs == [
+        {
+            "portal_recommendation_actual_mode": PERSONALIZED_RECOMMENDATION,
+            "portal_recommendation_display_count": 1,
+            "portal_recommendation_display_limit": 6,
+            "portal_recommendation_empty": False,
+            "portal_recommendation_fallback_used": False,
+            "portal_recommendation_requested_mode": PERSONALIZED_RECOMMENDATION,
+            "portal_recommendation_top_n": 17,
+            "portal_recommendation_upstream_count": 1,
+            "tenant_id": 1,
+            "user_id": 1001,
+        }
+    ]
 
 
 def test_shadow_mode_streams_legacy_result_and_computes_personalized_in_background(
@@ -526,7 +546,7 @@ def test_personalized_browse_downgrades_when_rollout_is_disabled(
     assert response.status_code == 200
     assert browse_calls[0]["recommendation"] == LATEST_SELECTED_RECOMMENDATION
     assert browse_calls[0]["cursor"] == "legacy-cursor"
-    assert browse_calls[0]["limit"] == 10
+    assert browse_calls[0]["limit"] == 7
 
 
 def test_personalized_more_list_rejects_anonymous_users(tmp_path: Path):

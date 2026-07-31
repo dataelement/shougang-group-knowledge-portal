@@ -32,6 +32,14 @@
   font-weight: 600;
 }
 
+.navExternalItem {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+}
+
 .navItemDisabled {
   color: var(--neutral-400);
   cursor: not-allowed;

@@ -39,6 +39,8 @@ import type {
   ExpertUpsertPayload,
   UserListItem,
 } from '../api/expertQa';
+import { fetchDictionaries } from '../api/dictionaries';
+import type { DictionaryItem } from '../api/dictionaries';
 import s from './ExpertManagePage.module.css';
 import { getAdminAccessState } from '../utils/adminAccess';
 import { getNextExpertSort } from '../utils/expertManagement';
@@ -81,6 +83,15 @@ function getUserDepartment(user: UserListItem): string {
 
 const USER_PAGE_SIZE = 10;
 const EXPERT_PAGE_SIZE = 10;
+const DICT_PAGE_SIZE = 10;
+
+/** 专家表单中字典下拉字段与字典类型的映射。 */
+const DICT_TYPE_MAP = {
+  job_family: 'expert_job_family',
+  job_category: 'expert_job_category',
+  position: 'expert_position',
+  major: 'expert_major',
+} as const;
 
 interface ExpertFilters {
   departmentId: string;
@@ -240,7 +251,180 @@ const EMPTY_FORM: ExpertUpsertPayload = {
   position: '',
   job_family: '',
   job_category: '',
+  wechat_user_id: '',
 };
+
+// ═══════════════════════════════════════════════════════════════
+// 字典下拉选择器（用于职位族 / 职位类 / 职务 / 岗位）
+// ═══════════════════════════════════════════════════════════════
+
+interface DictSelectProps {
+  type: string;
+  value: string;
+  placeholder?: string;
+  onChange: (dictKey: string) => void;
+}
+
+function DictSelect({ type, value, placeholder = '请选择', onChange }: DictSelectProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [items, setItems] = useState<DictionaryItem[]>([]);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [showBottomHint, setShowBottomHint] = useState(true);
+  const loadingRef = useRef(false);
+  const requestSeqRef = useRef(0);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const selectedItem = items.find((item) => item.dict_key === value);
+  const inputValue = selectedItem ? selectedItem.dict_value : search;
+  const hasMore = total === 0 || items.length < total;
+
+  const loadItems = useCallback(async (pageNum: number, keyword: string) => {
+    if (loadingRef.current && pageNum > 1) return;
+    loadingRef.current = true;
+    const requestSeq = ++requestSeqRef.current;
+    setLoading(true);
+    try {
+      const res = await fetchDictionaries({
+        type,
+        keyword: keyword.trim() || undefined,
+        page: pageNum,
+        page_size: DICT_PAGE_SIZE,
+      });
+      if (requestSeq !== requestSeqRef.current) return;
+      setItems((prev) => {
+        const next = pageNum === 1 ? [] : [...prev];
+        res.items.forEach((item) => {
+          if (!next.some((existing) => existing.id === item.id)) {
+            next.push(item);
+          }
+        });
+        return next;
+      });
+      setPage(pageNum);
+      setTotal(res.total);
+    } catch {
+      if (requestSeq !== requestSeqRef.current) return;
+    } finally {
+      if (requestSeq === requestSeqRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    }
+  }, [type]);
+
+  // 首次展开或搜索关键字变化时加载第一页
+  useEffect(() => {
+    if (!open) return;
+    const tid = window.setTimeout(() => {
+      setItems([]);
+      setPage(0);
+      setTotal(0);
+      loadItems(1, search);
+    }, 300);
+    return () => window.clearTimeout(tid);
+  }, [open, search, loadItems]);
+
+  // 编辑回显：当前 value 对应的项不在已加载列表中时，尝试按 key 搜索一次
+  useEffect(() => {
+    if (!value || selectedItem) return;
+    setSearch(value);
+    const tid = window.setTimeout(() => {
+      loadItems(1, value);
+    }, 0);
+    return () => window.clearTimeout(tid);
+  }, [value, selectedItem, loadItems]);
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    if (!open) return;
+    function handleMouseDown(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [open]);
+
+  // “已经到底了”提示展示 4 秒后自动消失
+  useEffect(() => {
+    if (loading || items.length === 0 || hasMore) {
+      setShowBottomHint(true);
+      return;
+    }
+    const tid = window.setTimeout(() => {
+      setShowBottomHint(false);
+    }, 1000);
+    return () => window.clearTimeout(tid);
+  }, [loading, items.length, hasMore]);
+
+  function handleInputChange(nextSearch: string) {
+    setSearch(nextSearch);
+    setOpen(true);
+    if (value && nextSearch.trim() !== (selectedItem?.dict_value ?? '').trim()) {
+      onChange('');
+    }
+  }
+
+  function handleSelect(item: DictionaryItem) {
+    onChange(item.dict_key);
+    setSearch(item.dict_value);
+    setOpen(false);
+  }
+
+  function handleScroll(event: UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget;
+    const reachedBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 12;
+    if (reachedBottom && hasMore && !loading) {
+      loadItems(page + 1, search);
+    }
+  }
+
+  return (
+    <div className={s.userPicker} ref={wrapperRef}>
+      <Search size={14} className={s.userPickerIco} />
+      <input
+        className={s.userPickerInput}
+        value={inputValue}
+        onChange={(event) => handleInputChange(event.target.value)}
+        onFocus={() => setOpen(true)}
+        placeholder={loading && items.length === 0 ? '加载中...' : placeholder}
+      />
+      {open ? (
+        <div className={s.userPickerMenu}>
+          <div className={s.userOptionList} onScroll={handleScroll}>
+            {items.map((item) => {
+              const active = item.dict_key === value;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`${s.userOption} ${active ? s.userOptionActive : ''}`}
+                  onClick={() => handleSelect(item)}
+                >
+                  <span className={s.userOptionName}>{item.dict_value}</span>
+                  <span className={s.userOptionMeta}>KEY: {item.dict_key}</span>
+                </button>
+              );
+            })}
+            {loading ? <div className={s.userPickerState}>加载中...</div> : null}
+            {!loading && items.length === 0 ? (
+              <div className={s.userPickerState}>
+                {search.trim() ? '未找到匹配数据' : '暂无数据'}
+              </div>
+            ) : null}
+            {!loading && items.length > 0 && !hasMore && showBottomHint ? (
+              <div className={s.userPickerState}>已经到底了</div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 新增 / 编辑弹窗
@@ -281,7 +465,8 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
       normalize(form.major) !== normalize(initial.major) ||
       normalize(form.position) !== normalize(initial.position) ||
       normalize(form.job_family) !== normalize(initial.job_family) ||
-      normalize(form.job_category) !== normalize(initial.job_category)
+      normalize(form.job_category) !== normalize(initial.job_category) ||
+      normalize(form.wechat_user_id) !== normalize(initial.wechat_user_id)
     );
   }, [form, initial]);
 
@@ -420,6 +605,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
           position: form.position?.trim(),
           job_family: form.job_family?.trim(),
           job_category: form.job_category?.trim(),
+          wechat_user_id: form.wechat_user_id?.trim() || undefined,
         });
       } else {
         result = await createExpert({
@@ -431,6 +617,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
           position: form.position?.trim(),
           job_family: form.job_family?.trim(),
           job_category: form.job_category?.trim(),
+          wechat_user_id: form.wechat_user_id?.trim() || undefined,
         });
       }
       onSuccess(result);
@@ -556,42 +743,53 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
           <div className={s.row2}>
             <div className={s.field}>
               <label className={s.fieldLabel}>所属职位族</label>
-              <input
-                className={s.input}
+              <DictSelect
+                type={DICT_TYPE_MAP.job_family}
                 value={form.job_family ?? ''}
-                onChange={(e) => set('job_family', e.target.value)}
-                placeholder="请输入所属职位族"
+                placeholder="请选择所属职位族"
+                onChange={(key) => set('job_family', key)}
               />
             </div>
             <div className={s.field}>
               <label className={s.fieldLabel}>所属职位类</label>
-              <input
-                className={s.input}
+              <DictSelect
+                type={DICT_TYPE_MAP.job_category}
                 value={form.job_category ?? ''}
-                onChange={(e) => set('job_category', e.target.value)}
-                placeholder="请输入所属职位类"
+                placeholder="请选择所属职位类"
+                onChange={(key) => set('job_category', key)}
               />
             </div>
           </div>
           <div className={s.row2}>
             <div className={s.field}>
               <label className={s.fieldLabel}>所属职务</label>
-              <input
-                className={s.input}
+              <DictSelect
+                type={DICT_TYPE_MAP.position}
                 value={form.position ?? ''}
-                onChange={(e) => set('position', e.target.value)}
-                placeholder="请输入所属职务"
+                placeholder="请选择所属职务"
+                onChange={(key) => set('position', key)}
               />
             </div>
             <div className={s.field}>
               <label className={s.fieldLabel}>所属岗位</label>
-              <input
-                className={s.input}
+              <DictSelect
+                type={DICT_TYPE_MAP.major}
                 value={form.major ?? ''}
-                onChange={(e) => set('major', e.target.value)}
-                placeholder="请输入所属岗位"
+                placeholder="请选择所属岗位"
+                onChange={(key) => set('major', key)}
               />
             </div>
+          </div>
+
+          <div className={s.field}>
+            <label className={s.fieldLabel}>用户企业微信 ID</label>
+            <p className={s.fieldHint}>用于接收企业微信消息推送；可选</p>
+            <input
+              className={s.input}
+              value={form.wechat_user_id ?? ''}
+              onChange={(e) => set('wechat_user_id', e.target.value)}
+              placeholder="请输入企业微信用户 ID"
+            />
           </div>
         </div>
 
@@ -1050,6 +1248,12 @@ export default function ExpertManagePage() {
       setLoading(true);
       setError(null);
       try {
+        const filterLabels = {
+          jobFamily: filterOptions.job_families.find((item) => item.dict_key === filters.jobFamily)?.dict_value,
+          jobCategory: filterOptions.job_categories.find((item) => item.dict_key === filters.jobCategory)?.dict_value,
+          position: filterOptions.positions.find((item) => item.dict_key === filters.position)?.dict_value,
+          major: filterOptions.majors.find((item) => item.dict_key === filters.major)?.dict_value,
+        };
         const res = await fetchExpertProfiles(
           page,
           EXPERT_PAGE_SIZE,
@@ -1059,6 +1263,7 @@ export default function ExpertManagePage() {
             ...filters,
             sortBy: sort.field,
             sortOrder: sort.order,
+            filterLabels,
           },
         );
         setExperts(res.experts);
@@ -1073,7 +1278,7 @@ export default function ExpertManagePage() {
 
     void loadExperts();
     return () => controller.abort();
-  }, [filters, page, refreshKey, search, sort.field, sort.order]);
+  }, [filters, page, refreshKey, search, sort.field, sort.order, filterOptions]);
 
   // ─── 分页计算 ────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(total / EXPERT_PAGE_SIZE));
@@ -1231,8 +1436,8 @@ export default function ExpertManagePage() {
                 disabled={filterOptionsLoading}
               >
                 <option value="">全部职位族</option>
-                {filterOptions.job_families.map((option) => (
-                  <option key={option} value={option}>{option}</option>
+                {filterOptions.job_families.map((item) => (
+                  <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
                 ))}
               </select>
             </label>
@@ -1245,8 +1450,8 @@ export default function ExpertManagePage() {
                 disabled={filterOptionsLoading}
               >
                 <option value="">全部职位类</option>
-                {filterOptions.job_categories.map((option) => (
-                  <option key={option} value={option}>{option}</option>
+                {filterOptions.job_categories.map((item) => (
+                  <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
                 ))}
               </select>
             </label>
@@ -1259,8 +1464,8 @@ export default function ExpertManagePage() {
                 disabled={filterOptionsLoading}
               >
                 <option value="">全部职务</option>
-                {filterOptions.positions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
+                {filterOptions.positions.map((item) => (
+                  <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
                 ))}
               </select>
             </label>
@@ -1273,8 +1478,8 @@ export default function ExpertManagePage() {
                 disabled={filterOptionsLoading}
               >
                 <option value="">全部岗位</option>
-                {filterOptions.majors.map((option) => (
-                  <option key={option} value={option}>{option}</option>
+                {filterOptions.majors.map((item) => (
+                  <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
                 ))}
               </select>
             </label>
@@ -1302,7 +1507,7 @@ export default function ExpertManagePage() {
                 <col style={{ width: columnWidths.adoptionCount }} />
                 <col style={{ width: columnWidths.voteCount }} />
                 <col style={{ width: columnWidths.createdAt }} />
-                <col style={{ width: columnWidths.actions }} />
+                {isAdmin && <col style={{ width: columnWidths.actions }} />}
               </colgroup>
               <thead>
                 <tr>
@@ -1387,24 +1592,26 @@ export default function ExpertManagePage() {
                     onSort={handleSort}
                     {...sortableResizeProps}
                   />
-                  <ResizableHeader
-                    label="操作"
-                    columnKey="actions"
-                    width={columnWidths.actions}
-                    {...resizeProps}
-                  />
+                  {isAdmin && (
+                    <ResizableHeader
+                      label="操作"
+                      columnKey="actions"
+                      width={columnWidths.actions}
+                      {...resizeProps}
+                    />
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={11}>
+                    <td colSpan={isAdmin ? 11 : 10}>
                       <div className={s.stateRow}>专家数据加载中…</div>
                     </td>
                   </tr>
                 ) : experts.length === 0 ? (
                   <tr>
-                    <td colSpan={11}>
+                    <td colSpan={isAdmin ? 11 : 10}>
                       <div className={s.stateRow}>
                         {hasQueryConditions ? '没有符合条件的专家' : '暂无专家数据'}
                       </div>
@@ -1468,33 +1675,30 @@ export default function ExpertManagePage() {
                       </td>
 
                       {/* 操作 */}
-                      <td className={s.actionCell}>
-                        <div className={s.actionBtns}>
-                          {isAdmin && (
-                            <>
-                              <button
-                                type="button"
-                                className={`${s.actionIconBtn} ${s.btnEdit}`}
-                                onClick={() => setModal({ type: 'edit', expert })}
-                                aria-label={`编辑专家 ${expert.expert_name}`}
-                                title="编辑"
-                              >
-                                <Pencil size={16} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                className={`${s.actionIconBtn} ${s.btnDelete}`}
-                                onClick={() => setModal({ type: 'delete', expert })}
-                                aria-label={`删除专家 ${expert.expert_name}`}
-                                title="删除"
-                              >
-                                <Trash2 size={16} aria-hidden />
-                              </button>
-                            </>
-                          )}
-
-                        </div>
-                      </td>
+                      {isAdmin && (
+                        <td className={s.actionCell}>
+                          <div className={s.actionBtns}>
+                            <button
+                              type="button"
+                              className={`${s.actionIconBtn} ${s.btnEdit}`}
+                              onClick={() => setModal({ type: 'edit', expert })}
+                              aria-label={`编辑专家 ${expert.expert_name}`}
+                              title="编辑"
+                            >
+                              <Pencil size={16} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${s.actionIconBtn} ${s.btnDelete}`}
+                              onClick={() => setModal({ type: 'delete', expert })}
+                              aria-label={`删除专家 ${expert.expert_name}`}
+                              title="删除"
+                            >
+                              <Trash2 size={16} aria-hidden />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}
@@ -1572,6 +1776,7 @@ export default function ExpertManagePage() {
           position: modal.expert.position ?? '',
           job_family: modal.expert.job_family ?? '',
           job_category: modal.expert.job_category ?? '',
+          wechat_user_id: modal.expert.wechat_user_id ?? '',
         }}
           onClose={() => setModal({ type: 'none' })}
           onSuccess={handleEditSuccess}

@@ -45,6 +45,9 @@ class RemotePortalAdminConfigStore:
         self._memory_documents: dict[str, dict[str, Any]] = {}
         self._memory_lock = Lock()
         self._last_version: int | None = None
+        self._cached_aggregate: PortalAdminAggregateConfig | None = None
+        self._last_saved_aggregate: PortalAdminAggregateConfig | None = None
+        self._shared_cache_enabled = False
 
     @property
     def runtime_service(self) -> BishengRuntimeService:
@@ -54,13 +57,44 @@ class RemotePortalAdminConfigStore:
     def version(self) -> int | None:
         return self._last_version
 
+    @property
+    def last_saved_aggregate(self) -> PortalAdminAggregateConfig | None:
+        return (
+            self._last_saved_aggregate.model_copy(deep=True)
+            if self._last_saved_aggregate is not None
+            else None
+        )
+
+    def enable_shared_cache(self) -> None:
+        self._shared_cache_enabled = True
+
+    def set_cached_aggregate(self, aggregate: PortalAdminAggregateConfig) -> None:
+        validated = PortalAdminAggregateConfig.model_validate(aggregate)
+        if (
+            self._cached_aggregate is not None
+            and validated.version < self._cached_aggregate.version
+        ):
+            return
+        self._cached_aggregate = validated.model_copy(deep=True)
+        self._last_version = validated.version
+
+    def get_cached_aggregate(self) -> PortalAdminAggregateConfig | None:
+        return (
+            self._cached_aggregate.model_copy(deep=True)
+            if self._cached_aggregate is not None
+            else None
+        )
+
+    def load_remote_aggregate(self) -> PortalAdminAggregateConfig | None:
+        return self._load_remote_aggregate()
+
     def get_document(self, table_name: str, legacy_key: str | None = None) -> dict[str, Any] | None:
         if table_name == REST_AUTH_RUNTIME_TABLE:
             return self._get_rest_auth_runtime_document()
         if table_name not in self._REMOTE_TABLES:
             return self._get_memory_document(table_name)
 
-        aggregate = self._load_remote_aggregate()
+        aggregate = self._aggregate_for_read()
         if aggregate is not None:
             return self._section_from_aggregate(aggregate, table_name)
         return None
@@ -84,13 +118,14 @@ class RemotePortalAdminConfigStore:
         # Keep compatibility with lightweight test/local subclasses that only
         # persist in ``_save_remote_aggregate`` and historically returned None.
         saved_aggregate = self._save_remote_aggregate(next_aggregate) or next_aggregate
+        self._record_saved_aggregate(saved_aggregate)
         return ConfigStoreWriteResult(
             document=self._section_from_aggregate(saved_aggregate, table_name),
             version=saved_aggregate.version,
         )
 
     def _get_rest_auth_runtime_document(self) -> dict[str, Any] | None:
-        aggregate = self._load_remote_aggregate()
+        aggregate = self._aggregate_for_read()
         if aggregate is None:
             return None
         return rest_auth_document_from_unified_auth(
@@ -107,6 +142,7 @@ class RemotePortalAdminConfigStore:
         unified_auth = UnifiedAuthRuntimeConfig.model_validate(unified_dump)
         next_aggregate = aggregate.model_copy(update={"unified_auth": unified_auth})
         saved_aggregate = self._save_remote_aggregate(next_aggregate) or next_aggregate
+        self._record_saved_aggregate(saved_aggregate)
         saved_document = rest_auth_document_from_unified_auth(
             saved_aggregate.unified_auth.model_dump(mode="json")
         )
@@ -151,6 +187,24 @@ class RemotePortalAdminConfigStore:
         )
         self._last_version = aggregate.version
         return aggregate
+
+    def _aggregate_for_read(self) -> PortalAdminAggregateConfig | None:
+        if self._shared_cache_enabled and self._cached_aggregate is not None:
+            return self._cached_aggregate.model_copy(deep=True)
+        aggregate = self._load_remote_aggregate()
+        if self._shared_cache_enabled and aggregate is not None:
+            self.set_cached_aggregate(aggregate)
+        return aggregate
+
+    def _record_saved_aggregate(
+        self,
+        aggregate: PortalAdminAggregateConfig,
+    ) -> None:
+        saved = PortalAdminAggregateConfig.model_validate(aggregate)
+        self._last_saved_aggregate = saved.model_copy(deep=True)
+        self._last_version = saved.version
+        if not self._shared_cache_enabled:
+            self._cached_aggregate = saved.model_copy(deep=True)
 
     def _normalize_remote_aggregate_data(self, data: Any) -> Any:
         if not isinstance(data, dict):
@@ -200,6 +254,27 @@ class RemotePortalAdminConfigStore:
         return None
 
     @staticmethod
+    def _merge_unified_auth_secrets(
+        saved: PortalAdminAggregateConfig,
+        intended: PortalAdminAggregateConfig,
+    ) -> PortalAdminAggregateConfig:
+        """BiSheng PUT 响应可能脱敏密钥字段，写缓存前补回本次提交的值。"""
+        saved_auth = saved.unified_auth.model_dump(mode="json")
+        intended_auth = intended.unified_auth.model_dump(mode="json")
+        changed = False
+        for field in ("login_sync_hmac_secret", "client_secret", "state_secret"):
+            saved_value = str(saved_auth.get(field) or "").strip()
+            intended_value = str(intended_auth.get(field) or "").strip()
+            if not saved_value and intended_value:
+                saved_auth[field] = intended_value
+                changed = True
+        if not changed:
+            return saved
+        next_data = saved.model_dump(mode="json")
+        next_data["unified_auth"] = saved_auth
+        return PortalAdminAggregateConfig.model_validate(next_data)
+
+    @staticmethod
     def _fill_empty_document_type_children(document_types: Any) -> Any:
         if not isinstance(document_types, list):
             return document_types
@@ -240,7 +315,8 @@ class RemotePortalAdminConfigStore:
         saved = PortalAdminAggregateConfig.model_validate(
             self._normalize_remote_aggregate_data(data)
         )
-        self._last_version = saved.version
+        saved = self._merge_unified_auth_secrets(saved, aggregate)
+        self._record_saved_aggregate(saved)
         return saved
 
     def _request(self, method: str, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -248,7 +324,11 @@ class RemotePortalAdminConfigStore:
         base_url = str(runtime.base_url).rstrip("/")
         headers: dict[str, str] = {}
         cookies: dict[str, str] = {}
-        if runtime.api_token:
+        is_internal_config_read = (
+            method.upper() == "GET"
+            and path == REMOTE_CONFIG_INTERNAL_PATH
+        )
+        if runtime.api_token and not is_internal_config_read:
             headers["Authorization"] = f"Bearer {runtime.api_token}"
             cookies["access_token_cookie"] = runtime.api_token
         with httpx.Client(

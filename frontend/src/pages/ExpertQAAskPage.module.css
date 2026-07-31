@@ -1,4 +1,5 @@
 .container {
+  width: 100%;
   max-width: var(--max-w);
   margin: 0 auto;
   padding: 24px;
@@ -27,6 +28,7 @@
 }
 
 .layout {
+  width: 100%;
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 20px;
@@ -44,6 +46,8 @@
 
 /* === Form card === */
 .formCard {
+  width: 100%;
+  min-width: 0;
   background: #fff;
   border: 1px solid var(--neutral-200);
   border-radius: 12px;
@@ -88,6 +92,7 @@
 
 .field {
   margin-bottom: 22px;
+  position: relative;
 }
 
 .fieldLabel {
@@ -132,6 +137,51 @@
   outline: none;
   border-color: var(--primary-400);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.similarDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.15);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.similarDropdownEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  color: var(--neutral-500);
+  font-size: 0.85rem;
+}
+
+.similarDropdownItem {
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  color: var(--neutral-700);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  border-bottom: 1px solid var(--neutral-100);
+  line-height: 1.5;
+}
+
+.similarDropdownItem:last-of-type {
+  border-bottom: none;
+}
+
+.similarDropdownItem:hover,
+.similarDropdownItem:focus {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  outline: none;
 }
 
 .textarea {
@@ -603,6 +653,7 @@
 
 /* === Right panel === */
 .right {
+  width: 320px;
   position: sticky;
   top: calc(var(--header-h) + 16px);
 }
@@ -633,8 +684,8 @@
 }
 
 .tipsCard {
-  background: linear-gradient(180deg, #fffbeb, #fff);
-  border-color: #fde68a;
+  background: #fff;
+  border-color: var(--neutral-200);
 }
 
 .tipsIcon {
@@ -655,6 +706,65 @@
 
 .tipList li strong {
   color: var(--neutral-800);
+}
+
+.tipsHeader {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--neutral-900);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tipsIntro {
+  font-size: 0.85rem;
+  color: var(--neutral-600);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.tipsSectionTitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--neutral-900);
+  margin-top: 14px;
+  margin-bottom: 10px;
+}
+
+.tipsCheckList,
+.tipsAvoidList {
+  font-size: 0.85rem;
+  color: var(--neutral-600);
+  line-height: 1.7;
+  list-style: none;
+  padding-left: 0;
+}
+
+.tipsCheckList li,
+.tipsAvoidList li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tipsCheckList li strong,
+.tipsAvoidList li strong {
+  color: var(--neutral-800);
+}
+
+.tipsCheckIcon {
+  color: var(--green-500);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.tipsAvoidIcon {
+  color: var(--red-500);
+  flex-shrink: 0;
+  margin-top: 3px;
 }
 
 .recommendNote {

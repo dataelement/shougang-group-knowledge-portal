@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import type { ClipboardEvent, KeyboardEvent } from 'react';
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Bold,
@@ -15,7 +15,6 @@ import {
   Paperclip,
   Plus,
   Quote,
-  Search,
   Send,
   X,
 } from 'lucide-react';
@@ -31,12 +30,12 @@ import {
   fetchExpertQuestionDetail,
   updateExpertQuestion,
   uploadQaImage,
+  uploadQaAttachment,
   type ExpertProfileResponse,
   type SimilarQuestionItem,
 } from '../api/expertQa';
 import s from './ExpertQAAskPage.module.css';
 import type { DomainConfig } from '../api/adminConfig';
-import { ASK_DRAFT } from '../data/expertQaMock';
 import askBanner from '../assets/ask-banner@2x.png';
 import { resolveQaImageUrl } from '../utils/qaImageUrl';
 import {
@@ -65,10 +64,17 @@ const TOOLBAR_BUTTONS = [
 ] as const;
 
 const MAX_IMAGE_COUNT = 3;
+const MAX_FILES_COUNT = 3;
 const ATTACHMENT_LIST_SEPARATOR = ';';
 const LINK_LIST_SPLIT_PATTERN = /[;；,，\n\r]+/;
 
 type KnowledgeAttachment = CommonUploadedFile;
+
+type FileAttachment = {
+  id: string;
+  title: string;
+  url: string;
+};
 
 function splitStoredList(value?: string | null): string[] {
   if (!value?.trim()) return [];
@@ -76,6 +82,10 @@ function splitStoredList(value?: string | null): string[] {
     .split(LINK_LIST_SPLIT_PATTERN)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function isUploadedAttachmentUrl(value: string): boolean {
+  return /^https?:\/\//.test(value) || value.startsWith('/');
 }
 
 function parseInvitedExperts(
@@ -156,17 +166,9 @@ function parseQuestionAttachments(
 function serializeKnowledgeAttachments(
   items: KnowledgeAttachment[],
 ): string | undefined {
-  const validItems = items.filter(
-    (item) => item.title.trim(),
-  );
-
+  const validItems = items.filter((item) => item.title.trim());
   return validItems.length
-    ? validItems
-        .map(
-          (item) =>
-            `${item.title.trim()}`,
-        )
-        .join(ATTACHMENT_LIST_SEPARATOR)
+    ? validItems.map((item) => item.title.trim()).join(ATTACHMENT_LIST_SEPARATOR)
     : undefined;
 }
 
@@ -196,6 +198,7 @@ export default function ExpertQAAskPage() {
   const isEditMode = Boolean(editQuestionId);
 
   const [title, setTitle] = useState('');
+  const [titleFocused, setTitleFocused] = useState(false);
   const [body, setBody] = useState('');
   const [selectedDomain, setSelectedDomain] = useState<string>('');
   const [domainList, setDomainList] = useState<DomainConfig[]>([]);
@@ -213,8 +216,11 @@ export default function ExpertQAAskPage() {
   // 图片/附件状态
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
-  const [attachments, setAttachments] = useState<KnowledgeAttachment[]>([]);
+  const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [relatedDocs, setRelatedDocs] = useState<KnowledgeAttachment[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const richTextEditorRef = useRef<HTMLDivElement>(null);
   const savedSelectionRef = useRef<Range | null>(null);
 
@@ -256,7 +262,20 @@ export default function ExpertQAAskPage() {
         if (question.business_domain) setSelectedDomain(question.business_domain);
         setImageUrls(splitStoredList(question.image_url));
         setInvited(parseInvitedExperts(question.invited_experts, question.experts_names));
-        setAttachments(parseQuestionAttachments(question.attachments, question.related_docs));
+
+        const fileUrlTokens = splitStoredList(question.file_url);
+        const fileNameTokens = splitStoredList(question.file_name);
+        const relatedNameTokens = splitStoredList(question.attachments).filter(
+          (t) => !isUploadedAttachmentUrl(t),
+        );
+        setFileAttachments(
+          fileUrlTokens.map((url, idx) => ({
+            id: `file-${idx}-${url}`,
+            title: fileNameTokens[idx]?.trim() || url.split('/').pop() || url,
+            url,
+          })),
+        );
+        setRelatedDocs(parseQuestionAttachments(relatedNameTokens.join(';'), question.related_docs));
       })
       .catch((err) => {
         if (!active) return;
@@ -316,21 +335,66 @@ export default function ExpertQAAskPage() {
     setImageUrls((current) => current.filter((item) => item !== url));
   }
 
+  async function handleAttachmentUpload(files: File[]) {
+    if (!files.length) return;
+
+    const currentCount = fileAttachments.length;
+    const availableSlots = MAX_FILES_COUNT - currentCount;
+    if (availableSlots <= 0) {
+      setUploadError(`附件最多上传 ${MAX_FILES_COUNT} 个`);
+      return;
+    }
+
+    const selectedFiles = files.slice(0, availableSlots);
+    if (selectedFiles.length < files.length) {
+      setUploadError(
+        `附件最多上传 ${MAX_FILES_COUNT} 个，已自动保留前 ${availableSlots} 个`,
+      );
+    } else {
+      setUploadError(null);
+    }
+
+    setUploadingAttachments(true);
+    try {
+      const uploaded = await Promise.all(
+        selectedFiles.map((file) => uploadQaAttachment(file)),
+      );
+      const items = uploaded
+        .filter((item) => item.file_url)
+        .map((item, idx) => ({
+          id: `file-${Date.now()}-${idx}`,
+          title: item.file_name,
+          url: item.file_url,
+        }));
+      if (!items.length) throw new Error('上传响应缺少文件路径');
+      setFileAttachments((current) =>
+        [...current, ...items].slice(0, MAX_FILES_COUNT),
+      );
+    } catch (err) {
+      console.error('附件上传错误:', err);
+      setUploadError('附件上传失败，请重试');
+    } finally {
+      setUploadingAttachments(false);
+    }
+  }
+
   function openUploadModal() {
     setUploadModalOpen(true);
   }
 
-  // 修复：关闭知识库弹窗时重置过滤条件，保持下次打开状态干净
-  function removeAttachment(target: KnowledgeAttachment) {
+  function removeRelatedDoc(target: KnowledgeAttachment) {
     const targetKey = `${target.id}-${target.url}`;
-    setAttachments((current) =>
+    setRelatedDocs((current) =>
       current.filter((item) => `${item.id}-${item.url}` !== targetKey),
     );
   }
 
-  function handleSelectAttachments(files: CommonUploadedFile[]) {
-   
-    setAttachments(files);
+  function removeFileAttachment(target: FileAttachment) {
+    setFileAttachments((current) => current.filter((item) => item.id !== target.id));
+  }
+
+  function handleSelectRelatedDocs(files: CommonUploadedFile[]) {
+    setRelatedDocs(files);
     setUploadError(null);
   }
 
@@ -395,6 +459,35 @@ export default function ExpertQAAskPage() {
     selection.addRange(range);
   }
 
+  function toggleQuote() {
+    const editor = richTextEditorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    const ancestor = range.commonAncestorContainer;
+    const element = ancestor.nodeType === Node.ELEMENT_NODE
+      ? (ancestor as HTMLElement)
+      : ancestor.parentElement;
+    const existingQuote = element?.closest('blockquote');
+
+    if (existingQuote && editor.contains(existingQuote)) {
+      const paragraph = document.createElement('p');
+      while (existingQuote.firstChild) {
+        paragraph.appendChild(existingQuote.firstChild);
+      }
+      existingQuote.replaceWith(paragraph);
+      const newRange = document.createRange();
+      newRange.selectNodeContents(paragraph);
+      newRange.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+      return;
+    }
+
+    document.execCommand('formatBlock', false, 'blockquote');
+  }
+
   function handleEditorPaste(event: ClipboardEvent<HTMLDivElement>) {
     event.preventDefault();
     const plainText = event.clipboardData.getData('text/plain');
@@ -431,7 +524,11 @@ export default function ExpertQAAskPage() {
       imageInputRef.current?.click();
       return;
     }
-    if (key === 'attach' || key === 'related') {
+    if (key === 'attach') {
+      attachmentInputRef.current?.click();
+      return;
+    }
+    if (key === 'related') {
       openUploadModal();
       return;
     }
@@ -441,7 +538,7 @@ export default function ExpertQAAskPage() {
     if (key === 'bold') document.execCommand('bold');
     if (key === 'italic') document.execCommand('italic');
     if (key === 'list') document.execCommand('insertUnorderedList');
-    if (key === 'quote') document.execCommand('formatBlock', false, 'blockquote');
+    if (key === 'quote') toggleQuote();
     if (key === 'code') toggleBlockCode();
     syncEditorContent();
   }
@@ -496,7 +593,10 @@ export default function ExpertQAAskPage() {
       setSubmitError(null);
       return;
     }
-    if (attachments.some((item) => !item.title.trim() || !item.url.trim())) {
+    if (
+      fileAttachments.some((item) => !item.title.trim() || !item.url.trim()) ||
+      relatedDocs.some((item) => !item.title.trim() || !item.url.trim())
+    ) {
       setSubmitError('附件信息缺少文档名称或路径，请重新确认');
       return;
     }
@@ -516,8 +616,14 @@ export default function ExpertQAAskPage() {
         invited_expert_ids: invited.map((e) => e.id).join(';'),
         invited_expert_names: invited.map((e) => e.expert_name).join(';'),
         image_url: imageUrls.length ? imageUrls.join(';') : null,
-        attachments: serializeKnowledgeAttachments(attachments) ?? null,
-        related_docs: serializeKnowledgeAttachmentsID(attachments) ?? null,
+        file_url: fileAttachments.length
+          ? fileAttachments.map((item) => item.url).join(ATTACHMENT_LIST_SEPARATOR)
+          : null,
+        file_name: fileAttachments.length
+          ? fileAttachments.map((item) => item.title).join(ATTACHMENT_LIST_SEPARATOR)
+          : null,
+        attachments: serializeKnowledgeAttachments(relatedDocs) ?? null,
+        related_docs: serializeKnowledgeAttachmentsID(relatedDocs) ?? null,
       };
       if (isEditMode && editQuestionId) {
         await updateExpertQuestion(Number(editQuestionId), payload);
@@ -525,6 +631,8 @@ export default function ExpertQAAskPage() {
         await createExpertQuestion({
           ...payload,
           image_url: payload.image_url ?? undefined,
+          file_url: payload.file_url ?? undefined,
+          file_name: payload.file_name ?? undefined,
           attachments: payload.attachments ?? undefined,
           related_docs: payload.related_docs ?? undefined,
         });
@@ -569,7 +677,36 @@ export default function ExpertQAAskPage() {
                 placeholder="请输入问题"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                onFocus={() => setTitleFocused(true)}
+                onBlur={() => {
+                  setTimeout(() => setTitleFocused(false), 150);
+                }}
               />
+              {titleFocused && title.trim().length >= 2 ? (
+                <div className={s.similarDropdown}>
+                  {similarLoading ? (
+                    <div className={s.similarDropdownEmpty}>
+                      <Loader2 size={14} className={s.spin} />
+                      <span>正在匹配</span>
+                    </div>
+                  ) : similarQuestions.length > 0 ? (
+                    similarQuestions.map((item) => (
+                      <div
+                        key={item.id}
+                        className={s.similarDropdownItem}
+                        onClick={() => navigate(`/expert-qa/${item.id}`)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') navigate(`/expert-qa/${item.id}`);
+                        }}
+                      >
+                        {item.title}
+                      </div>
+                    ))
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {/* 业务领域 */}
@@ -648,6 +785,17 @@ export default function ExpertQAAskPage() {
                   e.target.value = '';
                 }}
               />
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                  const files: File[] = Array.from(e.target.files ?? []);
+                  if (files.length) void handleAttachmentUpload(files);
+                  e.target.value = '';
+                }}
+              />
 
               <div
                 ref={richTextEditorRef}
@@ -694,26 +842,46 @@ export default function ExpertQAAskPage() {
               )}
 
               {/* 附件信息 */}
-              {attachments.length > 0 && (
+              {(fileAttachments.length > 0 || relatedDocs.length > 0 || uploadingAttachments) && (
                 <div className={s.attachmentList}>
-                  {attachments.map((item) => (
-                    <span key={`${item.spaceId}-${item.id}`} className={s.attachmentChip}>
+                  {fileAttachments.map((item: FileAttachment) => (
+                    <span key={item.id} className={s.attachmentChip}>
                       <Paperclip size={14} />
                       <span className={s.attachmentName}>{item.title}</span>
                       <button
                         type="button"
                         className={s.attachmentRemove}
-                        onClick={() => removeAttachment(item)}
+                        onClick={() => removeFileAttachment(item)}
                         title="移除附件"
                       >
                         <X size={13} />
                       </button>
                     </span>
                   ))}
+                  {relatedDocs.map((item: KnowledgeAttachment) => (
+                    <span key={`${item.spaceId}-${item.id}`} className={s.attachmentChip}>
+                      <Paperclip size={14} />
+                      <span className={s.attachmentName}>{item.title}</span>
+                      <button
+                        type="button"
+                        className={s.attachmentRemove}
+                        onClick={() => removeRelatedDoc(item)}
+                        title="移除关联文档"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
+                  {uploadingAttachments && (
+                    <span className={s.attachmentChip}>
+                      <Loader2 size={14} className={s.spin} />
+                      <span className={s.attachmentName}>附件上传中…</span>
+                    </span>
+                  )}
                 </div>
               )}
               <div className={s.hint}>
-                图片最多 3 张，发布时将以分号拼接 URL；附件从知识库选择后同样以分号拼接链接。
+                图片最多 3 张，发布时将以分号拼接 URL；附件上传最多3个文件，发布后同样以分号拼接 URL；关联的附件从知识库选择后同样以分号拼接链接。
               </div>
             </div>
 
@@ -777,58 +945,82 @@ export default function ExpertQAAskPage() {
             </div>
           </main>
 
-          {/* 知识库附件弹窗（关闭时重置过滤条件）*/}
+          {/* 知识库关联文档弹窗（关闭时重置过滤条件）*/}
           <CommonFileUploadModal
             visible={uploadModalOpen}
-            selectedFiles={attachments}
-            title="选择知识库附件"
-            description="选择文档后将返回文档名称和路径，发布问题时会一并保存"
+            selectedFiles={relatedDocs}
+            title="选择关联文档"
+            description="从知识空间中选择文档，发布问题时会一并保存"
             onClose={() => setUploadModalOpen(false)}
-            onSelectFiles={handleSelectAttachments}
+            onSelectFiles={handleSelectRelatedDocs}
           />
 
           {/* 侧边栏 */}
           <aside className={s.right}>
-            <div className={s.sideCard}>
-              <div className={s.sideTitle}>
-                <Lightbulb size={15} className={s.tipsIcon} /> 提问小贴士
+            <div className={`${s.sideCard} ${s.tipsCard}`}>
+              <div className={s.tipsHeader}>
+                <Lightbulb size={15} className={s.tipsIcon} />
+                <span>提问小贴士</span>
+              </div>
+              <div className={s.tipsSectionTitle}>
+                如何提问才能更快得到有帮助的答案？
+              </div>
+              <div className={s.tipsIntro}>
+                  提问应遵循真实、完整、明确、简洁的原则。
               </div>
               <ul className={s.tipList}>
                 <li>
-                  先描述<strong>现象</strong>与<strong>已做检查</strong>，再提出问题
+                  <strong>完整</strong>: 问句完整，以“？”结束，让别人看得懂；
                 </li>
-                <li>附上现场照片、趋势曲线、点检表</li>
-                <li>注明设备编号、钢种、规格</li>
-                <li>避免与其他用户重复提问，优先在右上角搜索</li>
-                <li>采纳最佳回答可帮助沉淀知识</li>
+                <li>
+                  <strong>明确</strong>: 有针对性的提问，描述不模糊，阐明要点；
+                </li>
+                <li>
+                  <strong>简洁</strong>: 不赘述，问题一句话，描述1～3句说清楚；
+                </li>
               </ul>
-            </div>
-            <div className={s.sideCard}>
-              <div className={s.sideTitle}>
-                <Search size={15} className={s.sideTitleIco} /> 类似问题
-              </div>
-              {similarLoading ? (
-                <div className={s.similarEmpty}>
-                  <Loader2 size={15} className={s.spin} />
-                  <span>正在匹配</span>
-                </div>
-              ) : similarQuestions.length > 0 ? (
-                similarQuestions.map((item) => (
-                  <Link key={item.id} to={`/expert-qa/${item.id}`} className={s.similarItem}>
-                    <span>{item.title}</span>
-                    <small>
-                      {item.answer_count ?? 0} 回答 · {item.view_count ?? 0} 浏览
-                    </small>
-                  </Link>
-                ))
-              ) : (
-                // 修复：fallback 也用 Link，与真实数据行为一致
-                ASK_DRAFT.similar.map((item) => (
-                  <Link key={item} to="/expert-qa" className={s.similarItem}>
-                    <span>{item}</span>
-                  </Link>
-                ))
-              )}
+
+              <div className={s.tipsSectionTitle}>一个好提问需要包含如下信息：</div>
+              <ul className={s.tipsCheckList}>
+                <li>
+                  <Check size={14} className={s.tipsCheckIcon} />
+                  <span>
+                    <strong>问题是什么</strong>：说出你想得到的帮助，每次只问一件事，以“？”结束。
+                  </span>
+                </li>
+                <li>
+                  <Check size={14} className={s.tipsCheckIcon} />
+                  <span>
+                    <strong>具体情况</strong>： 目前“你”遇到的问题情况描述，你对遇到现状和问题的理解和观点。
+                  </span>
+                </li>
+                <li>
+                  <Check size={14} className={s.tipsCheckIcon} />
+                  <span>
+                    <strong>时间信息</strong>： 你的问题是什么时间出现的，持续多久，希望在什么时间被解决？
+                  </span>
+                </li>
+              </ul>
+
+              <div className={s.tipsSectionTitle}>请避免如下的提问：</div>
+              <ul className={s.tipsAvoidList}>
+                <li>
+                  <X size={14} className={s.tipsAvoidIcon} />
+                  <span>违反法律法规，政治敏感的：例如色情、暴力血腥、求盗版资源等违法内容。</span>
+                </li>
+                <li>
+                  <X size={14} className={s.tipsAvoidIcon} />
+                  <span>不友善行为：辱骂、人身攻击、地域攻击等引起其他用户不悦等内容。</span>
+                </li>
+                <li>
+                  <X size={14} className={s.tipsAvoidIcon} />
+                  <span>含有垃圾广告信息等内容。</span>
+                </li>
+                <li>
+                  <X size={14} className={s.tipsAvoidIcon} />
+                  <span>表意不明确，别人无从回答的。</span>
+                </li>
+              </ul>
             </div>
           </aside>
         </div>

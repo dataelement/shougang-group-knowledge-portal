@@ -15,6 +15,12 @@ import { getExpertAvatarColor, getExpertInitial } from '../utils/expertInvite';
 import s from './ExpertInvitePicker.module.css';
 
 const EXPERT_PAGE_SIZE = 20;
+const SORT_ICON_BASE = '/assets/channel';
+
+function getSortIconSrc(active: boolean, desc: boolean | null) {
+  const direction = active && desc === true ? 'down' : 'up';
+  return `${SORT_ICON_BASE}/sort-amount-${direction}${active ? '-blue' : ''}.svg`;
+}
 
 interface ExpertPickerFilters {
   jobFamily: string;
@@ -57,6 +63,11 @@ export default function ExpertInvitePicker({
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<ExpertPickerFilters>(EMPTY_FILTERS);
+  const [sorts, setSorts] = useState({
+    answerDesc: null as boolean | null,
+    adoptionDesc: null as boolean | null,
+    voteDesc: null as boolean | null,
+  });
   const [filterOptions, setFilterOptions] = useState<ExpertFilterOptions>(
     EMPTY_FILTER_OPTIONS,
   );
@@ -66,6 +77,9 @@ export default function ExpertInvitePicker({
   const requestSequenceRef = useRef(0);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const hasActiveSort = sorts.answerDesc != null
+    || sorts.adoptionDesc != null
+    || sorts.voteDesc != null;
   const hasMoreExperts = experts.length < total;
 
   useEffect(() => {
@@ -100,6 +114,12 @@ export default function ExpertInvitePicker({
       setLoading(true);
       setLoadError('');
       try {
+        const filterLabels = {
+          jobFamily: filterOptions.job_families.find((item) => item.dict_key === filters.jobFamily)?.dict_value,
+          jobCategory: filterOptions.job_categories.find((item) => item.dict_key === filters.jobCategory)?.dict_value,
+          position: filterOptions.positions.find((item) => item.dict_key === filters.position)?.dict_value,
+          major: filterOptions.majors.find((item) => item.dict_key === filters.major)?.dict_value,
+        };
         const result = await fetchExpertProfiles(
           targetPage,
           EXPERT_PAGE_SIZE,
@@ -109,6 +129,10 @@ export default function ExpertInvitePicker({
             ...filters,
             sortBy: 'expert_score',
             sortOrder: 'desc',
+            answerDesc: sorts.answerDesc,
+            adoptionDesc: sorts.adoptionDesc,
+            voteDesc: sorts.voteDesc,
+            filterLabels,
           },
         );
         if (signal?.aborted || requestId !== requestSequenceRef.current) return;
@@ -124,7 +148,7 @@ export default function ExpertInvitePicker({
         if (requestId === requestSequenceRef.current) setLoading(false);
       }
     },
-    [filters, search],
+    [filters, search, sorts, filterOptions],
   );
 
   useEffect(() => {
@@ -165,6 +189,14 @@ export default function ExpertInvitePicker({
 
   function handleResetFilters() {
     setFilters(EMPTY_FILTERS);
+    setSorts({ answerDesc: null, adoptionDesc: null, voteDesc: null });
+  }
+
+  function handleSortToggle(key: 'answerDesc' | 'adoptionDesc' | 'voteDesc') {
+    setSorts((current) => {
+      const nextValue = current[key] === null ? true : current[key] === true ? false : null;
+      return { ...current, [key]: nextValue };
+    });
   }
 
   function handleListScroll() {
@@ -189,8 +221,8 @@ export default function ExpertInvitePicker({
             autoFocus
             type="search"
             className={s.searchInput}
-            placeholder="搜索专家姓名、部门或岗位"
-            aria-label="搜索专家姓名、部门或岗位"
+            placeholder="搜索专家姓名或简介"
+            aria-label="搜索专家姓名或简介"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
           />
@@ -224,8 +256,8 @@ export default function ExpertInvitePicker({
             onChange={(event) => handleFilterChange('jobFamily', event.target.value)}
           >
             <option value="">全部职位族</option>
-            {filterOptions.job_families.map((option) => (
-              <option key={option} value={option}>{option}</option>
+            {filterOptions.job_families.map((item) => (
+              <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
             ))}
           </select>
         </label>
@@ -238,8 +270,8 @@ export default function ExpertInvitePicker({
             onChange={(event) => handleFilterChange('jobCategory', event.target.value)}
           >
             <option value="">全部职位类</option>
-            {filterOptions.job_categories.map((option) => (
-              <option key={option} value={option}>{option}</option>
+            {filterOptions.job_categories.map((item) => (
+              <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
             ))}
           </select>
         </label>
@@ -252,8 +284,8 @@ export default function ExpertInvitePicker({
             onChange={(event) => handleFilterChange('position', event.target.value)}
           >
             <option value="">全部职务</option>
-            {filterOptions.positions.map((option) => (
-              <option key={option} value={option}>{option}</option>
+            {filterOptions.positions.map((item) => (
+              <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
             ))}
           </select>
         </label>
@@ -266,15 +298,54 @@ export default function ExpertInvitePicker({
             onChange={(event) => handleFilterChange('major', event.target.value)}
           >
             <option value="">全部岗位</option>
-            {filterOptions.majors.map((option) => (
-              <option key={option} value={option}>{option}</option>
+            {filterOptions.majors.map((item) => (
+              <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
             ))}
           </select>
         </label>
         <button
           type="button"
+          className={`${s.sortButton} ${sorts.answerDesc != null ? s.sortButtonActive : ''}`}
+          onClick={() => handleSortToggle('answerDesc')}
+        >
+          <span>回答</span>
+          <img
+            className={s.sortIcon}
+            src={getSortIconSrc(sorts.answerDesc != null, sorts.answerDesc)}
+            alt="回答数排序"
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
+          className={`${s.sortButton} ${sorts.adoptionDesc != null ? s.sortButtonActive : ''}`}
+          onClick={() => handleSortToggle('adoptionDesc')}
+        >
+          <span>采纳</span>
+          <img
+            className={s.sortIcon}
+            src={getSortIconSrc(sorts.adoptionDesc != null, sorts.adoptionDesc)}
+            alt="采纳数排序"
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
+          className={`${s.sortButton} ${sorts.voteDesc != null ? s.sortButtonActive : ''}`}
+          onClick={() => handleSortToggle('voteDesc')}
+        >
+          <span>获赞</span>
+          <img
+            className={s.sortIcon}
+            src={getSortIconSrc(sorts.voteDesc != null, sorts.voteDesc)}
+            alt="获赞数排序"
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
           className={s.resetFilters}
-          disabled={!activeFilterCount}
+          disabled={!activeFilterCount && !hasActiveSort}
           onClick={handleResetFilters}
         >
           <RotateCcw size={13} aria-hidden />

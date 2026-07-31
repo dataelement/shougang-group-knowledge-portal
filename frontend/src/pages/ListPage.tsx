@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
-import { ArrowLeft, Search } from 'lucide-react';
+import { useParams, useLocation } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import FileListItem from '../components/FileListItem';
-// import ShareDocumentModal from '../components/ShareDocumentModal';
 import DocumentQaModal from '../components/DocumentQaModal';
 import FilePreviewModal from '../components/FilePreviewModal';
 import DocumentTypeFilterDropdown from '../components/DocumentTypeFilterDropdown';
@@ -20,7 +19,6 @@ import { FILE_EXT_OPTIONS } from '../constants/fileTypes';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import { useAuth } from '../hooks/useAuth';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
-// import { useShareDocument } from '../hooks/useShareDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
 import { resolveListContext } from '../utils/listPageContext';
@@ -103,7 +101,6 @@ export default function ListPage() {
   const { toast, showError } = useActionToast();
   const { user } = useAuth();
   const { loadStatuses, isFavorited, toggleFavorite, pending } = useFavoriteDocument();
-  // const { openShare, shareModalProps } = useShareDocument();
   const { openDocumentQa, documentQaModalProps } = useDocumentQa();
   const canDownload = Boolean(user);
   const canFavorite = Boolean(user);
@@ -422,23 +419,43 @@ export default function ListPage() {
     if (canFavorite && files.length) void loadStatuses(files);
   }, [files, canFavorite, loadStatuses]);
 
+  // 顶部 hero banner 背景:分类页用分类二级图,业务域页用业务域二级图,推荐用推荐图,
+  // 行业情报(典型案例)用趋势图,其余默认推荐图
+  const heroBanner = isCategoryList
+    ? '/list-banners/category.png'
+    : isDomainList
+      ? '/list-banners/domain.png'
+      : (tagParam === '行业情报' || titleParam.includes('典型案例'))
+        ? '/list-banners/industry.png'
+        : '/list-banners/recommend.png';
+
+  const documentTypeFilter = (
+    <DocumentTypeFilterDropdown
+      groups={filterDocumentTypeGroups}
+      documentType={documentType}
+      fileSubcategoryCode={fileSubcategoryCode}
+      compact
+      placeholder={isCategoryList ? '二级分类' : '文件分类'}
+      onChange={(next) => {
+        setFilters({
+          document_type: next.documentType,
+          file_subcategory_code: next.fileSubcategoryCode,
+        });
+      }}
+    />
+  );
+
   return (
     <PageShell>
       <ActionToast toast={toast} />
-      <div className={s.container}>
-        <div ref={resultsTopRef} />
-        <Link to="/" className={s.backLink}>
-          <ArrowLeft size={16} />
-          返回首页
-        </Link>
-
-        <h1 className={s.pageTitle}>{pageTitle}</h1>
-
-        <div className={s.listSearchBar}>
-          <div className={s.listSearchInputWrap}>
-            <Search size={18} className={s.listSearchIcon} />
+      <div ref={resultsTopRef} />
+      <div className={s.hero} style={{ backgroundImage: `url("${heroBanner}")` }}>
+        <div className={s.heroInner}>
+          <h1 className={s.heroTitle}>{pageTitle}</h1>
+          <div className={s.heroSearch}>
+            <Search size={18} className={s.heroSearchIcon} />
             <input
-              className={s.listSearchInput}
+              className={s.heroSearchInput}
               placeholder={`在「${pageTitle}」内搜索`}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -448,66 +465,62 @@ export default function ListPage() {
               aria-label="列表关键词搜索"
             />
             {keyword ? (
-              <button type="button" className={s.listSearchClear} onClick={clearKeyword}>
+              <button type="button" className={s.heroSearchClear} onClick={clearKeyword}>
                 清除
               </button>
             ) : null}
-            <button type="button" className={s.listSearchBtn} onClick={submitSearch}>
+            <button type="button" className={s.heroSearchBtn} onClick={submitSearch}>
               搜索
             </button>
           </div>
         </div>
-
-        <div className={s.filterBar}>
-          <select
-            className={s.filterSelect}
-            value={spaceLevel}
-            onChange={(e) => {
-              const next = new URLSearchParams(params);
-              if (e.target.value) next.set('space_level', e.target.value);
-              else next.delete('space_level');
-              next.delete('space_id');
-              next.delete('page');
-              setParams(next);
-            }}
-          >
-            <option value="">知识库类型</option>
-            {spaceLevelOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <select className={s.filterSelect} value={selectedSpaceFilter} onChange={(e) => setFilter('space_id', e.target.value)}>
-            <option value="">知识库</option>
-            {filteredSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
-          </select>
-          {/* Business-domain / category entries have their own scope: hide the file-format filter there. */}
-          {!isDomainList && !isCategoryList && (
-            <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
-              <option value="">文件格式</option>
-              {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+      </div>
+      <div className={s.container}>
+        <div className={s.filterCard}>
+          <div className={s.countLabel}>
+            <span className={s.countAccent} aria-hidden />
+            共 <span className={s.countNum}>{files.length}</span> 篇文档
+          </div>
+          <div className={s.filters}>
+            {isCategoryList ? documentTypeFilter : null}
+            <select
+              className={s.filterSelect}
+              value={spaceLevel}
+              onChange={(e) => {
+                const next = new URLSearchParams(params);
+                if (e.target.value) next.set('space_level', e.target.value);
+                else next.delete('space_level');
+                next.delete('space_id');
+                next.delete('page');
+                setParams(next);
+              }}
+            >
+              <option value="">知识库类型</option>
+              {spaceLevelOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
-          )}
-          <DocumentTypeFilterDropdown
-            groups={filterDocumentTypeGroups}
-            documentType={documentType}
-            fileSubcategoryCode={fileSubcategoryCode}
-            placeholder={isCategoryList ? '二级分类' : '文件分类'}
-            onChange={(next) => {
-              setFilters({
-                document_type: next.documentType,
-                file_subcategory_code: next.fileSubcategoryCode,
-              });
-            }}
-          />
-          {showBusinessDomainFilter ? (
-            <select className={s.filterSelect} value={businessDomainFilter} onChange={(e) => setFilter('business_domain_code', e.target.value)}>
-              <option value="">{isCategoryList ? '作用域' : '业务域'}</option>
-              {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+            <select className={s.filterSelect} value={selectedSpaceFilter} onChange={(e) => setFilter('space_id', e.target.value)}>
+              <option value="">知识库</option>
+              {filteredSpaceOptions.map((sp) => <option key={sp.id} value={String(sp.id)}>{sp.name}</option>)}
             </select>
-          ) : null}
-          <select className={s.filterSelect} value={filterTag} onChange={(e) => setFilter('filter_tag', e.target.value)}>
-            <option value="">标签</option>
-            {availableTags.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <select
+            {/* Business-domain / category entries have their own scope: hide the file-format filter there. */}
+            {!isDomainList && !isCategoryList && (
+              <select className={s.filterSelect} value={fileExt} onChange={(e) => setFilter('file_ext', e.target.value)}>
+                <option value="">文件格式</option>
+                {FILE_EXT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            {!isCategoryList ? documentTypeFilter : null}
+            {showBusinessDomainFilter ? (
+              <select className={s.filterSelect} value={businessDomainFilter} onChange={(e) => setFilter('business_domain_code', e.target.value)}>
+                <option value="">业务域</option>
+                {businessDomainOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+              </select>
+            ) : null}
+            <select className={s.filterSelect} value={filterTag} onChange={(e) => setFilter('filter_tag', e.target.value)}>
+              <option value="">标签</option>
+              {availableTags.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select
             className={s.filterSelect}
             value={timeSort}
             onChange={(e) => setFilter('sort', e.target.value)}
@@ -518,10 +531,7 @@ export default function ListPage() {
               <option key={item.value} value={item.value}>{item.label}</option>
             ))}
           </select>
-        </div>
-
-        <div className={s.fileCount}>
-          {keyword ? `共找到 ${files.length} 篇相关文档` : `已加载 ${files.length} 篇文档`}
+          </div>
         </div>
 
         {error ? <div className={s.fileCount}>{error}</div> : null}
@@ -540,7 +550,6 @@ export default function ListPage() {
             favorited={isFavorited(f.spaceId, f.id)}
             favoritePending={pending(f.spaceId, f.id)}
             onDownload={canDownload && (!f.isDepartmentFile || f.canDownload) ? handleDownload : undefined}
-            // onShare={openShare}
             onAsk={user ? openDocumentQa : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
             onOpen={user ? setPreviewFile : () => triggerLoginRedirect(`${location.pathname}${location.search}`, { guest: true })}
           />
@@ -550,7 +559,6 @@ export default function ListPage() {
           {loadingMore ? '正在加载更多...' : null}
           {!loading && !loadingMore && files.length > 0 && !hasMore ? '已加载全部文档' : null}
         </div>
-        {/* <ShareDocumentModal {...shareModalProps} /> */}
         <DocumentQaModal {...documentQaModalProps} />
         <FilePreviewModal
           file={previewFile}

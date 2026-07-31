@@ -76,3 +76,50 @@ test('download action shows pending spinner while the async download is resolvin
   assert.match(styles, /\.spinner/);
   assert.match(styles, /@keyframes file-list-item-spin/);
 });
+
+test('distribution entries show source role, manager, and sync status', async () => {
+  ensureCompiledCssStub('src/components/FileListItem.module.css');
+  ensureCompiledCssStub('src/components/TagPill.module.css');
+  ensureCompiledCssStub('src/components/ui/Tooltip.module.css');
+  ensureCompiledCssStub('src/assets/icon-favorite.svg');
+  ensureCompiledCssStub('src/assets/icon-download.svg');
+
+  const { default: FileListItem } = await import('../src/components/FileListItem');
+  const html = renderToStaticMarkup(React.createElement(FileListItem, {
+    file: {
+      ...baseFile,
+      entryType: 'share',
+      managerSpaceId: 7001,
+      projectionReady: false,
+    },
+  }));
+
+  assert.match(html, /分享文件/);
+  assert.match(html, /管理库 ID：7001/);
+  assert.match(html, /同步中/);
+});
+
+test('tag group icons expose system, AI, and manual tag explanations', async () => {
+  ensureCompiledCssStub('src/components/FileListItem.module.css');
+  ensureCompiledCssStub('src/components/TagPill.module.css');
+  ensureCompiledCssStub('src/components/ui/Tooltip.module.css');
+  ensureCompiledCssStub('src/assets/icon-favorite.svg');
+  ensureCompiledCssStub('src/assets/icon-download.svg');
+
+  const { default: FileListItem } = await import('../src/components/FileListItem');
+  const html = renderToStaticMarkup(React.createElement(FileListItem, {
+    file: {
+      ...baseFile,
+      tags: ['制度', '智能推荐', '重点关注'],
+      tag_infos: [
+        { tag_name: '制度', resource_type: 'system_tag' },
+        { tag_name: '智能推荐', resource_type: 'ai_auto_tag' },
+        { tag_name: '重点关注', resource_type: 'manual_tag' },
+      ],
+    },
+  }));
+
+  assert.match(html, /aria-label="系统标签"/);
+  assert.match(html, /aria-label="AI标签"/);
+  assert.match(html, /aria-label="人工标签"/);
+});
