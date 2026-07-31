@@ -2518,7 +2518,7 @@ function CategoryCardsTable({
         <button className={s.addBtn} onClick={onAdd} disabled={saving}><Plus size={14} /> 添加</button>
       </div>
       <p className={s.pageNote}>
-        分类卡片对应「文件分类」的一级分类，展示在首页「分类导航」tab。点击卡片进入按该分类筛选的落地页；绑定空间用于限定落地页文件范围（与业务域一致），未绑定空间的卡片不会在首页展示。
+        分类卡片展示在首页「分类导航」tab。首页「知识数量」为绑定可见空间内的成功文档文件数；点击进入绑定空间文件列表（可用筛选栏按分类/业务域再过滤）。未绑定空间的卡片不会在首页展示。
       </p>
       <table className={s.table}>
         <thead>

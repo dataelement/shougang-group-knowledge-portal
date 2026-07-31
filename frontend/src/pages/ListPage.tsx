@@ -264,13 +264,11 @@ export default function ListPage() {
       if (spaceIds.length === 0 || !categoryCode) {
         return Promise.resolve({ data: [], hasMore: false, nextCursor: null });
       }
+      // Category cards count bound-space files; landing lists the same scope.
+      // document_type / subcategory / business_domain are optional user filters only.
       return searchFiles({
         ...baseParams,
         spaceIds: requestedSpaceIds ?? spaceIds,
-        // 一级分类锁定为该卡片；二级分类由筛选下拉可选
-        documentType: categoryCode,
-        fileSubcategoryCode: fileSubcategoryCode || undefined,
-        businessDomainCode: businessDomainFilter || undefined,
       });
     }
     if (isDomainList) {
