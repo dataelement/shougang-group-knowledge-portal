@@ -264,13 +264,11 @@ export default function ListPage() {
       if (spaceIds.length === 0 || !categoryCode) {
         return Promise.resolve({ data: [], hasMore: false, nextCursor: null });
       }
+      // 分类落地页不预设分类维度：document_type / 二级分类 / 业务域
+      // 均由用户在筛选栏选择后才通过 baseParams 传参，未选则不传。
       return searchFiles({
         ...baseParams,
         spaceIds: requestedSpaceIds ?? spaceIds,
-        // 一级分类锁定为该卡片；二级分类由筛选下拉可选
-        documentType: categoryCode,
-        fileSubcategoryCode: fileSubcategoryCode || undefined,
-        businessDomainCode: businessDomainFilter || undefined,
       });
     }
     if (isDomainList) {
