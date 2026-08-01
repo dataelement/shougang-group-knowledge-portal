@@ -633,7 +633,21 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background: #fcfdff;
+}
+
+/* Single scroll region: avoid nested formGrid + spaceMultiPicker clipping bottom rows. */
+.modalScrollBody .formGrid {
+  flex: none;
+  min-height: auto;
+  overflow: visible;
+}
+
+.modalScrollBody .spaceMultiPicker {
+  max-height: none;
+  overflow: visible;
 }
 
 .modalActions {
@@ -1321,8 +1335,7 @@
   padding: 16px 20px 20px;
   border-top: 1px solid var(--neutral-100);
   background: #fcfdff;
-  position: sticky;
-  bottom: 0;
+  flex-shrink: 0;
   z-index: 1;
 }
 
@@ -1331,7 +1344,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   padding: 16px 20px 20px;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
 }
