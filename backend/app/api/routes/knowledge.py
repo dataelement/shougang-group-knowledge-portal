@@ -47,6 +47,7 @@ from app.services.domain_file_count_service import DomainFileCountService
 from app.services.knowledge_service import (
     LATEST_SELECTED_RECOMMENDATION,
     PERSONALIZED_RECOMMENDATION,
+    TYPICAL_CASE_SECTION_KEY,
     BishengBusinessError,
     KnowledgeService,
 )
@@ -753,6 +754,30 @@ def _extract_cached_home_sections(payload: Any) -> list[dict[str, Any]] | None:
     return normalized
 
 
+def _home_sections_have_complete_builtin_content(
+    sections: list[dict[str, Any]],
+    config: PortalConfig,
+) -> bool:
+    builtin_keys = {
+        LATEST_SELECTED_RECOMMENDATION,
+        TYPICAL_CASE_SECTION_KEY,
+    }
+    for configured_section in config.sections:
+        if (
+            not configured_section.enabled
+            or configured_section.builtin_key not in builtin_keys
+        ):
+            continue
+        if not any(
+            section.get("tag") == configured_section.tag
+            and isinstance(section.get("items"), list)
+            and bool(section["items"])
+            for section in sections
+        ):
+            return False
+    return True
+
+
 async def _cached_home_stream(sections: list[dict[str, Any]]):
     for section in sections:
         yield _home_sse_event({"type": "section", **section})
@@ -897,9 +922,16 @@ async def get_home_content(
             refreshed_sections = await service.refresh_cached_home_sections(
                 cached_sections
             )
-            return StreamingResponse(
-                _cached_home_stream(refreshed_sections),
-                media_type="text/event-stream",
+            if _home_sections_have_complete_builtin_content(
+                refreshed_sections,
+                config,
+            ):
+                return StreamingResponse(
+                    _cached_home_stream(refreshed_sections),
+                    media_type="text/event-stream",
+                )
+            logger.warning(
+                "portal anonymous home cache incomplete; refreshing from source"
             )
 
         async def anonymous_stream():
@@ -911,7 +943,16 @@ async def get_home_content(
                 sections.append(section)
                 yield _home_sse_event({"type": "section", **section})
             yield _home_sse_event({"type": "done"})
-            await cache_service.set_json(cache_key, {"sections": sections}, ttl_seconds)
+            if _home_sections_have_complete_builtin_content(sections, config):
+                await cache_service.set_json(
+                    cache_key,
+                    {"sections": sections},
+                    ttl_seconds,
+                )
+            else:
+                logger.warning(
+                    "portal anonymous home response incomplete; skipping cache write"
+                )
 
         return StreamingResponse(anonymous_stream(), media_type="text/event-stream")
 

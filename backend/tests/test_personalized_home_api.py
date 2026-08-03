@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes.knowledge import (
@@ -190,6 +191,7 @@ def test_anonymous_home_uses_latest_selected_and_writes_public_cache(
     async def iter_sections(self, **kwargs):
         modes.append(kwargs.get("latest_recommendation", LATEST_SELECTED_RECOMMENDATION))
         yield "最新精选", [_file()], LATEST_SELECTED_RECOMMENDATION
+        yield "行业情报", [_file(2, title="行业情报文档")], None
 
     monkeypatch.setattr(KnowledgeService, "iter_home_content_with_modes", iter_sections)
     auth = NoSessionAuthService()
@@ -203,14 +205,126 @@ def test_anonymous_home_uses_latest_selected_and_writes_public_cache(
         response = client.get("/api/v1/knowledge/home")
 
     events = _parse_home_events(response)
-    section = next(event for event in events if event.get("type") == "section")
+    sections = {
+        event["tag"]: event
+        for event in events
+        if event.get("type") == "section"
+    }
     assert response.status_code == 200
     assert modes == [LATEST_SELECTED_RECOMMENDATION]
-    assert section["recommendation_mode"] == LATEST_SELECTED_RECOMMENDATION
+    assert sections["最新精选"]["recommendation_mode"] == LATEST_SELECTED_RECOMMENDATION
+    assert sections["行业情报"]["items"][0]["id"] == 2
     assert len(cache.get_calls) == 1
     assert len(cache.set_calls) == 1
     assert cache.set_calls[0][1]["sections"][0]["recommendation_mode"] == LATEST_SELECTED_RECOMMENDATION
     assert system_client.closed == 0
+
+
+@pytest.mark.parametrize("empty_tag", ["最新精选", "行业情报"])
+def test_anonymous_home_recovers_when_refreshed_builtin_cache_is_incomplete(
+    tmp_path: Path,
+    monkeypatch,
+    empty_tag: str,
+):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    cached_sections = [
+        {
+            "tag": "最新精选",
+            "items": [_file(10, title="缓存推荐").model_dump(mode="json")],
+            "recommendation_mode": LATEST_SELECTED_RECOMMENDATION,
+        },
+        {
+            "tag": "行业情报",
+            "items": [_file(11, title="缓存情报").model_dump(mode="json")],
+        },
+    ]
+    cache = CacheSpy(cached={"sections": cached_sections})
+    live_calls: list[dict] = []
+
+    async def refresh_sections(self, sections):
+        assert sections == cached_sections
+        return [
+            {
+                "tag": "最新精选",
+                "items": (
+                    []
+                    if empty_tag == "最新精选"
+                    else [_file(10, title="缓存推荐").model_dump(mode="json")]
+                ),
+                "recommendation_mode": LATEST_SELECTED_RECOMMENDATION,
+            },
+            {
+                "tag": "行业情报",
+                "items": (
+                    []
+                    if empty_tag == "行业情报"
+                    else [_file(11, title="缓存情报").model_dump(mode="json")]
+                ),
+            },
+        ]
+
+    async def iter_sections(self, **kwargs):
+        live_calls.append(kwargs)
+        yield "最新精选", [_file(20, title="实时推荐")], LATEST_SELECTED_RECOMMENDATION
+        yield "行业情报", [_file(21, title="实时情报")], None
+
+    monkeypatch.setattr(KnowledgeService, "refresh_cached_home_sections", refresh_sections)
+    monkeypatch.setattr(KnowledgeService, "iter_home_content_with_modes", iter_sections)
+    auth = NoSessionAuthService()
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_home_cache_service = cache
+        client.app.state.portal_auth_service = auth
+        client.app.state.bisheng_client = TrackingBishengClient("system-token")
+        response = client.get("/api/v1/knowledge/home")
+
+    sections = {
+        event["tag"]: event["items"]
+        for event in _parse_home_events(response)
+        if event.get("type") == "section"
+    }
+    assert response.status_code == 200
+    assert len(live_calls) == 1
+    assert sections["最新精选"][0]["id"] == 20
+    assert sections["行业情报"][0]["id"] == 21
+    assert len(cache.set_calls) == 1
+    assert {
+        section["items"][0]["id"]
+        for section in cache.set_calls[0][1]["sections"]
+    } == {20, 21}
+
+
+def test_anonymous_home_does_not_cache_incomplete_builtin_sections(
+    tmp_path: Path,
+    monkeypatch,
+):
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    cache = CacheSpy()
+
+    async def iter_sections(self, **kwargs):
+        yield "最新精选", [], LATEST_SELECTED_RECOMMENDATION
+        yield "行业情报", [_file(30, title="实时情报")], None
+
+    monkeypatch.setattr(KnowledgeService, "iter_home_content_with_modes", iter_sections)
+    auth = NoSessionAuthService()
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = config_service
+        client.app.state.portal_home_cache_service = cache
+        client.app.state.portal_auth_service = auth
+        client.app.state.bisheng_client = TrackingBishengClient("system-token")
+        response = client.get("/api/v1/knowledge/home")
+
+    sections = {
+        event["tag"]: event["items"]
+        for event in _parse_home_events(response)
+        if event.get("type") == "section"
+    }
+    assert response.status_code == 200
+    assert sections["最新精选"] == []
+    assert sections["行业情报"][0]["id"] == 30
+    assert cache.set_calls == []
 
 
 def test_logged_in_home_rollout_uses_personalized_sse_and_bypasses_full_home_cache(
