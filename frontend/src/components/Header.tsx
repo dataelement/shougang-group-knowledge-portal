@@ -23,6 +23,11 @@ import {
 } from '../utils/adminAccess';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import {
+  dispatchHomeNavReset,
+  inferHomeNavTabFromPath,
+  rememberHomeNavTab,
+} from '../utils/homeNavTab';
+import {
   PORTAL_APPROVAL_EVENT,
   postPortalApprovalMessageToFrame,
   type PortalApprovalAction,
@@ -30,6 +35,16 @@ import {
 import adminIcon from '../assets/admin-icon.svg';
 import TagReviewDialog from './TagReviewDialog';
 import s from './Header.module.css';
+
+function prepareHomeNavigation(pathname: string): void {
+  const inferredTab = inferHomeNavTabFromPath(pathname);
+  if (inferredTab) rememberHomeNavTab(inferredTab);
+}
+
+function resetHomeNavTab(): void {
+  rememberHomeNavTab('domain');
+  dispatchHomeNavReset();
+}
 
 type HeaderNavItem =
   | { label: string; to: string; placeholder?: false; requiresAuth?: boolean }
@@ -153,7 +168,14 @@ export default function Header() {
   return (
     <header className={s.header}>
       <div className={s.inner}>
-        <div className={s.logo} onClick={() => navigate('/')}>
+        <div className={s.logo} onClick={() => {
+          if (location.pathname === '/') {
+            resetHomeNavTab();
+            return;
+          }
+          prepareHomeNavigation(location.pathname);
+          navigate('/');
+        }}>
           <img
             className={s.logoImage}
             src={headerLogoUrl}
@@ -182,6 +204,15 @@ export default function Header() {
                   `${s.navLink} ${isActive ? s.navLinkActive : ''}`
                 }
                 onClick={(event) => {
+                  if (item.to === '/') {
+                    if (location.pathname === '/') {
+                      event.preventDefault();
+                      resetHomeNavTab();
+                      return;
+                    }
+                    prepareHomeNavigation(location.pathname);
+                    return;
+                  }
                   if (item.requiresAuth && !user) {
                     event.preventDefault();
                     triggerLoginRedirect(item.to);

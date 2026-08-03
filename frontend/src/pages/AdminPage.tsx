@@ -2184,7 +2184,8 @@ function DomainEditorDialog({
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
         {error ? <div className={s.errorBox}>{error}</div> : null}
-        <div className={s.formGrid}>
+        <div className={s.modalScrollBody}>
+          <div className={s.formGrid}>
           <label className={s.formField}>
             <span className={s.fieldLabel}>业务域名称</span>
             <input
@@ -2365,6 +2366,7 @@ function DomainEditorDialog({
                 </button>
               ))}
             </div>
+          </div>
           </div>
         </div>
         <div className={s.confirmActions}>
@@ -2648,7 +2650,8 @@ function CategoryCardEditorDialog({
           <button className={s.subtleBtn} onClick={onClose}>关闭</button>
         </div>
         {error ? <div className={s.errorBox}>{error}</div> : null}
-        <div className={s.formGrid}>
+        <div className={s.modalScrollBody}>
+          <div className={s.formGrid}>
           <label className={s.formField}>
             <span className={s.fieldLabel}>绑定一级分类</span>
             <select
@@ -2768,6 +2771,7 @@ function CategoryCardEditorDialog({
                 </button>
               </span>
             ) : null}
+          </div>
           </div>
         </div>
         <div className={s.confirmActions}>
