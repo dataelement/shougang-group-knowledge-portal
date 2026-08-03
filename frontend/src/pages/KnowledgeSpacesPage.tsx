@@ -3,7 +3,7 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import PageShell from '../components/PageShell';
 import { fetchBishengRuntimeConfig } from '../api/adminConfig';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { isPortalLogoutInProgress, useAuth } from '../hooks/useAuth';
+import { ensureAuthSynced, isPortalLogoutInProgress, useAuth } from '../hooks/useAuth';
 import { applyEmbedOriginOverride, resolveKnowledgeEmbedUrl } from '../utils/bishengEmbed';
 import { postOpenKnowledgeFileWithRetry } from '../utils/portalApprovalBridge';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
@@ -11,6 +11,7 @@ import s from './KnowledgeSpacesPage.module.css';
 
 const OPEN_DOCUMENT_CHAT_MESSAGE = 'shougang-portal:open-document-chat';
 const KNOWLEDGE_LOCATION_MESSAGE = 'shougang-portal:knowledge-location';
+const PORTAL_AUTH_REQUIRED_MESSAGE = 'shougang-portal:auth-required';
 
 function getMessageString(data: Record<string, unknown>, key: string): string {
   const value = data[key];
@@ -55,20 +56,38 @@ function updateKnowledgeLocationUrl(data: Record<string, unknown>) {
 }
 
 export default function KnowledgeSpacesPage() {
-  const { config } = usePortalConfig();
+  const { config, loading: portalConfigLoading } = usePortalConfig();
   const { user } = useAuth();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-
-  useEffect(() => {
-    if (user !== null) return;
-    if (isPortalLogoutInProgress()) return;
-    triggerLoginRedirect(`${location.pathname}${location.search}`);
-  }, [user, location.pathname, location.search]);
+  const [authChecked, setAuthChecked] = useState(false);
   const [runtimeAssetBaseUrl, setRuntimeAssetBaseUrl] = useState('');
+  const [runtimeConfigSettled, setRuntimeConfigSettled] = useState(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const openChatTimerRef = useRef<number | null>(null);
   const openFileTimerRef = useRef<number | null>(null);
+  const loginRedirectedRef = useRef(false);
+
+  const redirectToPortalLogin = useCallback(() => {
+    if (loginRedirectedRef.current || isPortalLogoutInProgress()) return;
+    loginRedirectedRef.current = true;
+    triggerLoginRedirect(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    let active = true;
+    void ensureAuthSynced().finally(() => {
+      if (active) setAuthChecked(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (user || !authChecked) return;
+    redirectToPortalLogin();
+  }, [user, authChecked, redirectToPortalLogin]);
 
   const clearOpenFileTimer = useCallback(() => {
     if (openFileTimerRef.current !== null) {
@@ -93,12 +112,16 @@ export default function KnowledgeSpacesPage() {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
       const message = data as Record<string, unknown>;
+      if (message.type === PORTAL_AUTH_REQUIRED_MESSAGE) {
+        redirectToPortalLogin();
+        return;
+      }
       if (message.type !== KNOWLEDGE_LOCATION_MESSAGE) return;
       updateKnowledgeLocationUrl(message);
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [redirectToPortalLogin]);
 
   useEffect(() => {
     let active = true;
@@ -110,6 +133,9 @@ export default function KnowledgeSpacesPage() {
       .catch((err) => {
         if (!active) return;
         console.warn(err instanceof Error ? err.message : 'BiSheng 运行配置加载失败');
+      })
+      .finally(() => {
+        if (active) setRuntimeConfigSettled(true);
       });
     return () => {
       active = false;
@@ -126,6 +152,7 @@ export default function KnowledgeSpacesPage() {
       ),
     [runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url],
   );
+  const iframeReady = authChecked && Boolean(user) && !portalConfigLoading && runtimeConfigSettled;
 
   const shouldOpenChat = searchParams.get('openChat') === '1';
   const deepLinkSpaceId = searchParams.get('spaceId')?.trim() || '';
@@ -200,15 +227,17 @@ export default function KnowledgeSpacesPage() {
     <PageShell hideFooter>
       <div className={s.embedPage}>
         <div className={s.frameShell}>
-          <iframe
-            ref={frameRef}
-            id="bisheng-knowledge-frame"
-            className={s.frame}
-            src={embedUrl}
-            title="BiSheng 知识库"
-            allow="clipboard-read; clipboard-write"
-            onLoad={handleFrameLoad}
-          />
+          {iframeReady ? (
+            <iframe
+              ref={frameRef}
+              id="bisheng-knowledge-frame"
+              className={s.frame}
+              src={embedUrl}
+              title="BiSheng 知识库"
+              allow="clipboard-read; clipboard-write"
+              onLoad={handleFrameLoad}
+            />
+          ) : null}
         </div>
       </div>
     </PageShell>
