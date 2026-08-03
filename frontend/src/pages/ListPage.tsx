@@ -8,6 +8,8 @@ import FilePreviewModal from '../components/FilePreviewModal';
 import DocumentTypeFilterDropdown from '../components/DocumentTypeFilterDropdown';
 import {
   fetchAggregatedTags,
+  fetchCategoryFileCounts,
+  fetchDomainFileCounts,
   fetchKnowledgeSpaces,
   fetchSpaceTags,
   recordPortalSearchEvent,
@@ -21,7 +23,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useFavoriteDocument } from '../hooks/useFavoriteDocument';
 import { useDocumentQa } from '../hooks/useDocumentQa';
 import { useListControls } from '../hooks/useListControls';
-import { resolveListContext } from '../utils/listPageContext';
+import { hasListScopeFilters, resolveListContext } from '../utils/listPageContext';
 import {
   getRuntimeDocumentTypeGroups,
   normalizeDocumentTypeCode,
@@ -41,6 +43,14 @@ import { useActionToast } from '../hooks/useActionToast';
 import s from './ListPage.module.css';
 
 const EMPTY_SPACE_IDS: number[] = [];
+
+function formatDocumentCount(value: number): string {
+  if (value >= 10000) {
+    const wan = value / 10000;
+    return `${Number.isInteger(wan) ? wan.toFixed(0) : wan.toFixed(1)}万`;
+  }
+  return String(value);
+}
 const LATEST_SELECTED_RECOMMENDATION = 'latest_selected';
 const PERSONALIZED_RECOMMENDATION = 'personalized_v1';
 const DEFAULT_PERSONALIZED_TOTAL_COUNT = 20;
@@ -95,6 +105,8 @@ export default function ListPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [scopeDocumentCount, setScopeDocumentCount] = useState<number | null>(null);
+  const [scopeDocumentCountLoading, setScopeDocumentCountLoading] = useState(false);
   const [error, setError] = useState('');
   const [draft, setDraft] = useState(keyword);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -130,6 +142,49 @@ export default function ListPage() {
     () => getBusinessDomainFilterOptions(config?.domains),
     [config?.domains],
   );
+  const usesScopeDocumentCount = isDomainList || isCategoryList;
+  const hasActiveScopeFilters = hasListScopeFilters(params, businessDomainFilter);
+  const displayedDocumentCountLabel = usesScopeDocumentCount && !hasActiveScopeFilters
+    ? (scopeDocumentCountLoading
+      ? '加载中…'
+      : formatDocumentCount(scopeDocumentCount ?? files.length))
+    : String(files.length);
+
+  useEffect(() => {
+    if (!usesScopeDocumentCount || hasActiveScopeFilters) {
+      setScopeDocumentCount(null);
+      setScopeDocumentCountLoading(false);
+      return;
+    }
+
+    let active = true;
+    setScopeDocumentCountLoading(true);
+    void (async () => {
+      try {
+        const counts = isCategoryList
+          ? await fetchCategoryFileCounts()
+          : await fetchDomainFileCounts();
+        if (!active) return;
+        const scopeCode = isCategoryList ? categoryCode : businessDomainCode;
+        setScopeDocumentCount(scopeCode ? (counts[scopeCode] ?? 0) : 0);
+      } catch {
+        if (active) setScopeDocumentCount(null);
+      } finally {
+        if (active) setScopeDocumentCountLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    businessDomainCode,
+    categoryCode,
+    hasActiveScopeFilters,
+    isCategoryList,
+    isDomainList,
+    usesScopeDocumentCount,
+  ]);
 
   useEffect(() => {
     if (!user && !publicOnly) {
@@ -477,7 +532,7 @@ export default function ListPage() {
         <div className={s.filterCard}>
           <div className={s.countLabel}>
             <span className={s.countAccent} aria-hidden />
-            共 <span className={s.countNum}>{files.length}</span> 篇文档
+            共 <span className={s.countNum}>{displayedDocumentCountLabel}</span> 篇文档
           </div>
           <div className={s.filters}>
             <select
