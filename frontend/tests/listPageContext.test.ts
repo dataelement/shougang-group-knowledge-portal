@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { PortalConfig } from '../src/api/adminConfig';
-import { resolveListContext } from '../src/utils/listPageContext';
+import { hasListScopeFilters, resolveListContext } from '../src/utils/listPageContext';
 
 const config = {
   domains: [
@@ -53,4 +53,15 @@ test('tag list context keeps configured section title', () => {
   assert.equal(context.mode, 'global');
   assert.deepEqual(context.spaceIds, []);
   assert.equal(context.pageTitle, '精选');
+});
+
+test('hasListScopeFilters ignores default domain/category scope params', () => {
+  assert.equal(hasListScopeFilters(new URLSearchParams()), false);
+});
+
+test('hasListScopeFilters detects user narrowing filters', () => {
+  assert.equal(hasListScopeFilters(new URLSearchParams('q=设备')), true);
+  assert.equal(hasListScopeFilters(new URLSearchParams('space_id=12')), true);
+  assert.equal(hasListScopeFilters(new URLSearchParams('document_type=STD')), true);
+  assert.equal(hasListScopeFilters(new URLSearchParams(), 'HR'), true);
 });
