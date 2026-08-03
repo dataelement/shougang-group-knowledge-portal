@@ -3,7 +3,10 @@ import test from 'node:test';
 import {
   PORTAL_DIALOG_READY_MESSAGE,
   PORTAL_NOTIFICATION_SUMMARY_REFRESH_EVENT,
+  PORTAL_OPEN_KNOWLEDGE_FILE_MESSAGE,
   getPortalApprovalMessageType,
+  postOpenKnowledgeFileToFrame,
+  postOpenKnowledgeFileWithRetry,
   postPortalApprovalMessageToFrame,
   storePendingPortalApprovalAction,
   takePendingPortalApprovalAction,
@@ -95,4 +98,80 @@ test('postPortalApprovalMessageToFrame sends my uploads message to knowledge ifr
 test('postPortalApprovalMessageToFrame reports false when iframe is unavailable', () => {
   assert.equal(postPortalApprovalMessageToFrame(null, 'tasks'), false);
   assert.equal(postPortalApprovalMessageToFrame({ contentWindow: null }, 'tasks'), false);
+});
+
+test('postOpenKnowledgeFileToFrame sends open-knowledge-file payload', () => {
+  const messages: unknown[] = [];
+  const sent = postOpenKnowledgeFileToFrame({
+    contentWindow: {
+      postMessage(message: unknown) {
+        messages.push(message);
+      },
+    } as Pick<Window, 'postMessage'>,
+  }, {
+    spaceId: '12',
+    fileId: '34',
+    fileName: 'spec.pdf',
+    openNonce: 'nonce-1',
+  });
+
+  assert.equal(sent, true);
+  assert.equal(PORTAL_OPEN_KNOWLEDGE_FILE_MESSAGE, 'shougang-portal:open-knowledge-file');
+  assert.deepEqual(messages, [{
+    type: 'shougang-portal:open-knowledge-file',
+    spaceId: '12',
+    fileId: '34',
+    fileName: 'spec.pdf',
+    folderId: undefined,
+    folderName: undefined,
+    openNonce: 'nonce-1',
+  }]);
+});
+
+test('postOpenKnowledgeFileToFrame requires spaceId and fileId', () => {
+  assert.equal(postOpenKnowledgeFileToFrame({
+    contentWindow: {
+      postMessage() {},
+    } as Pick<Window, 'postMessage'>,
+  }, { spaceId: '', fileId: '1' }), false);
+  assert.equal(postOpenKnowledgeFileToFrame(null, { spaceId: '1', fileId: '2' }), false);
+});
+
+test('postOpenKnowledgeFileWithRetry reuses one openNonce across attempts', () => {
+  const messages: Array<{ openNonce?: string }> = [];
+  const frame = {
+    contentWindow: {
+      postMessage(message: unknown) {
+        messages.push(message as { openNonce?: string });
+      },
+    } as Pick<Window, 'postMessage'>,
+  };
+
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  let intervalCb: (() => void) | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).setInterval = (cb: () => void) => {
+    intervalCb = cb;
+    return 1;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).clearInterval = () => {};
+
+  try {
+    postOpenKnowledgeFileWithRetry(frame, {
+      spaceId: '1',
+      fileId: '2',
+      openNonce: 'stable-nonce',
+    }, { maxAttempts: 3, intervalMs: 10 });
+
+    assert.equal(messages.length, 1);
+    intervalCb?.();
+    intervalCb?.();
+    assert.equal(messages.length, 3);
+    assert.ok(messages.every((msg) => msg.openNonce === 'stable-nonce'));
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
 });

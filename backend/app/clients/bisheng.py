@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from typing import Awaitable, Callable, Optional
@@ -18,6 +19,19 @@ PRESIGNED_QUERY_KEYS = frozenset(
 
 AuthRefreshHandler = Callable[[str], Awaitable[str]]
 AUTH_STATUS_CODES = {401}
+
+# 调用 bisheng 时偶发的传输层断连（连接被重置、读到一半断开等），
+# 属于瞬时网络抖动，做有限重试避免透传成 500。不含 ReadTimeout（那是上游真的慢）。
+_TRANSIENT_TRANSPORT_ERRORS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.RemoteProtocolError,
+    httpx.PoolTimeout,
+)
+_TRANSPORT_MAX_RETRIES = 2
+_TRANSPORT_RETRY_BACKOFF_SECONDS = 0.2
 AUTH_PAYLOAD_CODES = {401}
 AUTH_MESSAGE_MARKERS = (
     "unauthorized",
@@ -399,7 +413,7 @@ class BishengClient:
         file_positions: dict | None = None,
         **kwargs,
     ) -> httpx.Response:
-        response = await self._client.request(method, path, **kwargs)
+        response = await self._send_with_transport_retry(method, path, file_positions, **kwargs)
         auth_retried = False
         if (
             retry_auth
@@ -407,10 +421,33 @@ class BishengClient:
             and await self._refresh_auth_token()
         ):
             self._restore_file_positions(file_positions)
-            response = await self._client.request(method, path, **kwargs)
+            response = await self._send_with_transport_retry(method, path, file_positions, **kwargs)
             auth_retried = True
         response.extensions[_AUTH_RETRIED_EXTENSION] = auth_retried
         return response
+
+    async def _send_with_transport_retry(
+        self,
+        method: str,
+        path: str,
+        file_positions: dict | None,
+        **kwargs,
+    ) -> httpx.Response:
+        """对偶发的传输层断连做有限重试，避免把瞬时网络抖动透传成 500。
+
+        门户对 bisheng 的调用绝大多数是读操作（搜索/列表/配置），重试幂等安全。
+        """
+        attempt = 0
+        while True:
+            try:
+                return await self._client.request(method, path, **kwargs)
+            except _TRANSIENT_TRANSPORT_ERRORS:
+                attempt += 1
+                if attempt > _TRANSPORT_MAX_RETRIES:
+                    raise
+                # 重试前复位可能已被读过的上传文件游标
+                self._restore_file_positions(file_positions)
+                await asyncio.sleep(_TRANSPORT_RETRY_BACKOFF_SECONDS * attempt)
 
     async def _refresh_auth_token(self) -> bool:
         if self._auth_refresh_handler is None:

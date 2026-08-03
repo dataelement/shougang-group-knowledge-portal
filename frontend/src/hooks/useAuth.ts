@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 import { buildPortalLogoutStartUrl, fetchPortalMe, loadPortalAuthSource, logoutPortal, type PortalUser } from '../api/auth';
 import { ApiRequestError, invalidatePortalContentConfigCache } from '../api/content';
+import { arePortalUsersEquivalent } from '../utils/portalUser';
 import { invalidatePortalConfigStore } from './usePortalConfig';
 
 export type { PortalUser };
@@ -74,9 +75,7 @@ let currentUser: PortalUser | null = readStoredUser();
 const listeners = new Set<() => void>();
 
 function usersEqual(a: PortalUser | null, b: PortalUser | null): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return JSON.stringify(a) === JSON.stringify(b);
+  return arePortalUsersEquivalent(a, b);
 }
 
 // 只有当用户数据真正变化时才替换引用；否则保持引用稳定，

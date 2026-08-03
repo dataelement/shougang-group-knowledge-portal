@@ -114,6 +114,12 @@ export default function ExpertInvitePicker({
       setLoading(true);
       setLoadError('');
       try {
+        const filterLabels = {
+          jobFamily: filterOptions.job_families.find((item) => item.dict_key === filters.jobFamily)?.dict_value,
+          jobCategory: filterOptions.job_categories.find((item) => item.dict_key === filters.jobCategory)?.dict_value,
+          position: filterOptions.positions.find((item) => item.dict_key === filters.position)?.dict_value,
+          major: filterOptions.majors.find((item) => item.dict_key === filters.major)?.dict_value,
+        };
         const result = await fetchExpertProfiles(
           targetPage,
           EXPERT_PAGE_SIZE,
@@ -126,6 +132,7 @@ export default function ExpertInvitePicker({
             answerDesc: sorts.answerDesc,
             adoptionDesc: sorts.adoptionDesc,
             voteDesc: sorts.voteDesc,
+            filterLabels,
           },
         );
         if (signal?.aborted || requestId !== requestSequenceRef.current) return;
@@ -141,7 +148,7 @@ export default function ExpertInvitePicker({
         if (requestId === requestSequenceRef.current) setLoading(false);
       }
     },
-    [filters, search, sorts],
+    [filters, search, sorts, filterOptions],
   );
 
   useEffect(() => {
@@ -214,8 +221,8 @@ export default function ExpertInvitePicker({
             autoFocus
             type="search"
             className={s.searchInput}
-            placeholder="搜索专家姓名、部门或岗位"
-            aria-label="搜索专家姓名、部门或岗位"
+            placeholder="搜索专家姓名或简介"
+            aria-label="搜索专家姓名或简介"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
           />
@@ -249,8 +256,8 @@ export default function ExpertInvitePicker({
             onChange={(event) => handleFilterChange('jobFamily', event.target.value)}
           >
             <option value="">全部职位族</option>
-            {filterOptions.job_families.map((option) => (
-              <option key={option} value={option}>{option}</option>
+            {filterOptions.job_families.map((item) => (
+              <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
             ))}
           </select>
         </label>
@@ -263,8 +270,8 @@ export default function ExpertInvitePicker({
             onChange={(event) => handleFilterChange('jobCategory', event.target.value)}
           >
             <option value="">全部职位类</option>
-            {filterOptions.job_categories.map((option) => (
-              <option key={option} value={option}>{option}</option>
+            {filterOptions.job_categories.map((item) => (
+              <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
             ))}
           </select>
         </label>
@@ -277,8 +284,8 @@ export default function ExpertInvitePicker({
             onChange={(event) => handleFilterChange('position', event.target.value)}
           >
             <option value="">全部职务</option>
-            {filterOptions.positions.map((option) => (
-              <option key={option} value={option}>{option}</option>
+            {filterOptions.positions.map((item) => (
+              <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
             ))}
           </select>
         </label>
@@ -291,8 +298,8 @@ export default function ExpertInvitePicker({
             onChange={(event) => handleFilterChange('major', event.target.value)}
           >
             <option value="">全部岗位</option>
-            {filterOptions.majors.map((option) => (
-              <option key={option} value={option}>{option}</option>
+            {filterOptions.majors.map((item) => (
+              <option key={item.dict_key} value={item.dict_key}>{item.dict_value}</option>
             ))}
           </select>
         </label>

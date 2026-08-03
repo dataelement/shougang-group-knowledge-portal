@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
+  Database,
   FileText,
   Folder,
   Loader2,
@@ -15,6 +16,11 @@ import {
   type MigrationNode,
   type MigrationSpace,
 } from '../api/knowledgeMigration';
+import {
+  filterMigrationSpacesByLevel,
+  getMigrationSpaceLevelOptions,
+  type MigrationSpaceLevel,
+} from '../utils/knowledgeMigrationSelector';
 import s from '../pages/KnowledgeMigrationsPage.module.css';
 
 interface SelectedSourceNode {
@@ -89,7 +95,12 @@ export default function KnowledgeMigrationWizard({
 }: Props) {
   const [spaces, setSpaces] = useState<MigrationSpace[]>([]);
   const [loadingSpaces, setLoadingSpaces] = useState(true);
-  const [sourceSpaceId, setSourceSpaceId] = useState<number | null>(null);
+  const [sourceSpaceLevel, setSourceSpaceLevel] = useState<
+    MigrationSpaceLevel | ''
+  >('');
+  const [targetSpaceLevel, setTargetSpaceLevel] = useState<
+    MigrationSpaceLevel | ''
+  >('');
   const [targetSpaceId, setTargetSpaceId] = useState<number | null>(null);
   const [targetFolder, setTargetFolder] = useState<{
     id: number | null;
@@ -157,6 +168,18 @@ export default function KnowledgeMigrationWizard({
     });
     return groups;
   }, [selectedRows]);
+  const spaceLevelOptions = useMemo(
+    () => getMigrationSpaceLevelOptions(spaces),
+    [spaces],
+  );
+  const sourceSpacesInLevel = useMemo(
+    () => filterMigrationSpacesByLevel(spaces, sourceSpaceLevel),
+    [sourceSpaceLevel, spaces],
+  );
+  const targetSpacesInLevel = useMemo(
+    () => filterMigrationSpacesByLevel(spaces, targetSpaceLevel),
+    [spaces, targetSpaceLevel],
+  );
 
   const loadNodes = async (
     purpose: 'source' | 'target',
@@ -180,23 +203,6 @@ export default function KnowledgeMigrationWizard({
     }
   };
 
-  useEffect(() => {
-    if (sourceSpaceId != null) {
-      void loadNodes('source', sourceSpaceId, null);
-    }
-    // loadNodes is intentionally keyed by sourceSpaceId.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceSpaceId]);
-
-  useEffect(() => {
-    if (targetSpaceId != null) {
-      setTargetFolder({ id: null, name: '根目录' });
-      void loadNodes('target', targetSpaceId, null);
-    }
-    // loadNodes is intentionally keyed by targetSpaceId.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetSpaceId]);
-
   const toggleExpanded = (
     purpose: 'source' | 'target',
     spaceId: number,
@@ -210,6 +216,23 @@ export default function KnowledgeMigrationWizard({
       } else {
         next.add(key);
         void loadNodes(purpose, spaceId, node.id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSpaceExpanded = (
+    purpose: 'source' | 'target',
+    space: MigrationSpace,
+  ) => {
+    const key = childKey(purpose, space.id, null);
+    setExpanded((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+        void loadNodes(purpose, space.id, null);
       }
       return next;
     });
@@ -264,7 +287,7 @@ export default function KnowledgeMigrationWizard({
       const isSelected =
         purpose === 'source'
           ? Boolean(selected[selectionKey])
-          : targetFolder.id === node.id;
+          : targetSpaceId === space.id && targetFolder.id === node.id;
       return (
         <div key={`${purpose}-${space.id}-${node.id}`}>
           <div
@@ -309,6 +332,7 @@ export default function KnowledgeMigrationWizard({
                 if (purpose === 'source') {
                   toggleSource(space, node);
                 } else {
+                  setTargetSpaceId(space.id);
                   setTargetFolder({ id: node.id, name: node.name });
                 }
               }}
@@ -318,6 +342,82 @@ export default function KnowledgeMigrationWizard({
           </div>
           {node.node_type === 'folder' && isExpanded
             ? renderNodes(purpose, space, node.id, depth + 1)
+            : null}
+        </div>
+      );
+    });
+  };
+
+  const renderSpaceTree = (
+    purpose: 'source' | 'target',
+    candidates: MigrationSpace[],
+  ) => {
+    if (candidates.length === 0) {
+      return <div className={s.treeEmpty}>该类型下暂无可用知识库</div>;
+    }
+    return candidates.map((space) => {
+      const key = childKey(purpose, space.id, null);
+      const isExpanded = expanded.has(key);
+      const isLoading = loadingKeys.has(key);
+      const usedAsSource =
+        purpose === 'target' && sourceSpaceIds.has(space.id);
+      const disabled = !space.selectable || usedAsSource;
+      const selectedSpace =
+        purpose === 'target'
+          ? targetSpaceId === space.id && targetFolder.id === null
+          : sourceGroups.has(space.id);
+      const unavailableTitle = usedAsSource
+        ? '该知识库已作为来源'
+        : space.selectable
+          ? space.name
+          : '该知识库当前不可用于迁移';
+
+      return (
+        <div key={`${purpose}-space-${space.id}`}>
+          <div
+            className={`${s.treeRow} ${
+              selectedSpace ? s.treeRowSelected : ''
+            }`}
+            style={{ paddingLeft: '10px' }}
+          >
+            <button
+              type="button"
+              className={s.treeExpand}
+              disabled={disabled}
+              onClick={() => toggleSpaceExpanded(purpose, space)}
+              aria-label={isExpanded ? '收起知识库' : '展开知识库'}
+            >
+              {isLoading ? (
+                <Loader2 size={14} className={s.spin} />
+              ) : isExpanded ? (
+                <ChevronDown size={14} />
+              ) : (
+                <ChevronRight size={14} />
+              )}
+            </button>
+            <button
+              type="button"
+              className={s.spaceTreeLabel}
+              disabled={disabled}
+              title={unavailableTitle}
+              onClick={() => {
+                if (purpose === 'source') {
+                  toggleSpaceExpanded(purpose, space);
+                } else {
+                  setTargetSpaceId(space.id);
+                  setTargetFolder({ id: null, name: '根目录' });
+                }
+              }}
+            >
+              <Database size={15} />
+              <span>
+                {space.name}
+                {usedAsSource ? '（已作为来源）' : ''}
+              </span>
+            </button>
+          </div>
+          {isExpanded && !disabled
+            ? renderNodes(purpose, space, null, 1)
             : null}
         </div>
       );
@@ -377,9 +477,6 @@ export default function KnowledgeMigrationWizard({
     }
   };
 
-  const currentSourceSpace = spaces.find(
-    (space) => space.id === sourceSpaceId,
-  );
   const currentTargetSpace = spaces.find(
     (space) => space.id === targetSpaceId,
   );
@@ -450,26 +547,33 @@ export default function KnowledgeMigrationWizard({
             <div className={s.wizardGrid}>
               <section className={s.wizardSection}>
                 <h3>1. 选择来源文件和文件夹</h3>
-                <select
-                  className={s.select}
-                  value={sourceSpaceId ?? ''}
-                  onChange={(event) =>
-                    setSourceSpaceId(
-                      event.target.value ? Number(event.target.value) : null,
-                    )
-                  }
-                >
-                  <option value="">选择来源知识库</option>
-                  {spaces.map((space) => (
-                    <option key={space.id} value={space.id}>
-                      {space.name}
-                    </option>
-                  ))}
-                </select>
+                <label className={s.selectorField}>
+                  <span className={s.selectorLabel}>知识库类型</span>
+                  <select
+                    className={s.select}
+                    value={sourceSpaceLevel}
+                    onChange={(event) =>
+                      setSourceSpaceLevel(
+                        event.target.value as MigrationSpaceLevel | '',
+                      )
+                    }
+                  >
+                    <option value="">选择来源知识库类型</option>
+                    {spaceLevelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <div className={s.treePanel}>
-                  {currentSourceSpace
-                    ? renderNodes('source', currentSourceSpace, null)
-                    : <div className={s.treeEmpty}>请先选择来源知识库</div>}
+                  {sourceSpaceLevel
+                    ? renderSpaceTree('source', sourceSpacesInLevel)
+                    : (
+                        <div className={s.treeEmpty}>
+                          请先选择来源知识库类型
+                        </div>
+                      )}
                 </div>
                 <div className={s.selectedSummary}>
                   已选 {selectedRows.length} 个节点，来自 {sourceGroups.size} 个知识库
@@ -478,46 +582,35 @@ export default function KnowledgeMigrationWizard({
 
               <section className={s.wizardSection}>
                 <h3>2. 选择目标知识库和目录</h3>
-                <select
-                  className={s.select}
-                  value={targetSpaceId ?? ''}
-                  onChange={(event) =>
-                    setTargetSpaceId(
-                      event.target.value ? Number(event.target.value) : null,
-                    )
-                  }
-                >
-                  <option value="">选择目标知识库</option>
-                  {spaces.map((space) => (
-                    <option
-                      key={space.id}
-                      value={space.id}
-                      disabled={sourceSpaceIds.has(space.id)}
-                    >
-                      {space.name}
-                      {sourceSpaceIds.has(space.id) ? '（已作为来源）' : ''}
-                    </option>
-                  ))}
-                </select>
-                <div className={s.targetRoot}>
-                  <button
-                    type="button"
-                    className={
-                      targetFolder.id === null ? s.targetRootActive : ''
-                    }
-                    disabled={targetSpaceId == null}
-                    onClick={() =>
-                      setTargetFolder({ id: null, name: '根目录' })
-                    }
+                <label className={s.selectorField}>
+                  <span className={s.selectorLabel}>知识库类型</span>
+                  <select
+                    className={s.select}
+                    value={targetSpaceLevel}
+                    onChange={(event) => {
+                      setTargetSpaceLevel(
+                        event.target.value as MigrationSpaceLevel | '',
+                      );
+                      setTargetSpaceId(null);
+                      setTargetFolder({ id: null, name: '根目录' });
+                    }}
                   >
-                    <Folder size={15} />
-                    根目录
-                  </button>
-                </div>
+                    <option value="">选择目标知识库类型</option>
+                    {spaceLevelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <div className={s.treePanel}>
-                  {currentTargetSpace
-                    ? renderNodes('target', currentTargetSpace, null)
-                    : <div className={s.treeEmpty}>请先选择目标知识库</div>}
+                  {targetSpaceLevel
+                    ? renderSpaceTree('target', targetSpacesInLevel)
+                    : (
+                        <div className={s.treeEmpty}>
+                          请先选择目标知识库类型
+                        </div>
+                      )}
                 </div>
                 <div className={s.selectedSummary}>
                   目标：{currentTargetSpace?.name || '-'} / {targetFolder.name}

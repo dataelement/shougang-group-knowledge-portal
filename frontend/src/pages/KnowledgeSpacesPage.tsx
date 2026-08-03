@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import PageShell from '../components/PageShell';
 import { fetchBishengRuntimeConfig } from '../api/adminConfig';
 import { usePortalConfig } from '../hooks/usePortalConfig';
-import { isPortalLogoutInProgress, useAuth } from '../hooks/useAuth';
-import { applyEmbedOriginOverride, mergeKnowledgeDeepLinkParams, resolveKnowledgeEmbedUrl } from '../utils/bishengEmbed';
+import { ensureAuthSynced, isPortalLogoutInProgress, useAuth } from '../hooks/useAuth';
+import { applyEmbedOriginOverride, resolveKnowledgeEmbedUrl } from '../utils/bishengEmbed';
+import { postOpenKnowledgeFileWithRetry } from '../utils/portalApprovalBridge';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import s from './KnowledgeSpacesPage.module.css';
 
 const OPEN_DOCUMENT_CHAT_MESSAGE = 'shougang-portal:open-document-chat';
 const KNOWLEDGE_LOCATION_MESSAGE = 'shougang-portal:knowledge-location';
+const PORTAL_AUTH_REQUIRED_MESSAGE = 'shougang-portal:auth-required';
 
 function getMessageString(data: Record<string, unknown>, key: string): string {
   const value = data[key];
@@ -41,6 +43,8 @@ function updateKnowledgeLocationUrl(data: Record<string, unknown>) {
     params.delete('fileId');
     params.delete('fileName');
   }
+  // openNonce is only for triggering Client restore; drop it from the shareable URL.
+  params.delete('openNonce');
   params.delete('openChat');
 
   const nextSearch = params.toString();
@@ -52,19 +56,45 @@ function updateKnowledgeLocationUrl(data: Record<string, unknown>) {
 }
 
 export default function KnowledgeSpacesPage() {
-  const { config } = usePortalConfig();
+  const { config, loading: portalConfigLoading } = usePortalConfig();
   const { user } = useAuth();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-
-  useEffect(() => {
-    if (user !== null) return;
-    if (isPortalLogoutInProgress()) return;
-    triggerLoginRedirect(`${location.pathname}${location.search}`);
-  }, [user, location.pathname, location.search]);
+  const [authChecked, setAuthChecked] = useState(false);
   const [runtimeAssetBaseUrl, setRuntimeAssetBaseUrl] = useState('');
+  const [runtimeConfigSettled, setRuntimeConfigSettled] = useState(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const openChatTimerRef = useRef<number | null>(null);
+  const openFileTimerRef = useRef<number | null>(null);
+  const loginRedirectedRef = useRef(false);
+
+  const redirectToPortalLogin = useCallback(() => {
+    if (loginRedirectedRef.current || isPortalLogoutInProgress()) return;
+    loginRedirectedRef.current = true;
+    triggerLoginRedirect(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    let active = true;
+    void ensureAuthSynced().finally(() => {
+      if (active) setAuthChecked(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (user || !authChecked) return;
+    redirectToPortalLogin();
+  }, [user, authChecked, redirectToPortalLogin]);
+
+  const clearOpenFileTimer = useCallback(() => {
+    if (openFileTimerRef.current !== null) {
+      window.clearInterval(openFileTimerRef.current);
+      openFileTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -72,8 +102,9 @@ export default function KnowledgeSpacesPage() {
         window.clearInterval(openChatTimerRef.current);
         openChatTimerRef.current = null;
       }
+      clearOpenFileTimer();
     };
-  }, []);
+  }, [clearOpenFileTimer]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -81,12 +112,16 @@ export default function KnowledgeSpacesPage() {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
       const message = data as Record<string, unknown>;
+      if (message.type === PORTAL_AUTH_REQUIRED_MESSAGE) {
+        redirectToPortalLogin();
+        return;
+      }
       if (message.type !== KNOWLEDGE_LOCATION_MESSAGE) return;
       updateKnowledgeLocationUrl(message);
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [redirectToPortalLogin]);
 
   useEffect(() => {
     let active = true;
@@ -98,27 +133,72 @@ export default function KnowledgeSpacesPage() {
       .catch((err) => {
         if (!active) return;
         console.warn(err instanceof Error ? err.message : 'BiSheng 运行配置加载失败');
+      })
+      .finally(() => {
+        if (active) setRuntimeConfigSettled(true);
       });
     return () => {
       active = false;
     };
   }, []);
 
+  // Keep iframe.src stable. File/space deep links are delivered via postMessage so
+  // clicking a file (e.g. from tag review) does not remount the Client SPA.
   const embedUrl = useMemo(
     () =>
-      mergeKnowledgeDeepLinkParams(
-        applyEmbedOriginOverride(
-          resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url),
-          import.meta.env.VITE_BISHENG_EMBED_ORIGIN,
-        ),
-        searchParams,
+      applyEmbedOriginOverride(
+        resolveKnowledgeEmbedUrl(runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url),
+        import.meta.env.VITE_BISHENG_EMBED_ORIGIN,
       ),
-    [runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url, searchParams],
+    [runtimeAssetBaseUrl, config?.integrations?.bisheng_knowledge_entry_url],
   );
+  const iframeReady = authChecked && Boolean(user) && !portalConfigLoading && runtimeConfigSettled;
 
   const shouldOpenChat = searchParams.get('openChat') === '1';
+  const deepLinkSpaceId = searchParams.get('spaceId')?.trim() || '';
+  const deepLinkFileId = searchParams.get('fileId')?.trim() || '';
+  const deepLinkFileName = searchParams.get('fileName')?.trim() || '';
+  const deepLinkFolderId = searchParams.get('folderId')?.trim() || '';
+  const deepLinkFolderName = searchParams.get('folderName')?.trim() || '';
+  const deepLinkOpenNonce = searchParams.get('openNonce')?.trim() || '';
+
+  const postOpenFileDeepLink = useCallback(() => {
+    if (!deepLinkSpaceId || !deepLinkFileId) return;
+    clearOpenFileTimer();
+    postOpenKnowledgeFileWithRetry(
+      frameRef.current,
+      {
+        spaceId: deepLinkSpaceId,
+        fileId: deepLinkFileId,
+        fileName: deepLinkFileName || undefined,
+        folderId: deepLinkFolderId || undefined,
+        folderName: deepLinkFolderName || undefined,
+        openNonce: deepLinkOpenNonce || undefined,
+      },
+      {
+        onTimer: (timerId) => {
+          openFileTimerRef.current = timerId;
+        },
+      },
+    );
+  }, [
+    clearOpenFileTimer,
+    deepLinkFileId,
+    deepLinkFileName,
+    deepLinkFolderId,
+    deepLinkFolderName,
+    deepLinkOpenNonce,
+    deepLinkSpaceId,
+  ]);
+
+  useEffect(() => {
+    postOpenFileDeepLink();
+  }, [postOpenFileDeepLink]);
 
   const handleFrameLoad = () => {
+    // File deep link: retry after SPA hydrate (covers cold load / refresh).
+    postOpenFileDeepLink();
+
     if (!shouldOpenChat || !frameRef.current?.contentWindow) return;
     // The embedded BiSheng SPA may still be hydrating when iframe onLoad
     // fires. Send the open-document-chat message immediately and retry a
@@ -147,15 +227,17 @@ export default function KnowledgeSpacesPage() {
     <PageShell hideFooter>
       <div className={s.embedPage}>
         <div className={s.frameShell}>
-          <iframe
-            ref={frameRef}
-            id="bisheng-knowledge-frame"
-            className={s.frame}
-            src={embedUrl}
-            title="BiSheng 知识库"
-            allow="clipboard-read; clipboard-write"
-            onLoad={handleFrameLoad}
-          />
+          {iframeReady ? (
+            <iframe
+              ref={frameRef}
+              id="bisheng-knowledge-frame"
+              className={s.frame}
+              src={embedUrl}
+              title="BiSheng 知识库"
+              allow="clipboard-read; clipboard-write"
+              onLoad={handleFrameLoad}
+            />
+          ) : null}
         </div>
       </div>
     </PageShell>

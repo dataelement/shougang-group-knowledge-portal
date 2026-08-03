@@ -645,7 +645,8 @@ export default function SearchPage() {
   }, [filteredFiles, keywordMode, loading, pageLimit, resultsReady]);
 
   useEffect(() => {
-    if (!keywordMode || loading || !resultsReady || searchPendingRef.current) return;
+    // 未登录用户不触发 AI 总结（会话接口需登录，匿名会失败）
+    if (!user || !keywordMode || loading || !resultsReady || searchPendingRef.current) return;
     let active = true;
     setAiText('');
     setAiCitations([]);
@@ -687,7 +688,7 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [aiRetryKey, keywordMode, loading, q, rawFiles, rawTotal, resultsReady]);
+  }, [aiRetryKey, keywordMode, loading, q, rawFiles, rawTotal, resultsReady, user]);
 
   const retryAiSummary = () => {
     setAiError('');
@@ -1025,7 +1026,8 @@ export default function SearchPage() {
           </div>
         ) : null}
 
-        {keywordMode && (() => {
+        {keywordMode && user && (() => {
+          // 未登录用户隐藏 AI 总结模块（会话接口需登录）
           // 临时隐藏 AI 总结下方的溯源文件列表，保留数据接收与正文引用渲染，便于后续恢复。
           // const referenced = aiCitations;
           return (

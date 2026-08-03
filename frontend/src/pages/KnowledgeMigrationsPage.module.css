@@ -1,3 +1,8 @@
+.pageMain {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .container {
   width: 100%;
   max-width: 1440px;
@@ -384,6 +389,18 @@
   width: 100%;
 }
 
+.selectorField {
+  display: block;
+}
+
+.selectorLabel {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--neutral-700);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .optionSection {
   grid-column: 1 / -1;
 }
@@ -429,6 +446,32 @@
   width: 18px;
 }
 
+.spaceTreeLabel {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.spaceTreeLabel span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treeExpand:disabled,
+.spaceTreeLabel:disabled {
+  color: var(--neutral-300);
+  cursor: not-allowed;
+}
+
 .treeLabel {
   min-width: 0;
   flex: 1;
@@ -456,28 +499,6 @@
   margin-top: 8px;
   color: var(--neutral-500);
   font-size: 0.8rem;
-}
-
-.targetRoot {
-  margin-top: 10px;
-}
-
-.targetRoot button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 9px;
-  border: 1px solid var(--neutral-200);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--neutral-600);
-  cursor: pointer;
-}
-
-.targetRoot .targetRootActive {
-  border-color: var(--primary-400);
-  color: var(--primary-600);
-  background: #f4f7ff;
 }
 
 .checkOption,

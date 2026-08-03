@@ -57,6 +57,13 @@ import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import { getEnabledCategoryCards, getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildCategorySearchPath, buildDomainSearchPath } from '../utils/searchParams';
 import {
+  consumeHomeNavTab,
+  DEFAULT_HOME_NAV_TAB,
+  HOME_NAV_RESET_EVENT,
+  rememberHomeNavTab,
+  type HomeNavTab,
+} from '../utils/homeNavTab';
+import {
   ADVANCED_SEARCH_ENABLED,
   applyAdvancedSearchForm,
   EMPTY_ADVANCED_SEARCH_FORM,
@@ -340,6 +347,18 @@ function formatCount(value: number): string {
   return String(value);
 }
 
+interface HomeNavCardViewModel {
+  key: string;
+  path: string;
+  name: string;
+  totalFiles: number;
+  countsLoading: boolean;
+  backgroundImage?: string;
+  Icon: React.ComponentType<{ size?: number }>;
+  iconBg: string;
+  iconColor: string;
+}
+
 /** 摘要 hover 浮窗：宽度与触发摘要行的可视宽度保持一致 */
 function SummaryWithTooltip({ summary }: { summary: string }) {
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -387,7 +406,7 @@ export default function HomePage() {
   const domainScrollRef = useRef<HTMLDivElement>(null);
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
   const [domainScrollState, setDomainScrollState] = useState({ atStart: true, atEnd: false });
-  const [navTab, setNavTab] = useState<'domain' | 'category'>('category');
+  const [navTab, setNavTab] = useState<HomeNavTab>(() => consumeHomeNavTab() ?? DEFAULT_HOME_NAV_TAB);
   const [sectionData, setSectionData] = useState<Record<string, FileItem[]>>({});
   const [sectionRecommendationModes, setSectionRecommendationModes] = useState<Record<string, RecommendationMode>>({});
   const [loadedSectionTags, setLoadedSectionTags] = useState<Set<string>>(new Set());
@@ -464,7 +483,14 @@ export default function HomePage() {
     return '选择知识库';
   })();
 
+  useEffect(() => {
+    const resetHomeNavTab = () => setNavTab('domain');
+    window.addEventListener(HOME_NAV_RESET_EVENT, resetHomeNavTab);
+    return () => window.removeEventListener(HOME_NAV_RESET_EVENT, resetHomeNavTab);
+  }, []);
+
   const navigateToTop = useCallback((path: string) => {
+    rememberHomeNavTab(navTab);
     const root = document.documentElement;
     const previousScrollBehavior = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
@@ -473,7 +499,7 @@ export default function HomePage() {
     requestAnimationFrame(() => {
       root.style.scrollBehavior = previousScrollBehavior;
     });
-  }, [navigate]);
+  }, [navigate, navTab]);
 
   const scrollDomains = (direction: 1 | -1) => {
     const el = domainScrollRef.current;
@@ -929,6 +955,47 @@ export default function HomePage() {
   const showCategoryTab = homeCategoryCards.length > 0;
   const activeNavTab = showCategoryTab ? navTab : 'domain';
   const activeNavCardCount = activeNavTab === 'category' ? homeCategoryCards.length : homeDomains.length;
+  const activeNavLabel = activeNavTab === 'category' ? '分类' : '业务域';
+  const homeNavCards = useMemo((): HomeNavCardViewModel[] => {
+    if (activeNavTab === 'category') {
+      return homeCategoryCards.map((card) => {
+        const categoryCode = (card.code || '').trim().toUpperCase();
+        return {
+          key: card.code,
+          path: buildCategorySearchPath(card.code),
+          name: card.name || card.code,
+          totalFiles: categoryCode ? (categoryCounts[categoryCode] ?? 0) : 0,
+          countsLoading: categoryCountsLoading,
+          backgroundImage: card.image || undefined,
+          Icon: FileText,
+          iconBg: '#eff6ff',
+          iconColor: '#2563eb',
+        };
+      });
+    }
+    return homeDomains.map((domain) => {
+      const visualPreset = getDomainVisualPreset(domain);
+      return {
+        key: domain.name,
+        path: buildDomainSearchPath(domain.name),
+        name: domain.name,
+        totalFiles: domainTotals.get(domain.name) ?? 0,
+        countsLoading: domainCountsLoading,
+        backgroundImage: visualPreset.backgroundImage,
+        Icon: DOMAIN_ICONS[domain.icon] || Settings,
+        iconBg: domain.bg,
+        iconColor: domain.color,
+      };
+    });
+  }, [
+    activeNavTab,
+    categoryCounts,
+    categoryCountsLoading,
+    domainCountsLoading,
+    domainTotals,
+    homeCategoryCards,
+    homeDomains,
+  ]);
   const homeSections = enabledSections.slice(0, 3);
   const contentSections = homeSections;
   const showHotSearch = searchTab === 'global' && displayHotQueries.length > 0;
@@ -1349,7 +1416,7 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'category' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('category')}
                 >
-                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconDomain}`} aria-hidden />
+                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconCategory}`} aria-hidden />
                   <span className={s.domainNavTabText}>分类导航</span>
                 </button>
                 <span className={s.domainNavTabDivider} aria-hidden />
@@ -1360,7 +1427,7 @@ export default function HomePage() {
                   className={`${s.domainNavTab} ${activeNavTab === 'domain' ? s.domainNavTabActive : ''}`}
                   onClick={() => setNavTab('domain')}
                 >
-                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconCategory}`} aria-hidden />
+                  <span className={`${s.domainNavTabIcon} ${s.domainNavTabIconDomain}`} aria-hidden />
                   <span className={s.domainNavTabText}>业务域导航</span>
                 </button>
               </div>
@@ -1375,7 +1442,7 @@ export default function HomePage() {
             <button
               type="button"
               className={`${s.domainArrow} ${s.domainArrowLeft} ${domainScrollState.atStart ? s.domainArrowDisabled : ''}`}
-              aria-label="向左滚动业务域"
+              aria-label={`向左滚动${activeNavLabel}`}
               onClick={() => scrollDomains(-1)}
               disabled={domainScrollState.atStart}
             >
@@ -1390,77 +1457,41 @@ export default function HomePage() {
               onPointerLeave={handleDomainPointerCancel}
               onPointerCancel={handleDomainPointerCancel}
             >
-              {activeNavTab === 'category'
-                ? homeCategoryCards.map((card) => {
-                    const categoryPath = buildCategorySearchPath(card.code);
-                    const usesBannerThumb = Boolean(card.image);
-                    const categoryCode = (card.code || '').trim().toUpperCase();
-                    const totalFiles = categoryCode ? (categoryCounts[categoryCode] ?? 0) : 0;
-                    return (
-                      <div
-                        key={card.code}
-                        className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
-                        style={usesBannerThumb ? { backgroundImage: `url("${card.image}")` } : undefined}
-                        data-domain-path={categoryPath}
-                        role="link"
-                        tabIndex={0}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            navigateToTop(categoryPath);
-                          }
-                        }}
-                      >
-                        {usesBannerThumb ? null : (
-                          <div className={s.domainIcon} style={{ background: '#eff6ff', color: '#2563eb' }}>
-                            <Settings size={20} />
-                          </div>
-                        )}
-                        <div className={s.domainCardContent}>
-                          <div className={s.domainName}>{card.name || card.code}</div>
-                          <div className={s.domainMeta}>知识数量 {categoryCountsLoading ? '加载中…' : formatCount(totalFiles)}</div>
-                        </div>
+              {homeNavCards.map((card) => {
+                const Icon = card.Icon;
+                const usesBannerThumb = Boolean(card.backgroundImage);
+                return (
+                  <div
+                    key={card.key}
+                    className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
+                    style={usesBannerThumb ? { backgroundImage: `url("${card.backgroundImage}")` } : undefined}
+                    data-domain-path={card.path}
+                    role="link"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        navigateToTop(card.path);
+                      }
+                    }}
+                  >
+                    {usesBannerThumb ? null : (
+                      <div className={s.domainIcon} style={{ background: card.iconBg, color: card.iconColor }}>
+                        <Icon size={20} />
                       </div>
-                    );
-                  })
-                : homeDomains.map((d) => {
-                    const Icon = DOMAIN_ICONS[d.icon] || Settings;
-                    const visualPreset = getDomainVisualPreset(d);
-                    const domainBackground = visualPreset.backgroundImage;
-                    const usesBannerThumb = Boolean(domainBackground);
-                    const totalFiles = domainTotals.get(d.name) ?? 0;
-                    return (
-                      <div
-                        key={d.name}
-                        className={`${s.domainCard} ${usesBannerThumb ? s.domainCardImage : ''}`}
-                        style={usesBannerThumb ? { backgroundImage: `url("${domainBackground}")` } : undefined}
-                        data-domain-path={buildDomainSearchPath(d.name)}
-                        role="link"
-                        tabIndex={0}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            navigateToTop(buildDomainSearchPath(d.name));
-                          }
-                        }}
-                      >
-                        {usesBannerThumb ? null : (
-                          <div className={s.domainIcon} style={{ background: d.bg, color: d.color }}>
-                            <Icon size={20} />
-                          </div>
-                        )}
-                        <div className={s.domainCardContent}>
-                          <div className={s.domainName}>{d.name}</div>
-                          <div className={s.domainMeta}>知识数量 {domainCountsLoading ? '加载中…' : formatCount(totalFiles)}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                    )}
+                    <div className={s.domainCardContent}>
+                      <div className={s.domainName}>{card.name}</div>
+                      <div className={s.domainMeta}>知识数量 {card.countsLoading ? '加载中…' : formatCount(card.totalFiles)}</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             <button
               type="button"
               className={`${s.domainArrow} ${s.domainArrowRight} ${domainScrollState.atEnd ? s.domainArrowDisabled : ''}`}
-              aria-label="向右滚动业务域"
+              aria-label={`向右滚动${activeNavLabel}`}
               onClick={() => scrollDomains(1)}
               disabled={domainScrollState.atEnd}
             >

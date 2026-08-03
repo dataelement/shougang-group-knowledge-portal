@@ -119,8 +119,9 @@ class PortalHomeCacheService:
                 if str(category.get("code") or "").strip()
             }
         )
+        # v3: bound-space SUCCESS file totals aligned with portal list (includes non-primary rows).
         scope = {"account": (account or "").strip().lower() or "anonymous", "categories": normalized_categories}
-        return f"{_KEY_PREFIX}:visible-category-file-counts:{_digest(scope)}"
+        return f"{_KEY_PREFIX}:visible-category-space-file-counts:v3:{_digest(scope)}"
 
 
 def _digest(value: Any) -> str:

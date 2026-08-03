@@ -9,6 +9,11 @@ test('header user menu exposes my uploads only on knowledge spaces page', () => 
   assert.match(headerSource, /location\.pathname\s*===\s*['"]\/knowledge-spaces['"]/);
 });
 
+test('header user menu exposes recycle bin only on knowledge spaces page', () => {
+  assert.match(headerSource, /回收站/);
+  assert.match(headerSource, /showRecycleEntry\s*=\s*isKnowledgeSpacesPage\s*&&\s*canOpenAdmin/);
+});
+
 test('header my uploads action posts to visible knowledge iframe', () => {
   assert.match(headerSource, /bisheng-knowledge-frame/);
   assert.match(headerSource, /postPortalApprovalMessageToFrame\([^;]+['"]my_uploads['"]\)/s);

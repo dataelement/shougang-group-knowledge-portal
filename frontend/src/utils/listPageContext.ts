@@ -26,6 +26,23 @@ function parseSpaceId(value?: string): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+export function hasListScopeFilters(
+  params: URLSearchParams,
+  businessDomainFilter = '',
+): boolean {
+  return Boolean(
+    (params.get('q') || '').trim()
+    || (params.get('filter_tag') || '').trim()
+    || (params.get('tag') || '').trim()
+    || (params.get('space_level') || '').trim()
+    || (params.get('space_id') || '').trim()
+    || (params.get('file_ext') || '').trim()
+    || (params.get('document_type') || '').trim()
+    || (params.get('file_subcategory_code') || '').trim()
+    || businessDomainFilter.trim()
+  );
+}
+
 export function resolveListContext(
   config: PortalConfig,
   domainName?: string,

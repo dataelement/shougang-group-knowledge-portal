@@ -281,6 +281,17 @@ export interface ExpertListOptions {
   adoptionDesc?: boolean | null;
   /** 点赞数排序：true 倒序，false 正序，未设置/null 不排序 */
   voteDesc?: boolean | null;
+  /**
+   * 职业字段筛选条件对应的显示文本。
+   * 后端接口按 dict_key 过滤，但返回的专家字段可能是 dict_value；
+   * 客户端兜底过滤时需要用该映射避免误判。
+   */
+  filterLabels?: {
+    jobFamily?: string;
+    jobCategory?: string;
+    position?: string;
+    major?: string;
+  };
 }
 
 export interface ExpertDepartmentFilterOption {
@@ -288,12 +299,17 @@ export interface ExpertDepartmentFilterOption {
   name: string;
 }
 
+export interface ExpertFieldFilterOption {
+  dict_key: string;
+  dict_value: string;
+}
+
 export interface ExpertFilterOptions {
   departments: ExpertDepartmentFilterOption[];
-  job_families: string[];
-  job_categories: string[];
-  positions: string[];
-  majors: string[];
+  job_families: ExpertFieldFilterOption[];
+  job_categories: ExpertFieldFilterOption[];
+  positions: ExpertFieldFilterOption[];
+  majors: ExpertFieldFilterOption[];
 }
 
 /** POST/PUT /experts 请求体 */
@@ -706,12 +722,47 @@ export async function fetchExpertProfiles(
   return { experts: raw.experts ?? [], total: raw.total ?? 0, page, limit };
 }
 
+interface RawExpertFieldFilterOption {
+  dict_key?: string;
+  dict_value?: string;
+}
+
+type RawExpertFieldFilterValue = string | RawExpertFieldFilterOption;
+
+interface RawExpertFilterOptions {
+  departments?: Array<{ id?: number | string; name?: string }>;
+  job_families?: RawExpertFieldFilterValue[];
+  job_categories?: RawExpertFieldFilterValue[];
+  positions?: RawExpertFieldFilterValue[];
+  majors?: RawExpertFieldFilterValue[];
+}
+
+function normalizeExpertFieldOptions(
+  raw?: RawExpertFieldFilterValue[],
+): ExpertFieldFilterOption[] {
+  const list = raw ?? [];
+  return list
+    .map((item) => {
+      if (item && typeof item === 'object') {
+        const key = item.dict_key?.trim() ?? '';
+        const value = item.dict_value?.trim() ?? key;
+        if (!key) return null;
+        return { dict_key: key, dict_value: value || key };
+      }
+      const value = String(item ?? '').trim();
+      if (!value) return null;
+      return { dict_key: value, dict_value: value };
+    })
+    .filter((item): item is ExpertFieldFilterOption => item != null)
+    .sort((left, right) => left.dict_value.localeCompare(right.dict_value, 'zh-CN'));
+}
+
 /** 获取专家职业字段筛选项。 */
 export async function fetchExpertFilterOptions(
   signal?: AbortSignal,
 ): Promise<ExpertFilterOptions> {
   try {
-    const raw = await req<Partial<ExpertFilterOptions>>(
+    const raw = await req<Partial<RawExpertFilterOptions>>(
       `${BASE}/experts/filter-options`,
       undefined,
       DEFAULT_TIMEOUT,
@@ -720,20 +771,12 @@ export async function fetchExpertFilterOptions(
     return {
       departments: (raw.departments ?? []).map((department) => ({
         id: String(department.id),
-        name: department.name,
+        name: department.name ?? '',
       })),
-      job_families: (raw.job_families ?? []).map((item) =>
-        typeof item === 'string' ? item : (item.dict_value ?? item.dict_key ?? '')
-      ).filter(Boolean),
-      job_categories: (raw.job_categories ?? []).map((item) =>
-        typeof item === 'string' ? item : (item.dict_value ?? item.dict_key ?? '')
-      ).filter(Boolean),
-      positions: (raw.positions ?? []).map((item) =>
-        typeof item === 'string' ? item : (item.dict_value ?? item.dict_key ?? '')
-      ).filter(Boolean),
-      majors: (raw.majors ?? []).map((item) =>
-        typeof item === 'string' ? item : (item.dict_value ?? item.dict_key ?? '')
-      ).filter(Boolean),
+      job_families: normalizeExpertFieldOptions(raw.job_families),
+      job_categories: normalizeExpertFieldOptions(raw.job_categories),
+      positions: normalizeExpertFieldOptions(raw.positions),
+      majors: normalizeExpertFieldOptions(raw.majors),
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
@@ -748,9 +791,10 @@ export async function fetchExpertFilterOptions(
       signal,
       { sortBy: 'expert_score', sortOrder: 'desc' },
     );
-    const uniqueValues = (values: Array<string | null>) => (
+    const uniqueFieldOptions = (values: Array<string | null>) => (
       [...new Set(values.map((value) => value?.trim()).filter(Boolean) as string[])]
         .sort((left, right) => left.localeCompare(right, 'zh-CN'))
+        .map((value) => ({ dict_key: value, dict_value: value }))
     );
     const departmentMap = new Map<string, string>();
     for (const expert of result.experts) {
@@ -762,10 +806,10 @@ export async function fetchExpertFilterOptions(
       departments: [...departmentMap]
         .map(([id, name]) => ({ id, name }))
         .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
-      job_families: uniqueValues(result.experts.map((expert) => expert.job_family)),
-      job_categories: uniqueValues(result.experts.map((expert) => expert.job_category)),
-      positions: uniqueValues(result.experts.map((expert) => expert.position)),
-      majors: uniqueValues(result.experts.map((expert) => expert.major)),
+      job_families: uniqueFieldOptions(result.experts.map((expert) => expert.job_family)),
+      job_categories: uniqueFieldOptions(result.experts.map((expert) => expert.job_category)),
+      positions: uniqueFieldOptions(result.experts.map((expert) => expert.position)),
+      majors: uniqueFieldOptions(result.experts.map((expert) => expert.major)),
     };
   }
 }

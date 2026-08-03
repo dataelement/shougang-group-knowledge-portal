@@ -16,6 +16,8 @@ interface ApiEnvelope<T> {
   data: T;
 }
 
+const MIGRATION_API_BASE = '/workspace/api/v1/knowledge/migrations';
+
 export interface MigrationPage<T> {
   data: T[];
   total: number;
@@ -260,7 +262,7 @@ export function fetchMigrationSpaces(params: {
     page: params.page ?? 1,
     page_size: params.pageSize ?? 100,
   });
-  return request(`/api/v1/knowledge/migrations/spaces?${query}`);
+  return request(`${MIGRATION_API_BASE}/spaces?${query}`);
 }
 
 export function fetchMigrationChildren(params: {
@@ -277,14 +279,14 @@ export function fetchMigrationChildren(params: {
     page_size: params.pageSize ?? 200,
   });
   return request(
-    `/api/v1/knowledge/migrations/spaces/${params.spaceId}/children?${query}`,
+    `${MIGRATION_API_BASE}/spaces/${params.spaceId}/children?${query}`,
   );
 }
 
 export function createMigrationBatch(
   body: CreateMigrationRequest,
 ): Promise<MigrationBatch> {
-  return request('/api/v1/knowledge/migrations/batches', {
+  return request(`${MIGRATION_API_BASE}/batches`, {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -300,11 +302,11 @@ export function fetchMigrationBatches(params: {
     page_size: params.pageSize ?? 20,
     status: params.status,
   });
-  return request(`/api/v1/knowledge/migrations/batches?${query}`);
+  return request(`${MIGRATION_API_BASE}/batches?${query}`);
 }
 
 export function fetchMigrationBatch(batchNo: string): Promise<MigrationBatch> {
-  return request(`/api/v1/knowledge/migrations/batches/${batchNo}`);
+  return request(`${MIGRATION_API_BASE}/batches/${batchNo}`);
 }
 
 export function fetchMigrationUnits(
@@ -317,7 +319,7 @@ export function fetchMigrationUnits(
     status: params.status,
   });
   return request(
-    `/api/v1/knowledge/migrations/batches/${batchNo}/units?${query}`,
+    `${MIGRATION_API_BASE}/batches/${batchNo}/units?${query}`,
   );
 }
 
@@ -330,7 +332,7 @@ export function fetchMigrationAttempts(
     page_size: params.pageSize ?? 100,
   });
   return request(
-    `/api/v1/knowledge/migrations/batches/${batchNo}/attempts?${query}`,
+    `${MIGRATION_API_BASE}/batches/${batchNo}/attempts?${query}`,
   );
 }
 
@@ -339,7 +341,7 @@ function postBatchCommand(
   command: string,
 ): Promise<MigrationBatch> {
   return request(
-    `/api/v1/knowledge/migrations/batches/${batchNo}/${command}`,
+    `${MIGRATION_API_BASE}/batches/${batchNo}/${command}`,
     { method: 'POST' },
   );
 }
@@ -359,7 +361,7 @@ export function retryMigrationBatch(batchNo: string) {
 export function deleteMigrationBatch(
   batchNo: string,
 ): Promise<{ deleted: boolean }> {
-  return request(`/api/v1/knowledge/migrations/batches/${batchNo}`, {
+  return request(`${MIGRATION_API_BASE}/batches/${batchNo}`, {
     method: 'DELETE',
   });
 }

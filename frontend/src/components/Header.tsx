@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRightLeft,
   Bell,
@@ -9,6 +9,7 @@ import {
   LogIn,
   LogOut,
   Send,
+  Tags,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -16,17 +17,34 @@ import { useAuth } from '../hooks/useAuth';
 import { useNotificationSummary } from '../hooks/useNotificationSummary';
 import { usePortalConfig } from '../hooks/usePortalConfig';
 import {
+  canAccessTagReview,
   isPortalAdmin,
   isSystemAdministrator,
 } from '../utils/adminAccess';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
+import {
+  dispatchHomeNavReset,
+  inferHomeNavTabFromPath,
+  rememberHomeNavTab,
+} from '../utils/homeNavTab';
 import {
   PORTAL_APPROVAL_EVENT,
   postPortalApprovalMessageToFrame,
   type PortalApprovalAction,
 } from '../utils/portalApprovalBridge';
 import adminIcon from '../assets/admin-icon.svg';
+import TagReviewDialog from './TagReviewDialog';
 import s from './Header.module.css';
+
+function prepareHomeNavigation(pathname: string): void {
+  const inferredTab = inferHomeNavTabFromPath(pathname);
+  if (inferredTab) rememberHomeNavTab(inferredTab);
+}
+
+function resetHomeNavTab(): void {
+  rememberHomeNavTab('domain');
+  dispatchHomeNavReset();
+}
 
 type HeaderNavItem =
   | { label: string; to: string; placeholder?: false; requiresAuth?: boolean }
@@ -46,6 +64,7 @@ function formatBadgeCount(count: number): string {
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, logout } = useAuth();
   const badges = useNotificationSummary(Boolean(user));
   const { config } = usePortalConfig();
@@ -58,6 +77,7 @@ export default function Header() {
   const [msgKey, setMsgKey] = useState<string | null>(null);
   const msgRef = useRef<HTMLDivElement>(null);
   const msgOpen = msgKey === location.pathname;
+  const [tagReviewOpen, setTagReviewOpen] = useState(false);
 
   // Never render the portal header when loaded inside an iframe.
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
@@ -90,7 +110,11 @@ export default function Header() {
   const externalId = user?.externalId?.trim() || user?.account || '';
   const canOpenAdmin = Boolean(bishengAdminUrl && isPortalAdmin(user));
   const canViewMigrations = isSystemAdministrator(user);
-  const showMyUploadsEntry = location.pathname === '/knowledge-spaces';
+  const isKnowledgeSpacesPage = location.pathname === '/knowledge-spaces';
+  const showMyUploadsEntry = isKnowledgeSpacesPage;
+  const showTagReviewEntry = isKnowledgeSpacesPage && canAccessTagReview(user);
+  // Recycle bin is a knowledge-space admin tool; hide it on home/other headers.
+  const showRecycleEntry = isKnowledgeSpacesPage && canOpenAdmin;
 
   const goLogin = () => {
     const redirect = `${location.pathname}${location.search}`;
@@ -112,12 +136,46 @@ export default function Header() {
     postPortalApprovalMessageToFrame(knowledgeFrame, 'my_uploads');
   };
 
+  const handleOpenTagReviewFile = (target: {
+    spaceId: number;
+    fileId: number;
+    fileName: string;
+    folderId?: number;
+  }) => {
+    setTagReviewOpen(false);
+    // Parent URL stays shareable; KnowledgeSpacesPage delivers open-file via postMessage
+    // so the knowledge iframe.src is not remounted. openNonce forces re-open of the same file.
+    const next = new URLSearchParams(searchParams);
+    next.set('spaceId', String(target.spaceId));
+    next.set('fileId', String(target.fileId));
+    if (target.folderId != null && target.folderId > 0) {
+      next.set('folderId', String(target.folderId));
+    } else {
+      next.delete('folderId');
+    }
+    if (target.fileName) {
+      next.set('fileName', target.fileName);
+    } else {
+      next.delete('fileName');
+    }
+    next.set('openNonce', String(Date.now()));
+    next.delete('openChat');
+    setSearchParams(next, { replace: true });
+  };
+
   if (isInIframe) return null;
 
   return (
     <header className={s.header}>
       <div className={s.inner}>
-        <div className={s.logo} onClick={() => navigate('/')}>
+        <div className={s.logo} onClick={() => {
+          if (location.pathname === '/') {
+            resetHomeNavTab();
+            return;
+          }
+          prepareHomeNavigation(location.pathname);
+          navigate('/');
+        }}>
           <img
             className={s.logoImage}
             src={headerLogoUrl}
@@ -146,6 +204,15 @@ export default function Header() {
                   `${s.navLink} ${isActive ? s.navLinkActive : ''}`
                 }
                 onClick={(event) => {
+                  if (item.to === '/') {
+                    if (location.pathname === '/') {
+                      event.preventDefault();
+                      resetHomeNavTab();
+                      return;
+                    }
+                    prepareHomeNavigation(location.pathname);
+                    return;
+                  }
                   if (item.requiresAuth && !user) {
                     event.preventDefault();
                     triggerLoginRedirect(item.to);
@@ -250,7 +317,7 @@ export default function Header() {
                       知识管理后台
                     </button>
                   ) : null}
-                  {canOpenAdmin ? (
+                  {showRecycleEntry ? (
                     <button
                       type="button"
                       className={s.userMenuItem}
@@ -261,6 +328,19 @@ export default function Header() {
                     >
                       <Trash2 size={15} />
                       回收站
+                    </button>
+                  ) : null}
+                  {showTagReviewEntry ? (
+                    <button
+                      type="button"
+                      className={s.userMenuItem}
+                      onClick={() => {
+                        closeMenu();
+                        setTagReviewOpen(true);
+                      }}
+                    >
+                      <Tags size={15} />
+                      标签审核
                     </button>
                   ) : null}
                   {showMyUploadsEntry ? (
@@ -286,7 +366,7 @@ export default function Header() {
                       迁移记录
                     </button>
                   ) : null}
-                  {canOpenAdmin || showMyUploadsEntry || canViewMigrations ? (
+                  {canOpenAdmin || showRecycleEntry || showTagReviewEntry || showMyUploadsEntry || canViewMigrations ? (
                     <div className={s.userMenuDivider} />
                   ) : null}
                   <button
@@ -311,6 +391,13 @@ export default function Header() {
           </button>
         )}
       </div>
+      {tagReviewOpen ? (
+        <TagReviewDialog
+          open={tagReviewOpen}
+          onClose={() => setTagReviewOpen(false)}
+          onOpenFile={handleOpenTagReviewFile}
+        />
+      ) : null}
     </header>
   );
 }

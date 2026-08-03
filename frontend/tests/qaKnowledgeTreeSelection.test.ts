@@ -75,6 +75,20 @@ test('qa knowledge tree picker supports dual mode and file limit', () => {
   assert.match(pickerSource, /resolvedFileCount/);
 });
 
+test('qa knowledge tree picker exposes space-level tabs under knowledge mode', () => {
+  assert.match(pickerSource, /qaKnowledgeSpaceLevels/);
+  assert.match(pickerSource, /activeSpaceLevel/);
+  assert.match(pickerSource, /QA_SPACE_LEVEL_ORDER\.map/);
+  assert.match(pickerSource, /s\.levelTabs|levelTabs/);
+  assert.match(pickerSource, /setActiveSpaceLevel/);
+  assert.match(pickerSource, /aria-label="知识库类型"/);
+  assert.match(pickerSource, /QA_SPACE_LEVEL_LABELS/);
+  assert.match(pickerSource, /QA_SPACE_LEVEL_LABELS\[level\]/);
+  assert.match(pickerSource, /暂无\$\{QA_SPACE_LEVEL_LABELS/);
+  assert.doesNotMatch(pickerSource, /spaceGroups\.map/);
+  assert.doesNotMatch(pickerSource, /spaceGroupHeader/);
+});
+
 test('category tree loads files by document type and supports folder checkboxes with file limit', () => {
   assert.match(categoryTreeSource, /一次最多可选择20个文件进行问答。/);
   assert.match(categoryTreeSource, /documentType/);
