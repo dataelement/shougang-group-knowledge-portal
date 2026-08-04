@@ -64,6 +64,18 @@ export function resolveListContext(
     };
   }
 
+  if (normalizedCategoryCode) {
+    const matchedDocumentType = (config.document_types ?? []).find(
+      (item) => item.code.trim().toUpperCase() === normalizedCategoryCode,
+    );
+    return {
+      mode: 'category',
+      spaceIds: [],
+      categoryCode: normalizedCategoryCode,
+      pageTitle: matchedDocumentType?.label || normalizedCategoryCode,
+    };
+  }
+
   const matchedDomain = domainName ? config.domains.find((item) => item.name === domainName) : undefined;
 
   if (matchedDomain) {

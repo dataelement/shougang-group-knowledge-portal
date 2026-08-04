@@ -65,3 +65,23 @@ test('hasListScopeFilters detects user narrowing filters', () => {
   assert.equal(hasListScopeFilters(new URLSearchParams('document_type=STD')), true);
   assert.equal(hasListScopeFilters(new URLSearchParams(), 'HR'), true);
 });
+
+test('category route falls back to category mode when card is missing but code is present', () => {
+  const context = resolveListContext(
+    {
+      ...config,
+      category_cards: [],
+      document_types: [{ code: 'PRO', label: '流程与程序', children: [] }],
+    } as unknown as PortalConfig,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'PRO',
+  );
+
+  assert.equal(context.mode, 'category');
+  assert.equal(context.categoryCode, 'PRO');
+  assert.deepEqual(context.spaceIds, []);
+  assert.equal(context.pageTitle, '流程与程序');
+});
