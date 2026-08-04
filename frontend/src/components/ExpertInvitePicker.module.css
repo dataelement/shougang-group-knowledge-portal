@@ -277,19 +277,33 @@
   gap: 3px;
 }
 
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .name {
   color: var(--neutral-900);
   font-size: 0.86rem;
   font-weight: 600;
+  flex: 0 0 auto;
 }
 
-.department {
+.department,
+.introduction {
   max-width: 100%;
   color: var(--neutral-500);
   font-size: 0.74rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.introduction {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .department i {

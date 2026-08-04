@@ -367,6 +367,8 @@ export default function ExpertInvitePicker({
         {experts.map((expert) => {
           const isSelected = invited.some((item) => item.id === expert.id);
           const maxReached = !isSelected && invited.length >= 3;
+          const introText = expert.introduction || '';
+          const introDisplay = introText.length > 20 ? `${introText.slice(0, 20)}...` : introText;
           return (
             <button
               key={expert.id}
@@ -382,7 +384,15 @@ export default function ExpertInvitePicker({
                 {getExpertInitial(expert.expert_name)}
               </span>
               <span className={s.identity}>
-                <span className={s.name}>{expert.expert_name}</span>
+                <span className={s.nameRow}>
+                  <span className={s.name}>{expert.expert_name}</span>
+                  <span
+                    className={s.introduction}
+                    title={introText}
+                  >
+                    {introDisplay}
+                  </span>
+                </span>
                 <span className={s.department}>
                   {expert.depart_ment || '部门未填写'}
                   <i aria-hidden>·</i>
