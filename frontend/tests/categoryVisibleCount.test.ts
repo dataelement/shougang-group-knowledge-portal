@@ -9,6 +9,6 @@ test('分类数量在主页异步加载，并在请求完成前显示加载中�
   assert.match(homePageSource, /const \[categoryCountsLoading, setCategoryCountsLoading\] = useState\(true\)/);
   assert.match(homePageSource, /fetchCategoryFileCounts\(\)/);
   assert.match(homePageSource, /finally \{[\s\S]*setCategoryCountsLoading\(false\)/);
-  assert.match(homePageSource, /categoryCountsLoading \? '加载中…' : formatCount\(totalFiles\)/);
+  assert.match(homePageSource, /formatScopeCount\(card\.totalFiles\)/);
   assert.match(contentApiSource, /\/api\/v1\/knowledge\/category-file-counts/);
 });
