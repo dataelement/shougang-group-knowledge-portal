@@ -8,7 +8,7 @@ import {
   BriefcaseBusiness, Layers3, PenLine, MessageSquare, Globe, Network, Leaf, Truck, Wrench, GraduationCap,
   Briefcase, Users, ScrollText, Loader2, Plus, X,
 } from 'lucide-react';
-import PageShell from '../components/PageShell';
+import { formatScopeCount } from '../utils/formatScopeCount';
 import ExpertQuestions from '../components/ExpertQuestions';
 import QAKnowledgeTreePicker from '../components/QAKnowledgeTreePicker';
 import AdvancedSearchPanel from '../components/AdvancedSearchPanel';
@@ -337,14 +337,6 @@ function cleanSummaryText(summary: string | null | undefined): string {
   // Only strip when another 【摘要】 marker remains, so we never accidentally
   // hide the label for entries that only have one.
   return /【摘要】\s*[：:]/.test(rest) ? rest : trimmed;
-}
-
-function formatCount(value: number): string {
-  if (value >= 10000) {
-    const wan = value / 10000;
-    return `${Number.isInteger(wan) ? wan.toFixed(0) : wan.toFixed(1)}万`;
-  }
-  return String(value);
 }
 
 interface HomeNavCardViewModel {
@@ -1004,7 +996,7 @@ export default function HomePage() {
   const formatHomeStat = (value: number | undefined): string => {
     if (homeStatsFailed) return '--';
     if (!homeStats) return '加载中';
-    return formatCount(value ?? 0);
+    return formatScopeCount(value ?? 0);
   };
   const heroStats = [
     { value: formatHomeStat(homeStats?.totalDocuments), label: '篇文档' },
@@ -1482,7 +1474,7 @@ export default function HomePage() {
                     )}
                     <div className={s.domainCardContent}>
                       <div className={s.domainName}>{card.name}</div>
-                      <div className={s.domainMeta}>知识数量 {card.countsLoading ? '加载中…' : formatCount(card.totalFiles)}</div>
+                      <div className={s.domainMeta}>知识数量 {card.countsLoading ? '加载中…' : formatScopeCount(card.totalFiles)}</div>
                     </div>
                   </div>
                 );

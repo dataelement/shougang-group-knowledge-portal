@@ -41,3 +41,4 @@ frontend/dist/
 frontend/.test-dist*/
 frontend/*.local
 .cursor/
+.worktrees/
