@@ -426,6 +426,7 @@ export default function AdminPage() {
     setError('');
     try {
       await task();
+      showToast('保存成功');
     } catch (err) {
       showToast(err instanceof Error ? err.message : '保存失败', 'error');
     } finally {
@@ -1215,7 +1216,6 @@ export default function AdminPage() {
               void handleAddDomain(config.domains, result.domain, runSave, setConfig, {
                 onSuccess: () => {
                   setDomainEditorOpen(false);
-                  showToast('业务域添加成功');
                 }
               });
               return;
@@ -1223,7 +1223,6 @@ export default function AdminPage() {
             void handleEditDomain(config.domains, domainEditorIndex, result.domain, runSave, setConfig, {
               onSuccess: () => {
                 setDomainEditorOpen(false);
-                showToast('业务域编辑成功');
               }
             });
           }}
@@ -1241,7 +1240,6 @@ export default function AdminPage() {
               confirm: false,
               onSuccess: () => {
                 setDomainDeleteIndex(null);
-                showToast('业务域删除成功');
               }
             });
           }}
@@ -1279,7 +1277,6 @@ export default function AdminPage() {
               void handleAddCategoryCard(config.category_cards, result.card, runSave, setConfig, {
                 onSuccess: () => {
                   setCategoryCardEditorOpen(false);
-                  showToast('分类卡片添加成功');
                 },
               });
               return;
@@ -1287,7 +1284,6 @@ export default function AdminPage() {
             void handleEditCategoryCard(config.category_cards, categoryCardEditorIndex, result.card, runSave, setConfig, {
               onSuccess: () => {
                 setCategoryCardEditorOpen(false);
-                showToast('分类卡片编辑成功');
               },
             });
           }}
@@ -1303,7 +1299,6 @@ export default function AdminPage() {
             void handleDeleteCategoryCard(config.category_cards, categoryCardDeleteIndex, runSave, setConfig, {
               onSuccess: () => {
                 setCategoryCardDeleteIndex(null);
-                showToast('分类卡片删除成功');
               },
             });
           }}
