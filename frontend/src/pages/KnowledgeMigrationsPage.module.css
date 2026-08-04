@@ -423,9 +423,24 @@
   color: var(--neutral-600);
 }
 
-.treeRow:hover,
+.treeRow:hover:not(.treeRowSelected) {
+  background: var(--neutral-100);
+}
+
 .treeRowSelected {
-  background: #f4f7ff;
+  background: var(--primary-100);
+  color: var(--primary-800);
+  box-shadow: inset 3px 0 0 var(--primary-600);
+}
+
+.treeRowSelected .treeLabel,
+.treeRowSelected .spaceTreeLabel {
+  color: var(--primary-800);
+  font-weight: 600;
+}
+
+.treeRowSelected input[type='checkbox'] {
+  accent-color: var(--primary-600);
 }
 
 .treeExpand,

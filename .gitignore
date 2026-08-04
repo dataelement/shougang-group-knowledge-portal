@@ -35,6 +35,8 @@ backend/app/config/data/bisheng_runtime.json
 backend/**/__pycache__/
 backend/**/*.py[cod]
 
+.worktrees/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
