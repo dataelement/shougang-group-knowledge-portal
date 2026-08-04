@@ -66,6 +66,17 @@ test('hasListScopeFilters detects user narrowing filters', () => {
   assert.equal(hasListScopeFilters(new URLSearchParams(), 'HR'), true);
 });
 
+test('hasListScopeFilters ignores locked category document_type in URL', () => {
+  assert.equal(
+    hasListScopeFilters(new URLSearchParams('document_type=POL'), '', { lockedCategoryDocumentType: 'POL' }),
+    false,
+  );
+  assert.equal(
+    hasListScopeFilters(new URLSearchParams('document_type=STD&file_subcategory_code=STD01'), '', { lockedCategoryDocumentType: 'POL' }),
+    true,
+  );
+});
+
 test('category route falls back to category mode when card is missing but code is present', () => {
   const context = resolveListContext(
     {
