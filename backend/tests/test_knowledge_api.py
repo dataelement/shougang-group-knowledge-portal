@@ -4434,6 +4434,75 @@ def test_search_files_passes_configured_rerank_model_to_shougang_portal(tmp_path
     ]
 
 
+def test_latest_selected_search_uses_empty_rerank_when_optional_config_read_fails():
+    import asyncio
+
+    from app.services.knowledge_service import KnowledgeService
+
+    class UnavailableConfigService:
+        def get_config(self):
+            raise RuntimeError("BiSheng 配置保存失败（HTTP 401）")
+
+    class LatestSelectedBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            assert path == "/api/v1/knowledge/shougang-portal/files/search"
+            return {
+                "data": {
+                    "data": [self._portal_file_1580()],
+                    "has_more": False,
+                    "next_cursor": None,
+                }
+            }
+
+    fake_bisheng = LatestSelectedBishengClient()
+    service = KnowledgeService(
+        bisheng_client=fake_bisheng,
+        portal_config_service=UnavailableConfigService(),
+    )
+
+    result = asyncio.run(
+        service.search_files(
+            q=None,
+            tag=None,
+            base_tag=None,
+            requested_space_ids=None,
+            space_level=None,
+            file_ext=None,
+            document_type=None,
+            business_domain_code=None,
+            recommendation="latest_selected",
+            public_only=False,
+            sort="portal_read_count_desc",
+            cursor=None,
+            limit=6,
+            extra_space_ids=None,
+            discovery_scope="public",
+        )
+    )
+
+    assert [item.id for item in result.data] == [1580]
+    assert fake_bisheng.post_calls == [
+        (
+            "/api/v1/knowledge/shougang-portal/files/search",
+            {
+                "q": None,
+                "tag": None,
+                "space_ids": [],
+                "space_level": "public",
+                "file_ext": None,
+                "sort": "portal_read_count_desc",
+                "cursor": None,
+                "limit": 6,
+                "recommendation": "latest_selected",
+                "public_only": True,
+                "rerank_model_id": "",
+                "discovery_scope": "public",
+            },
+        )
+    ]
+
+
 def test_search_files_does_not_fallback_when_shougang_portal_search_fails(tmp_path: Path):
     class FailingPortalBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
@@ -4569,6 +4638,17 @@ def test_related_files_use_shougang_portal_related_endpoint(tmp_path: Path):
 
 
 def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(tmp_path: Path):
+    class SingleReadConfigService:
+        def __init__(self, config):
+            self.config = config
+            self.read_count = 0
+
+        def get_config(self):
+            self.read_count += 1
+            if self.read_count > 1:
+                raise RuntimeError("首页请求不应在搜索前重复读取并写回门户配置")
+            return self.config
+
     class HomeBuiltinSearchBishengClient(FakeBishengClient):
         async def post_json(self, path: str, json=None, headers=None):
             self.post_calls.append((path, json))
@@ -4656,14 +4736,16 @@ def test_get_home_content_uses_file_search_for_builtin_recommendation_sections(t
     renamed_sections[0]["tag"] = "知识推荐"
     renamed_sections[0]["link"] = "/list?recommendation=latest_selected"
     config_service.update_sections(SectionsConfigUpdate.model_validate({"sections": renamed_sections}))
+    single_read_config_service = SingleReadConfigService(config_service.get_config())
     fake_bisheng = HomeBuiltinSearchBishengClient()
     with TestClient(app) as client:
-        client.app.state.portal_config_service = config_service
+        client.app.state.portal_config_service = single_read_config_service
         client.app.state.bisheng_client = fake_bisheng
         client.app.state.portal_home_cache_service = PortalHomeCacheService()
         response = client.get("/api/v1/knowledge/home")
 
     assert response.status_code == 200
+    assert single_read_config_service.read_count == 1
     assert response.headers["content-type"].startswith("text/event-stream")
     sections, done = _parse_home_sse(response)
     assert done is True

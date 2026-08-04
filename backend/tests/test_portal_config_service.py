@@ -205,6 +205,45 @@ def test_site_config_backfills_missing_home_cache_ttl(tmp_path):
     assert persisted["site"]["home_cache_ttl_seconds"] == 1800
 
 
+def test_remote_config_read_applies_compat_without_writing_back(tmp_path):
+    class RemoteStore:
+        skip_startup_seed = True
+
+        def __init__(self, payload):
+            self.payload = deepcopy(payload)
+            self.upsert_calls = []
+
+        def get_document(self, table_name, legacy_key=None):
+            return deepcopy(self.payload)
+
+        def upsert_document(self, table_name, payload):
+            self.upsert_calls.append((table_name, deepcopy(payload)))
+            self.payload = deepcopy(payload)
+            return payload
+
+    payload = deepcopy(DEFAULT_PORTAL_CONFIG)
+    for section in payload["sections"]:
+        section.pop("builtin_key", None)
+    payload["display"]["home"]["page_size"] = 6
+    store = RemoteStore(payload)
+    service = PortalConfigService(
+        config_path=tmp_path / "portal.json",
+        store=store,
+    )
+
+    config = service.get_config()
+
+    assert [section.builtin_key for section in config.sections[:2]] == [
+        "latest_selected",
+        "typical_case",
+    ]
+    assert store.upsert_calls == []
+
+    service.update_search(config.search)
+
+    assert len(store.upsert_calls) == 1
+
+
 def test_portal_config_migrates_legacy_agents_and_only_valid_url_apps():
     payload = deepcopy(DEFAULT_PORTAL_CONFIG)
     payload["agent_config"] = {

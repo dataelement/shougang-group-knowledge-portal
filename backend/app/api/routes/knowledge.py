@@ -936,7 +936,10 @@ async def get_home_content(
 
         async def anonymous_stream():
             sections: list[dict[str, Any]] = []
-            async for tag, items, recommendation_mode in service.iter_home_content_with_modes(discovery_scope="public"):
+            async for tag, items, recommendation_mode in service.iter_home_content_with_modes(
+                config=config,
+                discovery_scope="public",
+            ):
                 section = {"tag": tag, "items": [item.model_dump(mode="json") for item in items]}
                 if recommendation_mode:
                     section["recommendation_mode"] = recommendation_mode
@@ -977,6 +980,7 @@ async def get_home_content(
     async def authenticated_stream():
         try:
             async for tag, items, actual_mode in service.iter_home_content_with_modes(
+                config=config,
                 discovery_scope="public_and_department",
                 resolve_user_visible_spaces=True,
                 latest_recommendation=recommendation_mode,
