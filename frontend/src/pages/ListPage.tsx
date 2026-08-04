@@ -98,9 +98,6 @@ export default function ListPage() {
     && configuredPersonalizedTotalCount <= 50
     ? configuredPersonalizedTotalCount
     : DEFAULT_PERSONALIZED_TOTAL_COUNT;
-  const pageLimit = isPersonalizedRecommendation
-    ? personalizedTotalCount
-    : displayConfig.list.pageSize;
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
