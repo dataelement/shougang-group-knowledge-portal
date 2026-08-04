@@ -52,3 +52,12 @@ test('migration fullscreen page keeps a vertical scroll container', () => {
     /\.pageMain\s*\{[^}]*overflow-y:\s*auto;/s,
   );
 });
+
+test('migration tree selected row uses distinct primary styling', () => {
+  assert.match(migrationPageStyles, /\.treeRowSelected\s*\{[^}]*background:\s*var\(--primary-100\)/s);
+  assert.match(migrationPageStyles, /\.treeRowSelected\s*\{[^}]*box-shadow:\s*inset 3px 0 0 var\(--primary-600\)/s);
+  assert.match(
+    migrationPageStyles,
+    /\.treeRow:hover:not\(\.treeRowSelected\)\s*\{[^}]*background:\s*var\(--neutral-100\)/s,
+  );
+});
