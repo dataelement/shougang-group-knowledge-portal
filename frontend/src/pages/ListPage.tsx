@@ -98,9 +98,6 @@ export default function ListPage() {
     && configuredPersonalizedTotalCount <= 50
     ? configuredPersonalizedTotalCount
     : DEFAULT_PERSONALIZED_TOTAL_COUNT;
-  const pageLimit = isPersonalizedRecommendation
-    ? personalizedTotalCount
-    : displayConfig.list.pageSize;
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,9 +120,11 @@ export default function ListPage() {
   const spaceId = listContext?.spaceId;
   const spaceIds = listContext?.spaceIds ?? EMPTY_SPACE_IDS;
   const businessDomainCode = listContext?.businessDomainCode ?? '';
-  const categoryCode = listContext?.categoryCode ?? '';
+  const routeCategoryCode = normalizeDocumentTypeCode(categoryCodeParam);
+  const categoryCode = listContext?.categoryCode ?? routeCategoryCode;
   const isDomainList = listContext?.mode === 'domain';
-  const isCategoryList = listContext?.mode === 'category';
+  const isCategoryList = listContext?.mode === 'category' || Boolean(routeCategoryCode);
+  const lockedCategoryDocumentType = isCategoryList ? (categoryCode || routeCategoryCode) : '';
   const isGlobalList = listContext?.mode === 'global';
   const showBusinessDomainFilter = Boolean((isGlobalList && (recommendationParam || tagParam || titleParam)) || isCategoryList);
   const selectedSpaceFilterId = Number(selectedSpaceFilter);
@@ -143,7 +142,31 @@ export default function ListPage() {
     [config?.domains],
   );
   const usesScopeDocumentCount = isDomainList || isCategoryList;
-  const hasActiveScopeFilters = hasListScopeFilters(params, businessDomainFilter);
+  const hasActiveScopeFilters = hasListScopeFilters(params, businessDomainFilter, {
+    lockedCategoryDocumentType: isCategoryList ? lockedCategoryDocumentType : '',
+  });
+  const listFetchLimit = useMemo(() => {
+    if (isPersonalizedRecommendation) return personalizedTotalCount;
+    if (
+      usesScopeDocumentCount
+      && !hasActiveScopeFilters
+      && scopeDocumentCount != null
+      && scopeDocumentCount > 0
+    ) {
+      return Math.min(Math.max(displayConfig.list.pageSize, scopeDocumentCount), 100);
+    }
+    return displayConfig.list.pageSize;
+  }, [
+    displayConfig.list.pageSize,
+    hasActiveScopeFilters,
+    isPersonalizedRecommendation,
+    personalizedTotalCount,
+    scopeDocumentCount,
+    usesScopeDocumentCount,
+  ]);
+  const awaitingScopeDocumentCount = usesScopeDocumentCount
+    && !hasActiveScopeFilters
+    && scopeDocumentCountLoading;
   const displayedDocumentCountLabel = usesScopeDocumentCount && !hasActiveScopeFilters
     ? (scopeDocumentCountLoading
       ? '加载中…'
@@ -273,6 +296,14 @@ export default function ListPage() {
     setDraft(keyword);
   }, [keyword]);
 
+  useEffect(() => {
+    if (!lockedCategoryDocumentType) return;
+    if (params.get('document_type') === lockedCategoryDocumentType) return;
+    const next = new URLSearchParams(params);
+    next.set('document_type', lockedCategoryDocumentType);
+    setParams(next, { replace: true });
+  }, [lockedCategoryDocumentType, params, setParams]);
+
   const submitSearch = useCallback(() => {
     const submitted = draft.trim();
     if (user && submitted) {
@@ -304,7 +335,7 @@ export default function ListPage() {
       tag: isRecommendationList ? undefined : filterTag || tagParam || undefined,
       spaceLevel: spaceLevel || undefined,
       fileExt: fileExt || undefined,
-      documentType: documentType || undefined,
+      documentType: isCategoryList ? undefined : (documentType || undefined),
       fileSubcategoryCode: fileSubcategoryCode || undefined,
       businessDomainCode: showBusinessDomainFilter ? businessDomainFilter || undefined : undefined,
       recommendation: isRecommendationList ? recommendationParam : undefined,
@@ -313,17 +344,19 @@ export default function ListPage() {
         ? undefined
         : timeSort || (keyword ? 'relevance' : (isLatestSelectedRecommendation ? 'portal_read_count_desc' : 'updated_at_desc')),
       cursor: isPersonalizedRecommendation ? undefined : cursor || undefined,
-      limit: pageLimit,
+      limit: listFetchLimit,
     };
     if (isCategoryList) {
-      if (spaceIds.length === 0 || !categoryCode) {
+      if (spaceIds.length === 0 || !lockedCategoryDocumentType) {
         return Promise.resolve({ data: [], hasMore: false, nextCursor: null });
       }
-      // Category cards count bound-space files; landing lists the same scope.
-      // document_type / subcategory / business_domain are optional user filters only.
       return searchFiles({
         ...baseParams,
         spaceIds: requestedSpaceIds ?? spaceIds,
+        // 一级分类锁定为路由/卡片 code；二级分类由筛选下拉可选
+        documentType: lockedCategoryDocumentType,
+        fileSubcategoryCode: fileSubcategoryCode || undefined,
+        businessDomainCode: businessDomainFilter || undefined,
       });
     }
     if (isDomainList) {
@@ -356,9 +389,10 @@ export default function ListPage() {
     fileSubcategoryCode,
     keyword,
     isCategoryList,
+    lockedCategoryDocumentType,
     isDomainList,
     isPersonalizedRecommendation,
-    pageLimit,
+    listFetchLimit,
     publicOnly,
     recommendationParam,
     selectedSpaceFilterId,
@@ -412,6 +446,7 @@ export default function ListPage() {
   useEffect(() => {
     let active = true;
     if (!config || !listContext) return;
+    if (awaitingScopeDocumentCount) return;
     setLoading(true);
     setLoadingMore(false);
     setError('');
@@ -436,7 +471,7 @@ export default function ListPage() {
     return () => {
       active = false;
     };
-  }, [config, fetchFilePage, isPersonalizedRecommendation, listContext, resultsTopRef]);
+  }, [awaitingScopeDocumentCount, config, fetchFilePage, isPersonalizedRecommendation, listContext, resultsTopRef]);
 
   const handleLoadMore = useCallback(async () => {
     if (isPersonalizedRecommendation || !hasMore || !nextCursor || loading || loadingMore) return;

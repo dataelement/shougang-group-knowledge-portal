@@ -757,6 +757,27 @@ def test_home_content_revalidates_cached_file_reference_before_serving(tmp_path:
         {
             "sections": [
                 {
+                    "tag": "最新精选",
+                    "items": [
+                        {
+                            "id": 1580,
+                            "space_id": 12,
+                            "title": "缓存推荐",
+                        }
+                    ],
+                    "recommendation_mode": "latest_selected",
+                },
+                {
+                    "tag": "行业情报",
+                    "items": [
+                        {
+                            "id": 1580,
+                            "space_id": 12,
+                            "title": "缓存情报",
+                        }
+                    ],
+                },
+                {
                     "tag": "缓存栏目",
                     "items": [
                         {

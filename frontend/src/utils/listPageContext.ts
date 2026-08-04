@@ -29,7 +29,13 @@ function parseSpaceId(value?: string): number | undefined {
 export function hasListScopeFilters(
   params: URLSearchParams,
   businessDomainFilter = '',
+  options: { lockedCategoryDocumentType?: string } = {},
 ): boolean {
+  const lockedCategoryDocumentType = (options.lockedCategoryDocumentType ?? '').trim().toUpperCase();
+  const urlDocumentType = (params.get('document_type') || '').trim().toUpperCase();
+  const documentTypeFilterActive = Boolean(urlDocumentType)
+    && urlDocumentType !== lockedCategoryDocumentType;
+
   return Boolean(
     (params.get('q') || '').trim()
     || (params.get('filter_tag') || '').trim()
@@ -37,7 +43,7 @@ export function hasListScopeFilters(
     || (params.get('space_level') || '').trim()
     || (params.get('space_id') || '').trim()
     || (params.get('file_ext') || '').trim()
-    || (params.get('document_type') || '').trim()
+    || documentTypeFilterActive
     || (params.get('file_subcategory_code') || '').trim()
     || businessDomainFilter.trim()
   );
@@ -61,6 +67,18 @@ export function resolveListContext(
       spaceIds: normalizeSpaceIds(matchedCategory.space_ids),
       categoryCode: matchedCategory.code.trim().toUpperCase(),
       pageTitle: matchedCategory.name || matchedCategory.code || '分类知识',
+    };
+  }
+
+  if (normalizedCategoryCode) {
+    const matchedDocumentType = (config.document_types ?? []).find(
+      (item) => item.code.trim().toUpperCase() === normalizedCategoryCode,
+    );
+    return {
+      mode: 'category',
+      spaceIds: [],
+      categoryCode: normalizedCategoryCode,
+      pageTitle: matchedDocumentType?.label || normalizedCategoryCode,
     };
   }
 
