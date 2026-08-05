@@ -160,14 +160,14 @@ function QuestionCard({
       onKeyDown={handleKeyDown}
     >
       <div className={s.qBody}>
+        <div className={s.rowTitleLine}>
+          <img className={s.askBadge} src={askBadge} alt="问" />
+          <h3 className={s.qTitle}>{q.title}</h3>
+        </div>
         <div className={s.rowHead}>
           <span className={s.askedAv}>{q.asker.initial}</span>
           <span className={s.askedName}>{q.asker.name}</span>
           <span className={s.askedAt}>{q.askedAt}</span>
-        </div>
-        <div className={s.rowTitleLine}>
-          <img className={s.askBadge} src={askBadge} alt="问" />
-          <h3 className={s.qTitle}>{q.title}</h3>
         </div>
         <p className={s.qExcerpt}>{q.excerpt}</p>
         {accepted ? (
