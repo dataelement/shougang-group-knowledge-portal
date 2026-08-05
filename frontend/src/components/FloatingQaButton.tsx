@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { emitInstallHoverIntent } from '../pwa/pwaInstall';
 import s from './FloatingQaButton.module.css';
 
 // 嵌入 iframe(如文件预览详情弹窗内的 embed=1 页面)时,不渲染悬浮按钮
@@ -121,6 +122,7 @@ export default function FloatingQaButton() {
       aria-label="进入钢小智"
       title="钢小智"
       onClick={handleClick}
+      onMouseEnter={() => emitInstallHoverIntent()}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

@@ -4,12 +4,10 @@ import {
   isInstallAvailable,
   isRunningStandalone,
   promptInstall,
+  subscribeInstallHoverIntent,
   subscribePwa,
 } from '../pwa/pwaInstall';
 import s from './PwaInstallPrompt.module.css';
-
-// 进入智能应用页后延迟多久自动弹出（毫秒）
-const AUTO_SHOW_DELAY = 10_000;
 
 // localStorage 键：永久不再提示 / 当天不再提示
 const KEY_NEVER = 'gxz-pwa-install-never';
@@ -57,19 +55,16 @@ export default function PwaInstallPrompt() {
   // 跟踪安装能力变化（beforeinstallprompt 可能晚于组件挂载才触发）
   useEffect(() => subscribePwa(() => setAvailable(isInstallAvailable())), []);
 
-  // 进入智能应用页后计时；离开或条件不满足则不显示
+  // 鼠标移入浮动钢小智按钮时显示；离开智能应用页则不显示
   useEffect(() => {
     if (!onAppsPage) {
       setVisible(false);
       return;
     }
-    if (isRunningStandalone() || isMuted()) return;
-
-    const timer = window.setTimeout(() => {
-      if (!isMuted() && isInstallAvailable()) setVisible(true);
-    }, AUTO_SHOW_DELAY);
-
-    return () => window.clearTimeout(timer);
+    return subscribeInstallHoverIntent(() => {
+      if (isRunningStandalone() || isMuted()) return;
+      if (isInstallAvailable()) setVisible(true);
+    });
   }, [onAppsPage]);
 
   if (!onAppsPage || !visible || !available) return null;
