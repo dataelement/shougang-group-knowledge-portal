@@ -23,8 +23,11 @@ import {
 } from '../utils/adminAccess';
 import { triggerLoginRedirect } from '../utils/loginRedirect';
 import {
+  clearHomeNavCardPath,
   dispatchHomeNavReset,
+  inferHomeNavCardPathFromPathname,
   inferHomeNavTabFromPath,
+  rememberHomeNavCardPath,
   rememberHomeNavTab,
 } from '../utils/homeNavTab';
 import {
@@ -39,10 +42,13 @@ import s from './Header.module.css';
 function prepareHomeNavigation(pathname: string): void {
   const inferredTab = inferHomeNavTabFromPath(pathname);
   if (inferredTab) rememberHomeNavTab(inferredTab);
+  const cardPath = inferHomeNavCardPathFromPathname(pathname);
+  if (cardPath) rememberHomeNavCardPath(cardPath);
 }
 
 function resetHomeNavTab(): void {
   rememberHomeNavTab('domain');
+  clearHomeNavCardPath();
   dispatchHomeNavReset();
 }
 
