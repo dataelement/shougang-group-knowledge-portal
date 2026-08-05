@@ -1,17 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Check, Search, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Check, Eye, Search, X } from 'lucide-react';
 import {
   approveOrRejectReviewTag,
   formatTagSourceLabel,
+  getTagLibraryDetail,
   listReviewTags,
+  listTagLibraries,
   listTagLibrariesByKnowledge,
   type ReviewTagItem,
   type ReviewTagResourceItem,
+  type TagLibraryDetail,
   type TagLibraryListItem,
+  type TagLibraryTagItem,
 } from '../api/tagReview';
 import s from './TagReviewDialog.module.css';
 
 const PAGE_SIZE = 10;
+const LIBRARY_PAGE_SIZE = 8;
 
 export interface TagReviewFileTarget {
   spaceId: number;
@@ -39,6 +44,283 @@ function resolveFileId(resource: ReviewTagResourceItem): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function formatBoundSpaceNames(names: string[] | undefined): string {
+  if (!names?.length) return '-';
+  const joined = names.join('、');
+  return joined.length > 24 ? `${joined.slice(0, 24)}…` : joined;
+}
+
+function normalizeTagItems(detail: TagLibraryDetail): TagLibraryTagItem[] {
+  if (detail.tag_items?.length) {
+    return detail.tag_items;
+  }
+  return (detail.tags || []).map((name) => ({
+    name,
+    resource_type: 'system_tag',
+  }));
+}
+
+interface TagLibraryDetailDialogProps {
+  libraryId: number | null;
+  onClose: () => void;
+}
+
+/** Read-only tag library detail overlay (tags table only, no edit actions). */
+function TagLibraryDetailDialog({ libraryId, onClose }: TagLibraryDetailDialogProps) {
+  const [detail, setDetail] = useState<TagLibraryDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [tagKeyword, setTagKeyword] = useState('');
+
+  useEffect(() => {
+    if (!libraryId) {
+      setDetail(null);
+      setError('');
+      setTagKeyword('');
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    void getTagLibraryDetail(libraryId)
+      .then((res) => {
+        if (cancelled) return;
+        setDetail(res);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setDetail(null);
+        setError(err instanceof Error ? err.message : '加载标签库详情失败');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [libraryId]);
+
+  const tagItems = useMemo(() => (detail ? normalizeTagItems(detail) : []), [detail]);
+  const filteredTags = useMemo(() => {
+    const keyword = tagKeyword.trim().toLowerCase();
+    if (!keyword) return tagItems;
+    return tagItems.filter((item) => item.name.toLowerCase().includes(keyword));
+  }, [tagItems, tagKeyword]);
+
+  if (!libraryId) return null;
+
+  return (
+    <div className={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={s.detailModal} role="dialog" aria-modal="true">
+        <div className={s.modalHead}>
+          <div>
+            <span className={s.modalTitle}>标签库详情</span>
+            {detail?.name ? <p className={s.modalDesc}>{detail.name}</p> : null}
+          </div>
+          <button type="button" className={s.modalClose} onClick={onClose} aria-label="关闭">
+            <X size={16} />
+          </button>
+        </div>
+        <div className={s.modalBody}>
+          {error ? <div className={s.error}>{error}</div> : null}
+          {detail?.description ? (
+            <p className={s.detailDesc}>{detail.description}</p>
+          ) : null}
+          {detail?.bound_space_names?.length ? (
+            <p className={s.detailMeta}>
+              关联知识库：{detail.bound_space_names.join('、')}
+            </p>
+          ) : null}
+          <div className={s.searchRow}>
+            <Search size={16} className={s.searchIcon} />
+            <input
+              className={s.searchInput}
+              placeholder="搜索库内标签"
+              value={tagKeyword}
+              onChange={(e) => setTagKeyword(e.target.value)}
+            />
+          </div>
+          <div className={s.detailTableWrap}>
+            <table className={s.table}>
+              <thead>
+                <tr>
+                  <th>标签名称</th>
+                  <th>标签来源</th>
+                  <th>使用知识数</th>
+                  <th>创建时间</th>
+                  <th>创建者</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className={s.empty}>加载中…</td>
+                  </tr>
+                ) : filteredTags.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className={s.empty}>
+                      {tagItems.length === 0 ? '暂无标签' : '未找到匹配的标签'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTags.map((item) => (
+                    <tr key={`${item.name}-${item.resource_type}`}>
+                      <td className={s.tagName}>{item.name}</td>
+                      <td>{formatTagSourceLabel(item.resource_type)}</td>
+                      <td>{item.resource_count ?? 0}</td>
+                      <td>{item.create_time || '-'}</td>
+                      <td>{item.creator_name || '-'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface TagLibraryBrowseSectionProps {
+  active: boolean;
+  onViewDetail: (libraryId: number) => void;
+}
+
+/** Read-only tag library list shown below pending review tags. */
+function TagLibraryBrowseSection({ active, onViewDetail }: TagLibraryBrowseSectionProps) {
+  const [keyword, setKeyword] = useState('');
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
+  const [rows, setRows] = useState<TagLibraryListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const totalPages = Math.max(1, Math.ceil(total / LIBRARY_PAGE_SIZE));
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedKeyword(keyword.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [keyword]);
+
+  const loadLibraries = useCallback(async (targetPage: number, searchKeyword: string) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await listTagLibraries({
+        page: targetPage,
+        page_size: LIBRARY_PAGE_SIZE,
+        keyword: searchKeyword || undefined,
+      });
+      setRows(res.data || []);
+      setTotal(res.total || 0);
+    } catch (err) {
+      setRows([]);
+      setTotal(0);
+      setError(err instanceof Error ? err.message : '加载标签库失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!active) return;
+    setPage(1);
+    void loadLibraries(1, debouncedKeyword);
+  }, [active, debouncedKeyword, loadLibraries]);
+
+  const handlePageChange = (nextPage: number) => {
+    setPage(nextPage);
+    void loadLibraries(nextPage, debouncedKeyword);
+  };
+
+  return (
+    <div className={s.librarySection}>
+      <div className={s.sectionHead}>
+        <h3 className={s.sectionTitle}>
+          标签库
+          <span className={s.totalHint}>{`（${total}）`}</span>
+        </h3>
+        <p className={s.sectionDesc}>查看租户标签库及库内标签，仅供查阅</p>
+      </div>
+      <div className={s.searchRow}>
+        <Search size={16} className={s.searchIcon} />
+        <input
+          className={s.searchInput}
+          placeholder="搜索标签库"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      </div>
+      {error ? <div className={s.error}>{error}</div> : null}
+      <div className={s.libraryTableWrap}>
+        {loading ? <div className={s.tableLoadingOverlay}>加载中…</div> : null}
+        <table className={`${s.table}${loading ? ` ${s.tableLoading}` : ''}`}>
+          <thead>
+            <tr>
+              <th>标签库名称</th>
+              <th>标签数量</th>
+              <th>关联知识库</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!loading && rows.length === 0 ? (
+              <tr>
+                <td colSpan={4} className={s.empty}>暂无标签库</td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id}>
+                  <td className={s.tagName}>{row.name}</td>
+                  <td>{row.tag_count ?? 0}</td>
+                  <td className={s.muted} title={row.bound_space_names?.join('、') || undefined}>
+                    {formatBoundSpaceNames(row.bound_space_names)}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className={s.viewBtn}
+                      onClick={() => onViewDetail(row.id)}
+                    >
+                      <Eye size={14} />
+                      查看详情
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > 0 ? (
+        <div className={s.pager}>
+          <button
+            type="button"
+            className={s.pageBtn}
+            disabled={page <= 1 || loading}
+            onClick={() => handlePageChange(page - 1)}
+          >
+            上一页
+          </button>
+          <span className={s.pageInfo}>
+            {page} / {totalPages}
+          </span>
+          <button
+            type="button"
+            className={s.pageBtn}
+            disabled={page >= totalPages || loading}
+            onClick={() => handlePageChange(page + 1)}
+          >
+            下一页
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Portal dialog for org department admins to list/search/approve pending review tags.
  */
@@ -56,6 +338,7 @@ export default function TagReviewDialog({ open, onClose, onOpenFile }: TagReview
   const [selectedLibraryId, setSelectedLibraryId] = useState('');
   const [librariesLoading, setLibrariesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [detailLibraryId, setDetailLibraryId] = useState<number | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -116,6 +399,12 @@ export default function TagReviewDialog({ open, onClose, onOpenFile }: TagReview
       cancelled = true;
     };
   }, [approveState]);
+
+  useEffect(() => {
+    if (!open) {
+      setDetailLibraryId(null);
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -219,36 +508,38 @@ export default function TagReviewDialog({ open, onClose, onOpenFile }: TagReview
 
   return (
     <div className={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={s.modal} role="dialog" aria-modal="true" aria-labelledby="tag-review-title">
-        <div className={s.modalHead}>
-          <div>
-            <h2 id="tag-review-title" className={s.modalTitle}>
-              待审核标签
-              <span className={s.totalHint}>{`（${total}）`}</span>
-            </h2>
-            <p className={s.modalDesc}>审核 AI / 人工提交的、词表中尚不存在的标签名</p>
-          </div>
-          <button type="button" className={s.modalClose} onClick={onClose} aria-label="关闭">
-            <X size={16} />
-          </button>
-        </div>
-
+      <div className={s.modal} role="dialog" aria-modal="true" aria-labelledby="tag-review-pending-title">
         <div className={s.modalBody}>
-          <div className={s.searchRow}>
-            <Search size={16} className={s.searchIcon} />
-            <input
-              className={s.searchInput}
-              placeholder="搜索待审核标签"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-            />
-          </div>
-
           {toast ? <div className={s.toast}>{toast}</div> : null}
           {error ? <div className={s.error}>{error}</div> : null}
 
+          <div className={s.reviewSection}>
+            <div className={s.sectionHead}>
+              <div className={s.sectionHeadMain}>
+                <h3 id="tag-review-pending-title" className={s.sectionTitle}>
+                  待审核标签
+                  <span className={s.totalHint}>{`（${total}）`}</span>
+                </h3>
+                <p className={s.sectionDesc}>审核 AI / 人工提交的、词表中尚不存在的标签名</p>
+              </div>
+              <button type="button" className={s.modalClose} onClick={onClose} aria-label="关闭">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className={s.searchRow}>
+              <Search size={16} className={s.searchIcon} />
+              <input
+                className={s.searchInput}
+                placeholder="搜索待审核标签"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+            </div>
+
           <div className={s.tableWrap}>
-            <table className={s.table}>
+            {loading ? <div className={s.tableLoadingOverlay}>加载中…</div> : null}
+            <table className={`${s.table}${loading ? ` ${s.tableLoading}` : ''}`}>
               <thead>
                 <tr>
                   <th>建议标签</th>
@@ -259,11 +550,7 @@ export default function TagReviewDialog({ open, onClose, onOpenFile }: TagReview
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className={s.empty}>加载中…</td>
-                  </tr>
-                ) : rows.length === 0 ? (
+                {!loading && rows.length === 0 ? (
                   <tr>
                     <td colSpan={5} className={s.empty}>暂无待审核标签</td>
                   </tr>
@@ -333,8 +620,16 @@ export default function TagReviewDialog({ open, onClose, onOpenFile }: TagReview
               </button>
             </div>
           ) : null}
+          </div>
+
+          <TagLibraryBrowseSection active={open} onViewDetail={setDetailLibraryId} />
         </div>
       </div>
+
+      <TagLibraryDetailDialog
+        libraryId={detailLibraryId}
+        onClose={() => setDetailLibraryId(null)}
+      />
 
       {approveState ? (
         <div className={s.overlay} onClick={(e) => e.target === e.currentTarget && setApproveState(null)}>
