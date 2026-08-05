@@ -4211,11 +4211,7 @@ def test_search_files_does_not_fallback_to_public_spaces_when_flag_is_present(tm
     assert body["has_more"] is False
     assert body["next_cursor"] is None
     assert body["data"] == []
-    assert fake_bisheng.post_calls[0][0] == (
-        "/api/v1/knowledge/shougang-portal/files/browse"
-    )
-    assert fake_bisheng.post_calls[0][1]["space_ids"] == [7103]
-    assert fake_bisheng.post_calls[0][1]["discovery_scope"] == "public"
+    assert fake_bisheng.post_calls == []
 
 
 def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain_flag(tmp_path: Path):
@@ -4232,11 +4228,40 @@ def test_search_files_does_not_fallback_to_public_spaces_without_explicit_domain
     assert body["has_more"] is False
     assert body["next_cursor"] is None
     assert body["data"] == []
-    assert fake_bisheng.post_calls[0][0] == (
-        "/api/v1/knowledge/shougang-portal/files/browse"
-    )
-    assert fake_bisheng.post_calls[0][1]["space_ids"] == [7103]
-    assert fake_bisheng.post_calls[0][1]["discovery_scope"] == "public"
+    assert fake_bisheng.post_calls == []
+
+
+def test_logged_in_search_files_intersects_requested_space_ids_with_visible_spaces(tmp_path: Path):
+    class IntersectingBrowseBishengClient(FakeBishengClient):
+        async def post_json(self, path: str, json=None, headers=None):
+            self.post_calls.append((path, json))
+            if path == "/api/v1/knowledge/shougang-portal/files/browse":
+                assert json["space_ids"] == [12]
+                return {
+                    "status_code": 200,
+                    "data": {"data": [], "has_more": False, "next_cursor": None},
+                }
+            return await super().post_json(path, json=json, headers=headers)
+
+    config_service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    _seed_test_spaces(config_service)
+    fake_bisheng = IntersectingBrowseBishengClient()
+    with TestClient(app) as client:
+        previous_auth = getattr(client.app.state, "portal_auth_service", None)
+        client.app.state.portal_config_service = config_service
+        client.app.state.bisheng_client = fake_bisheng
+        client.app.state.portal_auth_service = FakePortalAuthService(fake_bisheng)
+        try:
+            response = client.get(
+                "/api/v1/knowledge/files?space_ids=12&space_ids=99&document_type=PRO&limit=10"
+            )
+        finally:
+            if previous_auth is not None:
+                client.app.state.portal_auth_service = previous_auth
+
+    assert response.status_code == 200
+    assert response.json()["data"]["data"] == []
+    assert fake_bisheng.post_calls[0][1]["space_ids"] == [12]
 
 
 def test_search_files_passes_document_type_subcategory_and_business_domain_code_to_shougang_portal_search(tmp_path: Path):

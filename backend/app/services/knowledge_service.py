@@ -792,6 +792,27 @@ class KnowledgeService:
             return sorted(base_space_ids)
         return sorted(base_space_ids)
 
+    async def _resolve_discovery_scope_space_ids(
+        self,
+        *,
+        requested_space_ids: Optional[list[int]],
+        space_level: Optional[str],
+        extra_space_ids: Optional[list[int]],
+        recommendation: Optional[str] = None,
+    ) -> list[int]:
+        if self.is_latest_selected_scoped_request(recommendation):
+            return []
+        allowed_space_ids = {
+            space.id
+            for space in await self._allowed_spaces(
+                space_level=space_level,
+                extra_space_ids=extra_space_ids,
+            )
+        }
+        if requested_space_ids:
+            return sorted(allowed_space_ids.intersection(requested_space_ids))
+        return sorted(allowed_space_ids)
+
     async def resolve_domain_count_scopes(
         self,
         domains: list[dict[str, Any]],
@@ -991,9 +1012,16 @@ class KnowledgeService:
             )
 
         if public_only and not keyword:
+            space_ids = await self._resolve_discovery_scope_space_ids(
+                requested_space_ids=requested_space_ids,
+                space_level="public",
+                extra_space_ids=extra_space_ids,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             return await self._browse_shougang_portal_files(
                 tag=effective_tag,
-                space_ids=list(requested_space_ids or []),
+                space_ids=space_ids,
                 space_level="public",
                 file_ext=file_ext,
                 document_type=document_type,
@@ -1026,13 +1054,14 @@ class KnowledgeService:
                 # 原有个人库/团队库。
                 space_ids = []
             else:
-                space_ids = list(
-                    dict.fromkeys(
-                        requested_space_ids
-                        or extra_space_ids
-                        or []
-                    )
+                space_ids = await self._resolve_discovery_scope_space_ids(
+                    requested_space_ids=requested_space_ids,
+                    space_level=space_level,
+                    extra_space_ids=extra_space_ids,
+                    recommendation=recommendation,
                 )
+                if not space_ids:
+                    return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             upstream_space_level = (
                 "public" if discovery_scope == "public" else space_level
             )
@@ -1128,13 +1157,13 @@ class KnowledgeService:
                 extra_space_ids,
             )
         else:
-            space_ids = list(
-                dict.fromkeys(
-                    requested_space_ids
-                    or extra_space_ids
-                    or []
-                )
+            space_ids = await self._resolve_discovery_scope_space_ids(
+                requested_space_ids=requested_space_ids,
+                space_level=space_level,
+                extra_space_ids=extra_space_ids,
             )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             upstream_space_level = (
                 "public" if discovery_scope == "public" else space_level
             )
@@ -1191,13 +1220,13 @@ class KnowledgeService:
                 extra_space_ids,
             )
         else:
-            space_ids = list(
-                dict.fromkeys(
-                    requested_space_ids
-                    or extra_space_ids
-                    or []
-                )
+            space_ids = await self._resolve_discovery_scope_space_ids(
+                requested_space_ids=requested_space_ids,
+                space_level=space_level,
+                extra_space_ids=extra_space_ids,
             )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             upstream_space_level = (
                 "public" if discovery_scope == "public" else space_level
             )
@@ -1245,9 +1274,16 @@ class KnowledgeService:
         normalized_base_tag = (base_tag or "").strip()
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         if public_only:
+            space_ids = await self._resolve_discovery_scope_space_ids(
+                requested_space_ids=requested_space_ids,
+                space_level="public",
+                extra_space_ids=extra_space_ids,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             return await self._browse_shougang_portal_files(
                 tag=normalized_base_tag or normalized_tag or None,
-                space_ids=list(requested_space_ids or []),
+                space_ids=space_ids,
                 space_level="public",
                 file_ext=file_ext,
                 document_type=document_type,
@@ -1277,13 +1313,14 @@ class KnowledgeService:
             if self.is_latest_selected_scoped_request(recommendation):
                 space_ids = []
             else:
-                space_ids = list(
-                    dict.fromkeys(
-                        requested_space_ids
-                        or extra_space_ids
-                        or []
-                    )
+                space_ids = await self._resolve_discovery_scope_space_ids(
+                    requested_space_ids=requested_space_ids,
+                    space_level=space_level,
+                    extra_space_ids=extra_space_ids,
+                    recommendation=recommendation,
                 )
+                if not space_ids:
+                    return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             upstream_space_level = (
                 "public" if discovery_scope == "public" else space_level
             )
