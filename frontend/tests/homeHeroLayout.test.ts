@@ -47,11 +47,16 @@ test('home knowledge section loading state is centered and animated', () => {
   assert.match(homePageStyles, /@keyframes home-section-spin/);
 });
 
-test('home knowledge section list expands to configured item count', () => {
+test('home left knowledge panels keep equal fixed heights', () => {
+  const leftColumn = cssBlock('.leftColumn');
+  const leftPanel = cssBlock('.leftColumn > .panel');
   const sectionList = cssBlock('.sectionList');
 
-  assert.match(sectionList, /flex:\s*0 0 auto;/);
-  assert.doesNotMatch(sectionList, /max-height:/);
-  assert.doesNotMatch(sectionList, /overflow-y:\s*auto;/);
-  assert.doesNotMatch(homePageStyles, /\.sectionList::-webkit-scrollbar/);
+  assert.match(leftColumn, /--home-section-panel-min-height:\s*420px;/);
+  assert.match(leftColumn, /min-height:\s*calc\(2 \* var\(--home-section-panel-min-height\) \+ 24px\);/);
+  assert.match(leftPanel, /flex:\s*1 1 0;/);
+  assert.match(leftPanel, /min-height:\s*var\(--home-section-panel-min-height\);/);
+  assert.match(leftPanel, /overflow:\s*hidden;/);
+  assert.match(sectionList, /overflow-y:\s*auto;/);
+  assert.match(homePageStyles, /\.sectionList::-webkit-scrollbar/);
 });

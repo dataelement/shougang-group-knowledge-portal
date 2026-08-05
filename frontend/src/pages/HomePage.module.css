@@ -1096,9 +1096,12 @@
 }
 
 .leftColumn {
+  --home-section-panel-min-height: 420px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  align-self: stretch;
+  min-height: calc(2 * var(--home-section-panel-min-height) + 24px);
 }
 
 .sideColumn {
@@ -1108,11 +1111,13 @@
   min-width: 0;
 }
 
-/* 左侧所有板块在右侧较高时按区域个数均分额外高度 */
+/* 左侧上下两块等高固定：均分列高，内容超出时在列表区滚动 */
 .leftColumn > .panel {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-height: var(--home-section-panel-min-height);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* 右侧所有板块在左侧较高时按区域个数均分额外高度 */
@@ -1126,11 +1131,13 @@
 .primarySectionPanel {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .tallSectionPanel {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 /* ===== Knowledge list panel ===== */
@@ -1176,6 +1183,22 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #c9cdd4 transparent;
+}
+
+.sectionList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sectionList::-webkit-scrollbar-thumb {
+  background: #c9cdd4;
+  border-radius: 999px;
+}
+
+.sectionList::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .panelHeaderLeft {
