@@ -47,6 +47,31 @@ export interface ReviewTagPage {
 export interface TagLibraryListItem {
   id: number;
   name: string;
+  description?: string | null;
+  tag_count?: number;
+  bound_space_count?: number;
+  bound_space_names?: string[];
+  used_knowledge_count?: number;
+  is_builtin?: boolean;
+}
+
+export interface TagLibraryTagItem {
+  name: string;
+  resource_type: string;
+  resource_count?: number;
+  create_time?: string | null;
+  creator_name?: string | null;
+}
+
+/** Full tag library payload returned by GET /tag-libraries/{id}. */
+export interface TagLibraryDetail extends TagLibraryListItem {
+  tags?: string[];
+  tag_items?: TagLibraryTagItem[];
+}
+
+export interface TagLibraryPage {
+  data: TagLibraryListItem[];
+  total: number;
 }
 
 interface ApiEnvelope<T> {
@@ -146,6 +171,35 @@ export async function approveOrRejectReviewTag(payload: {
   knowledge_id?: number;
 }): Promise<unknown> {
   return postJson(`${TAGS_BASE}/approve_or_reject`, payload);
+}
+
+/** Paginated tenant tag libraries (read-only browse in review dialog). */
+export async function listTagLibraries(params: {
+  page: number;
+  page_size: number;
+  keyword?: string;
+}): Promise<TagLibraryPage> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page));
+  query.set('page_size', String(params.page_size));
+  if (params.keyword) {
+    query.set('keyword', params.keyword);
+  }
+  const data = await getJson<TagLibraryPage | TagLibraryListItem[]>(
+    `${TAG_LIBRARY_BASE}?${query.toString()}`,
+  );
+  if (Array.isArray(data)) {
+    return { data, total: data.length };
+  }
+  return {
+    data: data?.data || [],
+    total: data?.total || 0,
+  };
+}
+
+/** Fetch one tag library with tag_items for read-only detail view. */
+export async function getTagLibraryDetail(libraryId: number): Promise<TagLibraryDetail> {
+  return getJson<TagLibraryDetail>(`${TAG_LIBRARY_BASE}/${libraryId}`);
 }
 
 /** List tag libraries bound to a knowledge space (for approve dialog). */
