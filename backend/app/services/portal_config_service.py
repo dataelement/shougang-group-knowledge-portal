@@ -62,6 +62,18 @@ class PortalConfigService:
 
     def get_config(self) -> PortalConfig:
         data = self._read_data()
+        persist_read_compat = not getattr(
+            self._store,
+            "skip_startup_seed",
+            False,
+        )
+
+        def persist_compat(payload: dict[str, Any]) -> None:
+            # 远程配置服务可能尚未支持门户新增字段，并会在保存时剥离这些字段。
+            # 读取路径只做内存兼容，避免每次读取都触发无效写回和认证刷新。
+            if persist_read_compat:
+                self._write_data(payload)
+
         legacy_missing_home_total = not isinstance(data.get("recommendation"), dict) or (
             "home_total_count" not in data["recommendation"]
         )
@@ -70,10 +82,10 @@ class PortalConfigService:
         agent_config_changed = self._ensure_agent_config_compat(data)
         sections_changed = self._ensure_sections_compat(data)
         if qa_model_changed or qa_templates_changed or agent_config_changed or sections_changed:
-            self._write_data(data)
+            persist_compat(data)
         if "search" not in data or not isinstance(data.get("search"), dict):
             data["search"] = dict(DEFAULT_PORTAL_CONFIG.get("search") or {"rerank_model_id": ""})
-            self._write_data(data)
+            persist_compat(data)
         else:
             default_search = DEFAULT_PORTAL_CONFIG.get("search") or {"rerank_model_id": ""}
             missing_search_keys = [
@@ -85,7 +97,7 @@ class PortalConfigService:
                     **default_search,
                     **data["search"],
                 }
-                self._write_data(data)
+                persist_compat(data)
         # 注意:banners 为空时不再自动补回默认。管理员全删/全停用后,后台如实显示为空;
         # 首页的兜底(空时展示第一张默认图)在公开配置接口 /knowledge/config 里做。
         if "integrations" not in data:
@@ -95,7 +107,7 @@ class PortalConfigService:
                     "bisheng_knowledge_entry_url": "",
                 }
             )
-            self._write_data(data)
+            persist_compat(data)
         else:
             default_integrations = DEFAULT_PORTAL_CONFIG.get("integrations") or {}
             missing_integration_keys = [
@@ -107,10 +119,10 @@ class PortalConfigService:
                     **default_integrations,
                     **data["integrations"],
                 }
-                self._write_data(data)
+                persist_compat(data)
         if "site" not in data:
             data["site"] = dict(DEFAULT_PORTAL_CONFIG.get("site") or {})
-            self._write_data(data)
+            persist_compat(data)
         else:
             default_site = DEFAULT_PORTAL_CONFIG.get("site") or {}
             missing_site_keys = [
@@ -122,10 +134,10 @@ class PortalConfigService:
                     **default_site,
                     **data["site"],
                 }
-                self._write_data(data)
+                persist_compat(data)
         if "recommendation" not in data:
             data["recommendation"] = dict(DEFAULT_PORTAL_CONFIG.get("recommendation") or {})
-            self._write_data(data)
+            persist_compat(data)
         else:
             default_recommendation = DEFAULT_PORTAL_CONFIG.get("recommendation") or {}
             missing_recommendation_keys = [
@@ -137,10 +149,10 @@ class PortalConfigService:
                     **default_recommendation,
                     **data["recommendation"],
                 }
-                self._write_data(data)
+                persist_compat(data)
         if "display" not in data:
             data["display"] = dict(DEFAULT_PORTAL_CONFIG.get("display") or {})
-            self._write_data(data)
+            persist_compat(data)
         else:
             default_display = DEFAULT_PORTAL_CONFIG.get("display") or {}
             missing_display_keys = [
@@ -152,7 +164,7 @@ class PortalConfigService:
                     **default_display,
                     **data["display"],
                 }
-                self._write_data(data)
+                persist_compat(data)
         if legacy_missing_home_total:
             raw_home = data.get("display", {}).get("home", {})
             try:
@@ -164,11 +176,11 @@ class PortalConfigService:
                     int(data["recommendation"].get("home_total_count") or 20),
                     legacy_section_page_size,
                 )
-                self._write_data(data)
+                persist_compat(data)
         config = PortalConfig.model_validate(data)
         normalized_data = config.model_dump(mode="json")
         if normalized_data != data:
-            self._write_data(normalized_data)
+            persist_compat(normalized_data)
         return config
 
     def replace_config(self, payload: PortalConfig) -> PortalConfig:

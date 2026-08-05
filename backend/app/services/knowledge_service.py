@@ -52,6 +52,7 @@ from app.schemas.knowledge import (
     ShareDocumentRequest,
     PortalHotSearchItem,
 )
+from app.schemas.portal_config import PortalConfig
 from app.services.error_messages import normalize_user_facing_message
 from app.services.portal_config_service import PortalConfigService
 from app.services.portal_telemetry_service import PORTAL_BFF_TELEMETRY_HEADERS
@@ -258,6 +259,7 @@ class KnowledgeService:
         self,
         extra_space_ids: Optional[list[int]] = None,
         *,
+        config: PortalConfig | None = None,
         discovery_scope: PortalDiscoveryScope = "legacy",
         resolve_user_visible_spaces: bool = False,
         latest_recommendation: str = LATEST_SELECTED_RECOMMENDATION,
@@ -275,7 +277,7 @@ class KnowledgeService:
         recommendation failures may be retried with ``latest_selected`` using the
         same scoped client; a successful empty/partial response is not retried.
         """
-        config = self._config_service.get_config()
+        config = config or self._config_service.get_config()
         indexed_sections = [
             (section, index)
             for index, section in enumerate(config.sections)
@@ -366,6 +368,7 @@ class KnowledgeService:
                     document_type=None,
                     business_domain_code=None,
                     recommendation=mode,
+                    rerank_model_id=config.search.rerank_model_id,
                     public_only=is_public_tag_section,
                     sort=(
                         "portal_read_count_desc"
@@ -402,6 +405,7 @@ class KnowledgeService:
                             document_type=None,
                             business_domain_code=None,
                             recommendation=LATEST_SELECTED_RECOMMENDATION,
+                            rerank_model_id=config.search.rerank_model_id,
                             sort="portal_read_count_desc",
                             cursor=None,
                             limit=config.display.home.section_page_size,
@@ -788,6 +792,27 @@ class KnowledgeService:
             return sorted(base_space_ids)
         return sorted(base_space_ids)
 
+    async def _resolve_discovery_scope_space_ids(
+        self,
+        *,
+        requested_space_ids: Optional[list[int]],
+        space_level: Optional[str],
+        extra_space_ids: Optional[list[int]],
+        recommendation: Optional[str] = None,
+    ) -> list[int]:
+        if self.is_latest_selected_scoped_request(recommendation):
+            return []
+        allowed_space_ids = {
+            space.id
+            for space in await self._allowed_spaces(
+                space_level=space_level,
+                extra_space_ids=extra_space_ids,
+            )
+        }
+        if requested_space_ids:
+            return sorted(allowed_space_ids.intersection(requested_space_ids))
+        return sorted(allowed_space_ids)
+
     async def resolve_domain_count_scopes(
         self,
         domains: list[dict[str, Any]],
@@ -916,6 +941,7 @@ class KnowledgeService:
         file_subcategory_code: Optional[str] = None,
         business_domain_code: Optional[str] = None,
         recommendation: Optional[str] = None,
+        rerank_model_id: str | None = None,
         public_only: bool = False,
         fallback_to_public_spaces: bool = False,
         discovery_scope: PortalDiscoveryScope = "legacy",
@@ -954,6 +980,7 @@ class KnowledgeService:
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=normalized_business_domain_code,
                 recommendation=recommendation,
+                rerank_model_id=rerank_model_id,
                 sort=sort,
                 cursor=cursor,
                 limit=limit,
@@ -976,6 +1003,7 @@ class KnowledgeService:
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=normalized_business_domain_code,
                 recommendation=recommendation,
+                rerank_model_id=rerank_model_id,
                 sort=sort or "relevance",
                 cursor=cursor,
                 limit=limit,
@@ -984,9 +1012,16 @@ class KnowledgeService:
             )
 
         if public_only and not keyword:
+            space_ids = await self._resolve_discovery_scope_space_ids(
+                requested_space_ids=requested_space_ids,
+                space_level="public",
+                extra_space_ids=extra_space_ids,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             return await self._browse_shougang_portal_files(
                 tag=effective_tag,
-                space_ids=list(requested_space_ids or []),
+                space_ids=space_ids,
                 space_level="public",
                 file_ext=file_ext,
                 document_type=document_type,
@@ -1019,13 +1054,14 @@ class KnowledgeService:
                 # 原有个人库/团队库。
                 space_ids = []
             else:
-                space_ids = list(
-                    dict.fromkeys(
-                        requested_space_ids
-                        or extra_space_ids
-                        or []
-                    )
+                space_ids = await self._resolve_discovery_scope_space_ids(
+                    requested_space_ids=requested_space_ids,
+                    space_level=space_level,
+                    extra_space_ids=extra_space_ids,
+                    recommendation=recommendation,
                 )
+                if not space_ids:
+                    return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             upstream_space_level = (
                 "public" if discovery_scope == "public" else space_level
             )
@@ -1063,6 +1099,7 @@ class KnowledgeService:
                 file_subcategory_code=file_subcategory_code,
                 business_domain_code=normalized_business_domain_code,
                 recommendation=recommendation,
+                rerank_model_id=rerank_model_id,
                 sort=sort or "relevance",
                 cursor=cursor,
                 limit=limit,
@@ -1120,13 +1157,13 @@ class KnowledgeService:
                 extra_space_ids,
             )
         else:
-            space_ids = list(
-                dict.fromkeys(
-                    requested_space_ids
-                    or extra_space_ids
-                    or []
-                )
+            space_ids = await self._resolve_discovery_scope_space_ids(
+                requested_space_ids=requested_space_ids,
+                space_level=space_level,
+                extra_space_ids=extra_space_ids,
             )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             upstream_space_level = (
                 "public" if discovery_scope == "public" else space_level
             )
@@ -1183,13 +1220,13 @@ class KnowledgeService:
                 extra_space_ids,
             )
         else:
-            space_ids = list(
-                dict.fromkeys(
-                    requested_space_ids
-                    or extra_space_ids
-                    or []
-                )
+            space_ids = await self._resolve_discovery_scope_space_ids(
+                requested_space_ids=requested_space_ids,
+                space_level=space_level,
+                extra_space_ids=extra_space_ids,
             )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             upstream_space_level = (
                 "public" if discovery_scope == "public" else space_level
             )
@@ -1237,9 +1274,16 @@ class KnowledgeService:
         normalized_base_tag = (base_tag or "").strip()
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         if public_only:
+            space_ids = await self._resolve_discovery_scope_space_ids(
+                requested_space_ids=requested_space_ids,
+                space_level="public",
+                extra_space_ids=extra_space_ids,
+            )
+            if not space_ids:
+                return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             return await self._browse_shougang_portal_files(
                 tag=normalized_base_tag or normalized_tag or None,
-                space_ids=list(requested_space_ids or []),
+                space_ids=space_ids,
                 space_level="public",
                 file_ext=file_ext,
                 document_type=document_type,
@@ -1269,13 +1313,14 @@ class KnowledgeService:
             if self.is_latest_selected_scoped_request(recommendation):
                 space_ids = []
             else:
-                space_ids = list(
-                    dict.fromkeys(
-                        requested_space_ids
-                        or extra_space_ids
-                        or []
-                    )
+                space_ids = await self._resolve_discovery_scope_space_ids(
+                    requested_space_ids=requested_space_ids,
+                    space_level=space_level,
+                    extra_space_ids=extra_space_ids,
+                    recommendation=recommendation,
                 )
+                if not space_ids:
+                    return CursorKnowledgeFileData(data=[], has_more=False, next_cursor=None)
             upstream_space_level = (
                 "public" if discovery_scope == "public" else space_level
             )
@@ -1643,6 +1688,7 @@ class KnowledgeService:
         limit: int | None = None,
         public_only: bool = False,
         discovery_scope: PortalDiscoveryScope = "legacy",
+        rerank_model_id: str | None = None,
     ) -> CursorKnowledgeFileData:
         request_body = {
             "discovery_scope": discovery_scope,
@@ -1669,8 +1715,17 @@ class KnowledgeService:
         normalized_business_domain_code = self._normalize_business_domain_code(business_domain_code)
         if normalized_business_domain_code:
             request_body["business_domain_code"] = normalized_business_domain_code
-        rerank_model_id = str(self._config_service.get_config().search.rerank_model_id or "").strip()
-        request_body["rerank_model_id"] = rerank_model_id
+        if rerank_model_id is None:
+            try:
+                rerank_model_id = str(
+                    self._config_service.get_config().search.rerank_model_id or ""
+                ).strip()
+            except Exception:
+                logger.exception(
+                    "读取门户搜索重排模型配置失败，使用空配置继续查询"
+                )
+                rerank_model_id = ""
+        request_body["rerank_model_id"] = str(rerank_model_id or "").strip()
         response = await self._bisheng.post_json(
             "/api/v1/knowledge/shougang-portal/files/search",
             json=request_body,
