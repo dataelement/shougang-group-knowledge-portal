@@ -13,7 +13,19 @@
   background: #fff;
   border-radius: 14px;
   width: min(960px, 100%);
-  max-height: min(860px, 92vh);
+  height: min(920px, 94vh);
+  max-height: min(920px, 94vh);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailModal {
+  background: #fff;
+  border-radius: 14px;
+  width: min(860px, 100%);
+  max-height: min(760px, 90vh);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
   overflow: hidden;
   display: flex;
@@ -30,11 +42,13 @@
 
 .modalHead {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  min-height: 64px;
   padding: 18px 24px;
   border-bottom: 1px solid #ececec;
+  box-sizing: border-box;
 }
 
 .modalTitle {
@@ -78,8 +92,12 @@
 }
 
 .modalBody {
-  padding: 16px 24px 20px;
-  overflow: auto;
+  padding: 18px 24px 20px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .searchRow {
@@ -131,8 +149,123 @@
   border: 1px solid #ececec;
   border-radius: 8px;
   overflow: auto;
-  max-height: 52vh;
+  flex: 1;
+  min-height: 0;
   background: #fafbfc;
+  position: relative;
+}
+
+.libraryTableWrap,
+.detailTableWrap {
+  border: 1px solid #ececec;
+  border-radius: 8px;
+  overflow: auto;
+  background: #fafbfc;
+}
+
+.libraryTableWrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.tableLoadingOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.78);
+  color: #86909c;
+  font-size: 0.875rem;
+}
+
+.tableLoading {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.detailTableWrap {
+  max-height: 24vh;
+}
+
+.reviewSection {
+  flex: 2.4;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px;
+}
+
+.librarySection {
+  flex: 1.6;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 16px;
+  border-top: 1px solid #ececec;
+  margin-bottom: 0;
+}
+
+.sectionHead,
+.searchRow,
+.pager,
+.toast,
+.error {
+  flex-shrink: 0;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.sectionHeadMain {
+  min-width: 0;
+  flex: 1;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.sectionDesc {
+  margin: 4px 0 0;
+  font-size: 0.8125rem;
+  color: #86909c;
+  line-height: 1.45;
+}
+
+.detailDesc,
+.detailMeta {
+  margin: 0 0 10px;
+  font-size: 0.875rem;
+  color: #4e5969;
+  line-height: 1.5;
+}
+
+.viewBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: #3370ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.viewBtn:hover {
+  text-decoration: underline;
 }
 
 .table {

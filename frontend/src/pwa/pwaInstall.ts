@@ -73,6 +73,28 @@ export function subscribePwa(cb: () => void): () => void {
   };
 }
 
+// 「悬浮意图」信号：鼠标移入浮动钢小智按钮时发出，用于触发安装气泡显示。
+const hoverListeners = new Set<() => void>();
+
+/** 鼠标移入浮动钢小智按钮时调用，通知气泡显示 */
+export function emitInstallHoverIntent(): void {
+  hoverListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      // 忽略单个订阅者异常
+    }
+  });
+}
+
+/** 订阅悬浮意图，返回取消订阅函数 */
+export function subscribeInstallHoverIntent(cb: () => void): () => void {
+  hoverListeners.add(cb);
+  return () => {
+    hoverListeners.delete(cb);
+  };
+}
+
 /** 触发浏览器原生安装确认框 */
 export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
   const evt = deferredPrompt;

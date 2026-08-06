@@ -57,10 +57,13 @@ import { getRuntimeDocumentTypeGroups } from '../utils/documentTypes';
 import { getEnabledCategoryCards, getEnabledDomains, getEnabledSections, resolveHomeBanners, toRuntimeDisplayConfig } from '../utils/portalConfig';
 import { buildCategorySearchPath, buildDomainSearchPath } from '../utils/searchParams';
 import {
+  consumeHomeNavCardPath,
   consumeHomeNavTab,
   DEFAULT_HOME_NAV_TAB,
   HOME_NAV_RESET_EVENT,
+  rememberHomeNavCardPath,
   rememberHomeNavTab,
+  scrollHomeNavCardIntoView,
   type HomeNavTab,
 } from '../utils/homeNavTab';
 import {
@@ -404,6 +407,7 @@ export default function HomePage() {
   );
   const [bannerIdx, setBannerIdx] = useState(0);
   const domainScrollRef = useRef<HTMLDivElement>(null);
+  const pendingHomeNavCardPathRef = useRef<string | null>(consumeHomeNavCardPath());
   const domainDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false, path: '' });
   const [domainScrollState, setDomainScrollState] = useState({ atStart: true, atEnd: false });
   const [navTab, setNavTab] = useState<HomeNavTab>(() => consumeHomeNavTab() ?? DEFAULT_HOME_NAV_TAB);
@@ -491,6 +495,7 @@ export default function HomePage() {
 
   const navigateToTop = useCallback((path: string) => {
     rememberHomeNavTab(navTab);
+    rememberHomeNavCardPath(path);
     const root = document.documentElement;
     const previousScrollBehavior = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
@@ -1041,6 +1046,23 @@ export default function HomePage() {
     const el = domainScrollRef.current;
     if (el) el.scrollLeft = 0;
   }, [activeNavTab]);
+
+  // 从业务域/分类列表页返回时,滚动到上次点击的卡片
+  useEffect(() => {
+    const path = pendingHomeNavCardPathRef.current;
+    if (!path || configLoading) return;
+    if (!homeNavCards.some((card) => card.path === path)) return;
+
+    const el = domainScrollRef.current;
+    if (!el) return;
+
+    const frame = requestAnimationFrame(() => {
+      if (scrollHomeNavCardIntoView(el, path)) {
+        pendingHomeNavCardPathRef.current = null;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeNavTab, configLoading, homeNavCards]);
 
   return (
     <PageShell>

@@ -1798,6 +1798,11 @@ export default function ExpertQADetailPage() {
         <div className={s.layout}>
           <main>
             <div className={s.qCard}>
+              <h1 className={s.qTitle}>
+                <img className={s.askBadge} src={askBadge} alt="问" />
+                {question.title}
+              </h1>
+
               <div className={s.askerRow}>
                 <span className={s.askerAvatar}>
                   {question.asker?.name.charAt(0) || '?'}
@@ -1805,11 +1810,6 @@ export default function ExpertQADetailPage() {
                 <span className={s.askerName}>{question.asker.name}</span>
                 <span className={s.askerDate}>{question.askedAt}</span>
               </div>
-
-              <h1 className={s.qTitle}>
-                <img className={s.askBadge} src={askBadge} alt="问" />
-                {question.title}
-              </h1>
 
               <div className={s.qBodyText}>
                 {question.bodyHtml ? (
