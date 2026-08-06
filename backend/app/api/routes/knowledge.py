@@ -40,7 +40,12 @@ from app.schemas.knowledge import (
     ShareDocumentAccessRequest,
     ShareDocumentRequest,
 )
-from app.schemas.portal_config import DEFAULT_DOCUMENT_TYPES, DocumentTypeConfig, PortalConfig
+from app.schemas.portal_config import (
+    DEFAULT_DOCUMENT_TYPES,
+    DocumentTypeConfig,
+    PortalConfig,
+    resolve_portal_watermark_horizontal_text,
+)
 from app.services.chat_stream import ChatStreamObserver, safe_chat_stream
 from app.services.domain_consistency_service import DomainConsistencyService
 from app.services.domain_file_count_service import DomainFileCountService
@@ -1131,6 +1136,18 @@ async def get_portal_config(
             **config_dict,
             "document_types": document_types,
             "business_domain_options": business_domain_options,
+        }
+    )
+
+
+@router.get("/config/watermark")
+async def get_public_watermark_config(
+    portal_config_service: PortalConfigService = Depends(get_portal_config_service),
+):
+    configured = portal_config_service.get_config().watermark.horizontal_text
+    return response_ok(
+        {
+            "horizontal_text": resolve_portal_watermark_horizontal_text(configured),
         }
     )
 

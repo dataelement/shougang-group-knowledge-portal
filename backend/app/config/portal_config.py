@@ -367,4 +367,7 @@ DEFAULT_PORTAL_CONFIG = {
         "domain_count_cache_ttl_seconds": 43200,
         "home_cache_ttl_seconds": 1800,
     },
+    "watermark": {
+        "horizontal_text": "",
+    },
 }

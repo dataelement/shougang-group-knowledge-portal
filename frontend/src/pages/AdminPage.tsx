@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap, Option, ExternalLink
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap, Option, ExternalLink, Shield
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -56,12 +56,16 @@ import {
   updateRecommendationConfig,
   updateSectionsConfig,
   updateSiteConfig,
+  updateWatermarkConfig,
   uploadBannerImage,
   uploadApplicationIcon,
   type RestAuthRuntimeConfig,
   fetchRestAuthRuntimeConfig,
 } from '../api/adminConfig';
+import { invalidatePortalContentConfigCache } from '../api/content';
+import { invalidatePortalConfigStore } from '../hooks/usePortalConfig';
 import { RestAuthAdminSection } from './admin/RestAuthAdminSection';
+import { WatermarkAdminSection } from './admin/WatermarkAdminSection';
 import {
   buildDomainCodeOptions,
   createDomainDraft,
@@ -167,6 +171,7 @@ const NAV_ITEMS = [
   { key: 'deptBinding', label: '科室知识库绑定', icon: Link2 },
   { key: 'integrations', label: '集成配置', icon: Plug },
   { key: 'site', label: '站点配置', icon: Settings },
+  { key: 'watermark', label: '水印设置', icon: Shield },
   { key: 'dictConfig', label: '字典配置', icon: Option },
 ];
 
@@ -1179,6 +1184,21 @@ export default function AdminPage() {
                 setSiteDraft(createSiteDraft(config.site));
                 setSiteDialogError('');
                 setSiteDialogOpen(true);
+              }}
+            />
+          )}
+          {config && active === 'watermark' && (
+            <WatermarkAdminSection
+              watermark={config.watermark}
+              saving={saving}
+              onSave={async (watermark) => {
+                await runSave(async () => {
+                  const data = await updateWatermarkConfig(watermark);
+                  invalidatePortalContentConfigCache();
+                  invalidatePortalConfigStore();
+                  setConfig((current) => (current ? { ...current, watermark: data } : current));
+                  showToast('水印配置已保存');
+                });
               }}
             />
           )}

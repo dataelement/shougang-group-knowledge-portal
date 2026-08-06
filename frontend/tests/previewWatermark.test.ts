@@ -47,6 +47,19 @@ test('portal preview watermark falls back to account without department', () => 
   ]);
 });
 
+test('portal preview watermark accepts configured horizontal text', () => {
+  const lines = buildPortalPreviewWatermarkLines(
+    { name: '王五', account: 'wangwu', departmentName: '质量部' },
+    new Date('2026-08-06T00:00:00.000Z'),
+    '测试环境水印文案',
+  );
+
+  assert.deepEqual(lines, [
+    '质量部-王五-wangwu-2026/08/06',
+    '测试环境水印文案',
+  ]);
+});
+
 test('portal preview watermark layout uses adaptive rotated bounds and staggered rows', () => {
   const compact = calculatePortalPreviewWatermarkLayout([100, 90]);
   const normal = calculatePortalPreviewWatermarkLayout([240, 220]);
@@ -97,6 +110,8 @@ test('portal watermark layer is visual-only and detail page blocks anonymous bod
   assert.match(componentSource, /export function PreviewWatermarkOverlay/);
   assert.match(componentSource, /aria-hidden="true"/);
   assert.match(componentSource, /useState\(\(\) => new Date\(\)\)/);
+  assert.match(componentSource, /usePortalConfig/);
+  assert.match(componentSource, /resolvePortalWatermarkHorizontalText/);
   assert.doesNotMatch(componentSource, /<pattern/);
   assert.match(componentSource, /ResizeObserver/);
   assert.match(componentSource, /positions\.map/);

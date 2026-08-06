@@ -205,6 +205,43 @@ def test_site_config_backfills_missing_home_cache_ttl(tmp_path):
     assert persisted["site"]["home_cache_ttl_seconds"] == 1800
 
 
+def test_watermark_config_defaults_to_empty_text(tmp_path):
+    from app.services.portal_config_service import PortalConfigService
+
+    service = PortalConfigService(config_path=tmp_path / "portal.json")
+    assert service.get_config().watermark.horizontal_text == ""
+
+
+def test_update_watermark_persists_custom_text(tmp_path):
+    from app.schemas.portal_config import WatermarkConfig
+    from app.services.portal_config_service import PortalConfigService
+
+    service = PortalConfigService(config_path=tmp_path / "portal.json")
+    updated = service.update_watermark(
+        WatermarkConfig(horizontal_text="测试环境水印文案"),
+    )
+    assert updated.watermark.horizontal_text == "测试环境水印文案"
+    assert service.get_config().watermark.horizontal_text == "测试环境水印文案"
+
+
+def test_watermark_config_backfills_missing_section(tmp_path):
+    from app.services.config_store import InMemoryConfigStore
+    from app.services.portal_config_service import PortalConfigService
+
+    store = InMemoryConfigStore()
+    payload = deepcopy(DEFAULT_PORTAL_CONFIG)
+    payload.pop("watermark", None)
+    store.upsert_document("portal_config", payload)
+
+    service = PortalConfigService(config_path=tmp_path / "portal.json", store=store)
+    config = service.get_config()
+
+    assert config.watermark.horizontal_text == ""
+    persisted = store.get_document("portal_config")
+    assert persisted is not None
+    assert persisted["watermark"]["horizontal_text"] == ""
+
+
 def test_remote_config_read_applies_compat_without_writing_back(tmp_path):
     class RemoteStore:
         skip_startup_seed = True

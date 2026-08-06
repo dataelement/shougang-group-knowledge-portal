@@ -9,12 +9,14 @@ import {
 } from 'react';
 
 import type { PortalUser } from '../api/auth';
+import { usePortalConfig } from '../hooks/usePortalConfig';
 import {
   buildPortalPreviewWatermarkLines,
   calculatePortalPreviewWatermarkLayout,
   calculatePortalPreviewWatermarkPositions,
   measurePortalPreviewWatermarkLineWidths,
 } from '../utils/previewWatermark';
+import { resolvePortalWatermarkHorizontalText } from '../utils/adminWatermarkConfig';
 import s from './PreviewWatermark.module.css';
 
 interface PreviewWatermarkProps {
@@ -34,7 +36,9 @@ export function PreviewWatermarkProvider({
   user,
 }: PreviewWatermarkProviderProps) {
   const [viewedAt] = useState(() => new Date());
-  const lines = user ? buildPortalPreviewWatermarkLines(user, viewedAt) : null;
+  const { config } = usePortalConfig();
+  const horizontalText = resolvePortalWatermarkHorizontalText(config?.watermark?.horizontal_text);
+  const lines = user ? buildPortalPreviewWatermarkLines(user, viewedAt, horizontalText) : null;
 
   return (
     <PreviewWatermarkContext.Provider value={lines}>

@@ -5,6 +5,8 @@ export interface PortalPreviewWatermarkUser {
   externalId?: string;
 }
 
+export const DEFAULT_PORTAL_WATERMARK_HORIZONTAL_TEXT = '首钢股份内部资料，严禁外传，违者必究';
+
 const BEIJING_TIME_ZONE = 'Asia/Shanghai';
 const WATERMARK_FONT_SIZE = 16;
 const WATERMARK_LINE_HEIGHT = 20;
@@ -148,13 +150,15 @@ export function formatPreviewWatermarkTime(value: Date): string {
 export function buildPortalPreviewWatermarkLines(
   user: PortalPreviewWatermarkUser,
   viewedAt: Date,
+  horizontalText: string = DEFAULT_PORTAL_WATERMARK_HORIZONTAL_TEXT,
 ): string[] {
   const name = user.name.trim() || user.account.trim() || '未知用户';
   const account = user.externalId?.trim() || user.account.trim() || name;
   const departmentName = user.departmentName?.trim() || '';
   const identity = departmentName ? `${departmentName}-${name}` : name;
+  const resolvedHorizontalText = horizontalText.trim() || DEFAULT_PORTAL_WATERMARK_HORIZONTAL_TEXT;
   return [
     `${identity}-${account}-${formatPreviewWatermarkTime(viewedAt)}`,
-    '首钢股份内部资料，严禁外传，违者必究',
+    resolvedHorizontalText,
   ];
 }

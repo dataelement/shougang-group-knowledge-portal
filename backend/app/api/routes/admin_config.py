@@ -33,6 +33,7 @@ from app.schemas.portal_config import (
     SearchConfig,
     SectionsConfigUpdate,
     SiteConfig,
+    WatermarkConfig,
 )
 from app.services.portal_admin_config_store import PortalAdminConfigValidationError
 from app.services.bisheng_runtime_service import BishengRuntimeService
@@ -621,6 +622,24 @@ async def update_site_config(
     service: PortalConfigService = Depends(get_portal_config_service),
 ):
     return response_ok(service.update_site(payload).site)
+
+
+@router.get("/watermark")
+async def get_watermark_config(
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    return response_ok(service.get_config().watermark)
+
+
+@router.post("/watermark")
+async def update_watermark_config(
+    payload: WatermarkConfig,
+    service: PortalConfigService = Depends(get_portal_config_service),
+):
+    try:
+        return response_ok(service.update_watermark(payload).watermark)
+    except ValidationError:
+        return response_error("水印配置校验失败，请检查文案长度与格式", status_code=422)
 
 
 @router.get("/bisheng")

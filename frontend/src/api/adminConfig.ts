@@ -305,6 +305,10 @@ export interface SiteConfig {
   home_cache_ttl_seconds: number;
 }
 
+export interface WatermarkConfig {
+  horizontal_text: string;
+}
+
 export interface CategoryCardConfig {
   code: string;
   name: string;
@@ -326,6 +330,7 @@ export interface PortalConfig {
   banners: BannerSlide[];
   integrations: IntegrationsConfig;
   site: SiteConfig;
+  watermark: WatermarkConfig;
 }
 
 export interface DeptBinding {
@@ -579,6 +584,13 @@ export function updateSiteConfig(site: SiteConfig) {
   return request<SiteConfig>('/api/v1/admin/config/site', {
     method: 'POST',
     body: JSON.stringify(site),
+  });
+}
+
+export function updateWatermarkConfig(watermark: WatermarkConfig) {
+  return request<WatermarkConfig>('/api/v1/admin/config/watermark', {
+    method: 'POST',
+    body: JSON.stringify(watermark),
   });
 }
 

@@ -12,6 +12,7 @@ const appsPageSource = readFileSync('src/pages/AppsPage.tsx', 'utf8');
 test('portal exposes a provider-only current-user watermark with a single opacity source', () => {
   assert.match(previewWatermarkSource, /export function PreviewWatermarkProvider/);
   assert.match(previewWatermarkSource, /user\s*\?\s*buildPortalPreviewWatermarkLines/);
+  assert.match(previewWatermarkSource, /resolvePortalWatermarkHorizontalText/);
   assert.match(previewWatermarkSource, /fillOpacity=\{layout\.opacity\}/);
   assert.match(previewWatermarkUtils, /WATERMARK_OPACITY\s*=\s*0\.31/);
   assert.doesNotMatch(previewWatermarkStyles, /fill-opacity/);

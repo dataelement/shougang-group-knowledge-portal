@@ -614,6 +614,28 @@ class SiteConfig(BaseModel):
     home_cache_ttl_seconds: int = Field(default=1800, ge=60)
 
 
+DEFAULT_PORTAL_WATERMARK_HORIZONTAL_TEXT = "首钢股份内部资料，严禁外传，违者必究"
+
+
+class WatermarkConfig(BaseModel):
+    horizontal_text: str = ""
+
+    @field_validator("horizontal_text", mode="before")
+    @classmethod
+    def normalize_horizontal_text(cls, value: Any) -> str:
+        text = _clean_config_text(str(value or ""))
+        if any(char in text for char in "\r\n"):
+            raise ValueError("Watermark horizontal text must not contain line breaks")
+        if len(text) > 80:
+            raise ValueError("Watermark horizontal text must be at most 80 characters")
+        return text
+
+
+def resolve_portal_watermark_horizontal_text(configured: str | None) -> str:
+    text = _clean_config_text(str(configured or ""))
+    return text or DEFAULT_PORTAL_WATERMARK_HORIZONTAL_TEXT
+
+
 DEFAULT_DOCUMENT_TYPES: list[dict[str, str]] = [
     {"code": "POL", "label": "政策制度"},
     {"code": "STD", "label": "标准规范"},
@@ -641,6 +663,7 @@ class PortalConfig(BaseModel):
     banners: list[BannerSlide] = Field(default_factory=list)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
     site: SiteConfig = Field(default_factory=SiteConfig)
+    watermark: WatermarkConfig = Field(default_factory=WatermarkConfig)
 
     @model_validator(mode="before")
     @classmethod

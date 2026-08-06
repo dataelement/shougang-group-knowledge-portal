@@ -2086,6 +2086,51 @@ def test_get_admin_config_backfills_missing_site_from_legacy_json(tmp_path: Path
     assert response.json()["data"]["favicon_url"] == "/site-favicon-horizontal-v2.png"
 
 
+def test_get_admin_watermark_defaults_to_empty_text(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.get("/api/v1/admin/config/watermark")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {"horizontal_text": ""}
+
+
+def test_post_admin_watermark_persists_custom_text(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+
+    payload = {"horizontal_text": "测试环境水印文案"}
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        post_response = client.post("/api/v1/admin/config/watermark", json=payload)
+        get_response = client.get("/api/v1/admin/config/watermark")
+
+    assert post_response.status_code == 200
+    assert post_response.json()["data"] == payload
+    assert get_response.json()["data"] == payload
+    assert service.get_config().watermark.horizontal_text == "测试环境水印文案"
+
+
+def test_post_admin_watermark_rejects_overlong_text(tmp_path: Path):
+    service = PortalConfigService(config_path=tmp_path / "portal_config.json")
+    runtime_service = create_runtime_service(tmp_path)
+
+    with TestClient(app) as client:
+        client.app.state.portal_config_service = service
+        client.app.state.bisheng_runtime_service = runtime_service
+        response = client.post(
+            "/api/v1/admin/config/watermark",
+            json={"horizontal_text": "文" * 81},
+        )
+
+    assert response.status_code == 422
+
+
 def test_get_dept_bindings_proxies_bisheng():
     fake = FakeBishengClient()
     fake.bindings = [

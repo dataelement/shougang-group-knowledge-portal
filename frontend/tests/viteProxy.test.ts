@@ -43,6 +43,13 @@ test('nginx MinIO proxy preserves the Host used to sign presigned URLs', () => {
   assert.match(nginxSource, /proxy_set_header\s+Host\s+\$\{BISHENG_MINIO_SIGNED_HOST\};/);
 });
 
+test('vite dev server defaults MinIO signed host to BiSheng sharepoint', () => {
+  const configSource = readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+
+  assert.match(configSource, /BISHENG_MINIO_SIGNED_HOST\s*\|\|\s*'minio:9000'/);
+  assert.match(configSource, /proxyReq\.setHeader\('host',\s*bishengMinioSignedHost\.replace/);
+});
+
 test('deployment exposes MinIO signed host as an explicit environment variable', () => {
   const composeSource = readFileSync(resolve(process.cwd(), '../docker-compose.yaml'), 'utf8');
   const dockerfileSource = readFileSync(resolve(process.cwd(), '../deploy/Dockerfile.portal-frontend'), 'utf8');

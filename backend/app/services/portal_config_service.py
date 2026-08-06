@@ -34,6 +34,7 @@ from app.schemas.portal_config import (
     SpaceOptionsResponse,
     DisplayConfig,
     SiteConfig,
+    WatermarkConfig,
 )
 from app.services.config_store import InMemoryConfigStore
 
@@ -133,6 +134,21 @@ class PortalConfigService:
                 data["site"] = {
                     **default_site,
                     **data["site"],
+                }
+                persist_compat(data)
+        if "watermark" not in data:
+            data["watermark"] = dict(DEFAULT_PORTAL_CONFIG.get("watermark") or {})
+            persist_compat(data)
+        else:
+            default_watermark = DEFAULT_PORTAL_CONFIG.get("watermark") or {}
+            missing_watermark_keys = [
+                key for key in default_watermark
+                if key not in data["watermark"]
+            ]
+            if missing_watermark_keys:
+                data["watermark"] = {
+                    **default_watermark,
+                    **data["watermark"],
                 }
                 persist_compat(data)
         if "recommendation" not in data:
@@ -702,6 +718,11 @@ class PortalConfigService:
     def update_site(self, payload: SiteConfig) -> PortalConfig:
         data = self.get_config().model_dump()
         data["site"] = payload.model_dump()
+        return self._write_config(PortalConfig.model_validate(data))
+
+    def update_watermark(self, payload: WatermarkConfig) -> PortalConfig:
+        data = self.get_config().model_dump()
+        data["watermark"] = payload.model_dump()
         return self._write_config(PortalConfig.model_validate(data))
 
     def _ensure_seeded(self) -> None:
