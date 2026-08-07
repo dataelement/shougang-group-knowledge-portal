@@ -5,6 +5,7 @@ import {
   Bell,
   ChevronDown,
   ClipboardList,
+  Coins,
   LayoutDashboard,
   LogIn,
   LogOut,
@@ -359,6 +360,17 @@ export default function Header() {
                       我的上传
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className={s.userMenuItem}
+                    onClick={() => {
+                      closeMenu();
+                      navigate('/points');
+                    }}
+                  >
+                    <Coins size={15} />
+                    我的积分
+                  </button>
                   {canViewMigrations ? (
                     <button
                       type="button"
@@ -372,9 +384,8 @@ export default function Header() {
                       迁移记录
                     </button>
                   ) : null}
-                  {canOpenAdmin || showRecycleEntry || showTagReviewEntry || showMyUploadsEntry || canViewMigrations ? (
-                    <div className={s.userMenuDivider} />
-                  ) : null}
+                  {/* 「我的积分」对登录用户常显，故分割线始终保留 */}
+                  <div className={s.userMenuDivider} />
                   <button
                     type="button"
                     className={`${s.userMenuItem} ${s.userMenuItemDanger}`}

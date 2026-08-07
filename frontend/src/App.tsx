@@ -27,6 +27,7 @@ import WikiPage from './pages/WikiPage';
 import WikiDetailPage from './pages/WikiDetailPage';
 import CoursePage from './pages/CoursePage';
 import CourseListPage from './pages/CourseListPage';
+import PointsPage from './pages/PointsPage';
 import { usePortalConfig } from './hooks/usePortalConfig';
 import { useAuth } from './hooks/useAuth';
 import Header from './components/Header';
@@ -215,6 +216,7 @@ export default function App() {
         <Route path="/course" element={<CourseListPage />} />
         <Route path="/course/:courseId" element={<CoursePage />} />
         <Route path="/apps" element={<RequireAuth><AppsPage /></RequireAuth>} />
+        <Route path="/points" element={<RequireAuth><PointsPage /></RequireAuth>} />
         <Route path="/admin" element={<AdminRoute />} />
         <Route path="/recycle" element={<RecycleRoute />} />
         <Route

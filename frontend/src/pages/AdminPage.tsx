@@ -1,7 +1,7 @@
 import type { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap, Option, ExternalLink
+  Building, Tag, Bot, Star, Plus, SlidersHorizontal, RefreshCw, ArrowUp, ArrowDown, Server, Image as ImageIcon, Upload, X, Plug, Settings, FileText, KeyRound, Search as SearchIcon, MessageSquare, ChevronRight, ChevronDown, Check, Trash2, Link2, CheckCircle, XCircle, GraduationCap, Option, ExternalLink, Coins
 } from 'lucide-react';
 import DomainIcon from '../components/DomainIcon';
 import {
@@ -136,6 +136,7 @@ import { getSafeExternalHttpUrl } from '../utils/adminIntegrations';
 import RecommendationPersonalizationPanel from './admin/RecommendationPersonalizationPanel';
 import CourseManagementPanel from './admin/CourseManagementPanel';
 import DictConfigPanel from './admin/DictConfigPanel';
+import PointsManagementPanel from './admin/PointsManagementPanel';
 import s from './AdminPage.module.css';
 
 function isBuiltinSection(section: SectionConfig): boolean {
@@ -155,6 +156,7 @@ const NAV_ITEMS = [
   { key: 'sections', label: '首页分区', icon: Tag },
   { key: 'banners', label: '首页 Banner', icon: ImageIcon },
   { key: 'courses', label: '课程管理', icon: GraduationCap },
+  { key: 'points', label: '积分管理', icon: Coins },
   { key: 'documentTypes', label: '文件分类', icon: FileText },
   { key: 'qa', label: '问答配置', icon: Bot },
   { key: 'qaTemplates', label: '问答模板', icon: FileText },
@@ -1160,6 +1162,7 @@ export default function AdminPage() {
             />
           )}
           {active === 'courses' && <CourseManagementPanel />}
+          {active === 'points' && <PointsManagementPanel />}
           {config && active === 'integrations' && (
             <IntegrationsConfigTable
               integrations={config.integrations}
