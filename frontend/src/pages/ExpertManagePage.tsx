@@ -587,7 +587,7 @@ function ExpertFormModal({ mode, initial, onClose, onSuccess }: ExpertFormModalP
       const duplicate = existing.experts.find(
         (item) =>
           item.id !== form.id &&
-          (item.user_id === userId || item.expert_name.trim() === expertName),
+          (item.user_id === userId && item.expert_name.trim() === expertName),
       );
       if (duplicate) {
         setError('该专家已存在');
