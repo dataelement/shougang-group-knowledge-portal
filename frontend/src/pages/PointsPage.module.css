@@ -160,6 +160,13 @@
   font-weight: 600;
 }
 
+.rankRefreshed {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
 /* —— 明细卡 —— */
 .panel {
   background: #fff;
@@ -427,6 +434,19 @@
   font-size: 0.85rem;
   color: #64748b;
   line-height: 1.55;
+}
+
+.copyBlock p {
+  margin: 0 0 0.5em;
+}
+
+.copyBlock p:last-child {
+  margin-bottom: 0;
+}
+
+.copyBlock ul {
+  margin: 0 0 0.5em;
+  padding-left: 1.25em;
 }
 
 @media (max-width: 768px) {

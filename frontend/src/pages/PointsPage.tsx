@@ -11,7 +11,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import PageShell from '../components/PageShell';
 import {
   fetchMyPointsLogs,
@@ -21,6 +21,12 @@ import {
   type PointPublicRules,
   type PointSummary,
 } from '../api/points';
+import {
+  POINTS_GUIDE_COPY_KEY,
+  resolvePointsGuideContent,
+} from './admin/pointsCopyGuide';
+import { formatTierDescription, isTierScoreExpr } from './admin/pointsAdminUtils';
+import { toQuestionDescriptionRenderModel } from '../utils/questionRichText';
 import s from './PointsPage.module.css';
 
 type DirectionFilter = 'all' | 'earn' | 'deduct';
@@ -92,6 +98,8 @@ export default function PointsPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const deptRank = summary?.dept_rank;
   const globalDisplay = summary?.global_rank_display || '—';
+  const earnRules = (rules?.earn_rules || []).filter((r) => !/^M\d+/i.test(r.rule_code || ''));
+  const deductRules = (rules?.deduct_rules || []).filter((r) => !/^M\d+/i.test(r.rule_code || ''));
 
   return (
     <PageShell>
@@ -156,15 +164,12 @@ export default function PointsPage() {
                   </span>
                   <span className={s.rankItem}>
                     总榜{' '}
-                    {globalDisplay === '-' || globalDisplay === '—' ? (
-                      <span className={s.rankMuted}>—</span>
-                    ) : globalDisplay.startsWith('#') ? (
-                      globalDisplay
-                    ) : (
-                      `#${globalDisplay}`
-                    )}
+                    {formatGlobalRankDisplay(globalDisplay)}
                   </span>
                 </div>
+                <p className={s.rankRefreshed}>
+                  排名更新于 {formatRankRefreshedAt(summary?.rank_refreshed_at)}
+                </p>
               </div>
             </article>
           </div>
@@ -216,7 +221,9 @@ export default function PointsPage() {
               <Loader2 size={18} className="spin" /> 加载中…
             </div>
           ) : logs.length === 0 ? (
-            <div className={s.empty}>暂无积分明细</div>
+            <div className={s.empty} role="status">
+              暂无积分明细，去上传文档或参与互动赚取积分吧
+            </div>
           ) : (
             <div className={s.tableWrap}>
               <table className={s.table}>
@@ -307,32 +314,28 @@ export default function PointsPage() {
                   <div className={s.modalSection}>
                     <h3>获得积分</h3>
                     <ul className={s.ruleList}>
-                      {(rules?.earn_rules || []).map((r) => (
+                      {earnRules.map((r) => (
                         <li key={r.id}>
                           <span className={s.ruleName}>{r.name}</span>
                           <span className={s.ruleScore}>{formatScoreExpr(r.score_expr)}</span>
                         </li>
                       ))}
-                      {!rules?.earn_rules?.length ? <li>暂无启用中的获得规则</li> : null}
+                      {!earnRules.length ? <li>暂无启用中的获得规则</li> : null}
                     </ul>
                   </div>
                   <div className={s.modalSection}>
                     <h3>扣减积分</h3>
                     <ul className={s.ruleList}>
-                      {(rules?.deduct_rules || []).map((r) => (
+                      {deductRules.map((r) => (
                         <li key={r.id}>
                           <span className={s.ruleName}>{r.name}</span>
                           <span className={s.ruleScore}>{formatScoreExpr(r.score_expr, true)}</span>
                         </li>
                       ))}
-                      {!rules?.deduct_rules?.length ? <li>暂无启用中的扣减规则</li> : null}
+                      {!deductRules.length ? <li>暂无启用中的扣减规则</li> : null}
                     </ul>
                   </div>
-                  {(rules?.copies || []).map((c) => (
-                    <p key={c.copy_key} className={s.copyBlock}>
-                      {c.content}
-                    </p>
-                  ))}
+                  <PointsRulesCopyBlocks copies={rules?.copies || []} />
                 </>
               )}
             </div>
@@ -340,6 +343,58 @@ export default function PointsPage() {
         ) : null}
       </div>
     </PageShell>
+  );
+}
+
+/** Renders the single `guide` rich-text block (legacy multi-key fallback). */
+function PointsRulesCopyBlocks({
+  copies,
+}: {
+  copies: { copy_key: string; content: string }[];
+}) {
+  const hasGuide = copies.some((c) => c.copy_key === POINTS_GUIDE_COPY_KEY && c.content?.trim());
+  const hasLegacy = copies.some(
+    (c) => c.copy_key !== POINTS_GUIDE_COPY_KEY && c.content?.trim(),
+  );
+
+  if (hasGuide || !hasLegacy) {
+    const model = toQuestionDescriptionRenderModel(resolvePointsGuideContent(copies));
+    if (model.kind === 'html') {
+      return <div className={s.copyBlock} dangerouslySetInnerHTML={{ __html: model.html }} />;
+    }
+    return (
+      <div className={s.copyBlock}>
+        {model.paragraphs.map((p) => (
+          <p key={p}>{p}</p>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {copies
+        .filter((c) => c.content?.trim())
+        .map((c) => {
+          const model = toQuestionDescriptionRenderModel(c.content);
+          if (model.kind === 'html') {
+            return (
+              <div
+                key={c.copy_key}
+                className={s.copyBlock}
+                dangerouslySetInnerHTML={{ __html: model.html }}
+              />
+            );
+          }
+          return (
+            <div key={c.copy_key} className={s.copyBlock}>
+              {model.paragraphs.map((p) => (
+                <p key={`${c.copy_key}-${p}`}>{p}</p>
+              ))}
+            </div>
+          );
+        })}
+    </>
   );
 }
 
@@ -356,16 +411,36 @@ function formatTime(value: string): string {
 }
 
 /**
+ * 总榜展示：后端已给 `999+` / `-` / 名次数字，避免再拼成 `#999+`。
+ * @param display `global_rank_display`
+ */
+function formatGlobalRankDisplay(display: string): ReactNode {
+  if (!display || display === '-' || display === '—') {
+    return <span className={s.rankMuted}>—</span>;
+  }
+  if (display === '999+' || display.startsWith('#')) {
+    return display;
+  }
+  return `#${display}`;
+}
+
+/**
+ * 排名快照刷新时间（AC-14）；无值时展示 —。
+ * @param value ISO 或后端日期字符串
+ */
+function formatRankRefreshedAt(value: string | null | undefined): string {
+  if (!value) return '—';
+  return formatTime(value);
+}
+
+/**
  * 将 score_expr 收成简短展示文案。
  * @param expr 规则分值表达式
  * @param asDeduct 扣减规则时加负号
  */
 function formatScoreExpr(expr: Record<string, unknown>, asDeduct = false): string {
   if (!expr || typeof expr !== 'object') return '—';
-  if (expr.mode === 'tier' && Array.isArray(expr.tiers)) {
-    const cap = expr.lifetime_cap != null ? `，终身≤${expr.lifetime_cap}` : '';
-    return `阶梯奖励${cap}`;
-  }
+  if (isTierScoreExpr(expr)) return formatTierDescription(expr);
   const score = Number(expr.score ?? 0);
   if (!Number.isFinite(score)) return '—';
   return asDeduct ? `-${Math.abs(score)}` : `+${score}`;

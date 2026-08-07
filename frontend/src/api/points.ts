@@ -200,6 +200,37 @@ export async function fetchPublicPointRules(): Promise<PointPublicRules> {
   return getJson<PointPublicRules>(`${POINTS_BASE}/rules/public`);
 }
 
+/** 首页积分榜周期 */
+export type PointLeaderboardPeriod = 'month' | 'year' | 'all';
+
+/** 首页积分榜条目（小时快照 TOP10） */
+export interface PointLeaderboardItem {
+  rank: number;
+  user_id: number;
+  user_name: string;
+  dept_name: string;
+  balance: number;
+  period_score: number;
+}
+
+/** 首页积分榜响应 */
+export interface PointLeaderboard {
+  period: PointLeaderboardPeriod;
+  refreshed_at: string | null;
+  items: PointLeaderboardItem[];
+}
+
+/**
+ * 拉取首页积分榜。
+ * @param period month|year|all
+ */
+export async function fetchPointsLeaderboard(
+  period: PointLeaderboardPeriod = 'month',
+): Promise<PointLeaderboard> {
+  const q = new URLSearchParams({ period });
+  return getJson<PointLeaderboard>(`${POINTS_BASE}/leaderboard?${q.toString()}`);
+}
+
 /** 管理端概览三绝对数 */
 export async function fetchPointsOverview(): Promise<PointOverview> {
   return getJson<PointOverview>(`${POINTS_BASE}/admin/overview`);
@@ -208,10 +239,17 @@ export async function fetchPointsOverview(): Promise<PointOverview> {
 /**
  * 管理端规则列表。
  * @param ruleType 可选 earn|deduct|admin_reward
+ * @param status 可选 enabled|disabled；默认不传则由后端返回全部
  */
-export async function fetchAdminPointRules(ruleType?: string): Promise<PointRuleDTO[]> {
-  const q = ruleType ? `?rule_type=${encodeURIComponent(ruleType)}` : '';
-  return getJson<PointRuleDTO[]>(`${POINTS_BASE}/admin/rules${q}`);
+export async function fetchAdminPointRules(
+  ruleType?: string,
+  status?: 'enabled' | 'disabled',
+): Promise<PointRuleDTO[]> {
+  const q = new URLSearchParams();
+  if (ruleType) q.set('rule_type', ruleType);
+  if (status) q.set('status', status);
+  const qs = q.toString();
+  return getJson<PointRuleDTO[]>(`${POINTS_BASE}/admin/rules${qs ? `?${qs}` : ''}`);
 }
 
 /**
@@ -224,6 +262,56 @@ export async function updatePointRuleStatus(
   status: 'enabled' | 'disabled',
 ): Promise<PointRuleDTO> {
   return putJson<PointRuleDTO>(`${POINTS_BASE}/admin/rules/${ruleId}`, { status });
+}
+
+/** 更新规则可变字段（分值/日 cap/受益人/启停等）。 */
+export async function updatePointRule(
+  ruleId: number,
+  body: Partial<{
+    name: string;
+    score_expr: Record<string, unknown>;
+    daily_cap: number | null;
+    beneficiary: string | null;
+    status: 'enabled' | 'disabled';
+    remark: string | null;
+    sort_order: number;
+  }>,
+): Promise<PointRuleDTO> {
+  return putJson<PointRuleDTO>(`${POINTS_BASE}/admin/rules/${ruleId}`, body);
+}
+
+export interface PointCopyItem {
+  copy_key: string;
+  content: string;
+  sort_order: number;
+}
+
+/** 管理端说明文案列表 */
+export async function fetchAdminPointCopies(): Promise<PointCopyItem[]> {
+  return getJson<PointCopyItem[]>(`${POINTS_BASE}/admin/copies`);
+}
+
+/** 批量保存说明文案 */
+export async function saveAdminPointCopies(items: PointCopyItem[]): Promise<PointCopyItem[]> {
+  return putJson<PointCopyItem[]>(`${POINTS_BASE}/admin/copies`, { items });
+}
+
+/**
+ * 按 R* 规则扣减。
+ * @param userId 目标用户
+ * @param ruleCode 启用中的扣减规则编码
+ * @param remark 原因
+ */
+export async function deductUserPoints(
+  userId: number,
+  ruleCode: string,
+  remark?: string,
+): Promise<PointLogItem> {
+  return postJson<PointLogItem>(`${POINTS_BASE}/admin/deduct`, {
+    user_id: userId,
+    rule_code: ruleCode,
+    remark: remark || undefined,
+  });
 }
 
 /**
@@ -242,4 +330,55 @@ export async function adjustUserPoints(
     delta,
     remark,
   });
+}
+
+export interface PointAdminUserItem {
+  user_id: number;
+  user_name: string;
+  dept_name: string;
+  balance: number;
+  month_score: number;
+}
+
+export interface PointAuditLogItem {
+  id: number;
+  user_id: number;
+  user_name: string;
+  title: string;
+  delta: number;
+  balance_after: number;
+  direction: string;
+  rule_code: string | null;
+  source: string;
+  operator_id: number | null;
+  remark: string | null;
+  occurred_at: string | null;
+}
+
+/** 管理端用户积分列表 */
+export async function fetchAdminPointUsers(params?: {
+  keyword?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PageData<PointAdminUserItem>> {
+  const q = new URLSearchParams();
+  if (params?.keyword) q.set('keyword', params.keyword);
+  if (params?.page) q.set('page', String(params.page));
+  if (params?.page_size) q.set('page_size', String(params.page_size));
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  return getJson<PageData<PointAdminUserItem>>(`${POINTS_BASE}/admin/users${suffix}`);
+}
+
+/** 管理端操作记录 */
+export async function fetchAdminPointAuditLogs(params?: {
+  page?: number;
+  page_size?: number;
+  user_id?: number;
+}): Promise<PageData<PointAuditLogItem>> {
+  const q = new URLSearchParams();
+  if (params?.page) q.set('page', String(params.page));
+  if (params?.page_size) q.set('page_size', String(params.page_size));
+  if (params?.user_id) q.set('user_id', String(params.user_id));
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  return getJson<PageData<PointAuditLogItem>>(`${POINTS_BASE}/admin/audit-logs${suffix}`);
 }

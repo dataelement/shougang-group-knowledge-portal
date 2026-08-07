@@ -88,28 +88,8 @@ import iconHot from '../assets/icon-hot@2x.png';
 import iconArticle from '../assets/icon-article.svg';
 import iconCase from '../assets/icon-case.svg';
 import iconVideo from '../assets/icon-video.svg';
-import medalGold from '../assets/medal-gold@2x.png';
-import medalSilver from '../assets/medal-silver@2x.png';
-import medalBronze from '../assets/medal-bronze@2x.png';
 import { formatDisplayDateTime } from '../utils/dateTime';
-
-/** 积分榜单前三名(领奖台),按 展示顺序 [第二, 第一, 第三] 排列 */
-const POINTS_PODIUM = [
-  { rank: 2, name: '李思', dept: '炼铁作业部', score: 3850, medal: medalSilver, tone: 'silver' as const },
-  { rank: 1, name: '王丽', dept: '炼钢作业部', score: 4120, medal: medalGold, tone: 'gold' as const },
-  { rank: 3, name: '赵峰', dept: '热轧作业部', score: 3620, medal: medalBronze, tone: 'bronze' as const },
-];
-
-/** 积分榜单 4~10 名列表,me 标记当前登录用户所在行 */
-const POINTS_ROWS = [
-  { rank: 4, name: '尉仁子', dept: '首钢冷轧', score: 3280, delta: 290 },
-  { rank: 5, name: '索世泽', dept: '安全部', score: 3150, delta: 260 },
-  { rank: 6, name: '多琦娜(我)', dept: '采购中心', score: 3129, delta: 150 },
-  { rank: 7, name: '茶慧伦', dept: '迁顺技术中心', score: 2580, delta: 156 },
-  { rank: 8, name: '滑良和', dept: '设备部库', score: 2217, delta: 310 },
-  { rank: 9, name: '潘世', dept: '制造部', score: 1640, delta: 124 },
-  { rank: 10, name: '尹胜', dept: '炼铁作业部', score: 1500, delta: 100 },
-];
+import PointsLeaderboardPanel from './home/PointsLeaderboardPanel';
 
 /** Resolve a homepage panel header icon (PNG) from its title keywords. */
 function resolveSectionIcon(title: string): string {
@@ -1654,49 +1634,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className={s.panel}>
-              <div className={`${s.panelHeader} ${s.headerRank}`}>
-                <div className={s.panelHeaderLeft}>
-                  <img src={iconRank} alt="" className={s.panelIconImg} />
-                  <span className={s.panelTitle}>积分榜单</span>
-                </div>
-              </div>
-
-              <div className={s.podium}>
-                {POINTS_PODIUM.map((p) => (
-                  <div
-                    key={p.rank}
-                    className={`${s.podiumItem} ${p.rank === 1 ? s.podiumItemFirst : ''}`}
-                  >
-                    <img src={p.medal} alt={`第${p.rank}名`} className={s.podiumMedal} />
-                    <span className={s.podiumName}>{p.name}</span>
-                    <span className={s.podiumDept}>{p.dept}</span>
-                    <span className={`${s.podiumScore} ${s[`podiumScore_${p.tone}`]}`}>
-                      {p.score}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className={s.rankTable}>
-                <div className={s.rankHead}>
-                  <span>排名</span>
-                  <span>用户</span>
-                  <span>部门</span>
-                  <span>当前积分</span>
-                  <span>本月积分</span>
-                </div>
-                {POINTS_ROWS.map((r) => (
-                  <div key={r.rank} className={s.rankRow}>
-                    <span className={s.rankNo}>{r.rank}</span>
-                    <span className={s.rankUser}>{r.name}</span>
-                    <span className={s.rankDept}>{r.dept}</span>
-                    <span className={s.rankScore}>{r.score}</span>
-                    <span className={s.rankDelta}>+{r.delta}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <PointsLeaderboardPanel />
 
           </div>
         </div>
